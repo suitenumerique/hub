@@ -10,7 +10,6 @@ let isInitialized = false;
 
 // Initialize i18next with the base translations only once
 if (!isInitialized && !i18next.isInitialized) {
-  // eslint-disable-next-line no-useless-assignment
   isInitialized = true;
 
   i18next
@@ -36,7 +35,6 @@ if (!isInitialized && !i18next.isInitialized) {
       lowerCaseLng: true,
       nsSeparator: false,
       keySeparator: false,
-      showSupportNotice: false,
     })
     .then(() => {
       if (typeof document !== 'undefined') {

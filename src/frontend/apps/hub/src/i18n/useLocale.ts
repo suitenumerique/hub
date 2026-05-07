@@ -1,32 +1,23 @@
-import { DEFAULT_LOCALE } from '@gouvfr-lasuite/cunningham-react';
-import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-
-import { useConfig } from '@/core/config/api/useConfig';
+import { DEFAULT_LOCALE } from "@gouvfr-lasuite/cunningham-react";
+import { useTranslation } from "react-i18next";
 
 enum Locales {
-  enUS = 'en-US',
-  frFR = 'fr-FR',
+  enUS = "en-US",
+  frFR = "fr-FR",
+  deDE = "de-DE",
+  nlNL = "nl-NL",
 }
+
+const LOCALE_BY_LANGUAGE: Record<string, Locales> = {
+  en: Locales.enUS,
+  fr: Locales.frFR,
+  de: Locales.deDE,
+  nl: Locales.nlNL,
+};
 
 export function useLocales() {
   const { i18n } = useTranslation();
-  const { data: conf } = useConfig();
-  const [currentLocale, setCurrentLocale] = useState<Locales>(DEFAULT_LOCALE);
   const resolvedLanguage = i18n.resolvedLanguage ?? i18n.language;
-
-  useEffect(() => {
-    const rawLocale =
-      conf?.LANGUAGES.find(([code]) =>
-        code.startsWith(resolvedLanguage),
-      )?.[0] ?? resolvedLanguage;
-    const [lang, region] = rawLocale.split('-');
-    const currentLocale = region
-      ? `${lang}-${region.toUpperCase()}`
-      : rawLocale;
-
-    setCurrentLocale(currentLocale as Locales);
-  }, [resolvedLanguage, conf?.LANGUAGES]);
-
-  return currentLocale;
+  const lang = (resolvedLanguage || "en").slice(0, 2).toLowerCase();
+  return LOCALE_BY_LANGUAGE[lang] ?? DEFAULT_LOCALE;
 }

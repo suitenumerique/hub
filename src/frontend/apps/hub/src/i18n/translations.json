@@ -74,6 +74,7 @@
       "Select language": "Sélectionnez une langue",
       "Show more": "Voir plus",
       "Something bad happens, please retry.": "Une erreur inattendue s'est produite, veuillez réessayer.",
+      "Welcome to the Hub": "Bienvenue sur le Hub",
       "home-content-mon-compte-open-source-part1": "LaSuite Hub est la porte d’entrée vers les outils collaboratifs de La Suite. Il est construit sur <0>Django Rest Framework</0> et <1>Next.js</1>.",
       "home-content-mon-compte-open-source-part2": "Vous pouvez facilement auto-héberger LaSuite Hub (consultez notre <0>documentation</0> d'installation). Aujourd’hui, il centralise l’accès aux services et, demain, il permettra aussi de gérer les informations liées au compte.<2/>Mon compte utilise une <1>licence</1> (MIT) adaptée à l’innovation et aux entreprises.",
       "just now": "à l'instant",
