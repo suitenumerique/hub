@@ -6,5 +6,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- 🏗️(frontend) Initialize the Hub frontend project
+- 🏗️(frontend) Initialize unit tests setup
+- 🏗️(frontend) Initialize end-to-end (e2e) tests setup
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main
