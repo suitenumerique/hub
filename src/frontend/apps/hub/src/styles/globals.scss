@@ -1,0 +1,12 @@
+@use "@gouvfr-lasuite/ui-kit/sass/fonts";
+@use "@gouvfr-lasuite/ui-kit/style";
+@use "./cunningham-tokens.css";
+@use "./../pages/home.scss" as *;
+
+body {
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}

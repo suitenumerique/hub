@@ -4,13 +4,13 @@ import deepMerge from "deepmerge";
 const themesImages = {
   "dsfr-dark": {
     favicon: "/assets/favicon.png",
-    logo: "/assets/logo_beta.svg",
-    "logo-icon": "/assets/logo-icon_beta.svg",
+    logo: "/assets/logo_text.svg",
+    "logo-icon": "/assets/logo-icon.svg",
   },
   "dsfr-light": {
     favicon: "/assets/favicon.png",
-    logo: "/assets/logo_beta.svg",
-    "logo-icon": "/assets/logo-icon_beta.svg",
+    logo: "/assets/logo_text.svg",
+    "logo-icon": "/assets/logo-icon.svg",
   },
 };
 
