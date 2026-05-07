@@ -1,61 +1,76 @@
-import {
-  dsfrGlobals,
-  getUIKitThemesFromGlobals,
-  whiteLabelGlobals,
-} from '@gouvfr-lasuite/ui-kit';
+import { cunninghamConfig } from "@gouvfr-lasuite/ui-kit";
+import deepMerge from "deepmerge";
 
-const themeWhiteLabelLight = getUIKitThemesFromGlobals(whiteLabelGlobals, {
-  prefix: 'default',
-  variants: ['light'],
-  overrides: {
-    globals: {
-      spacing: {
-        '0': '0rem',
-        none: '0rem',
-        auto: 'auto',
-        bx: '2.2rem',
-        full: '100%',
-        '3xs': '0.25rem',
-        '2xs': '0.375rem',
-      },
-      font: {
-        families: {
-          base: 'Inter Variable, Roboto Flex Variable, sans-serif',
-          accent: 'Inter Variable, Roboto Flex Variable, sans-serif',
-        },
-      },
-    },
+const themesImages = {
+  "anct-light": {
+    favicon: "/assets/anct_favicon.png",
+    logo: "/assets/anct_logo_beta.svg",
+    "logo-icon": "/assets/anct_logo-icon.svg",
   },
-});
-
-const themeDefault = {
-  default: themeWhiteLabelLight['default-light'],
+  "dsfr-dark": {
+    favicon: "/assets/favicon.png",
+    logo: "/assets/logo_beta.svg",
+    "logo-icon": "/assets/logo-icon_beta.svg",
+  },
+  "dsfr-light": {
+    favicon: "/assets/favicon.png",
+    logo: "/assets/logo_beta.svg",
+    "logo-icon": "/assets/logo-icon_beta.svg",
+  },
 };
 
-const themesDSFRLight = getUIKitThemesFromGlobals(dsfrGlobals, {
-  prefix: 'dsfr',
-  variants: ['light'],
-  overrides: {
-    globals: {
-      font: {
-        families: {
-          base: 'Marianne, Inter Variable, Roboto Flex Variable, sans-serif',
-          accent: 'Marianne, Inter Variable, Roboto Flex Variable, sans-serif',
-        },
-      },
-    },
+const themesGaufre = {
+  "anct-light": {
+    widgetPath: "https://static.suite.anct.gouv.fr/widgets/lagaufre.js",
+    apiUrl:
+      "https://operateurs.suite.anct.gouv.fr/api/v1.0/lagaufre/services/?operator=9f5624fc-ef99-4d10-ae3f-403a81eb16ef&siret=21870030000013",
   },
-});
-
-const themesDSFR = {
-  dsfr: themesDSFRLight['dsfr-light'],
+  "dsfr-dark": {
+    widgetPath: "https://static.suite.anct.gouv.fr/widgets/lagaufre.js",
+    apiUrl: "https://lasuite.numerique.gouv.fr/api/services",
+  },
+  "dsfr-light": {
+    widgetPath: "https://static.suite.anct.gouv.fr/widgets/lagaufre.js",
+    apiUrl: "https://lasuite.numerique.gouv.fr/api/services",
+  },
 };
 
-const hubTokens = {
+const getComponents = (theme: keyof typeof themesImages) => {
+  return {
+    datagrid: {
+      "body--background-color-hover":
+        "ref(contextuals.background.semantic.contextual.primary)",
+    },
+    gaufre: {
+      widgetPath: `'${themesGaufre[theme].widgetPath}'`,
+      apiUrl: `'${themesGaufre[theme].apiUrl}'`,
+    },
+    favicon: {
+      src: `'${themesImages[theme].favicon}'`,
+    },
+    logo: {
+      src: `url('${themesImages[theme].logo}')`,
+    },
+    "logo-icon": {
+      src: `url('${themesImages[theme]["logo-icon"]}')`,
+    },
+  };
+};
+
+const defaultConfig = deepMerge(cunninghamConfig, {
   themes: {
-    ...themeDefault,
-    ...themesDSFR,
+    "anct-light": {
+      components: getComponents("anct-light"),
+    },
+    "dsfr-light": {
+      components: getComponents("dsfr-light"),
+    },
+    "dsfr-dark": {
+      components: getComponents("dsfr-dark"),
+    },
   },
-};
+});
 
-export default hubTokens;
+const config = defaultConfig;
+
+export default config;

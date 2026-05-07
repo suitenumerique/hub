@@ -1,21 +1,22 @@
-import { defineConfig } from '@eslint/config-helpers';
-import docsPlugin from 'eslint-plugin-docs';
+import { dirname } from "path";
+import { fileURLToPath } from "url";
+import { FlatCompat } from "@eslint/eslintrc";
 
-const eslintConfig = defineConfig([
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+});
+
+const eslintConfig = [
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: ['.next/**', 'out/**'],
-  },
-  {
-    plugins: {
-      docs: docsPlugin,
-    },
-    extends: ['docs/next'],
-    settings: {
-      next: {
-        rootDir: import.meta.dirname,
-      },
+    rules: {
+      "react-hooks/exhaustive-deps": "off",
+      "@next/next/no-img-element": "off",
     },
   },
-]);
+];
 
 export default eslintConfig;
