@@ -43,7 +43,6 @@ DOCKER_GID          := $(shell id -g)
 DOCKER_USER         := $(DOCKER_UID):$(DOCKER_GID)
 endif
 COMPOSE             = DOCKER_USER=$(DOCKER_USER) docker compose
-COMPOSE_E2E         = DOCKER_USER=$(DOCKER_USER) docker compose -f compose.yml -f compose-e2e.yml
 COMPOSE_EXEC        = $(COMPOSE) exec
 COMPOSE_EXEC_APP    = $(COMPOSE_EXEC) app-dev
 COMPOSE_RUN         = $(COMPOSE) run --rm
@@ -52,6 +51,8 @@ COMPOSE_RUN_CROWDIN = $(COMPOSE_RUN) crowdin crowdin
 
 # -- Backend
 MANAGE              = $(COMPOSE_RUN_APP) python manage.py
+MANAGE_EXEC         = $(COMPOSE_EXEC_APP) python manage.py
+PSQL_E2E            = ./bin/postgres_e2e
 MAIL_YARN           = $(COMPOSE_RUN) -w //app/src/mail node yarn
 
 # -- Frontend
@@ -60,7 +61,6 @@ PATH_FRONT_HUB  = $(PATH_FRONT)/apps/hub
 FRONT_YARN          = $(COMPOSE_RUN) -w //app/src/frontend node yarn
 FRONT_E2E_YARN      = $(COMPOSE_RUN) -w //app/src/frontend/apps/e2e node yarn
 FRONT_HUB_YARN = $(COMPOSE_RUN) -w //app/src/frontend/apps/hub node yarn
-FRONT_ESLINT_YARN   = $(COMPOSE_RUN) -w //app/src/frontend/packages/eslint-plugin-docs node yarn
 FRONT_I18N_YARN     = $(COMPOSE_RUN) -w //app/src/frontend/packages/i18n node yarn
 FRONT_DEV_YARN      = $(COMPOSE) run --rm --service-ports -w //app/src/frontend/apps/hub node yarn
 
@@ -75,6 +75,9 @@ data/media:
 data/static:
 	@mkdir -p data/static
 
+data/postgresql.local:
+	@mkdir -p data/postgresql.local
+
 # -- Project
 
 create-env-local-files: ## create env.local files in env.d/development
@@ -88,6 +91,7 @@ create-env-local-files:
 pre-bootstrap: \
 	data/media \
 	data/static \
+	data/postgresql.local \
 	create-env-local-files
 .PHONY: pre-bootstrap
 
@@ -172,12 +176,12 @@ bootstrap: \
 	post-beautiful-bootstrap
 .PHONY: bootstrap
 
-bootstrap-e2e: ## Prepare Docker production images to be used for e2e tests
+bootstrap-e2e: ## Bootstrap the backend container for e2e tests, without frontend
 bootstrap-e2e: \
 	pre-bootstrap \
-	build-e2e \
-	post-bootstrap \
-	run-e2e
+	build-backend \
+	back-i18n-compile \
+	run-backend-e2e
 .PHONY: bootstrap-e2e
 
 # -- Docker/compose
@@ -197,14 +201,8 @@ build-frontend: ## build the frontend container
 	@$(COMPOSE) build frontend-development $(cache)
 .PHONY: build-frontend
 
-build-e2e: cache ?=
-build-e2e: ## build the e2e container
-	@$(MAKE) build-backend cache=$(cache)
-	@$(COMPOSE_E2E) build frontend $(cache)
-.PHONY: build-e2e
-
 down: ## stop and remove containers, networks, images, and volumes
-	@$(COMPOSE_E2E) down
+	@$(COMPOSE) down
 .PHONY: down
 
 logs: ## display app-dev logs (follow mode)
@@ -212,27 +210,44 @@ logs: ## display app-dev logs (follow mode)
 .PHONY: logs
 
 run-backend: ## Start only the backend application and all needed services
+	@$(MAKE) stop
 	@$(COMPOSE) up --force-recreate -d nginx
 .PHONY: run-backend
 
+run-backend-e2e: ## Start the backend with the e2e DB; always reset the postgresql.e2e volume first
+	@$(MAKE) stop
+	rm -rf data/postgresql.e2e
+	@ENV_OVERRIDE=e2e $(MAKE) run-backend
+	@ENV_OVERRIDE=e2e $(MAKE) migrate
+.PHONY: run-backend-e2e
+
 run: ## start the wsgi (production) and development server
-run: 
+run:
 	@$(MAKE) run-backend
 	@$(COMPOSE) up --force-recreate -d frontend-development
 .PHONY: run
 
-run-e2e: ## start the e2e server
-run-e2e:
-	@$(MAKE) run-backend
-	@$(COMPOSE_E2E) up --force-recreate -d frontend
-.PHONY: run-e2e
+clear-db-e2e: ## quickly clears the e2e database, used by Playwright between tests
+	$(PSQL_E2E) -c "$$(cat bin/clear_db_e2e.sql)"
+.PHONY: clear-db-e2e
+
+run-tests-e2e: ## run the e2e tests, example: make run-tests-e2e -- --project=chromium --headed
+	@$(MAKE) run-backend-e2e
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	cd src/frontend/apps/e2e && yarn test $${args:-${1}}
+.PHONY: run-tests-e2e
+
+backend-exec-command: ## execute a command in the running backend container, used by Playwright fixtures
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	$(MANAGE_EXEC) $${args}
+.PHONY: backend-exec-command
 
 status: ## an alias for "docker compose ps"
-	@$(COMPOSE_E2E) ps
+	@$(COMPOSE) ps
 .PHONY: status
 
 stop: ## stop the development server using Docker
-	@$(COMPOSE_E2E) stop
+	@$(COMPOSE) stop
 .PHONY: stop
 
 # -- Backend
@@ -442,6 +457,5 @@ bump-packages-version: ## bump the version of the project - VERSION_TYPE can be 
 	@$(FRONT_YARN) version --no-git-tag-version --$(VERSION_TYPE)
 	@$(FRONT_E2E_YARN) version --no-git-tag-version --$(VERSION_TYPE)
 	@$(FRONT_HUB_YARN) version --no-git-tag-version --$(VERSION_TYPE)
-	@$(FRONT_ESLINT_YARN) version --no-git-tag-version --$(VERSION_TYPE)
 	@$(FRONT_I18N_YARN) version --no-git-tag-version --$(VERSION_TYPE)
 .PHONY: bump-packages-version

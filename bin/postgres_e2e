@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+REPO_DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd)"
+
+ENV_FILE="${REPO_DIR}/env.d/development/postgresql.e2e"
+POSTGRES_USER=$(grep POSTGRES_USER "$ENV_FILE" | cut -d'=' -f2)
+POSTGRES_DB=$(grep POSTGRES_DB "$ENV_FILE" | cut -d'=' -f2)
+
+# postgresql is started with ENV_OVERRIDE=e2e (DB hub_e2e); a plain `exec` finds it.
+docker compose --project-directory "${REPO_DIR}" \
+    exec -T postgresql psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 "$@"

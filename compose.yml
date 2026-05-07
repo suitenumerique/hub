@@ -10,7 +10,9 @@ services:
       retries: 300
     env_file:
       - env.d/development/postgresql
-      - env.d/development/postgresql.local
+      - env.d/development/postgresql.${ENV_OVERRIDE:-local}
+    volumes:
+      - ./data/postgresql.${ENV_OVERRIDE:-local}:/var/lib/postgresql/data
     ports:
       - "9812:5432"
 
@@ -69,9 +71,9 @@ services:
       - DJANGO_CONFIGURATION=Development
     env_file:
       - env.d/development/common
-      - env.d/development/common.local
+      - env.d/development/common.${ENV_OVERRIDE:-local}
       - env.d/development/postgresql
-      - env.d/development/postgresql.local
+      - env.d/development/postgresql.${ENV_OVERRIDE:-local}
     ports:
       - "9801:8000"
     networks:
@@ -108,7 +110,7 @@ services:
       - /home/frontend/node_modules
       - /home/frontend/apps/hub/node_modules
     ports:
-      - "9800:3000"
+      - "9800:9800"
 
   nginx:
     image: nginx:1.25

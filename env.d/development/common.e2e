@@ -4,3 +4,6 @@ SUSTAINED_THROTTLE_RATES="200/hour"
 
 # Throttle
 API_CONFIG_THROTTLE_RATE=1000/min
+
+# Enable the e2e bypass authentication route
+LOAD_E2E_URLS=True
