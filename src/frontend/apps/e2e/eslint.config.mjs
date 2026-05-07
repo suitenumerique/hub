@@ -1,14 +1,25 @@
-import { defineConfig } from '@eslint/config-helpers';
-import docsPlugin from 'eslint-plugin-docs';
+import typescriptEslint from '@typescript-eslint/eslint-plugin';
+import typescriptParser from '@typescript-eslint/parser';
+import playwright from 'eslint-plugin-playwright';
 
-const eslintConfig = defineConfig([
+export default [
   {
-    files: ['**/*.ts', '**/*.mjs'],
-    plugins: {
-      docs: docsPlugin,
+    files: ['**/*.ts'],
+    languageOptions: {
+      parser: typescriptParser,
     },
-    extends: ['docs/playwright'],
+    plugins: {
+      '@typescript-eslint': typescriptEslint,
+      playwright,
+    },
+    rules: {
+      ...playwright.configs['flat/recommended'].rules,
+      'playwright/no-force-option': 'off',
+      'playwright/no-wait-for-timeout': 'off',
+      'playwright/no-conditional-in-test': 'off',
+      'playwright/no-skipped-test': 'off',
+      'playwright/expect-expect': 'error',
+      'playwright/no-conditional-expect': 'error',
+    },
   },
-]);
-
-export default eslintConfig;
+];
