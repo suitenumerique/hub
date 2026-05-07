@@ -16,7 +16,7 @@ from lasuite.oidc_login.urls import urlpatterns as oidc_urls
 urlpatterns = [
     path("admin/", admin.site.urls),
     path(f"api/{settings.API_VERSION}/", include("core.urls")),
-    path(f"api/{settings.API_VERSION}/oidc/", include(oidc_urls)),
+    path(f"api/{settings.API_VERSION}/", include(oidc_urls)),
 ]
 
 if settings.DEBUG:
@@ -25,6 +25,9 @@ if settings.DEBUG:
         + staticfiles_urlpatterns()
         + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     )
+
+if settings.LOAD_E2E_URLS:
+    urlpatterns += [path("", include("e2e.urls"))]
 
 
 if settings.USE_SWAGGER or settings.DEBUG:

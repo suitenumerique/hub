@@ -68,6 +68,9 @@ class Base(Configuration):
 
     DEBUG = False
     USE_SWAGGER = False
+    LOAD_E2E_URLS = values.BooleanValue(
+        default=False, environ_name="LOAD_E2E_URLS", environ_prefix=None
+    )
 
     API_VERSION = "v1.0"
 
@@ -229,6 +232,7 @@ class Base(Configuration):
         # hub
         "core",
         "demo",
+        "e2e",
         "drf_spectacular",
         # Third party apps
         "corsheaders",
