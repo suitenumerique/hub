@@ -1,30 +1,17 @@
-import { useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useRouter } from "next/router";
+import { useEffect } from "react";
 
-import { LogoutButton } from '@/features/auth/components/LogoutButton';
-import { useAuth } from '@/features/auth/Auth';
-import { HomeLayout } from '@/features/layouts/HomeLayout';
+import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 
 export default function IndexPage() {
-  const { t } = useTranslation();
-  const { user } = useAuth();
+  const user = useRequireAuth();
+  const router = useRouter();
 
   useEffect(() => {
-    if (user === null) {
-      window.location.replace('/home');
+    if (user) {
+      router.replace("/chat/new");
     }
-  }, [user]);
+  }, [user, router]);
 
-  if (!user) {
-    return null;
-  }
-
-  return (
-    <HomeLayout>
-      <h1>{t('Welcome to the Hub')}</h1>
-      <div>
-        <LogoutButton />
-      </div>
-    </HomeLayout>
-  );
+  return null;
 }
