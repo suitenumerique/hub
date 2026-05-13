@@ -9,6 +9,7 @@ import {
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import type { AppProps } from "next/app";
 import Head from "next/head";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import "@/i18n/initI18n";
@@ -50,6 +51,10 @@ const queryClient = new QueryClient({
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   const { t, i18n } = useTranslation();
+
+  useEffect(() => {
+    document.documentElement.lang = i18n.language;
+  }, [i18n.language]);
 
   return (
     <>
