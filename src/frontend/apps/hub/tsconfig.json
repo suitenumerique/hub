@@ -14,7 +14,8 @@
     "jsx": "preserve",
     "incremental": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@cunningham": ["./cunningham"]
     }
   },
   "include": ["next-env.d.ts", "svg.d.ts", "**/*.ts", "**/*.tsx"],
