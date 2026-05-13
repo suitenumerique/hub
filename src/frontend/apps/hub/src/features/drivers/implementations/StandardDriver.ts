@@ -1,6 +1,17 @@
 import { fetchAPI } from "@/features/api/fetchApi";
-import { Driver, UserFilters } from "../Driver";
-import { ApiConfig, User } from "../types";
+import {
+  getMockAuthorsForChat,
+  getMockMessages,
+} from "@/features/chat/mockMessages";
+
+import { Driver, GetChatMessagesParams, UserFilters } from "../Driver";
+import { ApiConfig, ChatMessagesPage, User } from "../types";
+
+const DEFAULT_CHAT_PAGE_SIZE = 50;
+const MOCK_CHAT_LATENCY_MS = 250;
+
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class StandardDriver extends Driver {
   async getConfig(): Promise<ApiConfig> {
@@ -24,5 +35,35 @@ export class StandardDriver extends Driver {
     });
     const data = await response.json();
     return data;
+  }
+
+  async getChatMessages({
+    chatId,
+    cursor,
+    limit = DEFAULT_CHAT_PAGE_SIZE,
+  }: GetChatMessagesParams): Promise<ChatMessagesPage> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/messages?…')`
+    // when the backend exposes paginated history. The driver contract above
+    // (cursor + limit → { messages, authors, nextCursor }) is the swap point.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const all = getMockMessages(chatId);
+    const authors = getMockAuthorsForChat(chatId);
+
+    let endIndex = all.length;
+    if (cursor) {
+      endIndex = all.findIndex((message) => message.id === cursor);
+      if (endIndex < 0) {
+        throw new Error(
+          `StandardDriver.getChatMessages: cursor "${cursor}" not found in chat "${chatId}".`,
+        );
+      }
+    }
+    const startIndex = Math.max(0, endIndex - limit);
+
+    const messages = all.slice(startIndex, endIndex);
+    const nextCursor = startIndex === 0 ? null : messages[0]?.id ?? null;
+
+    return { messages, authors, nextCursor };
   }
 }

@@ -8,6 +8,12 @@ export type MockChat = {
   name: string;
   unread?: boolean;
   section: "favourites" | "all";
+  /**
+   * Determines whether mockMessages generates one author or several. The flag
+   * is explicit (rather than inferred from the name) so the data shape stays
+   * stable when the real backend ships.
+   */
+  kind: "direct" | "group";
   visual: MockChatVisual;
 };
 
@@ -16,18 +22,21 @@ export const MOCK_CHATS: MockChat[] = [
     id: "a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c",
     name: "Didier Salambo",
     section: "favourites",
+    kind: "direct",
     visual: { kind: "initials" },
   },
   {
     id: "b4e2c3d1-2e3f-4a5b-8c9d-6e7f8a9b0c1d",
     name: "Working group",
     section: "favourites",
+    kind: "group",
     visual: { kind: "emoji", emoji: "🌲" },
   },
   {
     id: "c5d3e4f2-3f4a-4b5c-9d0e-7f8a9b0c1d2e",
     name: "Anabelle Dupontel",
     section: "all",
+    kind: "direct",
     unread: true,
     visual: { kind: "initials" },
   },
@@ -35,6 +44,7 @@ export const MOCK_CHATS: MockChat[] = [
     id: "d6e4f5a3-4a5b-4c6d-ae1f-8a9b0c1d2e3f",
     name: "André Campan, Edouard McDonald",
     section: "all",
+    kind: "group",
     unread: true,
     visual: { kind: "icon", icon: "groups" },
   },
@@ -42,30 +52,35 @@ export const MOCK_CHATS: MockChat[] = [
     id: "e7f5a6b4-5b6c-4d7e-bf2a-9b0c1d2e3f4a",
     name: "Fichiers team",
     section: "all",
+    kind: "group",
     visual: { kind: "emoji", emoji: "🎉" },
   },
   {
     id: "f8a6b7c5-6c7d-4e8f-803b-ac1d2e3f4a5b",
     name: "Teams team",
     section: "all",
+    kind: "group",
     visual: { kind: "emoji", emoji: "👎" },
   },
   {
     id: "09b7c8d6-7d8e-4f9a-914c-bd2e3f4a5b6c",
     name: "Jean Dustaff",
     section: "all",
+    kind: "direct",
     visual: { kind: "initials" },
   },
   {
     id: "1ac8d9e7-8e9f-40ab-a25d-ce3f4a5b6c7d",
     name: "Bérangère Becker",
     section: "all",
+    kind: "direct",
     visual: { kind: "initials" },
   },
   {
     id: "2bd9eaf8-9fa0-41bc-b36e-df4a5b6c7d8e",
     name: "Team chocolate",
     section: "all",
+    kind: "group",
     visual: { kind: "emoji", emoji: "❤️" },
   },
 ];
@@ -75,5 +90,5 @@ export const FAVOURITE_CHATS = MOCK_CHATS.filter(
 );
 export const ALL_CHATS = MOCK_CHATS.filter((chat) => chat.section === "all");
 
-export const getMockChat = (id: string): MockChat | null =>
-  MOCK_CHATS.find((chat) => chat.id === id) ?? null;
+export const getMockChat = (id: string): MockChat | undefined =>
+  MOCK_CHATS.find((chat) => chat.id === id);
