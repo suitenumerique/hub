@@ -11,5 +11,6 @@ and this project adheres to
 - 🏗️(frontend) Initialize the Hub frontend project
 - 🏗️(frontend) Initialize unit tests setup
 - 🏗️(frontend) Initialize end-to-end (e2e) tests setup
+- ✨(frontend) Add chat layout with LeftPanel and virtualized conversation view
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main
