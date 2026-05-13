@@ -1,0 +1,70 @@
+.hub__chat-conversation {
+  &__list {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+  }
+
+  &__loading,
+  &__top-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--c--globals--spacings--xs, 8px);
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+
+  &__loading {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  // Matches the floating ChatHeader's content height (12px padding + 32px
+  // breadcrumb + 12px padding). Keeps the topmost message clear of the
+  // header when the user has scrolled to the very start of the conversation.
+  &__top-spacer {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__top-loader {
+    padding: var(--c--globals--spacings--xxs, 6px)
+      var(--c--globals--spacings--sm, 12px);
+
+    .material-icons {
+      font-size: 16px;
+      animation: hub-chat-spin 1.2s linear infinite;
+    }
+  }
+
+  &__row {
+    display: flex;
+    justify-content: center;
+    padding: 0 var(--c--globals--spacings--md, 24px);
+    box-sizing: border-box;
+  }
+
+  &__row-inner {
+    width: 100%;
+    max-width: 750px;
+    padding: 2px;
+  }
+}
+
+@keyframes hub-chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__chat-conversation__top-loader .material-icons {
+    animation: none;
+  }
+}
