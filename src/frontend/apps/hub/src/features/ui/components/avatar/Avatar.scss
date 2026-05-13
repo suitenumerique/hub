@@ -1,0 +1,64 @@
+$avatar-colors:
+  "blue-1",
+  "blue-2",
+  "brand",
+  "brown",
+  "gray",
+  "green",
+  "orange",
+  "pink",
+  "purple",
+  "red",
+  "yellow";
+
+.hub__avatar {
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1.5px solid var(--c--contextuals--border--semantic--overlay--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-family: inherit;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  text-align: center;
+  color: var(--c--contextuals--content--semantic--overlay--primary);
+
+  &--sm {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+
+  &--md {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+  }
+
+  &--lg {
+    width: 40px;
+    height: 40px;
+    font-size: 17px;
+  }
+
+  @each $color in $avatar-colors {
+    &--#{$color} {
+      background: var(--c--contextuals--background--palette--#{$color}--primary);
+    }
+  }
+
+  &--soft {
+    color: var(--c--contextuals--content--semantic--neutral--primary);
+
+    @each $color in $avatar-colors {
+      &.hub__avatar--#{$color} {
+        background: var(
+          --c--contextuals--background--palette--#{$color}--tertiary
+        );
+      }
+    }
+  }
+}

@@ -2,6 +2,7 @@
 @use "@gouvfr-lasuite/ui-kit/style";
 @use "./cunningham-tokens.css";
 @use "./../pages/home.scss" as *;
+@use "./../features/ui/components/avatar/Avatar.scss";
 
 body {
   margin: 0;
@@ -9,4 +10,16 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+.hub__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
