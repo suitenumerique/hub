@@ -1,0 +1,302 @@
+.hub__left-panel {
+  --hub-lp-row-height: 32px;
+  --hub-lp-radius: 4px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 300px;
+  min-height: 100dvh;
+  padding: 12px 0 64px;
+  background: var(--c--contextuals--background--surface--tertiary, #f6f8f9);
+  border-right: 1px solid
+    var(--c--contextuals--border--surface--primary, #dfe2ea);
+  font-family: var(--c--globals--font--families--base, 'Marianne', sans-serif);
+  color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  position: relative;
+
+  &__logo {
+    padding: 0 12px;
+
+    img {
+      display: block;
+      height: 40px;
+      width: auto;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 12px;
+  }
+
+  &__action {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: var(--hub-lp-row-height);
+    width: 100%;
+    padding: 0 4px;
+    border-radius: var(--hub-lp-radius);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+
+    &__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+      color: var(--c--contextuals--content--semantic--neutral--secondary);
+    }
+
+    &__label {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 18px;
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &:hover {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: 2px;
+    }
+  }
+
+  &__section {
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
+
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    &__heading {
+      margin: 0;
+      font: inherit;
+    }
+
+    &__header {
+      appearance: none;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      height: 24px;
+      padding: 0 12px;
+      border-radius: var(--hub-lp-radius);
+      color: inherit;
+      font: inherit;
+      text-align: left;
+
+      &:focus-visible {
+        outline: 2px solid
+          var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+        outline-offset: 2px;
+      }
+    }
+
+    &__title {
+      flex: 1 1 0;
+      min-width: 0;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 16px;
+      color: var(--c--contextuals--content--semantic--neutral--secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &__chevron {
+      font-size: 16px;
+      width: 24px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      color: var(
+        --c--contextuals--content--semantic--neutral--secondary,
+        #555e74
+      );
+      transition: transform 200ms ease;
+    }
+
+    &__panel {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows 220ms ease;
+
+      > .hub__left-panel__list {
+        overflow: hidden;
+        min-height: 0;
+      }
+    }
+
+    &[data-open='false'] {
+      .hub__left-panel__section__chevron {
+        transform: rotate(-90deg);
+      }
+
+      .hub__left-panel__section__panel {
+        grid-template-rows: 0fr;
+      }
+    }
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  &__chat {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-radius: var(--hub-lp-radius);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+
+    &:hover:not(&--active) {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: -2px;
+    }
+
+    &--active {
+      background: var(
+        --c--contextuals--background--semantic--brand--primary,
+        #3e5de7
+      );
+      color: var(
+        --c--contextuals--content--semantic--neutral--on-neutral,
+        #eef1f4
+      );
+    }
+
+    &__dot {
+      flex: 0 0 auto;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(
+        --c--contextuals--content--semantic--brand--tertiary,
+        #3e5de7
+      );
+      visibility: hidden;
+
+      &--visible {
+        visibility: visible;
+      }
+    }
+
+    &__name {
+      flex: 1 1 0;
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 18px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+
+      &--strong {
+        font-weight: 700;
+      }
+    }
+  }
+
+  &__footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 12px;
+  }
+
+  &__icon-button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--hub-lp-radius);
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+
+    .material-icons {
+      font-size: 24px;
+    }
+
+    &:hover {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: 2px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__left-panel__section__panel,
+  .hub__left-panel__section__chevron {
+    transition: none;
+  }
+}
