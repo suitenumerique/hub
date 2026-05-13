@@ -5,20 +5,17 @@ import {
   Plus,
   QuestionMark,
   Zoom,
-} from "@gouvfr-lasuite/ui-kit/icons";
-import clsx from "clsx";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/router";
-import { ReactNode, useId, useState } from "react";
-import { useTranslation } from "react-i18next";
+} from '@gouvfr-lasuite/ui-kit/icons';
+import clsx from 'clsx';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { ReactNode, useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
-import {
-  ALL_CHATS,
-  FAVOURITE_CHATS,
-  type MockChat,
-} from "@/features/chat/mockChats";
-import { Avatar } from "@/features/ui/components/avatar/Avatar";
+import { FAVOURITE_CHATS, type MockChat } from '@/features/chat/mockChats';
+import { Avatar } from '@/features/ui/components/avatar/Avatar';
+import { useChatList } from '@/features/chat/hooks/useChatList';
 
 type ActionItem =
   | { id: string; href: string; icon: ReactNode; label: string }
@@ -27,31 +24,33 @@ type ActionItem =
 export const LeftPanel = () => {
   const { t } = useTranslation();
 
+  const allChats = useChatList();
+
   const actions: ActionItem[] = [
     {
-      id: "new",
-      href: "/chat/new",
+      id: 'new',
+      href: '/chat/new',
       icon: <Plus size={16} />,
-      label: t("New"),
+      label: t('New'),
     },
     {
-      id: "meeting",
+      id: 'meeting',
       icon: <Meet size={16} />,
-      label: t("Start a meeting"),
+      label: t('Start a meeting'),
     },
     {
-      id: "search",
+      id: 'search',
       icon: <Zoom size={16} />,
-      label: t("Search"),
+      label: t('Search'),
     },
   ];
 
   return (
-    <aside className="hub__left-panel" aria-label={t("Side panel")}>
+    <aside className="hub__left-panel" aria-label={t('Side panel')}>
       <div className="hub__left-panel__logo">
         <Image
           src="/assets/logo_text.svg"
-          alt={t("LaSuite Hub")}
+          alt={t('LaSuite Hub')}
           width={168}
           height={40}
           priority
@@ -59,27 +58,27 @@ export const LeftPanel = () => {
         />
       </div>
 
-      <nav className="hub__left-panel__actions" aria-label={t("Quick actions")}>
+      <nav className="hub__left-panel__actions" aria-label={t('Quick actions')}>
         {actions.map((action) => (
           <ActionRow key={action.id} action={action} />
         ))}
       </nav>
 
-      <ChatSection title={t("Favourites")} chats={FAVOURITE_CHATS} />
-      <ChatSection title={t("All chats")} chats={ALL_CHATS} />
+      <ChatSection title={t('Favourites')} chats={FAVOURITE_CHATS} />
+      <ChatSection title={t('All chats')} chats={allChats} />
 
       <div className="hub__left-panel__footer">
         <button
           type="button"
           className="hub__left-panel__icon-button"
-          aria-label={t("Help")}
+          aria-label={t('Help')}
         >
           <QuestionMark size={16} />
         </button>
         <button
           type="button"
           className="hub__left-panel__icon-button"
-          aria-label={t("Settings")}
+          aria-label={t('Settings')}
         >
           <GearRounded size={16} />
         </button>
@@ -165,24 +164,24 @@ const ChatRow = ({ chat }: { chat: MockChat }) => {
     <Link
       href={`/chat/${chat.id}`}
       shallow
-      aria-current={isActive ? "page" : undefined}
+      aria-current={isActive ? 'page' : undefined}
       className={clsx(
-        "hub__left-panel__chat",
-        isActive && "hub__left-panel__chat--active",
+        'hub__left-panel__chat',
+        isActive && 'hub__left-panel__chat--active',
       )}
     >
       <span
         className={clsx(
-          "hub__left-panel__chat__dot",
-          chat.unread && "hub__left-panel__chat__dot--visible",
+          'hub__left-panel__chat__dot',
+          chat.unread && 'hub__left-panel__chat__dot--visible',
         )}
         aria-hidden="true"
       />
-      {chat.visual.kind === "emoji" ? (
+      {chat.visual.kind === 'emoji' ? (
         <Avatar label={chat.name} variant="soft" decorative>
           {chat.visual.emoji}
         </Avatar>
-      ) : chat.visual.kind === "icon" ? (
+      ) : chat.visual.kind === 'icon' ? (
         <Avatar label={chat.name} decorative>
           <span className="material-icons" aria-hidden="true">
             {chat.visual.icon}
@@ -193,14 +192,14 @@ const ChatRow = ({ chat }: { chat: MockChat }) => {
       )}
       <span
         className={clsx(
-          "hub__left-panel__chat__name",
-          (chat.unread || isActive) && "hub__left-panel__chat__name--strong",
+          'hub__left-panel__chat__name',
+          (chat.unread || isActive) && 'hub__left-panel__chat__name--strong',
         )}
       >
         {chat.name}
       </span>
       {chat.unread && (
-        <span className="hub__visually-hidden">{t("Unread message")}</span>
+        <span className="hub__visually-hidden">{t('Unread message')}</span>
       )}
     </Link>
   );

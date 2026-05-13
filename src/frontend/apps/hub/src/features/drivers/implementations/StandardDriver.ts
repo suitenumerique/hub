@@ -1,12 +1,19 @@
-import { fetchAPI } from "@/features/api/fetchApi";
-import { getMockChatDocuments } from "@/features/chat/components/tools-panel/mockDocuments";
+import { fetchAPI } from '@/features/api/fetchApi';
+import { getMockChatDocuments } from '@/features/chat/components/tools-panel/mockDocuments';
 import {
   getMockAuthorsForChat,
   getMockMessages,
-} from "@/features/chat/mockMessages";
+} from '@/features/chat/mockMessages';
 
-import { Driver, GetChatMessagesParams, UserFilters } from "../Driver";
-import { ApiConfig, ChatDocumentsPage, ChatMessagesPage, User } from "../types";
+import { Driver, GetChatMessagesParams, UserFilters } from '../Driver';
+import {
+  ApiConfig,
+  Chat,
+  ChatDocumentsPage,
+  ChatMessagesPage,
+  User,
+} from '../types';
+import { MOCK_CHATS } from '@/features/chat/mockChats';
 
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 const MOCK_CHAT_LATENCY_MS = 250;
@@ -31,7 +38,7 @@ export class StandardDriver extends Driver {
 
   async updateUser(payload: Partial<User> & { id: string }): Promise<User> {
     const response = await fetchAPI(`users/${payload.id}/`, {
-      method: "PATCH",
+      method: 'PATCH',
       body: JSON.stringify(payload),
     });
     const data = await response.json();
@@ -63,7 +70,7 @@ export class StandardDriver extends Driver {
     const startIndex = Math.max(0, endIndex - limit);
 
     const messages = all.slice(startIndex, endIndex);
-    const nextCursor = startIndex === 0 ? null : messages[0]?.id ?? null;
+    const nextCursor = startIndex === 0 ? null : (messages[0]?.id ?? null);
 
     return { messages, authors, nextCursor };
   }
@@ -73,10 +80,18 @@ export class StandardDriver extends Driver {
     // when the backend exposes per-conversation documents. The driver contract
     // (chatId → { pinned, shared, multimedia }) is the swap point.
     if (!chatId) {
-      throw new Error("StandardDriver.getChatDocuments: chatId is required.");
+      throw new Error('StandardDriver.getChatDocuments: chatId is required.');
     }
     await delay(MOCK_CHAT_LATENCY_MS);
 
     return getMockChatDocuments();
+  }
+
+  getChats() {
+    return Promise.resolve(MOCK_CHATS as Chat[]);
+  }
+
+  getStore() {
+    return null;
   }
 }
