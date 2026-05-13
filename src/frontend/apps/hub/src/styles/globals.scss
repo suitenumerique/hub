@@ -2,6 +2,7 @@
 @use "@gouvfr-lasuite/ui-kit/style";
 @use "./cunningham-tokens.css";
 @use "./../pages/home.scss" as *;
+@use "./../features/layouts/HubLayout.scss";
 @use "./../features/layouts/LeftPanel/LeftPanel.scss";
 @use "./../features/layouts/components/AccountSelector/AccountSelector.scss";
 @use "./../features/ui/components/avatar/Avatar.scss";
