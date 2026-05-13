@@ -81,7 +81,9 @@ db.sqlite3
 .devcontainer
 .claude/
 .claude
+.playwright-mcp/
 openspec/
+CLAUDE.md
 
 # Cursor rules
 .cursorrules
