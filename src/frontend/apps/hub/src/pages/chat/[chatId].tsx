@@ -1,8 +1,7 @@
 import type { GetStaticPaths, GetStaticProps } from "next";
 import { useRouter } from "next/router";
 
-import { ChatConversation } from "@/features/chat/components/ChatConversation";
-import { ChatHeader } from "@/features/chat/components/header/ChatHeader";
+import { ChatView } from "@/features/chat/components/ChatView";
 import { MOCK_CHATS, getMockChat } from "@/features/chat/mockChats";
 import { HubLayout } from "@/features/layouts/HubLayout";
 
@@ -34,8 +33,7 @@ export default function ChatPage() {
 
   return (
     <HubLayout>
-      <ChatHeader chat={chat} />
-      <ChatConversation chatId={chat.id} />
+      <ChatView chat={chat} />
     </HubLayout>
   );
 }

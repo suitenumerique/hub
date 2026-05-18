@@ -1,0 +1,35 @@
+.hub__chat-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 0px;
+  width: 100%;
+  position: relative;
+  transition: grid-template-columns 220ms ease;
+
+  &[data-panel-open='true'] {
+    grid-template-columns: 1fr 379px;
+  }
+
+  &__main {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  &__panel {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    padding: 64px var(--c--globals--spacings--sm, 12px)
+      var(--c--globals--spacings--sm, 12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__chat-view {
+    transition: none;
+  }
+}

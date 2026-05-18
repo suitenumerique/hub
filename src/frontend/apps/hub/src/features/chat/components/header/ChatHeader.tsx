@@ -7,14 +7,21 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type { MockChat } from "@/features/chat/mockChats";
+import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 type ChatHeaderProps = {
   chat: MockChat;
+  activeTool: ChatTool | null;
+  onToggleTool: (tool: ChatTool) => void;
 };
 
-export const ChatHeader = ({ chat }: ChatHeaderProps) => {
+export const ChatHeader = ({
+  chat,
+  activeTool,
+  onToggleTool,
+}: ChatHeaderProps) => {
   const { t } = useTranslation();
 
   return (
@@ -51,6 +58,9 @@ export const ChatHeader = ({ chat }: ChatHeaderProps) => {
             type="button"
             className="hub__chat-header__icon-button"
             aria-label={t("Threads")}
+            aria-pressed={activeTool === "threads"}
+            data-active={activeTool === "threads"}
+            onClick={() => onToggleTool("threads")}
           >
             <Thread />
           </button>
@@ -58,6 +68,9 @@ export const ChatHeader = ({ chat }: ChatHeaderProps) => {
             type="button"
             className="hub__chat-header__icon-button"
             aria-label={t("Files")}
+            aria-pressed={activeTool === "files"}
+            data-active={activeTool === "files"}
+            onClick={() => onToggleTool("files")}
           >
             <File />
           </button>

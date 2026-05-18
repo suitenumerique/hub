@@ -11,6 +11,8 @@
 @use "./../features/chat/components/ChatComposer.scss";
 @use "./../features/chat/components/ChatConversation.scss";
 @use "./../features/chat/components/ChatVirtualList.scss";
+@use "./../features/chat/components/ChatView.scss";
+@use "./../features/chat/components/tools-panel/ChatToolsPanel.scss";
 
 body {
   margin: 0;
