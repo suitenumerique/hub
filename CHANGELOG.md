@@ -12,5 +12,6 @@ and this project adheres to
 - 🏗️(frontend) Initialize unit tests setup
 - 🏗️(frontend) Initialize end-to-end (e2e) tests setup
 - ✨(frontend) Add chat layout with LeftPanel and virtualized conversation view
+- ✨(frontend) Add tool panel with document list
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main

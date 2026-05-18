@@ -1,6 +1,8 @@
 import { XMark } from "@gouvfr-lasuite/ui-kit/icons";
 import { useTranslation } from "react-i18next";
 
+import { DocumentsTool } from "./DocumentsTool";
+
 export type ChatTool = "threads" | "files";
 
 type ChatToolsPanelProps = {
@@ -11,7 +13,7 @@ type ChatToolsPanelProps = {
 
 const TOOL_TITLE_KEYS: Record<ChatTool, string> = {
   threads: "Threads",
-  files: "Files",
+  files: "Documents",
 };
 
 export const ChatToolsPanel = ({
@@ -40,6 +42,7 @@ export const ChatToolsPanel = ({
           <XMark />
         </button>
       </div>
+      {tool === "files" && <DocumentsTool />}
     </aside>
   );
 };
