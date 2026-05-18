@@ -83,6 +83,7 @@ db.sqlite3
 .claude
 .playwright-mcp/
 openspec/
+.zed/
 CLAUDE.md
 
 # Cursor rules
