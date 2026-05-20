@@ -83,6 +83,7 @@ jobs:
             --ignore-words-list "Dokument,afterAll,excpt,statics" \
             --skip "./git/" \
             --skip "**/*.pdf" \
+            --skip "**/pdf.worker.mjs" \
             --skip "**/*.po" \
             --skip "**/*.pot" \
             --skip "**/*.json" \

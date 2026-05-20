@@ -1,33 +1,36 @@
-import { XMark } from "@gouvfr-lasuite/ui-kit/icons";
-import { useTranslation } from "react-i18next";
+import { XMark } from '@gouvfr-lasuite/ui-kit/icons';
+import { useTranslation } from 'react-i18next';
 
-import { DocumentsTool } from "./DocumentsTool";
+import { DocumentsTool } from './DocumentsTool';
+import type { MockDocument } from './mockDocuments';
 
-export type ChatTool = "threads" | "files";
+export type ChatTool = 'threads' | 'files';
 
 type ChatToolsPanelProps = {
   tool: ChatTool | null;
   isOpen: boolean;
   onClose: () => void;
+  onOpenFile?: (doc: MockDocument) => void;
 };
 
 const TOOL_TITLE_KEYS: Record<ChatTool, string> = {
-  threads: "Threads",
-  files: "Documents",
+  threads: 'Threads',
+  files: 'Documents',
 };
 
 export const ChatToolsPanel = ({
   tool,
   isOpen,
   onClose,
+  onOpenFile,
 }: ChatToolsPanelProps) => {
   const { t } = useTranslation();
-  const title = tool ? t(TOOL_TITLE_KEYS[tool]) : "";
+  const title = tool ? t(TOOL_TITLE_KEYS[tool]) : '';
 
   return (
     <aside
       className="hub__chat-tools-panel"
-      aria-label={title || t("Tools panel")}
+      aria-label={title || t('Tools panel')}
       aria-hidden={!isOpen}
     >
       <div className="hub__chat-tools-panel__header">
@@ -36,13 +39,13 @@ export const ChatToolsPanel = ({
           type="button"
           className="hub__chat-tools-panel__close"
           onClick={onClose}
-          aria-label={t("Close panel")}
+          aria-label={t('Close panel')}
           tabIndex={isOpen ? 0 : -1}
         >
           <XMark />
         </button>
       </div>
-      {tool === "files" && <DocumentsTool />}
+      {tool === 'files' && <DocumentsTool onOpenFile={onOpenFile} />}
     </aside>
   );
 };

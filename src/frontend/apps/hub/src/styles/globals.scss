@@ -1,18 +1,18 @@
-@use "@gouvfr-lasuite/ui-kit/sass/fonts";
-@use "@gouvfr-lasuite/ui-kit/style";
-@use "./cunningham-tokens.css";
-@use "./../pages/home.scss" as *;
-@use "./../features/layouts/HubLayout.scss";
-@use "./../features/layouts/LeftPanel/LeftPanel.scss";
-@use "./../features/layouts/components/AccountSelector/AccountSelector.scss";
-@use "./../features/ui/components/avatar/Avatar.scss";
-@use "./../features/chat/components/header/ChatHeader.scss";
-@use "./../features/chat/components/ChatBubble.scss";
-@use "./../features/chat/components/ChatComposer.scss";
-@use "./../features/chat/components/ChatConversation.scss";
-@use "./../features/chat/components/ChatVirtualList.scss";
-@use "./../features/chat/components/ChatView.scss";
-@use "./../features/chat/components/tools-panel/ChatToolsPanel.scss";
+@use '@gouvfr-lasuite/ui-kit/sass/fonts';
+@use '@gouvfr-lasuite/ui-kit/style';
+@use './cunningham-tokens.css';
+@use './../pages/home.scss' as *;
+@use './../features/layouts/HubLayout.scss';
+@use './../features/layouts/LeftPanel/LeftPanel.scss';
+@use './../features/layouts/components/AccountSelector/AccountSelector.scss';
+@use './../features/ui/components/avatar/Avatar.scss';
+@use './../features/chat/components/header/ChatHeader.scss';
+@use './../features/chat/components/ChatBubble.scss';
+@use './../features/chat/components/ChatComposer.scss';
+@use './../features/chat/components/ChatConversation.scss';
+@use './../features/chat/components/ChatVirtualList.scss';
+@use './../features/chat/components/ChatView.scss';
+@use './../features/chat/components/tools-panel/ChatToolsPanel.scss';
 
 body {
   margin: 0;
@@ -32,4 +32,11 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.c__modal__backdrop:has(.file-preview__container) {
+  z-index: 10;
+  background: var(
+    --c--contextuals--background--semantic--contextual--on-surface
+  );
 }

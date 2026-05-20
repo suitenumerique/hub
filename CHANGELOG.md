@@ -13,5 +13,6 @@ and this project adheres to
 - 🏗️(frontend) Initialize end-to-end (e2e) tests setup
 - ✨(frontend) Add chat layout with LeftPanel and virtualized conversation view
 - ✨(frontend) Add tool panel with document list
+- ✨(frontend) Add file preview (PDF, image, video, audio) from the tools panel
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main
