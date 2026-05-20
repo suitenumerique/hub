@@ -1,31 +1,75 @@
 import { useTranslation } from 'react-i18next';
 
+import { useChatDocuments } from '@/features/chat/hooks/useChatDocuments';
+import type { ChatDocument } from '@/features/drivers/types';
+
 import { DocumentList } from './DocumentList';
 import { CollapsibleSection, PinnedSection } from './DocumentSection';
-import {
-  MOCK_MULTIMEDIA,
-  MOCK_PINNED,
-  MOCK_SHARED_FILES,
-  type MockDocument,
-} from './mockDocuments';
 
 type DocumentsToolProps = {
-  onOpenFile?: (doc: MockDocument) => void;
+  chatId: string;
+  onOpenFile?: (doc: ChatDocument) => void;
 };
 
-export const DocumentsTool = ({ onOpenFile }: DocumentsToolProps) => {
+type SectionBodyProps = {
+  documents: ChatDocument[];
+  onOpenFile?: (doc: ChatDocument) => void;
+};
+
+const SectionBody = ({ documents, onOpenFile }: SectionBodyProps) => {
   const { t } = useTranslation();
+
+  if (documents.length === 0) {
+    return (
+      <p className="hub__chat-tools-panel__empty">{t('No documents yet')}</p>
+    );
+  }
+
+  return <DocumentList documents={documents} onOpenFile={onOpenFile} />;
+};
+
+export const DocumentsTool = ({ chatId, onOpenFile }: DocumentsToolProps) => {
+  const { t } = useTranslation();
+  const { pinned, shared, multimedia, isInitialLoading, isError, refetch } =
+    useChatDocuments(chatId);
+
+  if (isInitialLoading) {
+    return (
+      <div className="hub__chat-tools-panel__content">
+        <p className="hub__chat-tools-panel__state" role="status">
+          {t('Loading documents…')}
+        </p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="hub__chat-tools-panel__content">
+        <div className="hub__chat-tools-panel__state" role="alert">
+          <p>{t('Documents could not be loaded.')}</p>
+          <button
+            type="button"
+            className="hub__chat-tools-panel__state__retry"
+            onClick={refetch}
+          >
+            {t('Retry')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="hub__chat-tools-panel__content">
       <PinnedSection title={t('Pinned')}>
-        <DocumentList documents={MOCK_PINNED} onOpenFile={onOpenFile} />
+        <SectionBody documents={pinned} onOpenFile={onOpenFile} />
       </PinnedSection>
       <CollapsibleSection title={t('Shared Files')}>
-        <DocumentList documents={MOCK_SHARED_FILES} onOpenFile={onOpenFile} />
+        <SectionBody documents={shared} onOpenFile={onOpenFile} />
       </CollapsibleSection>
       <CollapsibleSection title={t('Multimedia')}>
-        <DocumentList documents={MOCK_MULTIMEDIA} onOpenFile={onOpenFile} />
+        <SectionBody documents={multimedia} onOpenFile={onOpenFile} />
       </CollapsibleSection>
     </div>
   );

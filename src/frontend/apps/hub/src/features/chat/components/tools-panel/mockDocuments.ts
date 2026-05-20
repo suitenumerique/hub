@@ -1,26 +1,9 @@
-import type { FilePreviewType } from '@gouvfr-lasuite/ui-kit';
+import type {
+  ChatDocument,
+  ChatDocumentsPage,
+} from '@/features/drivers/types';
 
-export type MockDocumentKind = 'file' | 'folder' | 'link';
-
-export type MockDocument = {
-  id: string;
-  title: string;
-  /**
-   * Mimetype consumed by the UI Kit `FileIcon`. Ignored for `folder` and
-   * `link` kinds (rendered with dedicated icons instead).
-   */
-  mimetype: string;
-  kind: MockDocumentKind;
-  isShared?: boolean;
-  /** Faked file size in bytes — required by `FilePreviewType`. */
-  size?: number;
-  /** Source URL for the file or external link. */
-  url?: string;
-  /** Optional preview URL; falls back to `url` when omitted. */
-  urlPreview?: string;
-};
-
-export const MOCK_PINNED: MockDocument[] = [
+const MOCK_PINNED: ChatDocument[] = [
   {
     id: 'pinned-project-alpha',
     title: 'Project Alpha',
@@ -53,7 +36,7 @@ export const MOCK_PINNED: MockDocument[] = [
   },
 ];
 
-export const MOCK_SHARED_FILES: MockDocument[] = [
+const MOCK_SHARED_FILES: ChatDocument[] = [
   {
     id: 'shared-communication',
     title: 'Communication',
@@ -87,7 +70,7 @@ export const MOCK_SHARED_FILES: MockDocument[] = [
   },
 ];
 
-export const MOCK_MULTIMEDIA: MockDocument[] = [
+const MOCK_MULTIMEDIA: ChatDocument[] = [
   {
     id: 'media-142',
     title: 'image #142',
@@ -137,22 +120,14 @@ export const MOCK_MULTIMEDIA: MockDocument[] = [
   },
 ];
 
-export const ALL_MOCK_DOCUMENTS: MockDocument[] = [
-  ...MOCK_PINNED,
-  ...MOCK_SHARED_FILES,
-  ...MOCK_MULTIMEDIA,
-];
-
-export const findMockDocumentById = (id: string): MockDocument | undefined =>
-  ALL_MOCK_DOCUMENTS.find((doc) => doc.id === id);
-
-export const mockDocumentToPreviewFile = (
-  doc: MockDocument,
-): FilePreviewType => ({
-  id: doc.id,
-  title: doc.title,
-  mimetype: doc.mimetype,
-  size: doc.size ?? 0,
-  url: doc.url ?? '',
-  url_preview: doc.urlPreview ?? doc.url ?? '',
+/**
+ * Returns the mocked documents shown in the tools panel. The content is
+ * currently uniform across conversations; the per-conversation plumbing lives
+ * in the driver and the `useChatDocuments` hook. Content can be seeded per chat
+ * later — see `mockMessages.ts` for the faker-seeded pattern.
+ */
+export const getMockChatDocuments = (): ChatDocumentsPage => ({
+  pinned: MOCK_PINNED,
+  shared: MOCK_SHARED_FILES,
+  multimedia: MOCK_MULTIMEDIA,
 });

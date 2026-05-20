@@ -59,3 +59,34 @@ export type ChatMessagesPage = {
   authors: ChatMessageAuthor[];
   nextCursor: string | null;
 };
+
+export type ChatDocumentKind = "file" | "folder" | "link";
+
+export type ChatDocument = {
+  id: string;
+  title: string;
+  /**
+   * Mimetype consumed by the UI Kit `FileIcon`. Ignored for `folder` and
+   * `link` kinds (rendered with dedicated icons instead).
+   */
+  mimetype: string;
+  kind: ChatDocumentKind;
+  isShared?: boolean;
+  /** File size in bytes — required by the UI Kit `FilePreviewType`. */
+  size?: number;
+  /** Source URL for the file or external link. */
+  url?: string;
+  /** Optional preview URL; falls back to `url` when omitted. */
+  urlPreview?: string;
+};
+
+/**
+ * Documents grouped exactly as the tools panel renders them. The driver is the
+ * swap point: a real backend may return this shape directly, or return a flat
+ * list that the driver groups.
+ */
+export type ChatDocumentsPage = {
+  pinned: ChatDocument[];
+  shared: ChatDocument[];
+  multimedia: ChatDocument[];
+};

@@ -1,11 +1,12 @@
 import { fetchAPI } from "@/features/api/fetchApi";
+import { getMockChatDocuments } from "@/features/chat/components/tools-panel/mockDocuments";
 import {
   getMockAuthorsForChat,
   getMockMessages,
 } from "@/features/chat/mockMessages";
 
 import { Driver, GetChatMessagesParams, UserFilters } from "../Driver";
-import { ApiConfig, ChatMessagesPage, User } from "../types";
+import { ApiConfig, ChatDocumentsPage, ChatMessagesPage, User } from "../types";
 
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 const MOCK_CHAT_LATENCY_MS = 250;
@@ -65,5 +66,17 @@ export class StandardDriver extends Driver {
     const nextCursor = startIndex === 0 ? null : messages[0]?.id ?? null;
 
     return { messages, authors, nextCursor };
+  }
+
+  async getChatDocuments(chatId: string): Promise<ChatDocumentsPage> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/documents/')`
+    // when the backend exposes per-conversation documents. The driver contract
+    // (chatId → { pinned, shared, multimedia }) is the swap point.
+    if (!chatId) {
+      throw new Error("StandardDriver.getChatDocuments: chatId is required.");
+    }
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    return getMockChatDocuments();
   }
 }

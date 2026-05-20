@@ -14,10 +14,11 @@ import {
   Trash,
 } from '@gouvfr-lasuite/ui-kit/icons';
 import { useTranslation } from 'react-i18next';
-import { MockDocument } from './mockDocuments';
+
+import type { ChatDocument } from '@/features/drivers/types';
 
 type Props = {
-  document: MockDocument;
+  document: ChatDocument;
 };
 
 export const DocumentListItemActions = ({ document }: Props) => {

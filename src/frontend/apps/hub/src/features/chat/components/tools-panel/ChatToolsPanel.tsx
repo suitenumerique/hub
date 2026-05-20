@@ -1,16 +1,18 @@
 import { XMark } from '@gouvfr-lasuite/ui-kit/icons';
 import { useTranslation } from 'react-i18next';
 
+import type { ChatDocument } from '@/features/drivers/types';
+
 import { DocumentsTool } from './DocumentsTool';
-import type { MockDocument } from './mockDocuments';
 
 export type ChatTool = 'threads' | 'files';
 
 type ChatToolsPanelProps = {
   tool: ChatTool | null;
   isOpen: boolean;
+  chatId: string;
   onClose: () => void;
-  onOpenFile?: (doc: MockDocument) => void;
+  onOpenFile?: (doc: ChatDocument) => void;
 };
 
 const TOOL_TITLE_KEYS: Record<ChatTool, string> = {
@@ -21,6 +23,7 @@ const TOOL_TITLE_KEYS: Record<ChatTool, string> = {
 export const ChatToolsPanel = ({
   tool,
   isOpen,
+  chatId,
   onClose,
   onOpenFile,
 }: ChatToolsPanelProps) => {
@@ -45,7 +48,9 @@ export const ChatToolsPanel = ({
           <XMark />
         </button>
       </div>
-      {tool === 'files' && <DocumentsTool onOpenFile={onOpenFile} />}
+      {tool === 'files' && (
+        <DocumentsTool chatId={chatId} onOpenFile={onOpenFile} />
+      )}
     </aside>
   );
 };

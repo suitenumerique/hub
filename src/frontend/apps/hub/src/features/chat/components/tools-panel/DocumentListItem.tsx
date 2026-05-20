@@ -2,13 +2,14 @@ import { FileIcon } from '@gouvfr-lasuite/ui-kit';
 import { FolderDrive, Globe2, Link } from '@gouvfr-lasuite/ui-kit/icons';
 import { useTranslation } from 'react-i18next';
 
-import type { MockDocument } from '@/features/chat/components/tools-panel/mockDocuments';
+import type { ChatDocument } from '@/features/drivers/types';
+
 import { DocumentListItemActions } from './DocumentListItemActions';
 
 type DocumentListItemProps = {
-  document: MockDocument;
+  document: ChatDocument;
   active?: boolean;
-  onOpenFile?: (doc: MockDocument) => void;
+  onOpenFile?: (doc: ChatDocument) => void;
 };
 
 export const DocumentListItem = ({

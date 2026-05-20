@@ -134,15 +134,17 @@ test.describe('Chat tools panel', () => {
     await expect(getFilePreviewTitle(page)).toHaveText('Tracemonkey paper');
   });
 
-  test('preview without siblings hides prev/next navigation', async ({
+  test('preview without siblings disables prev/next navigation', async ({
     page,
   }) => {
     await getHeaderFilesButton(page).click();
     await getDocumentItem(page, PDF_MOCK_TITLE).click();
     await expectFilePreviewOpen(page);
 
-    await expect(getFilePreviewNextButton(page)).toHaveCount(0);
-    await expect(getFilePreviewPreviousButton(page)).toHaveCount(0);
+    // The UI Kit always renders the carousel arrows; with a single file it
+    // disables them rather than hiding them.
+    await expect(getFilePreviewNextButton(page)).toBeDisabled();
+    await expect(getFilePreviewPreviousButton(page)).toBeDisabled();
   });
 
   test('clicking the close button dismisses the preview', async ({ page }) => {
@@ -189,13 +191,19 @@ test.describe('Chat tools panel', () => {
     await expectFilePreviewClosed(page);
   });
 
-  test('switching chats closes an open preview', async ({ page }) => {
+  test('changing the active chat closes an open preview', async ({ page }) => {
+    // The full-screen preview modal makes the side panel unreachable, so the
+    // chat switch is exercised via browser back-navigation: go to a second
+    // chat, open a preview there, then navigate back.
+    await getChatLink(page, SECOND_CHAT.name).click();
+    await page.waitForURL(`**/chat/${SECOND_CHAT.id}`);
+
     await getHeaderFilesButton(page).click();
     await getDocumentItem(page, PDF_MOCK_TITLE).click();
     await expectFilePreviewOpen(page);
 
-    await getChatLink(page, SECOND_CHAT.name).click();
-    await page.waitForURL(`**/chat/${SECOND_CHAT.id}`);
+    await page.goBack();
+    await page.waitForURL(`**/chat/${FIRST_CHAT.id}`);
     await expect(getFilePreview(page)).toHaveCount(0);
   });
 });

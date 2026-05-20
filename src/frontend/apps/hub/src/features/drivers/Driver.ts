@@ -1,4 +1,9 @@
-import { ApiConfig, ChatMessagesPage, User } from "./types";
+import {
+  ApiConfig,
+  ChatDocumentsPage,
+  ChatMessagesPage,
+  User,
+} from "./types";
 
 export type UserFilters = {
   q?: string;
@@ -23,4 +28,5 @@ export abstract class Driver {
   abstract getChatMessages(
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;
+  abstract getChatDocuments(chatId: string): Promise<ChatDocumentsPage>;
 }

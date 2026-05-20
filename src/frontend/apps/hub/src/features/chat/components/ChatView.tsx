@@ -1,16 +1,13 @@
 import { FilePreview } from '@gouvfr-lasuite/ui-kit';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { MockChat } from '@/features/chat/mockChats';
+import type { ChatDocument } from '@/features/drivers/types';
 
 import { ChatConversation } from './ChatConversation';
 import { ChatHeader } from './header/ChatHeader';
 import { ChatToolsPanel, ChatTool } from './tools-panel/ChatToolsPanel';
-import {
-  findMockDocumentById,
-  mockDocumentToPreviewFile,
-  type MockDocument,
-} from './tools-panel/mockDocuments';
+import { documentToPreviewFile } from './tools-panel/documentToPreviewFile';
 
 type ChatViewProps = {
   chat: MockChat;
@@ -19,7 +16,9 @@ type ChatViewProps = {
 export const ChatView = ({ chat }: ChatViewProps) => {
   const [activeTool, setActiveTool] = useState<ChatTool | null>(null);
   const [displayedTool, setDisplayedTool] = useState<ChatTool | null>(null);
-  const [openedFileId, setOpenedFileId] = useState<string | null>(null);
+  const [openedDocument, setOpenedDocument] = useState<ChatDocument | null>(
+    null,
+  );
 
   useEffect(() => {
     if (activeTool !== null) {
@@ -28,7 +27,7 @@ export const ChatView = ({ chat }: ChatViewProps) => {
   }, [activeTool]);
 
   useEffect(() => {
-    setOpenedFileId(null);
+    setOpenedDocument(null);
   }, [chat.id]);
 
   const toggleTool = (tool: ChatTool) => {
@@ -37,21 +36,7 @@ export const ChatView = ({ chat }: ChatViewProps) => {
 
   const closePanel = () => setActiveTool(null);
 
-  const handleOpenFile = (doc: MockDocument) => {
-    setOpenedFileId(doc.id);
-  };
-
-  const closePreview = () => setOpenedFileId(null);
-
-  const previewFiles = useMemo(() => {
-    if (openedFileId === null) {
-      return [];
-    }
-    const doc = findMockDocumentById(openedFileId);
-    return doc ? [mockDocumentToPreviewFile(doc)] : [];
-  }, [openedFileId]);
-
-  const isPreviewOpen = openedFileId !== null && previewFiles.length > 0;
+  const closePreview = () => setOpenedDocument(null);
 
   return (
     <div className="hub__chat-view" data-panel-open={activeTool !== null}>
@@ -67,15 +52,16 @@ export const ChatView = ({ chat }: ChatViewProps) => {
         <ChatToolsPanel
           tool={activeTool ?? displayedTool}
           isOpen={activeTool !== null}
+          chatId={chat.id}
           onClose={closePanel}
-          onOpenFile={handleOpenFile}
+          onOpenFile={setOpenedDocument}
         />
       </div>
       <FilePreview
-        isOpen={isPreviewOpen}
+        isOpen={openedDocument !== null}
         onClose={closePreview}
-        files={previewFiles}
-        openedFileId={openedFileId ?? undefined}
+        files={openedDocument ? [documentToPreviewFile(openedDocument)] : []}
+        openedFileId={openedDocument?.id}
       />
     </div>
   );

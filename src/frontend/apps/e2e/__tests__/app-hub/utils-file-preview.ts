@@ -12,10 +12,10 @@ export const getFilePreviewCloseButton = (page: Page): Locator =>
     .first();
 
 export const getFilePreviewNextButton = (page: Page): Locator =>
-  getFilePreview(page).locator('.file-preview__next-button');
+  getFilePreview(page).locator('.file-preview__next-button button');
 
 export const getFilePreviewPreviousButton = (page: Page): Locator =>
-  getFilePreview(page).locator('.file-preview__previous-button');
+  getFilePreview(page).locator('.file-preview__previous-button button');
 
 export const expectFilePreviewOpen = async (page: Page) => {
   await expect(getFilePreview(page)).toBeVisible();

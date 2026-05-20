@@ -1,11 +1,12 @@
 import { Fragment } from 'react';
 
+import type { ChatDocument } from '@/features/drivers/types';
+
 import { DocumentListItem } from './DocumentListItem';
-import type { MockDocument } from './mockDocuments';
 
 type DocumentListProps = {
-  documents: MockDocument[];
-  onOpenFile?: (doc: MockDocument) => void;
+  documents: ChatDocument[];
+  onOpenFile?: (doc: ChatDocument) => void;
 };
 
 export const DocumentList = ({ documents, onOpenFile }: DocumentListProps) => {
