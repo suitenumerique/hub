@@ -6,12 +6,10 @@ import { matrixConfig } from '../config';
  * Send a login request to the given server, and format the response
  * as a MatrixClientCreds
  *
- * @param {string} hsUrl   the base url of the Homeserver used to log in.
- * @param {string} isUrl   the base url of the default identity server
- * @param {string} loginType the type of login to do
- * @param {ILoginParams} loginParams the parameters for the login
+ * @param {string} username
+ * @param {string} password
  *
- * @returns {IMatrixClientCreds}
+ * @returns {Promise<MatrixUserInterface>}
  */
 export async function sendLoginRequest(
   username: string,
