@@ -1,6 +1,6 @@
-import { FooterProps } from "@gouvfr-lasuite/ui-kit";
+import { FooterProps } from '@gouvfr-lasuite/ui-kit';
 
-import { AvatarColor } from "@/features/ui/components/avatar/palette";
+import { AvatarColor } from '@/features/ui/components/avatar/palette';
 
 export type User = {
   id: string;
@@ -60,7 +60,7 @@ export type ChatMessagesPage = {
   nextCursor: string | null;
 };
 
-export type ChatDocumentKind = "file" | "folder" | "link";
+export type ChatDocumentKind = 'file' | 'folder' | 'link';
 
 export type ChatDocument = {
   id: string;
@@ -90,3 +90,22 @@ export type ChatDocumentsPage = {
   shared: ChatDocument[];
   multimedia: ChatDocument[];
 };
+
+export type Chat = {
+  id: string;
+  name: string;
+  unread?: boolean;
+  section: 'favourites' | 'all';
+  /**
+   * Determines whether mockMessages generates one author or several. The flag
+   * is explicit (rather than inferred from the name) so the data shape stays
+   * stable when the real backend ships.
+   */
+  kind: 'direct' | 'group';
+  visual: ChatAvatarVisual;
+};
+
+export type ChatAvatarVisual =
+  | { kind: 'initials' }
+  | { kind: 'emoji'; emoji: string }
+  | { kind: 'icon'; icon: string };

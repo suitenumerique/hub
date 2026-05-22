@@ -3,8 +3,9 @@ import {
   ChatDocumentsPage,
   ChatMessagesPage,
   User,
-} from "./types";
-
+  Chat,
+} from './types';
+import { Store } from './Store';
 export type UserFilters = {
   q?: string;
 };
@@ -21,6 +22,11 @@ export type GetChatMessagesParams = {
   limit?: number;
 };
 
+export enum StoreType {
+  ChatList = 'ChatList',
+  Chattimeline = 'ChatTimeline',
+}
+
 export abstract class Driver {
   abstract getConfig(): Promise<ApiConfig>;
   abstract getUsers(filters?: UserFilters): Promise<User[]>;
@@ -29,4 +35,7 @@ export abstract class Driver {
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;
   abstract getChatDocuments(chatId: string): Promise<ChatDocumentsPage>;
+  abstract getChats(): Promise<Chat[]>;
+  abstract getChat(chatId: string): Chat | null;
+  abstract getStore<T>(type: StoreType): Store<T> | null;
 }

@@ -1,9 +1,12 @@
-import type { GetStaticPaths, GetStaticProps } from "next";
-import { useRouter } from "next/router";
+import type { GetStaticPaths, GetStaticProps } from 'next';
+import { useRouter } from 'next/router';
 
-import { ChatView } from "@/features/chat/components/ChatView";
-import { MOCK_CHATS, getMockChat } from "@/features/chat/mockChats";
-import { HubLayout } from "@/features/layouts/HubLayout";
+import { ChatView } from '@/features/chat/components/ChatView';
+import { MOCK_CHATS } from '@/features/chat/mockChats';
+import { HubLayout } from '@/features/layouts/HubLayout';
+
+import { useChat } from '@/features/chat/hooks/useChat';
+import { t } from 'i18next';
 
 // `getStaticPaths` is required for dynamic routes under `output: "export"`. We
 // intentionally keep `getStaticProps` empty so navigating between two chats no
@@ -18,14 +21,14 @@ export const getStaticProps: GetStaticProps = () => ({ props: {} });
 
 export default function ChatPage() {
   const router = useRouter();
+  const chatId =
+    typeof router.query.chatId === 'string' ? router.query.chatId : null;
 
+  const { chat, isLoading } = useChat(chatId || '');
+  console.log('**** chat', chat);
   if (!router.isReady) {
     return null;
   }
-
-  const chatId =
-    typeof router.query.chatId === "string" ? router.query.chatId : null;
-  const chat = chatId ? getMockChat(chatId) : null;
 
   if (!chat) {
     return null;
@@ -33,7 +36,7 @@ export default function ChatPage() {
 
   return (
     <HubLayout>
-      <ChatView chat={chat} />
+      {isLoading ? t('Loading messages…') : <ChatView chat={chat} />}
     </HubLayout>
   );
 }
