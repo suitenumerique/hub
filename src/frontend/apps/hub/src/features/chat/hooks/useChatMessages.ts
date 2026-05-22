@@ -1,11 +1,21 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useInfiniteQuery } from '@tanstack/react-query';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 
-import { getDriver } from "@/features/config/Config";
-import type {
-  ChatMessage,
-  ChatMessageAuthor,
-} from "@/features/drivers/types";
+import { getDriver } from '@/features/config/Config';
+import type { ChatMessage, ChatMessageAuthor } from '@/features/drivers/types';
+import { StoreType } from '@/features/drivers/Driver';
+import { useIsDriverReady } from '@/features/drivers/components/useDriver';
+import {
+  ChatTimeline,
+  ChatTimelineSnapshot,
+  ChatTimelineStore,
+} from '@/features/matrix/stores/ChatTimelineStore';
 
 export const CHAT_PAGE_SIZE = 50;
 
@@ -17,7 +27,7 @@ const VIRTUOSO_INDEX_ANCHOR = 1_000_000;
 
 export type UseChatMessagesResult = {
   messages: ChatMessage[];
-  authorsById: Map<string, ChatMessageAuthor>;
+  authorsById: Map<string, ChatMessageAuthor> | undefined;
   hasOlder: boolean;
   isFetchingOlder: boolean;
   isInitialLoading: boolean;
@@ -27,56 +37,70 @@ export type UseChatMessagesResult = {
   fetchOlder: () => void;
 };
 
+const EMPTY_TIMELINE_SNAPSHOT: ChatTimelineSnapshot = {
+  currentChatId: '',
+  timelineByChatId: new Map<string, ChatTimeline>(),
+};
 export const useChatMessages = (chatId: string): UseChatMessagesResult => {
-  const driver = getDriver();
+  const { isLoading, setIsLoading } = useState(true);
 
-  const query = useInfiniteQuery({
-    queryKey: ["chat-messages", chatId],
-    queryFn: ({ pageParam }) =>
-      driver.getChatMessages({
-        chatId,
-        cursor: pageParam,
-        limit: CHAT_PAGE_SIZE,
-      }),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: Infinity,
-    meta: { noGlobalError: true },
-  });
+  const driver = getDriver();
+  const isDriverReady = useIsDriverReady();
+
+  const store: ChatTimelineStore | null = useMemo(() => {
+    if (!driver || !isDriverReady) return null;
+    setIsLoading(false);
+    return driver.getStore(StoreType.Chattimeline) as ChatTimelineStore;
+  }, [driver, isDriverReady]);
+
+  const subscribe = useCallback(
+    (listener: CallableFunction) => {
+      if (!store) return () => {}; // No-op when null
+      return store.subscribe(listener);
+    },
+    [store], // ← When store changes, new callback reference is created
+  );
+
+  const getSnapshot = useCallback(() => {
+    if (!store) return EMPTY_TIMELINE_SNAPSHOT;
+    return store.getSnapshot() as ChatTimelineSnapshot;
+  }, [store]);
+
+  // Then in the hook, after the store is created and before useSyncExternalStore:
+  useEffect(() => {
+    if (!store) return;
+    store.setCurrentChatId(chatId);
+  }, [store, chatId]);
+
+  const { timelineByChatId } = useSyncExternalStore(subscribe, getSnapshot);
 
   const messages = useMemo(() => {
-    if (!query.data) {
+    const timeline: ChatTimeline | undefined = timelineByChatId.get(chatId);
+    if (!timeline) {
       return [];
     }
-    // pages are ordered [newest-fetch-first, ..., oldest-fetch-last]; each page
-    // already holds messages in chronological ASC order. Older pages must come
-    // first in the flat array, so iterate pages in reverse.
-    return [...query.data.pages]
-      .reverse()
-      .flatMap((page) => page.messages);
-  }, [query.data]);
-
-  const authorsById = useMemo(() => {
-    const map = new Map<string, ChatMessageAuthor>();
-    query.data?.pages.forEach((page) => {
-      page.authors.forEach((author) => map.set(author.id, author));
-    });
-    return map;
-  }, [query.data]);
+    return timeline.messages;
+  }, [timelineByChatId.get(chatId)]);
 
   const fetchOlder = useCallback(() => {
-    if (query.hasNextPage && !query.isFetchingNextPage) {
-      void query.fetchNextPage();
+    const timeline: ChatTimeline | undefined = timelineByChatId.get(chatId);
+    if (
+      store &&
+      timeline &&
+      timeline.canPaginateBack &&
+      !timeline.isPaginating
+    ) {
+      void store.paginateBack(chatId);
     }
-  }, [query]);
+  }, [timelineByChatId.get(chatId)]);
 
   return {
     messages,
-    authorsById,
-    hasOlder: Boolean(query.hasNextPage),
-    isFetchingOlder: query.isFetchingNextPage,
-    isInitialLoading: query.isPending,
-    isError: query.isError,
+    authorsById: timelineByChatId.get(chatId)?.authors,
+    hasOlder: !!timelineByChatId.get(chatId)?.canPaginateBack,
+    isFetchingOlder: !!timelineByChatId.get(chatId)?.isPaginating,
+    isInitialLoading: isLoading,
+    isError: false,
     firstItemIndex: VIRTUOSO_INDEX_ANCHOR - messages.length,
     fetchOlder,
   };

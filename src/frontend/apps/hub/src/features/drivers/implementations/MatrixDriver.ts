@@ -1,8 +1,4 @@
 import { fetchAPI } from '@/features/api/fetchApi';
-import {
-  getMockAuthorsForChat,
-  getMockMessages,
-} from '@/features/chat/mockMessages';
 
 import {
   Driver,
@@ -10,11 +6,19 @@ import {
   StoreType,
   UserFilters,
 } from '../Driver';
-import { ApiConfig, ChatDocumentsPage, ChatMessagesPage, User } from '../types';
+import {
+  ApiConfig,
+  Chat,
+  ChatDocumentsPage,
+  ChatMessagesPage,
+  User,
+} from '../types';
 import { MatrixClient } from 'matrix-js-sdk';
 import { Store } from '../Store';
 import { ChatListStore } from '@/features/matrix/stores/ChatListStore';
 import { getMockChatDocuments } from '@/features/chat/components/tools-panel/mockDocuments';
+import { ChatTimelineStore } from '@/features/matrix/stores/ChatTimelineStore';
+import { matrixRoomToHub } from '@/features/matrix/utils/types/matrixTypesToHub';
 
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 const MOCK_CHAT_LATENCY_MS = 250;
@@ -25,6 +29,7 @@ const delay = (ms: number) =>
 export class MatrixDriver extends Driver {
   private mx?: MatrixClient;
   private chatListStore?: ChatListStore;
+  private chatTimelineStore?: ChatTimelineStore;
   private isMatrixClientReady: boolean = false;
   private readinessListeners = new Set<() => void>();
 
@@ -42,6 +47,7 @@ export class MatrixDriver extends Driver {
     console.log('***Setting matrix client in driver', mx);
     this.mx = mx;
     this.chatListStore = new ChatListStore();
+    this.chatTimelineStore = new ChatTimelineStore(null);
     this.setClientReady(true);
   }
 
@@ -65,8 +71,15 @@ export class MatrixDriver extends Driver {
     switch (type) {
       case StoreType.ChatList:
         this.chatListStore?.setMatrixClient(this.mx);
-        console.log('***in driver get store', this.chatListStore);
+        console.log('***in driver get store chatListStore', this.chatListStore);
         return this.chatListStore as unknown as Store<T>;
+      case StoreType.Chattimeline:
+        this.chatTimelineStore?.setMatrixClient(this.mx);
+        console.log(
+          '***in driver get store chatTimelineStore',
+          this.chatTimelineStore,
+        );
+        return this.chatTimelineStore as unknown as Store<T>;
       default:
         return null;
     }
@@ -108,42 +121,11 @@ export class MatrixDriver extends Driver {
     cursor,
     limit = DEFAULT_CHAT_PAGE_SIZE,
   }: GetChatMessagesParams): Promise<ChatMessagesPage> {
-    // MOCK — replace this block with `fetchAPI('chats/:id/messages?…')`
-    // when the backend exposes paginated history. The driver contract above
-    // (cursor + limit → { messages, authors, nextCursor }) is the swap point.
-    await delay(MOCK_CHAT_LATENCY_MS);
-
-    const all = getMockMessages(chatId);
-    const authors = getMockAuthorsForChat(chatId);
-
-    let endIndex = all.length;
-    if (cursor) {
-      endIndex = all.findIndex((message) => message.id === cursor);
-      if (endIndex < 0) {
-        throw new Error(
-          `StandardDriver.getChatMessages: cursor "${cursor}" not found in chat "${chatId}".`,
-        );
-      }
-    }
-    const startIndex = Math.max(0, endIndex - limit);
-
-    const messages = all.slice(startIndex, endIndex);
-    const nextCursor = startIndex === 0 ? null : (messages[0]?.id ?? null);
-
     return { messages, authors, nextCursor };
   }
 
   getChats() {
-    // const mx = this.getClient();
-    // const rooms = mx.getVisibleRooms();
-    // return rooms.map((room) => ({
-    //   id: room.roomId,
-    //   name: room.name || '',
-    //   avatar: undefined,
-    //   topic: room.topic,
-    // }));
     return Promise.resolve(this.chatListStore!.getSnapshot());
-    // return Promise.resolve(ALL_CHATS as [Chat]);
   }
 
   async getChatDocuments(chatId: string): Promise<ChatDocumentsPage> {
@@ -156,5 +138,14 @@ export class MatrixDriver extends Driver {
     await delay(MOCK_CHAT_LATENCY_MS);
 
     return getMockChatDocuments();
+  }
+
+  // Get a specific chat with his id
+  getChat(chatId: string): Chat | null {
+    if (!this.mx) {
+      return null;
+    }
+    const matrixRoom = this.mx!.getRoom(chatId);
+    return matrixRoomToHub(matrixRoom!);
   }
 }

@@ -94,4 +94,8 @@ export class StandardDriver extends Driver {
   getStore() {
     return null;
   }
+  // Get a specific chat with his id
+  getChat(chatId): Chat | null {
+    return null;
+  }
 }

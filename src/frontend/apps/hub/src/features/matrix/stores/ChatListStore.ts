@@ -49,7 +49,6 @@ export class ChatListStore extends Store<Chat[]> {
     });
 
     // find DM
-    console.log('*** [ChatListStore] new snapshot', newSnapshot);
     // Only update if content actually changed
     const hasChanged =
       this.snapshot.length !== newSnapshot.length ||
@@ -60,8 +59,8 @@ export class ChatListStore extends Store<Chat[]> {
           chat.name !== this.snapshot[index].name,
       );
 
-    console.log('*** [ChatListStore] new snapshot hasChanged', hasChanged);
     if (!hasChanged) return;
+    // notifify listenners of an update
     this.updateSnapshot(newSnapshot);
   }
 
@@ -85,10 +84,8 @@ export class ChatListStore extends Store<Chat[]> {
       }
     });
 
-    console.log('[ChatListStore] get DMList roomIds', roomIds);
     return roomIds;
   }
-  filterChatsBySection(allChat, dmChat) {}
 
   /**
    * Cleanup listeners

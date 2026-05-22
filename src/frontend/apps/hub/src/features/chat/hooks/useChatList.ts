@@ -27,9 +27,8 @@ export const useChatList = (): Chat[] => {
   );
 
   const getSnapshot = useCallback(() => {
-    console.log('*** in snapshot usechatlist store', store);
+    console.log('*** [useChatList] in snapshot usechatlist store');
     if (!store) return EMPTY_CHAT_LIST;
-    console.log('*** in snapshot usechatlist ', store.getSnapshot());
     return store.getSnapshot() as Chat[];
   }, [store]);
 

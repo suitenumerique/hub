@@ -24,6 +24,7 @@ export type GetChatMessagesParams = {
 
 export enum StoreType {
   ChatList = 'ChatList',
+  Chattimeline = 'ChatTimeline',
 }
 
 export abstract class Driver {
@@ -35,5 +36,6 @@ export abstract class Driver {
   ): Promise<ChatMessagesPage>;
   abstract getChatDocuments(chatId: string): Promise<ChatDocumentsPage>;
   abstract getChats(): Promise<Chat[]>;
+  abstract getChat(chatId: string): Chat | null;
   abstract getStore<T>(type: StoreType): Store<T> | null;
 }
