@@ -1,4 +1,4 @@
-import { CunninghamProvider } from "@gouvfr-lasuite/ui-kit";
+import { CunninghamProvider } from '@gouvfr-lasuite/ui-kit';
 import {
   MutationCache,
   Query,
@@ -11,8 +11,8 @@ import Head from "next/head";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import "@/i18n/initI18n";
-import "../styles/globals.scss";
+import '@/i18n/initI18n';
+import '../styles/globals.scss';
 
 import { APIError, errorToString } from "@/features/api/APIError";
 import { AnalyticsProvider } from "@/features/analytics/AnalyticsProvider";
@@ -37,7 +37,8 @@ const onError = (error: Error, query: unknown) => {
 
 const queryClient = new QueryClient({
   mutationCache: new MutationCache({
-    onError: (error, _variables, _context, mutation) => onError(error, mutation),
+    onError: (error, _variables, _context, mutation) =>
+      onError(error, mutation),
   }),
   queryCache: new QueryCache({
     onError: (error, query) => onError(error, query),
@@ -64,7 +65,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   return (
     <>
       <Head>
-        <title>{t("LaSuite Hub")}</title>
+        <title>{t('LaSuite Hub')}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/assets/favicon.png" type="image/png" />
       </Head>
@@ -76,7 +77,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             </AnalyticsProvider>
           </ConfigProvider>
         </CunninghamProvider>
-        {process.env.NODE_ENV === "development" && (
+        {process.env.NODE_ENV === 'development' && (
           <ReactQueryDevtools initialIsOpen={false} />
         )}
       </QueryClientProvider>

@@ -9,9 +9,13 @@ import { useConfig } from '../config/ConfigProvider';
 import { authUrl } from './authUrl';
 import { attemptSilentLogin, canAttemptSilentLogin } from './silentLogin';
 import { User } from '@/features/auth/types';
+import { matrixUserStore } from '../matrix/stores/matrixUserStore';
+import { useMatrixChatUser } from '../matrix/hooks/useMatrixUser';
+import { MatrixUserInterface } from '../matrix/types';
 
 export const logout = () => {
   window.location.replace(new URL('logout/', baseApiUrl()).href);
+  matrixUserStore.removeUser();
   posthog.reset();
 };
 
@@ -24,6 +28,7 @@ interface AuthContextInterface {
   user?: User | null;
   init?: () => Promise<User | null>;
   refreshUser?: () => Promise<void>;
+  chatUser?: MatrixUserInterface | null;
 }
 
 export const AuthContext = React.createContext<AuthContextInterface>({});
@@ -33,6 +38,9 @@ export const useAuth = () => React.useContext(AuthContext);
 export const Auth = ({ children }: PropsWithChildren) => {
   const [user, setUser] = useState<User | null>();
   const { config } = useConfig();
+
+  // Fetch Matrix chat user credentials when regular user is authenticated
+  const { chatUser } = useMatrixChatUser(user);
 
   const init = async () => {
     try {
@@ -90,6 +98,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
         user,
         init,
         refreshUser,
+        chatUser,
       }}
     >
       {children}
