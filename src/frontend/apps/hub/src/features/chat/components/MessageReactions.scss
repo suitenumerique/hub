@@ -1,0 +1,37 @@
+.hub__message-reactions {
+  display: flex;
+
+  // Received bubbles align the bar under the body, past the avatar column —
+  // same offset as the bubble header.
+  .hub__chat-bubble--received & {
+    padding-left: calc(24px + var(--c--globals--spacings--xs, 8px));
+  }
+
+  &__list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+    max-width: 400px;
+  }
+
+  &__chip {
+    gap: var(--c--globals--spacings--xxxs, 4px);
+    padding: 0 var(--c--globals--spacings--xxxs, 4px);
+  }
+
+  &__count {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+
+    .hub__message-reactions__chip--mine & {
+      color: var(--c--contextuals--content--semantic--brand--tertiary, #3e5de7);
+    }
+  }
+
+  &__add {
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  }
+}
