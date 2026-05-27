@@ -1,0 +1,40 @@
+.hub__fluent-emoji {
+  display: inline-block;
+  flex: 0 0 auto;
+  object-fit: contain;
+  vertical-align: middle;
+  user-select: none;
+
+  &--xs {
+    width: 16px;
+    height: 16px;
+  }
+
+  &--sm {
+    width: 18px;
+    height: 18px;
+  }
+
+  &--md {
+    width: 24px;
+    height: 24px;
+  }
+
+  &--native {
+    text-align: center;
+    line-height: 1;
+    overflow: hidden;
+  }
+
+  &--native#{&}--xs {
+    font-size: 14px;
+  }
+
+  &--native#{&}--sm {
+    font-size: 16px;
+  }
+
+  &--native#{&}--md {
+    font-size: 22px;
+  }
+}

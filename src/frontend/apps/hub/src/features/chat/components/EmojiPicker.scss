@@ -1,0 +1,104 @@
+.hub__emoji-picker-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 270px;
+
+  height: 360px;
+  background: var(--c--contextuals--background--surface--primary, #fff);
+  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+  border-radius: var(--c--globals--spacings--xs, 8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+
+  &__loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+    font-size: 12px;
+  }
+}
+
+.hub__emoji-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--c--globals--font--families--base, 'Marianne', sans-serif);
+
+  &__search {
+    flex: 0 0 auto;
+    margin: var(--c--globals--spacings--xs, 8px);
+    padding: var(--c--globals--spacings--xs, 8px);
+    appearance: none;
+    background: var(--c--contextuals--background--surface--tertiary, #f6f8f9);
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-radius: var(--c--globals--spacings--xxs, 6px);
+    font: inherit;
+    font-size: 14px;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: -1px;
+    }
+  }
+
+  &__viewport {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    outline: none;
+  }
+
+  &__status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+    font-size: 12px;
+  }
+
+  &__list {
+    padding-bottom: var(--c--globals--spacings--xs, 8px);
+  }
+
+  &__category {
+    padding: var(--c--globals--spacings--xs, 8px)
+      var(--c--globals--spacings--sm, 12px)
+      var(--c--globals--spacings--xxxs, 4px);
+    background: var(--c--contextuals--background--surface--primary, #fff);
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+
+  &__row {
+    padding: 0 var(--c--globals--spacings--xs, 8px);
+  }
+
+  &__emoji {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: var(--c--globals--spacings--xxs, 6px);
+
+    &[data-active] {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+  }
+}
