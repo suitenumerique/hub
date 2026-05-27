@@ -1,5 +1,6 @@
 import {
   ApiConfig,
+  Chat,
   ChatDocumentsPage,
   ChatMessage,
   ChatMessagesPage,
@@ -53,6 +54,8 @@ export abstract class Driver {
   abstract getConfig(): Promise<ApiConfig>;
   abstract getUsers(filters?: UserFilters): Promise<User[]>;
   abstract updateUser(payload: Partial<User> & { id: string }): Promise<User>;
+  /** Single conversation, fetched by id. */
+  abstract getChat(chatId: string): Promise<Chat>;
   abstract getChatMessages(
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;

@@ -11,6 +11,30 @@ export type User = {
   last_release_note_seen?: string | null;
 };
 
+/**
+ * Visual identity of a conversation row: initials avatar, an emoji, or a
+ * Material-icon name. The shape mirrors what the backend will eventually
+ * return as the `visual` field of a `Chat`.
+ */
+export type ChatVisual =
+  | { kind: "initials" }
+  | { kind: "emoji"; emoji: string }
+  | { kind: "icon"; icon: string };
+
+export type Chat = {
+  id: string;
+  name: string;
+  unread?: boolean;
+  section: "favourites" | "all";
+  /**
+   * Determines whether the conversation has a single counterpart or several.
+   * Explicit (rather than inferred from the name) so the data shape stays
+   * stable when the real backend ships.
+   */
+  kind: "direct" | "group";
+  visual: ChatVisual;
+};
+
 export type LocalizedThemeCustomization<T> = {
   default: T;
   [key: string]: T;

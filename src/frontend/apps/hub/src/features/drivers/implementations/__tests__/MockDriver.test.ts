@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { MOCK_CHATS } from "@/features/drivers/mocks/mockChats";
-
-import { StandardDriver } from "../StandardDriver";
+import { MOCK_CHATS } from "../../mocks/mockChats";
+import { MockDriver } from "../MockDriver";
 
 const CHAT_ID = MOCK_CHATS[0].id;
 
-describe("StandardDriver.toggleChatReaction", () => {
+describe("MockDriver.toggleChatReaction", () => {
   it("toggles a reaction on a stored message and persists it", async () => {
-    const driver = new StandardDriver();
+    const driver = new MockDriver();
 
     // "🔥" is outside the seeded palette, so it is always added fresh first.
     const added = await driver.toggleChatReaction({
@@ -40,7 +39,7 @@ describe("StandardDriver.toggleChatReaction", () => {
   });
 
   it("rejects when the message does not exist", async () => {
-    const driver = new StandardDriver();
+    const driver = new MockDriver();
 
     await expect(
       driver.toggleChatReaction({
@@ -52,9 +51,9 @@ describe("StandardDriver.toggleChatReaction", () => {
   });
 });
 
-describe("StandardDriver threads", () => {
+describe("MockDriver threads", () => {
   it("returns threads scoped to the conversation, some unread", async () => {
-    const driver = new StandardDriver();
+    const driver = new MockDriver();
 
     const threads = await driver.getChatThreads(CHAT_ID);
 
@@ -63,7 +62,7 @@ describe("StandardDriver threads", () => {
   });
 
   it("loads a thread's detail and marks it read", async () => {
-    const driver = new StandardDriver();
+    const driver = new MockDriver();
 
     const threads = await driver.getChatThreads(CHAT_ID);
     const unread = threads.find((thread) => thread.unreadCount > 0);
@@ -88,7 +87,7 @@ describe("StandardDriver threads", () => {
   });
 
   it("marks every thread of the conversation read", async () => {
-    const driver = new StandardDriver();
+    const driver = new MockDriver();
 
     await driver.markAllChatThreadsRead(CHAT_ID);
 
@@ -97,7 +96,7 @@ describe("StandardDriver threads", () => {
   });
 
   it("rejects when the thread does not exist", async () => {
-    const driver = new StandardDriver();
+    const driver = new MockDriver();
 
     await expect(
       driver.getChatThread({ chatId: CHAT_ID, threadId: "does-not-exist" }),
@@ -105,12 +104,22 @@ describe("StandardDriver threads", () => {
   });
 
   it("toggles a reaction on a thread message and persists it", async () => {
-    const driver = new StandardDriver();
+    const driver = new MockDriver();
 
     const threads = await driver.getChatThreads(CHAT_ID);
-    const threadId = threads[0].id;
+    const threadId = threads[0]?.id;
+    expect(threadId).toBeDefined();
+    if (!threadId) {
+      return;
+    }
     const detail = await driver.getChatThread({ chatId: CHAT_ID, threadId });
-    const reply = detail.messages[1];
+    const reply = detail.messages.find(
+      (message) => message.id !== detail.rootMessageId,
+    );
+    expect(reply).toBeDefined();
+    if (!reply) {
+      return;
+    }
 
     const updated = await driver.toggleChatThreadReaction({
       chatId: CHAT_ID,
@@ -133,13 +142,18 @@ describe("StandardDriver threads", () => {
   });
 
   it("rejects a thread reaction on an unknown message", async () => {
-    const driver = new StandardDriver();
+    const driver = new MockDriver();
 
     const threads = await driver.getChatThreads(CHAT_ID);
+    const threadId = threads[0]?.id;
+    expect(threadId).toBeDefined();
+    if (!threadId) {
+      return;
+    }
     await expect(
       driver.toggleChatThreadReaction({
         chatId: CHAT_ID,
-        threadId: threads[0].id,
+        threadId,
         messageId: "does-not-exist",
         emoji: "🔥",
       }),

@@ -1,5 +1,6 @@
 import { faker } from "@faker-js/faker/locale/fr";
 
+import { toggleReaction } from "@/features/chat/reactions";
 import {
   type ChatMessage,
   type ChatMessageAuthor,
@@ -8,8 +9,6 @@ import {
   type ChatThreadDetail,
 } from "@/features/drivers/types";
 import { AVATAR_COLORS } from "@/features/ui/components/avatar/palette";
-
-import { toggleReaction } from "@/features/chat/reactions";
 
 import { type MockChat, getMockChat } from "./mockChats";
 import { buildChatThreads } from "./mockThreads";
@@ -180,9 +179,11 @@ export const getMockAuthorsForChat = (
 
 /**
  * Toggles the current user's reaction with `emoji` on a stored message and
- * returns the updated message. Mutates the in-memory mock store so the change
- * survives pagination refetches. Returns `null` when the chat or message is
- * unknown — callers surface that as an error.
+ * returns a copy of the updated message. The in-memory store is mutated so
+ * the change survives pagination refetches, but the returned object is a
+ * fresh copy — matching what a real backend would send over the wire and
+ * keeping callers safe from accidentally mutating the store. Returns `null`
+ * when the chat or message is unknown.
  */
 export const toggleMockReaction = (
   chatId: string,
@@ -196,7 +197,7 @@ export const toggleMockReaction = (
     return null;
   }
   message.reactions = toggleReaction(message.reactions, emoji);
-  return message;
+  return { ...message };
 };
 
 /** Threads of a conversation, most recent first. Returns fresh copies. */
@@ -251,8 +252,9 @@ export const markMockThreadRead = (
 
 /**
  * Toggles the current user's reaction on a message inside a thread (root or
- * reply) and returns the updated message. Mutates the in-memory store so the
- * change survives refetches. Returns `null` when the message is unknown.
+ * reply) and returns a copy of the updated message. The in-memory store is
+ * mutated so the change survives refetches; the returned object is a fresh
+ * copy. Returns `null` when the message is unknown.
  */
 export const toggleMockThreadReaction = (
   chatId: string,
@@ -268,7 +270,7 @@ export const toggleMockThreadReaction = (
     return null;
   }
   message.reactions = toggleReaction(message.reactions, emoji);
-  return message;
+  return { ...message };
 };
 
 /** Clears the unread state of every thread of a conversation. */

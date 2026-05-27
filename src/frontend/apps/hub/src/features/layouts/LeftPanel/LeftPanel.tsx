@@ -16,8 +16,8 @@ import { useTranslation } from "react-i18next";
 import {
   ALL_CHATS,
   FAVOURITE_CHATS,
-  type MockChat,
 } from "@/features/drivers/mocks/mockChats";
+import type { Chat } from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 type ActionItem =
@@ -114,7 +114,7 @@ const ActionRow = ({ action }: { action: ActionItem }) => {
 
 type ChatSectionProps = {
   title: string;
-  chats: MockChat[];
+  chats: Chat[];
 };
 
 const ChatSection = ({ title, chats }: ChatSectionProps) => {
@@ -156,7 +156,7 @@ const ChatSection = ({ title, chats }: ChatSectionProps) => {
   );
 };
 
-const ChatRow = ({ chat }: { chat: MockChat }) => {
+const ChatRow = ({ chat }: { chat: Chat }) => {
   const { t } = useTranslation();
   const router = useRouter();
   const isActive = router.query.chatId === chat.id;

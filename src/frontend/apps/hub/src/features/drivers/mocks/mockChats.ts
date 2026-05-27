@@ -1,23 +1,14 @@
-export type MockChatVisual =
-  | { kind: "initials" }
-  | { kind: "emoji"; emoji: string }
-  | { kind: "icon"; icon: string };
+import type { Chat } from "@/features/drivers/types";
 
-export type MockChat = {
-  id: string;
-  name: string;
-  unread?: boolean;
-  section: "favourites" | "all";
-  /**
-   * Determines whether mockMessages generates one author or several. The flag
-   * is explicit (rather than inferred from the name) so the data shape stays
-   * stable when the real backend ships.
-   */
-  kind: "direct" | "group";
-  visual: MockChatVisual;
-};
+/**
+ * Mock conversations bundled with the frontend until the backend exposes a
+ * real chats endpoint. `MockChat` is kept as a type alias of `Chat` so
+ * existing imports keep working — production code should depend on `Chat`
+ * from `@/features/drivers/types` and reach those mocks through the driver.
+ */
+export type MockChat = Chat;
 
-export const MOCK_CHATS: MockChat[] = [
+export const MOCK_CHATS: Chat[] = [
   {
     id: "a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c",
     name: "Didier Salambo",
@@ -90,5 +81,5 @@ export const FAVOURITE_CHATS = MOCK_CHATS.filter(
 );
 export const ALL_CHATS = MOCK_CHATS.filter((chat) => chat.section === "all");
 
-export const getMockChat = (id: string): MockChat | undefined =>
+export const getMockChat = (id: string): Chat | undefined =>
   MOCK_CHATS.find((chat) => chat.id === id);
