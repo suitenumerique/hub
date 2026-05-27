@@ -1,0 +1,65 @@
+.hub__chat-thread-button {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--c--globals--spacings--xxxs, 4px);
+  height: 24px;
+  max-width: 100%;
+  padding: 0 var(--c--globals--spacings--xxxs, 4px);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(
+      --c--contextuals--background--semantic--overlay--primary,
+      rgba(24, 27, 36, 0.05)
+    );
+  }
+
+  &:focus-visible {
+    outline: 2px solid
+      var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+    outline-offset: 2px;
+  }
+
+  &__icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  &__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &--unread {
+    background: var(
+      --c--contextuals--background--semantic--brand--secondary,
+      #dae2ff
+    );
+    color: var(--c--contextuals--content--semantic--brand--secondary, #304ddf);
+
+    &:hover {
+      background: var(
+        --c--contextuals--background--semantic--brand--secondary,
+        #dae2ff
+      );
+      filter: brightness(0.97);
+    }
+  }
+}
