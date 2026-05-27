@@ -1,6 +1,7 @@
 import {
   ApiConfig,
   ChatDocumentsPage,
+  ChatMessage,
   ChatMessagesPage,
   User,
 } from "./types";
@@ -21,6 +22,13 @@ export type GetChatMessagesParams = {
   limit?: number;
 };
 
+export type ToggleChatReactionParams = {
+  chatId: string;
+  messageId: string;
+  /** Native emoji character to toggle for the current user. */
+  emoji: string;
+};
+
 export abstract class Driver {
   abstract getConfig(): Promise<ApiConfig>;
   abstract getUsers(filters?: UserFilters): Promise<User[]>;
@@ -29,4 +37,12 @@ export abstract class Driver {
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;
   abstract getChatDocuments(chatId: string): Promise<ChatDocumentsPage>;
+  /**
+   * Toggles the current user's reaction with `emoji` on a message and resolves
+   * with the updated message. Adding when absent, removing when already
+   * present — see the `toggleReaction` helper in `features/chat/reactions`.
+   */
+  abstract toggleChatReaction(
+    params: ToggleChatReactionParams,
+  ): Promise<ChatMessage>;
 }

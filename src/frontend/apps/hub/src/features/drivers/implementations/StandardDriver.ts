@@ -3,10 +3,22 @@ import { getMockChatDocuments } from "@/features/chat/components/tools-panel/moc
 import {
   getMockAuthorsForChat,
   getMockMessages,
+  toggleMockReaction,
 } from "@/features/chat/mockMessages";
 
-import { Driver, GetChatMessagesParams, UserFilters } from "../Driver";
-import { ApiConfig, ChatDocumentsPage, ChatMessagesPage, User } from "../types";
+import {
+  Driver,
+  GetChatMessagesParams,
+  ToggleChatReactionParams,
+  UserFilters,
+} from "../Driver";
+import {
+  ApiConfig,
+  ChatDocumentsPage,
+  ChatMessage,
+  ChatMessagesPage,
+  User,
+} from "../types";
 
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 const MOCK_CHAT_LATENCY_MS = 250;
@@ -66,6 +78,26 @@ export class StandardDriver extends Driver {
     const nextCursor = startIndex === 0 ? null : messages[0]?.id ?? null;
 
     return { messages, authors, nextCursor };
+  }
+
+  async toggleChatReaction({
+    chatId,
+    messageId,
+    emoji,
+  }: ToggleChatReactionParams): Promise<ChatMessage> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/messages/:id/
+    // reactions/', { method: 'POST' })` when the backend exposes reactions.
+    // The driver contract (chatId + messageId + emoji → updated ChatMessage)
+    // is the swap point.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const message = toggleMockReaction(chatId, messageId, emoji);
+    if (!message) {
+      throw new Error(
+        `StandardDriver.toggleChatReaction: message "${messageId}" not found in chat "${chatId}".`,
+      );
+    }
+    return message;
   }
 
   async getChatDocuments(chatId: string): Promise<ChatDocumentsPage> {

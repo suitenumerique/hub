@@ -46,12 +46,28 @@ export type ChatMessageAuthor = {
   color: AvatarColor;
 };
 
+/**
+ * One emoji's worth of reactions on a message, aggregated across users. The UI
+ * only needs the count and whether the current user is part of it — no per-user
+ * list is carried (see the `chat-message-reactions` design).
+ */
+export type ChatReaction = {
+  /** Native emoji character, e.g. "👍". */
+  emoji: string;
+  /** Number of users who reacted with this emoji. Always >= 1 when present. */
+  count: number;
+  /** Whether the current user reacted with this emoji. */
+  reactedByMe: boolean;
+};
+
 export type ChatMessage = {
   id: string;
   authorId: string;
   content: string;
   /** ISO 8601 string. Use `formatChatTime` from @/features/chat/formatTimestamp for display. */
   timestamp: string;
+  /** Aggregated reactions, in stable insertion order. Empty when none. */
+  reactions: ChatReaction[];
 };
 
 export type ChatMessagesPage = {

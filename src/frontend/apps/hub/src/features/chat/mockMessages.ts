@@ -3,10 +3,12 @@ import { faker } from "@faker-js/faker/locale/fr";
 import {
   type ChatMessage,
   type ChatMessageAuthor,
+  type ChatReaction,
 } from "@/features/drivers/types";
 import { AVATAR_COLORS } from "@/features/ui/components/avatar/palette";
 
 import { type MockChat, getMockChat } from "./mockChats";
+import { toggleReaction } from "./reactions";
 
 const MESSAGES_PER_CHAT = 500;
 // Spread the conversation across roughly the last working day so timestamps
@@ -87,6 +89,27 @@ const buildContent = (): string => {
   return faker.lorem.paragraph();
 };
 
+// Small palette for seeded reactions, includes the toolbar quick reactions.
+const REACTION_EMOJIS = ["👍", "🎉", "😂", "❤️", "😮", "🙌"];
+
+// Deterministic (driven by the per-chat `faker.seed`): most messages carry no
+// reaction, a minority carry one to three so the reactions bar is visible on
+// load without flooding the conversation.
+const buildReactions = (): ChatReaction[] => {
+  if (faker.number.int({ min: 1, max: 100 }) > 25) {
+    return [];
+  }
+  const emojis = faker.helpers.arrayElements(
+    REACTION_EMOJIS,
+    faker.number.int({ min: 1, max: 3 }),
+  );
+  return emojis.map((emoji) => {
+    const reactedByMe = faker.number.int({ min: 1, max: 100 }) <= 30;
+    const others = faker.number.int({ min: reactedByMe ? 0 : 1, max: 4 });
+    return { emoji, count: others + (reactedByMe ? 1 : 0), reactedByMe };
+  });
+};
+
 const buildMessagesForChat = (authors: ChatMessageAuthor[]): ChatMessage[] => {
   const pool: { weight: number; value: string }[] = [
     { weight: 2 * authors.length, value: "me" },
@@ -104,6 +127,7 @@ const buildMessagesForChat = (authors: ChatMessageAuthor[]): ChatMessage[] => {
       authorId: faker.helpers.weightedArrayElement(pool),
       content: buildContent(),
       timestamp: new Date(cursorMs).toISOString(),
+      reactions: buildReactions(),
     });
   }
 
@@ -143,3 +167,24 @@ export const getMockMessages = (chatId: string): ChatMessage[] =>
 export const getMockAuthorsForChat = (
   chatId: string,
 ): ChatMessageAuthor[] => ensureGenerated(chatId)?.authors ?? [];
+
+/**
+ * Toggles the current user's reaction with `emoji` on a stored message and
+ * returns the updated message. Mutates the in-memory mock store so the change
+ * survives pagination refetches. Returns `null` when the chat or message is
+ * unknown — callers surface that as an error.
+ */
+export const toggleMockReaction = (
+  chatId: string,
+  messageId: string,
+  emoji: string,
+): ChatMessage | null => {
+  const message = ensureGenerated(chatId)?.messages.find(
+    (candidate) => candidate.id === messageId,
+  );
+  if (!message) {
+    return null;
+  }
+  message.reactions = toggleReaction(message.reactions, emoji);
+  return message;
+};
