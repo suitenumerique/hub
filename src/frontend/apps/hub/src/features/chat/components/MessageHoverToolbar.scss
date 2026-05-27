@@ -1,0 +1,90 @@
+.hub__message-toolbar {
+  // Transparent wrapper, flush against the bubble's top edge. The visual gap
+  // to the bubble is this `padding-bottom` — kept INSIDE the hover hit-area.
+  // It must never be a margin: a margin would be a dead zone over the previous
+  // message and the pointer would lose the bubble's :hover before reaching
+  // the toolbar. Renders above adjacent rows; hidden until hover / focus.
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 3;
+  padding-bottom: var(--c--globals--spacings--xxxs, 4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+
+  // The visible pill.
+  &__bar {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+    padding: var(--c--globals--spacings--xxxs, 4px);
+    background: var(--c--contextuals--background--surface--primary, #fff);
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-radius: var(--c--globals--spacings--xs, 8px);
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+  }
+
+  &__button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+    height: 24px;
+    min-width: 24px;
+    padding: 0 var(--c--globals--spacings--xxxs, 4px);
+    border-radius: 4px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+    font-family: inherit;
+
+    &--labelled {
+      padding: 0 var(--c--globals--spacings--xxs, 6px);
+    }
+
+    &:hover {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: -2px;
+    }
+  }
+
+  &__label {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+
+  &__separator {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 16px;
+    background: var(--c--contextuals--border--surface--primary, #dfe2ea);
+  }
+}
+
+// Scoped to the bubble body — not the whole bubble — so hovering or focusing
+// the reactions bar (a sibling of the row, outside the body) does not reveal
+// the toolbar. The toolbar lives inside `__body`, and its `padding-bottom`
+// keeps the gap up to the bubble inside that hover hit-area.
+.hub__chat-bubble__body:hover .hub__message-toolbar,
+.hub__chat-bubble__body:focus-within .hub__message-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__message-toolbar {
+    transition: none;
+  }
+}
