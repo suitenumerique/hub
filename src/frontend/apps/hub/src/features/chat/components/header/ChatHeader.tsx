@@ -6,7 +6,7 @@ import {
 } from "@gouvfr-lasuite/ui-kit/icons";
 import { useTranslation } from "react-i18next";
 
-import type { MockChat } from "@/features/chat/mockChats";
+import type { MockChat } from "@/features/drivers/mocks/mockChats";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";

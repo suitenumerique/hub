@@ -1,7 +1,7 @@
 import { FilePreview } from "@gouvfr-lasuite/ui-kit";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { MockChat } from "@/features/chat/mockChats";
+import type { MockChat } from "@/features/drivers/mocks/mockChats";
 import type { ChatDocument } from "@/features/drivers/types";
 
 import {

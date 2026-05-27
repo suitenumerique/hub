@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MOCK_CHATS } from "@/features/chat/mockChats";
+import { MOCK_CHATS } from "@/features/drivers/mocks/mockChats";
 
 import { StandardDriver } from "../StandardDriver";
 

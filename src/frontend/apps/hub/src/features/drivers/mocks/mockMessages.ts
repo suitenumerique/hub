@@ -9,9 +9,10 @@ import {
 } from "@/features/drivers/types";
 import { AVATAR_COLORS } from "@/features/ui/components/avatar/palette";
 
+import { toggleReaction } from "@/features/chat/reactions";
+
 import { type MockChat, getMockChat } from "./mockChats";
 import { buildChatThreads } from "./mockThreads";
-import { toggleReaction } from "./reactions";
 
 const MESSAGES_PER_CHAT = 500;
 // Spread the conversation across roughly the last working day so timestamps

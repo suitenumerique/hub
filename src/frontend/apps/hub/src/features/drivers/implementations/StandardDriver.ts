@@ -1,5 +1,5 @@
 import { fetchAPI } from "@/features/api/fetchApi";
-import { getMockChatDocuments } from "@/features/chat/components/tools-panel/mockDocuments";
+import { getMockChatDocuments } from "@/features/drivers/mocks/mockDocuments";
 import {
   getMockAuthorsForChat,
   getMockMessages,
@@ -9,7 +9,7 @@ import {
   markMockThreadRead,
   toggleMockReaction,
   toggleMockThreadReaction,
-} from "@/features/chat/mockMessages";
+} from "@/features/drivers/mocks/mockMessages";
 
 import {
   Driver,

@@ -17,7 +17,7 @@ import {
   ALL_CHATS,
   FAVOURITE_CHATS,
   type MockChat,
-} from "@/features/chat/mockChats";
+} from "@/features/drivers/mocks/mockChats";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 type ActionItem =

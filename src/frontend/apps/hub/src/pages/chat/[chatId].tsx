@@ -2,7 +2,7 @@ import type { GetStaticPaths, GetStaticProps } from "next";
 import { useRouter } from "next/router";
 
 import { ChatView } from "@/features/chat/components/ChatView";
-import { MOCK_CHATS, getMockChat } from "@/features/chat/mockChats";
+import { MOCK_CHATS, getMockChat } from "@/features/drivers/mocks/mockChats";
 import { HubLayout } from "@/features/layouts/HubLayout";
 
 // `getStaticPaths` is required for dynamic routes under `output: "export"`. We
