@@ -60,6 +60,20 @@ export type ChatReaction = {
   reactedByMe: boolean;
 };
 
+/**
+ * Lightweight thread marker carried on the message a thread hangs off. Present
+ * only on messages that started a thread — drives the thread button rendered
+ * under the bubble (see the `chat-thread-button` design).
+ */
+export type ChatThreadSummary = {
+  /** Thread id — used to open the thread detail panel. */
+  id: string;
+  /** Total number of replies in the thread. */
+  replyCount: number;
+  /** Replies the current user has not read yet. `0` when fully read. */
+  unreadCount: number;
+};
+
 export type ChatMessage = {
   id: string;
   authorId: string;
@@ -68,6 +82,8 @@ export type ChatMessage = {
   timestamp: string;
   /** Aggregated reactions, in stable insertion order. Empty when none. */
   reactions: ChatReaction[];
+  /** Set when this message opened a thread; omitted otherwise. */
+  thread?: ChatThreadSummary;
 };
 
 export type ChatMessagesPage = {
@@ -105,4 +121,43 @@ export type ChatDocumentsPage = {
   pinned: ChatDocument[];
   shared: ChatDocument[];
   multimedia: ChatDocument[];
+};
+
+/**
+ * One row of the threads tools panel — a thread scoped to a single
+ * conversation. The driver is the swap point: a real backend returns this
+ * shape, or a richer one the driver narrows down.
+ */
+export type ChatThread = {
+  id: string;
+  /** Id of the message the thread hangs off. */
+  rootMessageId: string;
+  /** Author of the most recent reply — shown in the list row. */
+  author: ChatMessageAuthor;
+  /** ISO 8601 timestamp of the most recent reply. */
+  lastReplyAt: string;
+  /** Preview text of the most recent reply. */
+  lastReplyPreview: string;
+  /** Total number of replies. */
+  replyCount: number;
+  /** Replies the current user has not read yet. `0` when fully read. */
+  unreadCount: number;
+};
+
+/**
+ * Full content of a single thread, shown in the thread detail view: the root
+ * message followed by its replies.
+ */
+export type ChatThreadDetail = {
+  id: string;
+  rootMessageId: string;
+  /** Root message first, then replies in chronological order. */
+  messages: ChatMessage[];
+  /** Authors referenced by `messages`, for avatar/name lookup. */
+  authors: ChatMessageAuthor[];
+  /**
+   * Index in `messages` of the first unread reply, or `null` when nothing is
+   * unread. Drives the "Unread" separator in the detail view.
+   */
+  firstUnreadIndex: number | null;
 };

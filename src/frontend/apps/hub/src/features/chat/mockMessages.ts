@@ -4,10 +4,13 @@ import {
   type ChatMessage,
   type ChatMessageAuthor,
   type ChatReaction,
+  type ChatThread,
+  type ChatThreadDetail,
 } from "@/features/drivers/types";
 import { AVATAR_COLORS } from "@/features/ui/components/avatar/palette";
 
 import { type MockChat, getMockChat } from "./mockChats";
+import { buildChatThreads } from "./mockThreads";
 import { toggleReaction } from "./reactions";
 
 const MESSAGES_PER_CHAT = 500;
@@ -137,6 +140,8 @@ const buildMessagesForChat = (authors: ChatMessageAuthor[]): ChatMessage[] => {
 type GeneratedChat = {
   messages: ChatMessage[];
   authors: ChatMessageAuthor[];
+  threads: ChatThread[];
+  threadDetails: Map<string, ChatThreadDetail>;
 };
 
 const chatCache = new Map<string, GeneratedChat>();
@@ -144,7 +149,11 @@ const chatCache = new Map<string, GeneratedChat>();
 const generateForChat = (chat: MockChat): GeneratedChat => {
   faker.seed(seedFromString(chat.id));
   const authors = buildAuthorsForChat(chat);
-  return { authors, messages: buildMessagesForChat(authors) };
+  const messages = buildMessagesForChat(authors);
+  // Threads are derived from the conversation and consume the same seeded
+  // `faker` sequence, so they stay deterministic per chat.
+  const { threads, details } = buildChatThreads(chat.id, messages, authors);
+  return { authors, messages, threads, threadDetails: details };
 };
 
 const ensureGenerated = (chatId: string): GeneratedChat | null => {
@@ -187,4 +196,83 @@ export const toggleMockReaction = (
   }
   message.reactions = toggleReaction(message.reactions, emoji);
   return message;
+};
+
+/** Threads of a conversation, most recent first. Returns fresh copies. */
+export const getMockThreads = (chatId: string): ChatThread[] =>
+  (ensureGenerated(chatId)?.threads ?? []).map((thread) => ({ ...thread }));
+
+/**
+ * Full content of a single thread, or `null` when unknown. Returns a snapshot
+ * so a later "mark as read" cannot mutate an already-open detail view.
+ */
+export const getMockThread = (
+  chatId: string,
+  threadId: string,
+): ChatThreadDetail | null => {
+  const detail = ensureGenerated(chatId)?.threadDetails.get(threadId);
+  if (!detail) {
+    return null;
+  }
+  return {
+    ...detail,
+    messages: [...detail.messages],
+    authors: [...detail.authors],
+  };
+};
+
+/**
+ * Clears the unread state of a thread in the in-memory store so the change
+ * survives refetches. Returns `false` when the chat or thread is unknown.
+ */
+export const markMockThreadRead = (
+  chatId: string,
+  threadId: string,
+): boolean => {
+  const generated = ensureGenerated(chatId);
+  const thread = generated?.threads.find(
+    (candidate) => candidate.id === threadId,
+  );
+  const detail = generated?.threadDetails.get(threadId);
+  if (!generated || !thread || !detail) {
+    return false;
+  }
+  thread.unreadCount = 0;
+  detail.firstUnreadIndex = null;
+  const root = generated.messages.find(
+    (message) => message.id === thread.rootMessageId,
+  );
+  if (root?.thread) {
+    root.thread = { ...root.thread, unreadCount: 0 };
+  }
+  return true;
+};
+
+/**
+ * Toggles the current user's reaction on a message inside a thread (root or
+ * reply) and returns the updated message. Mutates the in-memory store so the
+ * change survives refetches. Returns `null` when the message is unknown.
+ */
+export const toggleMockThreadReaction = (
+  chatId: string,
+  threadId: string,
+  messageId: string,
+  emoji: string,
+): ChatMessage | null => {
+  const detail = ensureGenerated(chatId)?.threadDetails.get(threadId);
+  const message = detail?.messages.find(
+    (candidate) => candidate.id === messageId,
+  );
+  if (!message) {
+    return null;
+  }
+  message.reactions = toggleReaction(message.reactions, emoji);
+  return message;
+};
+
+/** Clears the unread state of every thread of a conversation. */
+export const markAllMockThreadsRead = (chatId: string): void => {
+  ensureGenerated(chatId)?.threads.forEach((thread) => {
+    markMockThreadRead(chatId, thread.id);
+  });
 };

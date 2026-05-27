@@ -3,13 +3,21 @@ import { getMockChatDocuments } from "@/features/chat/components/tools-panel/moc
 import {
   getMockAuthorsForChat,
   getMockMessages,
+  getMockThread,
+  getMockThreads,
+  markAllMockThreadsRead,
+  markMockThreadRead,
   toggleMockReaction,
+  toggleMockThreadReaction,
 } from "@/features/chat/mockMessages";
 
 import {
   Driver,
   GetChatMessagesParams,
+  GetChatThreadParams,
+  MarkChatThreadReadParams,
   ToggleChatReactionParams,
+  ToggleChatThreadReactionParams,
   UserFilters,
 } from "../Driver";
 import {
@@ -17,6 +25,8 @@ import {
   ChatDocumentsPage,
   ChatMessage,
   ChatMessagesPage,
+  ChatThread,
+  ChatThreadDetail,
   User,
 } from "../types";
 
@@ -110,5 +120,91 @@ export class StandardDriver extends Driver {
     await delay(MOCK_CHAT_LATENCY_MS);
 
     return getMockChatDocuments();
+  }
+
+  async getChatThreads(chatId: string): Promise<ChatThread[]> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/threads/')` when the
+    // backend exposes per-conversation threads. The driver contract
+    // (chatId → ChatThread[]) is the swap point.
+    if (!chatId) {
+      throw new Error("StandardDriver.getChatThreads: chatId is required.");
+    }
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    return getMockThreads(chatId);
+  }
+
+  async getChatThread({
+    chatId,
+    threadId,
+  }: GetChatThreadParams): Promise<ChatThreadDetail> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/threads/:id/')` when
+    // the backend exposes thread content. The driver contract
+    // (chatId + threadId → ChatThreadDetail) is the swap point.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const detail = getMockThread(chatId, threadId);
+    if (!detail) {
+      throw new Error(
+        `StandardDriver.getChatThread: thread "${threadId}" not found in chat "${chatId}".`,
+      );
+    }
+    return detail;
+  }
+
+  async toggleChatThreadReaction({
+    chatId,
+    threadId,
+    messageId,
+    emoji,
+  }: ToggleChatThreadReactionParams): Promise<ChatMessage> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/threads/:id/
+    // messages/:id/reactions/', { method: 'POST' })` when the backend exposes
+    // thread reactions. The driver contract (chatId + threadId + messageId +
+    // emoji → updated ChatMessage) is the swap point.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const message = toggleMockThreadReaction(
+      chatId,
+      threadId,
+      messageId,
+      emoji,
+    );
+    if (!message) {
+      throw new Error(
+        `StandardDriver.toggleChatThreadReaction: message "${messageId}" not found in thread "${threadId}".`,
+      );
+    }
+    return message;
+  }
+
+  async markChatThreadRead({
+    chatId,
+    threadId,
+  }: MarkChatThreadReadParams): Promise<void> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/threads/:id/read/',
+    // { method: 'POST' })` when the backend tracks read state. The driver
+    // contract (chatId + threadId → void) is the swap point.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    if (!markMockThreadRead(chatId, threadId)) {
+      throw new Error(
+        `StandardDriver.markChatThreadRead: thread "${threadId}" not found in chat "${chatId}".`,
+      );
+    }
+  }
+
+  async markAllChatThreadsRead(chatId: string): Promise<void> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/threads/read/',
+    // { method: 'POST' })` when the backend tracks read state. The driver
+    // contract (chatId → void) is the swap point.
+    if (!chatId) {
+      throw new Error(
+        "StandardDriver.markAllChatThreadsRead: chatId is required.",
+      );
+    }
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    markAllMockThreadsRead(chatId);
   }
 }
