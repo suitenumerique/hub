@@ -1,0 +1,185 @@
+// Threads panel — list view (Figma "List Thread") and detail view.
+
+.hub__chat-thread-item {
+  list-style: none;
+  font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+
+  &__button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxs, 6px);
+    padding: var(--c--globals--spacings--xs, 8px)
+      var(--c--globals--spacings--xxs, 6px);
+    border-radius: 4px;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+
+    &:hover {
+      background: var(
+        --c--contextuals--background--semantic--neutral--tertiary,
+        #eef1f4
+      );
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: -2px;
+    }
+  }
+
+  &__indicator {
+    flex: 0 0 6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: transparent;
+  }
+
+  &[data-unread] &__indicator {
+    background: var(
+      --c--contextuals--content--semantic--brand--secondary,
+      #304ddf
+    );
+  }
+
+  &__body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+  }
+
+  &__author {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--c--contextuals--content--semantic--neutral--secondary, #555e74);
+  }
+
+  &[data-unread] &__author {
+    font-weight: 700;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__time {
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--secondary, #555e74);
+  }
+
+  &__preview {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--secondary, #555e74);
+  }
+
+  &[data-unread] &__preview {
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__replies {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  }
+
+  &[data-unread] &__replies {
+    color: var(--c--contextuals--content--semantic--brand--secondary, #304ddf);
+  }
+
+  &__replies-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  &__chevron {
+    flex: 0 0 auto;
+    display: inline-flex;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
+
+.hub__thread-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  &__messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--xs, 8px);
+    padding: 0 var(--c--globals--spacings--sm, 12px)
+      var(--c--globals--spacings--sm, 12px);
+  }
+
+  &__composer {
+    flex: 0 0 auto;
+    padding: var(--c--globals--spacings--xs, 8px)
+      var(--c--globals--spacings--sm, 12px)
+      var(--c--globals--spacings--sm, 12px);
+  }
+
+  // "Unread" divider — a centred brand label flanked by hairlines.
+  &__unread {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xs, 8px);
+    margin: var(--c--globals--spacings--xxxs, 4px) 0;
+    color: var(--c--contextuals--content--semantic--brand--secondary, #304ddf);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+
+    &::before,
+    &::after {
+      content: "";
+      flex: 1 1 auto;
+      height: 1px;
+      background: currentcolor;
+      opacity: 0.4;
+    }
+  }
+}

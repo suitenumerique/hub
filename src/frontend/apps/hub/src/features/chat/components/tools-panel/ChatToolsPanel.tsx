@@ -1,55 +1,62 @@
-import { XMark } from '@gouvfr-lasuite/ui-kit/icons';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from "react-i18next";
 
-import type { ChatDocument } from '@/features/drivers/types';
+import type { ChatDocument } from "@/features/drivers/types";
 
-import { DocumentsTool } from './DocumentsTool';
+import { DocumentsTool } from "./DocumentsTool";
+import { ThreadsTool } from "./ThreadsTool";
+import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
-export type ChatTool = 'threads' | 'files';
+export type ChatTool = "threads" | "files";
 
 type ChatToolsPanelProps = {
   tool: ChatTool | null;
   isOpen: boolean;
   chatId: string;
+  /** Thread whose detail view is open, or `null` for the thread list. */
+  threadId: string | null;
   onClose: () => void;
+  onOpenThread: (threadId: string) => void;
+  onCloseThread: () => void;
   onOpenFile?: (doc: ChatDocument) => void;
-};
-
-const TOOL_TITLE_KEYS: Record<ChatTool, string> = {
-  threads: 'Threads',
-  files: 'Documents',
 };
 
 export const ChatToolsPanel = ({
   tool,
   isOpen,
   chatId,
+  threadId,
   onClose,
+  onOpenThread,
+  onCloseThread,
   onOpenFile,
 }: ChatToolsPanelProps) => {
   const { t } = useTranslation();
-  const title = tool ? t(TOOL_TITLE_KEYS[tool]) : '';
 
   return (
     <aside
       className="hub__chat-tools-panel"
-      aria-label={title || t('Tools panel')}
+      aria-label={t("Tools panel")}
       aria-hidden={!isOpen}
     >
-      <div className="hub__chat-tools-panel__header">
-        <h2 className="hub__chat-tools-panel__title">{title}</h2>
-        <button
-          type="button"
-          className="hub__chat-tools-panel__close"
-          onClick={onClose}
-          aria-label={t('Close panel')}
-          tabIndex={isOpen ? 0 : -1}
-        >
-          <XMark />
-        </button>
-      </div>
-      {tool === 'files' && (
-        <DocumentsTool chatId={chatId} onOpenFile={onOpenFile} />
+      {tool === "files" && (
+        <>
+          <ToolsPanelHeader
+            title={t("Documents")}
+            isOpen={isOpen}
+            onClose={onClose}
+          />
+          <DocumentsTool chatId={chatId} onOpenFile={onOpenFile} />
+        </>
+      )}
+      {tool === "threads" && (
+        <ThreadsTool
+          chatId={chatId}
+          threadId={threadId}
+          isOpen={isOpen}
+          onClose={onClose}
+          onOpenThread={onOpenThread}
+          onCloseThread={onCloseThread}
+        />
       )}
     </aside>
   );
