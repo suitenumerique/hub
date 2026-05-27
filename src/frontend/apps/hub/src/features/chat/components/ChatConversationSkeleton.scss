@@ -1,0 +1,119 @@
+@keyframes hub-chat-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.hub__chat-conversation__skeleton {
+  // Absolute overlay inside `.hub__chat-conversation__list` so the real
+  // Virtuoso list can mount and paint behind it during the loading→loaded
+  // transition — there is never an empty frame between skeleton and bubbles.
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--c--contextuals--background--surface--primary, #fff);
+  display: flex;
+  flex-direction: column;
+  // Anchor to the bottom so the latest "messages" sit just above the composer
+  // and the topmost rows get clipped by the container — matching the visual
+  // rhythm of a scrolled conversation.
+  justify-content: flex-end;
+  overflow: hidden;
+  // Push the topmost rows above the visible area when the viewport is short,
+  // so the floating chat header always overlays a bubble (never an empty gap).
+  padding-top: 56px;
+  opacity: 1;
+  transition: opacity 180ms ease;
+
+  &--leaving {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+.hub__chat-bubble-skeleton {
+  display: flex;
+  gap: var(--c--globals--spacings--xs, 8px);
+  align-items: flex-end;
+
+  &--received {
+    justify-content: flex-start;
+  }
+
+  &--sent {
+    justify-content: flex-end;
+    padding-left: var(--c--globals--spacings--xxxl, 56px);
+  }
+
+  &__avatar,
+  &__body {
+    background: linear-gradient(
+      90deg,
+      var(--c--contextuals--background--semantic--neutral--tertiary, #eef1f4)
+        0%,
+      color-mix(
+          in srgb,
+          var(--c--contextuals--background--semantic--neutral--tertiary, #eef1f4)
+            60%,
+          transparent
+        )
+        50%,
+      var(--c--contextuals--background--semantic--neutral--tertiary, #eef1f4)
+        100%
+    );
+    background-size: 200% 100%;
+    animation: hub-chat-skeleton-shimmer 1.6s linear infinite;
+  }
+
+  &__avatar {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+  }
+
+  &__body {
+    border-radius: var(--c--globals--spacings--xs, 8px);
+    max-width: 400px;
+
+    &--sm {
+      width: 140px;
+    }
+
+    &--md {
+      width: 220px;
+    }
+
+    &--lg {
+      width: 300px;
+    }
+
+    &--xl {
+      width: 360px;
+    }
+
+    // Roughly matches a real bubble: 14px font, 18px line-height, 8px padding
+    // top/bottom. One line ≈ 34px, two ≈ 52px, three ≈ 70px.
+    &--h1 {
+      height: 36px;
+    }
+
+    &--h2 {
+      height: 56px;
+    }
+
+    &--h3 {
+      height: 80px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__chat-bubble-skeleton__avatar,
+  .hub__chat-bubble-skeleton__body {
+    animation: none;
+  }
+}

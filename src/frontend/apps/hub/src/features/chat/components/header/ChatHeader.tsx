@@ -6,17 +6,24 @@ import {
 } from "@gouvfr-lasuite/ui-kit/icons";
 import { useTranslation } from "react-i18next";
 
-import type { MockChat } from "@/features/drivers/mocks/mockChats";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
+import type { Chat } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 type ChatHeaderProps = {
-  chat: MockChat;
+  /** `null` while the conversation is being fetched — renders a skeleton. */
+  chat: Chat | null;
   activeTool: ChatTool | null;
   onToggleTool: (tool: ChatTool) => void;
 };
 
+/**
+ * Top bar of a conversation. Renders even when `chat` is still loading so the
+ * `<AccountSelector>` and chat tools stay mounted across navigations between
+ * conversations — only the breadcrumb swaps to a skeleton while the chat is
+ * being fetched.
+ */
 export const ChatHeader = ({
   chat,
   activeTool,
@@ -26,23 +33,43 @@ export const ChatHeader = ({
 
   return (
     <header className="hub__chat-header" aria-label={t("Chat header")}>
-      <button type="button" className="hub__chat-header__breadcrumb">
-        {chat.visual.kind === "emoji" ? (
-          <Avatar label={chat.name} variant="soft" decorative>
-            {chat.visual.emoji}
-          </Avatar>
-        ) : chat.visual.kind === "icon" ? (
-          <Avatar label={chat.name} decorative>
-            <span className="material-icons" aria-hidden="true">
-              {chat.visual.icon}
-            </span>
-          </Avatar>
-        ) : (
-          <Avatar label={chat.name} decorative />
-        )}
-        <span className="hub__chat-header__breadcrumb__name">{chat.name}</span>
-        <ArrowDropDown />
-      </button>
+      {chat ? (
+        <button type="button" className="hub__chat-header__breadcrumb">
+          {chat.visual.kind === "emoji" ? (
+            <Avatar label={chat.name} variant="soft" decorative>
+              {chat.visual.emoji}
+            </Avatar>
+          ) : chat.visual.kind === "icon" ? (
+            <Avatar label={chat.name} decorative>
+              <span className="material-icons" aria-hidden="true">
+                {chat.visual.icon}
+              </span>
+            </Avatar>
+          ) : (
+            <Avatar label={chat.name} decorative />
+          )}
+          <span className="hub__chat-header__breadcrumb__name">
+            {chat.name}
+          </span>
+          <ArrowDropDown />
+        </button>
+      ) : (
+        <div
+          className="hub__chat-header__breadcrumb hub__chat-header__breadcrumb--skeleton"
+          role="status"
+          aria-busy="true"
+          aria-label={t("Loading conversation…")}
+        >
+          <span
+            className="hub__chat-header__breadcrumb__avatar-skeleton"
+            aria-hidden="true"
+          />
+          <span
+            className="hub__chat-header__breadcrumb__name-skeleton"
+            aria-hidden="true"
+          />
+        </div>
+      )}
 
       <div className="hub__chat-header__actions">
         <div className="hub__chat-header__selector">

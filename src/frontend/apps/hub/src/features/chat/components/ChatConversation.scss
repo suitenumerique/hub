@@ -5,13 +5,22 @@
   display: flex;
   flex-direction: column;
 
+  // Mirrors the bubble row layout: the wrapper spans the full conversation
+  // width and provides the 24px screen gutter, while its inner child is
+  // capped at 750px and centered — so the composer's visible edges line up
+  // exactly with `.hub__chat-conversation__row-inner` above it.
   &__composer {
     flex: 0 0 auto;
     width: 100%;
-    max-width: 750px;
-    margin: 0 auto;
     padding: var(--c--globals--spacings--xs, 8px)
       var(--c--globals--spacings--md, 24px)
       var(--c--globals--spacings--md, 24px);
+    display: flex;
+    justify-content: center;
+
+    > * {
+      width: 100%;
+      max-width: 750px;
+    }
   }
 }

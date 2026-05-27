@@ -1,13 +1,13 @@
 import { FilePreview } from "@gouvfr-lasuite/ui-kit";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { MockChat } from "@/features/drivers/mocks/mockChats";
 import type { ChatDocument } from "@/features/drivers/types";
 
 import {
   ChatPanelProvider,
   type ChatPanelContextValue,
 } from "../ChatPanelContext";
+import { useChat } from "../hooks/useChat";
 
 import { ChatConversation } from "./ChatConversation";
 import { ChatHeader } from "./header/ChatHeader";
@@ -15,10 +15,18 @@ import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
 import { documentToPreviewFile } from "./tools-panel/documentToPreviewFile";
 
 type ChatViewProps = {
-  chat: MockChat;
+  chatId: string;
 };
 
-export const ChatView = ({ chat }: ChatViewProps) => {
+/**
+ * Top-level chat surface. Keeps its shell mounted across conversation
+ * switches (so `<AccountSelector>` and the panel state survive) by taking
+ * `chatId` directly and loading the conversation through `useChat` —
+ * `<ChatHeader>` renders a skeleton while the chat is being fetched.
+ */
+export const ChatView = ({ chatId }: ChatViewProps) => {
+  const { chat } = useChat(chatId);
+
   const [activeTool, setActiveTool] = useState<ChatTool | null>(null);
   const [displayedTool, setDisplayedTool] = useState<ChatTool | null>(null);
   // Thread whose detail view is open; `null` keeps the threads tool on its
@@ -38,7 +46,7 @@ export const ChatView = ({ chat }: ChatViewProps) => {
   useEffect(() => {
     setOpenedDocument(null);
     setActiveThreadId(null);
-  }, [chat.id]);
+  }, [chatId]);
 
   const toggleTool = (tool: ChatTool) => {
     const willOpen = activeTool !== tool;
@@ -81,13 +89,13 @@ export const ChatView = ({ chat }: ChatViewProps) => {
           onToggleTool={toggleTool}
         />
         <div className="hub__chat-view__main">
-          <ChatConversation chatId={chat.id} />
+          <ChatConversation chatId={chatId} />
         </div>
         <div className="hub__chat-view__panel">
           <ChatToolsPanel
             tool={activeTool ?? displayedTool}
             isOpen={activeTool !== null}
-            chatId={chat.id}
+            chatId={chatId}
             threadId={activeThreadId}
             onClose={closePanel}
             onOpenThread={openThread}
