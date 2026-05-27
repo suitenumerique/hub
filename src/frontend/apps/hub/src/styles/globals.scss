@@ -15,8 +15,11 @@
 @use './../features/chat/components/FluentEmoji.scss';
 @use './../features/chat/components/MessageHoverToolbar.scss';
 @use './../features/chat/components/MessageReactions.scss';
+@use './../features/chat/components/ThreadButton.scss';
+@use './../features/chat/components/UnreadThreadsBanner.scss';
 @use './../features/chat/components/EmojiPicker.scss';
 @use './../features/chat/components/tools-panel/ChatToolsPanel.scss';
+@use './../features/chat/components/tools-panel/ThreadsTool.scss';
 
 body {
   margin: 0;

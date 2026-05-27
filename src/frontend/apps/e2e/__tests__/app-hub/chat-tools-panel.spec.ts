@@ -75,7 +75,7 @@ test.describe('Chat tools panel', () => {
     await threadsButton.click();
     await expect(threadsButton).toHaveAttribute('aria-pressed', 'true');
     await expect(filesButton).toHaveAttribute('aria-pressed', 'false');
-    await expect(getToolsPanelTitle(page)).toHaveText('Threads');
+    await expect(getToolsPanelTitle(page)).toHaveText('All threads');
 
     await filesButton.click();
     await expect(filesButton).toHaveAttribute('aria-pressed', 'true');

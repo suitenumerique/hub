@@ -153,6 +153,7 @@ const Row = memo(function Row({
           content={message.content}
           timestamp={message.timestamp}
           reactions={message.reactions}
+          thread={message.thread}
           showTimestamp={isLastOfGroup}
         />
       </RowShell>
@@ -173,6 +174,7 @@ const Row = memo(function Row({
         author={author}
         timestamp={message.timestamp}
         reactions={message.reactions}
+        thread={message.thread}
         showHeader={isFirstOfGroup}
         showAvatar={isLastOfGroup}
       />

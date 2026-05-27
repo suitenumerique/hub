@@ -1,7 +1,17 @@
 import { ArrowUp } from "@gouvfr-lasuite/ui-kit/icons";
 import { useTranslation } from "react-i18next";
 
-export const ChatComposer = () => {
+type ChatComposerProps = {
+  /** Input placeholder. Defaults to the conversation composer wording. */
+  placeholder?: string;
+  /** Accessible name of the input. Defaults to "Message". */
+  inputLabel?: string;
+};
+
+export const ChatComposer = ({
+  placeholder,
+  inputLabel,
+}: ChatComposerProps) => {
   const { t } = useTranslation();
 
   return (
@@ -13,8 +23,8 @@ export const ChatComposer = () => {
         <input
           type="text"
           className="hub__chat-composer__input"
-          placeholder={t("Your message")}
-          aria-label={t("Message")}
+          placeholder={placeholder ?? t("Your message")}
+          aria-label={inputLabel ?? t("Message")}
         />
       </div>
       <div className="hub__chat-composer__actions">

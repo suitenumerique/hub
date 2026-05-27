@@ -1,12 +1,6 @@
 .hub__message-reactions {
   display: flex;
 
-  // Received bubbles align the bar under the body, past the avatar column —
-  // same offset as the bubble header.
-  .hub__chat-bubble--received & {
-    padding-left: calc(24px + var(--c--globals--spacings--xs, 8px));
-  }
-
   &__list {
     display: flex;
     flex-wrap: wrap;

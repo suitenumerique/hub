@@ -79,4 +79,23 @@
     font-size: 12px;
     line-height: 16px;
   }
+
+  // The thread button and the reactions bar share one row below the bubble;
+  // it wraps (thread button stays first) once the two no longer fit together.
+  &__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+  }
+
+  &--received &__footer {
+    max-width: calc(400px + 24px + var(--c--globals--spacings--xs, 8px));
+    padding-left: calc(24px + var(--c--globals--spacings--xs, 8px));
+  }
+
+  &--sent &__footer {
+    max-width: 400px;
+    justify-content: flex-end;
+  }
 }
