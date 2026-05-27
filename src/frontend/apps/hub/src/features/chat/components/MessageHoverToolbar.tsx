@@ -8,6 +8,11 @@ import { FluentEmoji } from "./FluentEmoji";
 type MessageHoverToolbarProps = {
   /** Toggles the current user's reaction with the given emoji. */
   onReact: (emoji: string) => void;
+  /**
+   * Drops the Reply / More actions, keeping only the reaction controls — used
+   * for bubbles inside the threads panel.
+   */
+  compact?: boolean;
 };
 
 type QuickReaction = {
@@ -31,7 +36,10 @@ const QUICK_REACTIONS: QuickReaction[] = [
  * visible pill is `__bar` (the wrapper's padding is the gap to the bubble,
  * kept inside the hover hit-area).
  */
-export const MessageHoverToolbar = ({ onReact }: MessageHoverToolbarProps) => {
+export const MessageHoverToolbar = ({
+  onReact,
+  compact = false,
+}: MessageHoverToolbarProps) => {
   const { t } = useTranslation();
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -75,27 +83,42 @@ export const MessageHoverToolbar = ({ onReact }: MessageHoverToolbarProps) => {
           <EmojiAdd size={16} />
         </button>
 
-        <span className="hub__message-toolbar__separator" aria-hidden="true" />
+        {/* Reply / More are not offered for bubbles inside the threads panel. */}
+        {!compact && (
+          <>
+            <span
+              className="hub__message-toolbar__separator"
+              aria-hidden="true"
+            />
 
-        {/* Inert — Reply is wired in a later change. */}
-        <button
-          type="button"
-          className="hub__message-toolbar__button hub__message-toolbar__button--labelled"
-        >
-          <Reply size={16} />
-          <span className="hub__message-toolbar__label">{t("Reply")}</span>
-        </button>
+            {/* Inert — Reply is wired in a later change. */}
+            <button
+              type="button"
+              className="hub__message-toolbar__button hub__message-toolbar__button--labelled"
+              disabled
+              aria-disabled="true"
+            >
+              <Reply size={16} />
+              <span className="hub__message-toolbar__label">{t("Reply")}</span>
+            </button>
 
-        <span className="hub__message-toolbar__separator" aria-hidden="true" />
+            <span
+              className="hub__message-toolbar__separator"
+              aria-hidden="true"
+            />
 
-        {/* Inert — More is wired in a later change. */}
-        <button
-          type="button"
-          className="hub__message-toolbar__button"
-          aria-label={t("More actions")}
-        >
-          <More size={16} />
-        </button>
+            {/* Inert — More is wired in a later change. */}
+            <button
+              type="button"
+              className="hub__message-toolbar__button"
+              aria-label={t("More actions")}
+              disabled
+              aria-disabled="true"
+            >
+              <More size={16} />
+            </button>
+          </>
+        )}
       </div>
 
       {isPickerOpen && anchor && (

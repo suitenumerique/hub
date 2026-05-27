@@ -8,14 +8,19 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ChatMessage, ChatMessagesPage } from "@/features/drivers/types";
+import type {
+  ChatMessage,
+  ChatMessagesPage,
+  ChatThreadDetail,
+} from "@/features/drivers/types";
 
 import { useToggleReaction } from "../useToggleReaction";
 
 const toggleChatReaction = vi.fn();
+const toggleChatThreadReaction = vi.fn();
 
 vi.mock("@/features/config/Config", () => ({
-  getDriver: () => ({ toggleChatReaction }),
+  getDriver: () => ({ toggleChatReaction, toggleChatThreadReaction }),
 }));
 
 const CHAT_ID = "chat-1";
@@ -137,6 +142,108 @@ describe("useToggleReaction", () => {
     // onError restores the pre-toggle snapshot.
     await waitFor(() => {
       expect(reactionsAt(0, 0)).toEqual([]);
+    });
+  });
+});
+
+describe("useToggleReaction (thread mode)", () => {
+  let queryClient: QueryClient;
+
+  const THREAD_ID = "t-1";
+  const THREAD_KEY = ["chat-thread", CHAT_ID, THREAD_ID];
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    toggleChatReaction.mockReset();
+    toggleChatThreadReaction.mockReset();
+  });
+
+  afterEach(() => {
+    queryClient.clear();
+  });
+
+  const makeDetail = (messages: ChatMessage[]): ChatThreadDetail => ({
+    id: THREAD_ID,
+    rootMessageId: messages[0].id,
+    messages,
+    authors: [],
+    firstUnreadIndex: null,
+  });
+
+  const renderThreadToggle = () => {
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    Wrapper.displayName = "TestQueryClientProvider";
+    return renderHook(() => useToggleReaction(CHAT_ID, THREAD_ID), {
+      wrapper: Wrapper,
+    });
+  };
+
+  const threadReactionsFor = (messageId: string) =>
+    queryClient
+      .getQueryData<ChatThreadDetail>(THREAD_KEY)
+      ?.messages.find((message) => message.id === messageId)?.reactions;
+
+  it("optimistically toggles a reaction in the thread detail cache", async () => {
+    toggleChatThreadReaction.mockResolvedValue(makeMessage("t-1-r1"));
+    queryClient.setQueryData(
+      THREAD_KEY,
+      makeDetail([makeMessage("m-1"), makeMessage("t-1-r1")]),
+    );
+
+    const { result } = renderThreadToggle();
+    act(() => {
+      result.current.toggle("t-1-r1", "🎉");
+    });
+
+    await waitFor(() => {
+      expect(threadReactionsFor("t-1-r1")).toEqual([
+        { emoji: "🎉", count: 1, reactedByMe: true },
+      ]);
+    });
+    // The root message is left untouched.
+    expect(threadReactionsFor("m-1")).toEqual([]);
+    expect(toggleChatThreadReaction).toHaveBeenCalledWith({
+      chatId: CHAT_ID,
+      threadId: THREAD_ID,
+      messageId: "t-1-r1",
+      emoji: "🎉",
+    });
+    expect(toggleChatReaction).not.toHaveBeenCalled();
+  });
+
+  it("rolls the thread cache back when the driver call fails", async () => {
+    let rejectToggle: (error: Error) => void = () => {};
+    toggleChatThreadReaction.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectToggle = reject;
+      }),
+    );
+    queryClient.setQueryData(THREAD_KEY, makeDetail([makeMessage("t-1-r1")]));
+
+    const { result } = renderThreadToggle();
+    act(() => {
+      result.current.toggle("t-1-r1", "👍");
+    });
+
+    await waitFor(() => {
+      expect(threadReactionsFor("t-1-r1")).toEqual([
+        { emoji: "👍", count: 1, reactedByMe: true },
+      ]);
+    });
+
+    act(() => {
+      rejectToggle(new Error("network down"));
+    });
+
+    await waitFor(() => {
+      expect(threadReactionsFor("t-1-r1")).toEqual([]);
     });
   });
 });

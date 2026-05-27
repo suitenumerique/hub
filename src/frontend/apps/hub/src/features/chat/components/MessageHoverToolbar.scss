@@ -57,6 +57,15 @@
         var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
       outline-offset: -2px;
     }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.4;
+
+      &:hover {
+        background: transparent;
+      }
+    }
   }
 
   &__label {
