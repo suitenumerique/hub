@@ -39,6 +39,7 @@
   }
 
   &__body {
+    position: relative;
     max-width: 400px;
     min-width: 0;
     border-radius: var(--c--globals--spacings--xs, 8px);

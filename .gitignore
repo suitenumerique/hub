@@ -79,11 +79,14 @@ db.sqlite3
 .vscode/
 *.iml
 .devcontainer
+.agents/
+.agents
 .claude/
 .claude
 .playwright-mcp/
 openspec/
 .zed/
+AGENTS.md
 CLAUDE.md
 
 # Cursor rules

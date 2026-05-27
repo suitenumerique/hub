@@ -14,5 +14,6 @@ and this project adheres to
 - ✨(frontend) Add chat layout with LeftPanel and virtualized conversation view
 - ✨(frontend) Add tool panel with document list
 - ✨(frontend) Add file preview (PDF, image, video, audio) from the tools panel
+- ✨(frontend) Add message reactions bar with reaction toggle and emoji picker
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main

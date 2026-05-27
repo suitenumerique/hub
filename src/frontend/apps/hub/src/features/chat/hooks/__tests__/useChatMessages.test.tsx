@@ -19,6 +19,7 @@ const buildPage = (
       authorId: i % 2 === 0 ? "alice" : "me",
       content: `msg ${start + i}`,
       timestamp: new Date(2026, 0, 1, 8, start + i).toISOString(),
+      reactions: [],
     })),
     authors: [
       { id: "alice", name: "Alice", initials: "A", color: "blue-1" },
@@ -147,6 +148,7 @@ describe("useChatMessages", () => {
             authorId: "alice",
             content: "hi",
             timestamp: "2026-01-01T08:00:00Z",
+            reactions: [],
           },
         ],
         authors: [
@@ -161,6 +163,7 @@ describe("useChatMessages", () => {
             authorId: "bob",
             content: "hey",
             timestamp: "2026-01-01T07:00:00Z",
+            reactions: [],
           },
         ],
         authors: [

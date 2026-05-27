@@ -111,6 +111,7 @@ export const ChatVirtualList = ({ chatId }: ChatVirtualListProps) => {
           return (
             <Row
               message={message}
+              chatId={chatId}
               prev={messages[arrayIndex - 1]}
               next={messages[arrayIndex + 1]}
               authorsById={authorsById}
@@ -124,6 +125,8 @@ export const ChatVirtualList = ({ chatId }: ChatVirtualListProps) => {
 
 type RowProps = {
   message: ChatMessage;
+  /** Stable for the whole list — does not invalidate the row memo. */
+  chatId: string;
   prev: ChatMessage | undefined;
   next: ChatMessage | undefined;
   authorsById: Map<string, ChatMessageAuthor>;
@@ -131,6 +134,7 @@ type RowProps = {
 
 const Row = memo(function Row({
   message,
+  chatId,
   prev,
   next,
   authorsById,
@@ -144,8 +148,11 @@ const Row = memo(function Row({
       <RowShell>
         <ChatBubble
           variant="sent"
+          chatId={chatId}
+          messageId={message.id}
           content={message.content}
           timestamp={message.timestamp}
+          reactions={message.reactions}
           showTimestamp={isLastOfGroup}
         />
       </RowShell>
@@ -160,9 +167,12 @@ const Row = memo(function Row({
     <RowShell>
       <ChatBubble
         variant="received"
+        chatId={chatId}
+        messageId={message.id}
         content={message.content}
         author={author}
         timestamp={message.timestamp}
+        reactions={message.reactions}
         showHeader={isFirstOfGroup}
         showAvatar={isLastOfGroup}
       />
