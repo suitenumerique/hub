@@ -1,13 +1,13 @@
 import { useTranslation } from "react-i18next";
 
 import { HubLayout } from "@/features/layouts/HubLayout";
+import type { NextPageWithLayout } from "@/features/layouts/NextPageWithLayout";
 
-export default function NewChatPage() {
+const NewChatPage: NextPageWithLayout = () => {
   const { t } = useTranslation();
+  return <p>{t("New discussion")}</p>;
+};
 
-  return (
-    <HubLayout>
-      <p>{t("New discussion")}</p>
-    </HubLayout>
-  );
-}
+NewChatPage.getLayout = (page) => <HubLayout>{page}</HubLayout>;
+
+export default NewChatPage;

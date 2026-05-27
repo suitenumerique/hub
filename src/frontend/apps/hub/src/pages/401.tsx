@@ -2,15 +2,22 @@ import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
 import { HubLayout } from "@/features/layouts/HubLayout";
+import type { NextPageWithLayout } from "@/features/layouts/NextPageWithLayout";
 
-export default function Unauthorized() {
+const Unauthorized: NextPageWithLayout = () => {
   const { t } = useTranslation();
   return (
-    <HubLayout requireAuth={false}>
+    <>
       <h1>{t("401 Unauthorized")}</h1>
       <p>
         <Link href="/">{t("Back to home")}</Link>
       </p>
-    </HubLayout>
+    </>
   );
-}
+};
+
+Unauthorized.getLayout = (page) => (
+  <HubLayout requireAuth={false}>{page}</HubLayout>
+);
+
+export default Unauthorized;

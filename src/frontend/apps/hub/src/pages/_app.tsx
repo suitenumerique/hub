@@ -7,7 +7,6 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import type { AppProps } from "next/app";
 import Head from "next/head";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,6 +18,7 @@ import { APIError, errorToString } from "@/features/api/APIError";
 import { AnalyticsProvider } from "@/features/analytics/AnalyticsProvider";
 import { Auth } from "@/features/auth/Auth";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
+import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
 
 const onError = (error: Error, query: unknown) => {
   if ((query as Query).meta?.noGlobalError) {
@@ -49,12 +49,17 @@ const queryClient = new QueryClient({
   },
 });
 
-export default function MyApp({ Component, pageProps }: AppProps) {
+export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
     document.documentElement.lang = i18n.language;
   }, [i18n.language]);
+
+  // Persistent layouts: the page declares its layout via `getLayout`, and the
+  // layout instance lives here (above `<Component>`) so it survives navigations
+  // between pages instead of remounting on every route change.
+  const getLayout = Component.getLayout ?? ((page) => page);
 
   return (
     <>
@@ -67,9 +72,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
         <CunninghamProvider currentLocale={i18n.language} theme="dsfr-light">
           <ConfigProvider>
             <AnalyticsProvider>
-              <Auth>
-                <Component {...pageProps} />
-              </Auth>
+              <Auth>{getLayout(<Component {...pageProps} />)}</Auth>
             </AnalyticsProvider>
           </ConfigProvider>
         </CunninghamProvider>
