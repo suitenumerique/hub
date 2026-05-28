@@ -10,13 +10,11 @@ import { getDriver } from "../config/Config";
 import { useConfig } from "../config/ConfigProvider";
 import { MatrixDriver } from "../drivers/implementations/MatrixDriver";
 import { ChatLocalUser } from "../drivers/types";
-import { matrixUserStore } from "../matrix/stores/matrixUserStore";
 import { authUrl } from "./authUrl";
 import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
 
 export const logout = () => {
   window.location.replace(new URL('logout/', baseApiUrl()).href);
-  matrixUserStore.removeUser();
   posthog.reset();
 };
 

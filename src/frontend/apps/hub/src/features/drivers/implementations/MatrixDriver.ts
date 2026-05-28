@@ -51,6 +51,7 @@ const delay = (ms: number) =>
 export class MatrixDriver extends StandardDriver {
 
   private mx: MatrixClient | null | undefined;
+  private initClientPromise: Promise<MatrixClient> | null = null;
 
   constructor() {
     super();
@@ -62,21 +63,33 @@ export class MatrixDriver extends StandardDriver {
     if (typeof window !== 'undefined') {
       window.addEventListener(
         CHAT_USER_LISTENER_KEY,
-        this.onChatUser.bind(this)
+        this.onChatUser
       );
     }
   }
 
   // When a chat user as been authenticated, we can initialize the matrix client
-  private async onChatUser(data: CustomEvent<{ key: string; value: MatrixUserInterface }>) {
-    const user = data.detail.value;
+  private async onChatUser(data: CustomEvent<{ user: MatrixUserInterface }>) {
+    const user = data.detail.user;
     // if the client is already initialized and userId the same, don't do anything
     if (this.mx && this.mx.getUserId() === user.mxId) return;
+    // if initialization is already in progress, wait for it to complete
+    if (this.initClientPromise) {
+       console.log("*** Init already in progress, waiting...");
+      await this.initClientPromise;
+      return;
+    }
 
-    const mx = await initClient(user);
-    console.log("*** mx", mx);
-    startClient(mx);
-    this.mx = mx;
+    console.log("*** Starting initClient");
+    this.initClientPromise = initClient(user);
+    try {
+      const mx = await this.initClientPromise;
+      console.log("*** mx initialized", mx.getUserId());
+      startClient(mx);
+      this.mx = mx;
+    } finally {
+      this.initClientPromise = null;
+    }
   }
 
   async getChat(chatId: string): Promise<Chat> {

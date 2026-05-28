@@ -5,8 +5,7 @@ export { };
 declare global {
   interface WindowEventMap {
     "chat-local-user": CustomEvent<{
-      key: string;
-      value: MatrixUserInterface;
+      user: MatrixUserInterface;
     }>;
   }
 }

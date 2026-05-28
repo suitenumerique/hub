@@ -26,9 +26,8 @@ export const fetchHomeserverForEmail = async (
       base_url: serverUrl,
       server_name: findHomeServerNameFromUrl(serverUrl),
     };
-  } catch (err) {
-    console.error('Could not find homeserver for this email', err);
-    return;
+  } catch {
+    throw new Error('Could not find homeserver for this email');
   }
 };
 

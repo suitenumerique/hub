@@ -1,8 +1,8 @@
 import {
-    createClient,
-    IndexedDBCryptoStore,
-    IndexedDBStore,
-    MatrixClient,
+  createClient,
+  IndexedDBCryptoStore,
+  IndexedDBStore,
+  MatrixClient,
 } from "matrix-js-sdk/lib/matrix";
 import { MatrixUserInterface } from "./types";
 
@@ -12,14 +12,14 @@ export const initClient = async (
   const indexedDBStore = new IndexedDBStore({
     indexedDB: global.indexedDB,
     localStorage: global.localStorage,
-    dbName: 'web-sync-store',
+    dbName: 'matrix-web-sync-store',
   });
 
   const legacyCryptoStore = new IndexedDBCryptoStore(
     global.indexedDB,
     'crypto-store',
   );
-
+  console.log("*** user in init client", user);
   const mx = createClient({
     baseUrl: user.homeserverUrl,
     accessToken: user.accessToken,

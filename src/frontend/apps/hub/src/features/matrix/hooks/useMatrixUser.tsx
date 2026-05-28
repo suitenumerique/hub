@@ -1,4 +1,5 @@
 import { User } from "@/features/auth/types";
+import { CHAT_USER_LISTENER_KEY } from "@/features/drivers/implementations/MatrixDriver";
 import { ChatLocalUser } from "@/features/drivers/types";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
@@ -23,12 +24,21 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
     if (!user) return;
 
     const initializeUser = async () => {
-      const currentUser = matrixUserStore.getUser();
+      const currentMatrixUser = matrixUserStore.getUser();
       let currentHomeserverSelected = sessionStorage.getItem(OIDC_HS);
 
-      if (currentUser) {
+      // already processing the callback of the auth;
+      if (isProcessingCallback) return;
+
+      if (currentMatrixUser) {
         console.log('**** already has user');
-        return currentUser;
+        const chatUser: ChatLocalUser = {
+          userId: currentMatrixUser.mxId,
+          accessToken: currentMatrixUser.accessToken,
+          refreshToken: currentMatrixUser.refreshToken
+        }
+        setChatUser(chatUser);
+        return;
       }
 
       console.log('**** No user found, fetching new user');
@@ -98,6 +108,11 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
           oidcResult.idToken,
         );
 
+        window.dispatchEvent(
+          new CustomEvent(CHAT_USER_LISTENER_KEY, {
+            detail: { user: matrixUser }
+          })
+        );
         setChatUser(chatLocalUser);
         router.replace(router.pathname, undefined, { shallow: true });
       } finally {
