@@ -1,17 +1,17 @@
-import { Spinner } from '@gouvfr-lasuite/ui-kit';
-import { posthog } from 'posthog-js';
-import React, { PropsWithChildren, useEffect, useState } from 'react';
+import { Spinner } from "@gouvfr-lasuite/ui-kit";
+import { posthog } from "posthog-js";
+import React, { PropsWithChildren, useEffect, useState } from "react";
 
-import { APIError } from '../api/APIError';
-import { fetchAPI } from '@/features/api/fetchApi';
-import { baseApiUrl } from '../api/utils';
-import { useConfig } from '../config/ConfigProvider';
-import { authUrl } from './authUrl';
-import { attemptSilentLogin, canAttemptSilentLogin } from './silentLogin';
-import { User } from '@/features/auth/types';
-import { matrixUserStore } from '../matrix/stores/matrixUserStore';
-import { useMatrixChatUser } from '../matrix/hooks/useMatrixUser';
-import { MatrixUserInterface } from '../matrix/types';
+import { fetchAPI } from "@/features/api/fetchApi";
+import { User } from "@/features/auth/types";
+import { APIError } from "../api/APIError";
+import { baseApiUrl } from "../api/utils";
+import { useConfig } from "../config/ConfigProvider";
+import { useMatrixChatUser } from "../matrix/hooks/useMatrixUser";
+import { matrixUserStore } from "../matrix/stores/matrixUserStore";
+import { MatrixUserInterface } from "../matrix/types";
+import { authUrl } from "./authUrl";
+import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
 
 export const logout = () => {
   window.location.replace(new URL('logout/', baseApiUrl()).href);

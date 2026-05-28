@@ -1,5 +1,6 @@
-import { matrixConfig } from '../config';
-const homeServerList = matrixConfig['homeserver_list'];
+import { matrixConfig } from "../config";
+const homeServerList = matrixConfig["homeserver_list"];
+
 /**
  *
  * Find the homeserver corresponding to the given email.
@@ -11,9 +12,9 @@ export const fetchHomeserverForEmail = async (
 ): Promise<void | { base_url: string; server_name: string }> => {
   try {
     const randomHomeServer = homeServerList[0];
-    const infoUrl = '/_matrix/identity/api/v1/info?medium=email&address=';
+    const infoUrl = "/_matrix/identity/api/v1/info?medium=email&address=";
 
-    const response = await fetch(randomHomeServer.base_url + infoUrl + email);
+    const response = await fetch(randomHomeServer.base_url + infoUrl + encodeURIComponent(email));
     if (!response.ok) {
       throw new Error('Could not find homeserver for this email');
     }

@@ -6,10 +6,10 @@ import {
   MatrixError,
   OidcClientConfig,
   registerOidcClient,
-} from 'matrix-js-sdk/lib/matrix';
-import { secureRandomString } from 'matrix-js-sdk/lib/randomstring';
-import { CompleteOidcLoginResponse, MatrixUserInterface } from '../types';
-import { matrixConfig } from '../config';
+} from "matrix-js-sdk/lib/matrix";
+import { secureRandomString } from "matrix-js-sdk/lib/randomstring";
+import { matrixConfig } from "../config";
+import { CompleteOidcLoginResponse, MatrixUserInterface } from "../types";
 
 /**
  * Send a login request to the given server, and format the response
@@ -80,9 +80,15 @@ export async function sendLoginRequest(
 export const getOIDCAuthUrl = async (
   hs: string,
   email: string,
-): Promise<string> => {
+): Promise<{
+  authUrl: string;
+  responseMode: 'fragment' | 'query';
+}> => {
   const delegatedAuthConfig = await fetchDelegatedAuthMetadata(hs);
   console.log('*** delegatedAuthConfig', delegatedAuthConfig);
+  if (!delegatedAuthConfig) {
+    throw new Error("OIDC metadata not available for this server");
+  }
   const urlCallback = new URL(
     window.location.origin + window.location.pathname,
   );
@@ -102,6 +108,11 @@ export const getOIDCAuthUrl = async (
   });
 
   const nonce = secureRandomString(10);
+  const responseMode = delegatedAuthConfig!.response_modes_supported?.includes(
+    'fragment',
+  )
+    ? 'fragment'
+    : 'query';
 
   const authorizationUrl = await generateOidcAuthorizationUrl({
     metadata: delegatedAuthConfig!,
@@ -112,18 +123,16 @@ export const getOIDCAuthUrl = async (
     nonce,
     urlState: '',
     loginHint: email,
-    responseMode: delegatedAuthConfig!.response_modes_supported?.includes(
-      'fragment',
-    )
-      ? 'fragment'
-      : 'query',
+    responseMode
   });
-  return authorizationUrl;
+  return { authUrl: authorizationUrl, responseMode };
 };
 
 const fetchDelegatedAuthMetadata = async (preferredHomeserverUrl: string) => {
   try {
-    const tempClient = new MatrixClient({ baseUrl: preferredHomeserverUrl });
+    const tempClient = createClient({
+      baseUrl: preferredHomeserverUrl
+    })
     const delegatedAuthentication: OidcClientConfig =
       await tempClient.getAuthMetadata();
     return delegatedAuthentication;

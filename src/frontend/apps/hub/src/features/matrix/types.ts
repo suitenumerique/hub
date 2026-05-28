@@ -1,7 +1,7 @@
 // In future implementation we could merge both types ?
 // import { User } from '@/features/auth/types';
-import { type OidcClientConfig } from 'matrix-js-sdk/src/matrix';
-import { IdTokenClaims } from 'oidc-client-ts';
+import { type OidcClientConfig } from "matrix-js-sdk/lib/matrix";
+import { IdTokenClaims } from "oidc-client-ts";
 
 // response from login with matrix client
 export type MatrixUserInterface = {

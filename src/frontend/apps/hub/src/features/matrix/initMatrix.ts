@@ -1,10 +1,10 @@
 import {
-  createClient,
-  IndexedDBCryptoStore,
-  IndexedDBStore,
-  MatrixClient,
-} from 'matrix-js-sdk/lib/matrix';
-import { MatrixUserInterface } from './types';
+    createClient,
+    IndexedDBCryptoStore,
+    IndexedDBStore,
+    MatrixClient,
+} from "matrix-js-sdk/lib/matrix";
+import { MatrixUserInterface } from "./types";
 
 export const initClient = async (
   user: MatrixUserInterface,

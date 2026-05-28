@@ -1,9 +1,11 @@
-import { MatrixUserInterface } from '../types';
+import { MatrixUserInterface } from "../types";
 
 const MATRIX_USER_KEY = 'matrixUser';
 const OIDC_CLIENT_ID = 'oidc_client_id';
 const OIDC_ISSUER = 'oidc_issuer';
 const OIDC_ID_TOKEN = 'oidc_id_token';
+
+
 class MatrixUserStore {
   getUser(): MatrixUserInterface | null {
     const data = localStorage.getItem(MATRIX_USER_KEY);

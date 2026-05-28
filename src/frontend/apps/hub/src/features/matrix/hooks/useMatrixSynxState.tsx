@@ -1,9 +1,9 @@
 import {
-  ClientEvent,
-  ClientEventHandlerMap,
-  MatrixClient,
-} from 'matrix-js-sdk';
-import { useEffect } from 'react';
+    ClientEvent,
+    ClientEventHandlerMap,
+    MatrixClient,
+} from "matrix-js-sdk";
+import { useEffect } from "react";
 
 export const useMatrixSyncState = (
   mx: MatrixClient | undefined,

@@ -1,10 +1,10 @@
-import React, { ReactNode, useCallback, useEffect } from 'react';
-import { initClient, startClient } from '../initMatrix';
+import { ReactNode, useCallback, useEffect } from "react";
+import { initClient, startClient } from "../initMatrix";
 
-import { MatrixClientProvider } from '../hooks/useMatrixClients';
-import { useMatrixSyncState } from '../hooks/useMatrixSynxState';
-import { useAuth } from '@/features/auth/Auth';
-import { useQuery } from '@tanstack/react-query';
+import { useAuth } from "@/features/auth/Auth";
+import { useQuery } from "@tanstack/react-query";
+import { MatrixClientProvider } from "../hooks/useMatrixClients";
+import { useMatrixSyncState } from "../hooks/useMatrixSynxState";
 // import { getDriver } from '@/features/config/Config';
 // import { MatrixDriver } from '@/features/drivers/implementations/MatrixDriver';
 
@@ -20,7 +20,7 @@ export function MatrixClientRoot({ children }: ClientRootProps) {
 
   // We only initialize the matrix client after the user as authenticated
   const { data: mx } = useQuery({
-    queryKey: ['matrixClient', chatUser], // Refetch when chatUser changes
+    queryKey: ['matrixClient', chatUser?.mxId], // Refetch when chatUser changes
     queryFn: async () => {
       console.log('**** initializing matrix client', chatUser);
       return initClient(chatUser!);

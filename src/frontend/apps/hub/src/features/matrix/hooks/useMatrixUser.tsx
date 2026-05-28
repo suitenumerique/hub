@@ -1,19 +1,21 @@
+import { User } from "@/features/auth/types";
+import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/router";
+import { useState } from "react";
+import { matrixUserStore } from "../stores/matrixUserStore";
 import {
   completeOidcLogin,
   getOIDCAuthUrl,
   getUserIdFromAccessToken,
-} from '../utils/auth';
-import { matrixUserStore } from '../stores/matrixUserStore';
-import { User } from '@/features/auth/types';
-import { useQuery } from '@tanstack/react-query';
-import { fetchHomeserverForEmail } from '../utils/autodiscovery';
-import { useRouter } from 'next/router';
-import { useState } from 'react';
+} from "../utils/auth";
+import { fetchHomeserverForEmail } from "../utils/autodiscovery";
+
+const OIDC_HS = 'oidc_hs';
+const OIDC_RESPONSE_MODE = 'oidc_response_mode';
 
 export const useMatrixChatUser = (user: User | null | undefined) => {
   const router = useRouter();
   const [isProcessingCallback, setIsProcessingCallback] = useState(false);
-  const [homeserver, setHomeserver] = useState('');
 
   const { data: chatUser = null } = useQuery({
     queryKey: ['useMatrixChatUser', user], // Refetch when chatUser changes
@@ -23,21 +25,22 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
         console.log('**** already has user');
         return currentUser;
       }
-
+      let currentHomeserverSelected = sessionStorage.get(OIDC_HS);
       // Check if we're in OIDC callback
       const { code, state } = router.query;
       if (code && state) {
         console.log('**** Processing OIDC callback');
         setIsProcessingCallback(true);
-        const oidcResult = await completeOidcLogin({ code, state }, 'fragment');
+        const responseMode = sessionStorage.get(OIDC_RESPONSE_MODE) || 'fragment';
+        const oidcResult = await completeOidcLogin({ code, state }, responseMode);
         const {
           user_id: userId,
           device_id: deviceId,
           is_guest: isGuest,
-        } = await getUserIdFromAccessToken(oidcResult.accessToken, homeserver);
+        } = await getUserIdFromAccessToken(oidcResult.accessToken, currentHomeserverSelected);
 
         const matrixUser = {
-          homeserverUrl: homeserver,
+          homeserverUrl: currentHomeserverSelected,
           mxId: userId,
           deviceId: deviceId,
           accessToken: oidcResult.accessToken,
@@ -63,11 +66,14 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
       if (process.env.NODE_ENV === 'development') {
         email = 'marc3@tchap.beta.gouv.fr';
       }
-      if (!homeserver) {
+      if (!currentHomeserverSelected) {
         const hs = await fetchHomeserverForEmail(email);
-        setHomeserver(hs!.base_url);
+        currentHomeserverSelected = hs!.base_url;
+        sessionStorage.setItem(OIDC_HS, hs!.base_url);
       }
-      const authUrl = await getOIDCAuthUrl(homeserver, email);
+      const { authUrl, responseMode } = await getOIDCAuthUrl(currentHomeserverSelected, email);
+      sessionStorage.setItem(OIDC_RESPONSE_MODE, responseMode);
+
       // start oidc flow in tchap MAS
       window.location.href = authUrl;
       return null;
