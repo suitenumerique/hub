@@ -2,6 +2,7 @@ import {
   ApiConfig,
   Chat,
   ChatDocumentsPage,
+  ChatLocalUser,
   ChatMessage,
   ChatMessagesPage,
   ChatThread,
@@ -82,4 +83,10 @@ export abstract class Driver {
   abstract markChatThreadRead(params: MarkChatThreadReadParams): Promise<void>;
   /** Marks every thread of a conversation as read for the current user. */
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
+  /** Getting the user credentials from the chat engine
+   * The user passed is the one returned from Hub backend
+   *
+   * It should return a react hook
+   */
+  abstract useChatLocalUser(user: User | null | undefined): () => { chatUser: ChatLocalUser | null; isProcessingCallback: boolean; isStartOidcFlow: boolean; };
 }

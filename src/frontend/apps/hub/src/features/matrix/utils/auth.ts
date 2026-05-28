@@ -199,7 +199,7 @@ export const getUserIdFromAccessToken = async (
       idBaseUrl: identityServerUrl,
     });
 
-    return client.whoami();
+    return await client.whoami();
   } catch (error) {
     console.error('Failed to retrieve userId using accessToken', error);
     throw new Error('Failed to retrieve userId using accessToken');

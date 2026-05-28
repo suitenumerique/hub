@@ -1,3 +1,10 @@
+import {
+  GetChatMessagesParams,
+  GetChatThreadParams,
+  MarkChatThreadReadParams,
+  ToggleChatReactionParams,
+  ToggleChatThreadReactionParams,
+} from "../Driver";
 import { getMockChat } from "../mocks/mockChats";
 import { getMockChatDocuments } from "../mocks/mockDocuments";
 import {
@@ -11,19 +18,14 @@ import {
   toggleMockThreadReaction,
 } from "../mocks/mockMessages";
 import {
-  GetChatMessagesParams,
-  GetChatThreadParams,
-  MarkChatThreadReadParams,
-  ToggleChatReactionParams,
-  ToggleChatThreadReactionParams,
-} from "../Driver";
-import {
   Chat,
   ChatDocumentsPage,
+  ChatLocalUser,
   ChatMessage,
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
+  User,
 } from "../types";
 
 import { StandardDriver } from "./StandardDriver";
@@ -202,5 +204,13 @@ export class MockDriver extends StandardDriver {
     await delay(MOCK_CHAT_LATENCY_MS);
 
     markAllMockThreadsRead(chatId);
+  }
+
+  useChatLocalUser(user: User | null | undefined) {
+    return () => ({
+      chatUser: {
+        userId: user?.id,
+        accessToken: ""
+    } as ChatLocalUser,  isProcessingCallback: false, isStartOidcFlow: false });
   }
 }

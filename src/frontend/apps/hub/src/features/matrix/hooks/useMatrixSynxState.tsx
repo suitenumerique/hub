@@ -6,7 +6,7 @@ import {
 import { useEffect } from "react";
 
 export const useMatrixSyncState = (
-  mx: MatrixClient | undefined,
+  mx: MatrixClient | null,
   onChange: ClientEventHandlerMap[ClientEvent.Sync],
 ): void => {
   useEffect(() => {

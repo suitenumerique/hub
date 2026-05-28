@@ -6,10 +6,11 @@ import { fetchAPI } from "@/features/api/fetchApi";
 import { User } from "@/features/auth/types";
 import { APIError } from "../api/APIError";
 import { baseApiUrl } from "../api/utils";
+import { getDriver } from "../config/Config";
 import { useConfig } from "../config/ConfigProvider";
-import { useMatrixChatUser } from "../matrix/hooks/useMatrixUser";
+import { MatrixDriver } from "../drivers/implementations/MatrixDriver";
+import { ChatLocalUser } from "../drivers/types";
 import { matrixUserStore } from "../matrix/stores/matrixUserStore";
-import { MatrixUserInterface } from "../matrix/types";
 import { authUrl } from "./authUrl";
 import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
 
@@ -28,7 +29,7 @@ interface AuthContextInterface {
   user?: User | null;
   init?: () => Promise<User | null>;
   refreshUser?: () => Promise<void>;
-  chatUser?: MatrixUserInterface | null;
+  chatUser?: ChatLocalUser | null;
 }
 
 export const AuthContext = React.createContext<AuthContextInterface>({});
@@ -38,9 +39,17 @@ export const useAuth = () => React.useContext(AuthContext);
 export const Auth = ({ children }: PropsWithChildren) => {
   const [user, setUser] = useState<User | null>();
   const { config } = useConfig();
+  const driver = getDriver();
+
+  // TODO: is it a good place to put ?
+  // Some driver may need an initialization process
+  if (driver instanceof MatrixDriver) {
+    driver.initialize();
+  }
 
   // Fetch Matrix chat user credentials when regular user is authenticated
-  const { chatUser, isProcessingCallback, isStartOidcFlow } = useMatrixChatUser(user);
+  const useChatLocalUser = driver.useChatLocalUser(user);
+  const { chatUser, isProcessingCallback, isStartOidcFlow } = useChatLocalUser();
 
   const init = async () => {
     try {

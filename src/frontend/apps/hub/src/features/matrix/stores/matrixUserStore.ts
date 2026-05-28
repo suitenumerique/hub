@@ -1,3 +1,4 @@
+import { CHAT_USER_LISTENER_KEY } from "@/features/drivers/implementations/MatrixDriver";
 import { MatrixUserInterface } from "../types";
 
 const MATRIX_USER_KEY = 'matrixUser';
@@ -14,6 +15,11 @@ class MatrixUserStore {
 
   saveUser(localUser: MatrixUserInterface) {
     localStorage.setItem(MATRIX_USER_KEY, JSON.stringify(localUser));
+    window.dispatchEvent(
+      new CustomEvent(CHAT_USER_LISTENER_KEY, {
+        detail: localUser
+      })
+    );
   }
 
   removeUser() {

@@ -1,4 +1,5 @@
 import { User } from "@/features/auth/types";
+import { ChatLocalUser } from "@/features/drivers/types";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { matrixUserStore } from "../stores/matrixUserStore";
@@ -14,7 +15,7 @@ const OIDC_HS = 'oidc_hs';
 
 export const useMatrixChatUser = (user: User | null | undefined) => {
   const router = useRouter();
-  const [chatUser, setChatUser] = useState<MatrixUserInterface | null>(null);
+  const [chatUser, setChatUser] = useState<ChatLocalUser | null>(null);
   const [isProcessingCallback, setIsProcessingCallback] = useState(false);
   const [isStartOidcFlow, setisStartOidcFlow] = useState(false);
 
@@ -57,7 +58,6 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
   useEffect(() => {
     if (!router.isReady) return;
     const { code, state } = router.query;
-    console.log("*** code, state", code, state);
     if (!code || !state || typeof code !== 'string' || typeof state !== 'string') return;
     console.log("*** processing callback oidc");
 
@@ -74,6 +74,8 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
         const { user_id: userId, device_id: deviceId, is_guest: isGuest } =
           await getUserIdFromAccessToken(oidcResult.accessToken, currentHomeserverSelected);
 
+        // We distinguish a chat local user and matrix user
+        // that can have specific data to matrix that needs to be stored
         const matrixUser: MatrixUserInterface = {
           homeserverUrl: currentHomeserverSelected,
           mxId: userId,
@@ -83,6 +85,12 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
           guest: isGuest,
         };
 
+        const chatLocalUser: ChatLocalUser = {
+          userId,
+          accessToken: matrixUser.accessToken,
+          refreshToken: matrixUser.refreshToken
+        }
+
         matrixUserStore.saveUser(matrixUser);
         matrixUserStore.persistOIDC(
           oidcResult.clientId,
@@ -90,7 +98,7 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
           oidcResult.idToken,
         );
 
-        setChatUser(matrixUser);
+        setChatUser(chatLocalUser);
         router.replace(router.pathname, undefined, { shallow: true });
       } finally {
         setIsProcessingCallback(false);

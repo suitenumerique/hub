@@ -28,6 +28,7 @@ export const fetchHomeserverForEmail = async (
     };
   } catch (err) {
     console.error('Could not find homeserver for this email', err);
+    return;
   }
 };
 
