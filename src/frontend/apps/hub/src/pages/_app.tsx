@@ -1,21 +1,21 @@
 import { CunninghamProvider } from "@gouvfr-lasuite/ui-kit";
 import {
-  MutationCache,
-  Query,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
+    MutationCache,
+    Query,
+    QueryCache,
+    QueryClient,
+    QueryClientProvider,
 } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import Head from "next/head";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import '@/i18n/initI18n';
-import '../styles/globals.scss';
+import "@/i18n/initI18n";
+import "../styles/globals.scss";
 
-import { APIError, errorToString } from "@/features/api/APIError";
 import { AnalyticsProvider } from "@/features/analytics/AnalyticsProvider";
+import { APIError, errorToString } from "@/features/api/APIError";
 import { Auth } from "@/features/auth/Auth";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
@@ -65,7 +65,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   return (
     <>
       <Head>
-        <title>{t('LaSuite Hub')}</title>
+        <title>{t("LaSuite Hub")}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/assets/favicon.png" type="image/png" />
       </Head>
@@ -77,7 +77,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             </AnalyticsProvider>
           </ConfigProvider>
         </CunninghamProvider>
-        {process.env.NODE_ENV === 'development' && (
+        {process.env.NODE_ENV === "development" && (
           <ReactQueryDevtools initialIsOpen={false} />
         )}
       </QueryClientProvider>
