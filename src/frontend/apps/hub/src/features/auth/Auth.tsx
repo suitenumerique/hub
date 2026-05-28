@@ -40,7 +40,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
   const { config } = useConfig();
 
   // Fetch Matrix chat user credentials when regular user is authenticated
-  const { chatUser } = useMatrixChatUser(user);
+  const { chatUser, isProcessingCallback, isStartOidcFlow } = useMatrixChatUser(user);
 
   const init = async () => {
     try {
@@ -84,7 +84,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     }
   }, [user]);
 
-  if (user === undefined) {
+  if (user === undefined || isProcessingCallback || isStartOidcFlow) {
     return (
       <div className="hub-auth-loader">
         <Spinner size="xl" />

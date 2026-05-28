@@ -11,6 +11,10 @@ import { secureRandomString } from "matrix-js-sdk/lib/randomstring";
 import { matrixConfig } from "../config";
 import { CompleteOidcLoginResponse, MatrixUserInterface } from "../types";
 
+
+// set OIDC response mode to query
+const RESPONSE_MODE = 'query';
+
 /**
  * Send a login request to the given server, and format the response
  * as a MatrixClientCreds
@@ -80,10 +84,7 @@ export async function sendLoginRequest(
 export const getOIDCAuthUrl = async (
   hs: string,
   email: string,
-): Promise<{
-  authUrl: string;
-  responseMode: 'fragment' | 'query';
-}> => {
+): Promise<string> => {
   const delegatedAuthConfig = await fetchDelegatedAuthMetadata(hs);
   console.log('*** delegatedAuthConfig', delegatedAuthConfig);
   if (!delegatedAuthConfig) {
@@ -93,6 +94,7 @@ export const getOIDCAuthUrl = async (
     window.location.origin + window.location.pathname,
   );
   const redirectUri = urlCallback.href;
+  console.log("*** redirectUri", redirectUri);
 
   const defaultOidcClientUri = window.location.origin;
 
@@ -108,11 +110,6 @@ export const getOIDCAuthUrl = async (
   });
 
   const nonce = secureRandomString(10);
-  const responseMode = delegatedAuthConfig!.response_modes_supported?.includes(
-    'fragment',
-  )
-    ? 'fragment'
-    : 'query';
 
   const authorizationUrl = await generateOidcAuthorizationUrl({
     metadata: delegatedAuthConfig!,
@@ -123,9 +120,10 @@ export const getOIDCAuthUrl = async (
     nonce,
     urlState: '',
     loginHint: email,
-    responseMode
+    responseMode: RESPONSE_MODE
   });
-  return { authUrl: authorizationUrl, responseMode };
+  console.log("*** authorizationUrl", authorizationUrl);
+  return authorizationUrl;
 };
 
 const fetchDelegatedAuthMetadata = async (preferredHomeserverUrl: string) => {
@@ -158,8 +156,7 @@ const fetchDelegatedAuthMetadata = async (preferredHomeserverUrl: string) => {
  * @throws When we failed to get a valid access token
  */
 export const completeOidcLogin = async (
-  params: { code: string; state: string },
-  responseMode: 'fragment' | 'query',
+  params: { code: string; state: string }
 ): Promise<CompleteOidcLoginResponse> => {
   const { code, state } = params;
   const {
@@ -168,7 +165,7 @@ export const completeOidcLogin = async (
     idTokenClaims,
     identityServerUrl,
     oidcClientSettings,
-  } = await completeAuthorizationCodeGrant(code, state, responseMode);
+  } = await completeAuthorizationCodeGrant(code, state, RESPONSE_MODE);
 
   return {
     homeserverUrl,
@@ -202,7 +199,7 @@ export const getUserIdFromAccessToken = async (
       idBaseUrl: identityServerUrl,
     });
 
-    return await client.whoami();
+    return client.whoami();
   } catch (error) {
     console.error('Failed to retrieve userId using accessToken', error);
     throw new Error('Failed to retrieve userId using accessToken');
