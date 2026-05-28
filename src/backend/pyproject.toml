@@ -59,6 +59,7 @@ dependencies = [
     "requests==2.33.1",
     "sentry-sdk==2.48.0",
     "whitenoise==6.11.0",
+    "djangorestframework-stubs>=3.17.0",
 ]
 
 [project.urls]

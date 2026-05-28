@@ -31,3 +31,9 @@ class IsSelf(IsAuthenticated):
     def has_object_permission(self, request, view, obj):
         """Write permissions are only allowed to the user itself."""
         return obj == request.user
+
+
+class ConversationPermission(permissions.IsAuthenticated):
+
+    def has_object_permission(self, request, view, obj):
+        return super().has_object_permission(request, view, obj) and request.user in list(obj.participants.all())

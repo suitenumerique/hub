@@ -243,6 +243,21 @@ class UserViewSet(
         )
 
 
+class ConversationViewSet(SerializerPerActionMixin, viewsets.ModelViewSet):
+    """User ViewSet"""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = serializers.ConversationSerializer
+    create_serializer_class = serializers.CreateConversationSerializer
+    pagination_class = None  # FIXME: Disable pagination for now
+
+    def get_queryset(self):
+        return models.Conversation.objects.filter(participants=self.request.user).prefetch_related("participants")
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+
+
 class ConfigView(drf.views.APIView):
     """API ViewSet for sharing some public settings."""
 

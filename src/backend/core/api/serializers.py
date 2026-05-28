@@ -42,3 +42,14 @@ class UserLightSerializer(UserSerializer):
         model = models.User
         fields = ["full_name", "short_name"]
         read_only_fields = ["full_name", "short_name"]
+
+class ConversationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Conversation
+        fields = ["pk", "kind", "chat_service_kind", "chat_service_id", "name", "participants", "created_at"]
+
+
+class CreateConversationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Conversation
+        fields = ["pk", "chat_service_id", "name", "participants"]

@@ -8,6 +8,8 @@ from logging import getLogger
 from django.conf import settings
 from django.contrib.auth import models as auth_models
 from django.contrib.auth.base_user import AbstractBaseUser
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import ArrayField, RangeOperators
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -166,3 +168,38 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
 
     def __str__(self):
         return self.email or self.admin_email or str(self.id)
+
+
+class ConversationKind(models.TextChoices):
+    DIRECT = "DIRECT", _("direct chat")
+    GROUP = "GROUP", _("group chat")
+
+
+class ChatServiceKind(models.TextChoices):
+    TCHAP = "TCHAP", _("Tchap")
+
+
+class Conversation(BaseModel):
+    kind = models.CharField(choices=ConversationKind.choices, default=ConversationKind.DIRECT)
+    chat_service_kind = models.CharField(choices=ChatServiceKind.choices, default=ChatServiceKind.TCHAP)
+    chat_service_id = models.CharField()
+    name = models.CharField(blank=True)
+
+    participants = models.ManyToManyField(User, related_name="conversations")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint("chat_service_kind", "chat_service_id", name="uniq_chat_service_kind_and_id"),
+            models.CheckConstraint(
+                name="check_only_groups_have_name",
+                check=(models.Q(kind=ConversationKind.GROUP) & ~models.Q(name="")) | (models.Q(kind=ConversationKind.DIRECT, name=""))
+            )
+        ]
+
+    def __str__(self):
+        # FIXME: Not sure that we should use PII here
+        return self.name if self.kind == ConversationKind.GROUP else ", ".join(self.participants.all())
+
+    def save(self, *args, **kwargs):
+        self.kind = ConversationKind.GROUP if self.name else ConversationKind.DIRECT
+        return super().save(*args, **kwargs)
