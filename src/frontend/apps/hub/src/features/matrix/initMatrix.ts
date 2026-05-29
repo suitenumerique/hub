@@ -12,17 +12,18 @@ export const initClient = async (
   const indexedDBStore = new IndexedDBStore({
     indexedDB: global.indexedDB,
     localStorage: global.localStorage,
-    dbName: 'matrix-web-sync-store',
+    dbName: 'hub-web-sync-store',
   });
 
   const legacyCryptoStore = new IndexedDBCryptoStore(
     global.indexedDB,
-    'crypto-store',
+    `crypto-store-${user.homeserverUrl}-${user.mxId}`
   );
   console.log("*** user in init client", user);
   const mx = createClient({
     baseUrl: user.homeserverUrl,
     accessToken: user.accessToken,
+    refreshToken: user.refreshToken,
     userId: user.mxId,
     store: indexedDBStore,
     cryptoStore: legacyCryptoStore,

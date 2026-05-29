@@ -38,6 +38,8 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
           refreshToken: currentMatrixUser.refreshToken
         }
         setChatUser(chatUser);
+        // Emit back to driverr so it can initialize the matrix driver
+        applicationEmitter.emit("matrix:user:initialized", { user: currentMatrixUser });
         return;
       }
 
