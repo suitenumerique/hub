@@ -29,7 +29,7 @@ import {
 } from "../types";
 
 import { initClient, startClient } from "@/features/matrix/initMatrix";
-import { MatrixUserInterface } from "@/features/matrix/types";
+import { applicationEmitter, MatrixUserInitializedEvent } from "@/features/matrix/utils/eventEmitter";
 import { MatrixClient } from "matrix-js-sdk/lib/matrix";
 import { StandardDriver } from "./StandardDriver";
 
@@ -53,24 +53,24 @@ export class MatrixDriver extends StandardDriver {
   private mx: MatrixClient | null | undefined;
   private initClientPromise: Promise<MatrixClient> | null = null;
 
+  private unsubscribeList = new Map<string, (() => void) | null>;
+
   constructor() {
     super();
-
+    this.unsubscribeList.set("matrix:user:initialized", applicationEmitter.subscribe(
+      "matrix:user:initialized",
+      this.onChatUser.bind(this)
+    ))
   }
 
-  public initialize() {
-    // This is specific to the matrix driver that needs the client SDK to be initialize
-    if (typeof window !== 'undefined') {
-      window.addEventListener(
-        CHAT_USER_LISTENER_KEY,
-        this.onChatUser
-      );
-    }
+  destroy() {
+    this.unsubscribeList.forEach(cb => {
+      if (cb) cb();
+    })
   }
 
   // When a chat user as been authenticated, we can initialize the matrix client
-  private async onChatUser(data: CustomEvent<{ user: MatrixUserInterface }>) {
-    const user = data.detail.user;
+  private async onChatUser({ user }: MatrixUserInitializedEvent) {
     // if the client is already initialized and userId the same, don't do anything
     if (this.mx && this.mx.getUserId() === user.mxId) return;
     // if initialization is already in progress, wait for it to complete

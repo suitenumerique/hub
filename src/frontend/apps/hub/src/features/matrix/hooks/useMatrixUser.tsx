@@ -1,5 +1,4 @@
 import { User } from "@/features/auth/types";
-import { CHAT_USER_LISTENER_KEY } from "@/features/drivers/implementations/MatrixDriver";
 import { ChatLocalUser } from "@/features/drivers/types";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
@@ -11,6 +10,7 @@ import {
   getUserIdFromAccessToken,
 } from "../utils/auth";
 import { fetchHomeserverForEmail } from "../utils/autodiscovery";
+import { applicationEmitter } from "../utils/eventEmitter";
 
 const OIDC_HS = 'oidc_hs';
 
@@ -108,11 +108,9 @@ export const useMatrixChatUser = (user: User | null | undefined) => {
           oidcResult.idToken,
         );
 
-        window.dispatchEvent(
-          new CustomEvent(CHAT_USER_LISTENER_KEY, {
-            detail: { user: matrixUser }
-          })
-        );
+        // Emit back to driverr so it can initialize the matrix driver
+        applicationEmitter.emit("matrix:user:initialized", { user: matrixUser });
+
         setChatUser(chatLocalUser);
         router.replace(router.pathname, undefined, { shallow: true });
       } finally {
