@@ -89,4 +89,9 @@ export abstract class Driver {
    * It should return a react hook
    */
   abstract useChatLocalUser(user: User | null | undefined): () => { chatUser: ChatLocalUser | null; isProcessingCallback: boolean; isStartOidcFlow: boolean; };
+
+  /** Get the initial List of chats of the user */
+  abstract getChatList(): Promise<Chat[]>;
+  /** Listen when chatlist change */
+  abstract onChatList(callback: () => void): void;
 }

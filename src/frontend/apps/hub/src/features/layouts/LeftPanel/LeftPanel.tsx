@@ -13,6 +13,7 @@ import { useRouter } from "next/router";
 import { ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useChatList } from "@/features/chat/hooks/useChatList";
 import {
   ALL_CHATS,
   FAVOURITE_CHATS,
@@ -26,6 +27,7 @@ type ActionItem =
 
 export const LeftPanel = () => {
   const { t } = useTranslation();
+  const { chatList } = useChatList();
 
   const actions: ActionItem[] = [
     {
@@ -66,7 +68,7 @@ export const LeftPanel = () => {
       </nav>
 
       <ChatSection title={t("Favourites")} chats={FAVOURITE_CHATS} />
-      <ChatSection title={t("All chats")} chats={ALL_CHATS} />
+      <ChatSection title={t("All chats")} chats={ALL_CHATS.concat(chatList)} />
 
       <div className="hub__left-panel__footer">
         <button

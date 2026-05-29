@@ -30,6 +30,8 @@ import {
 
 import { initClient, startClient } from "@/features/matrix/initMatrix";
 import { applicationEmitter, MatrixUserInitializedEvent } from "@/features/matrix/utils/eventEmitter";
+import { getRoomLists } from "@/features/matrix/utils/roomList";
+import { initSync } from "@/features/matrix/utils/sync";
 import { MatrixClient } from "matrix-js-sdk/lib/matrix";
 import { StandardDriver } from "./StandardDriver";
 
@@ -86,6 +88,7 @@ export class MatrixDriver extends StandardDriver {
       const mx = await this.initClientPromise;
       console.log("*** mx initialized", mx.getUserId());
       startClient(mx);
+      initSync(mx);
       this.mx = mx;
     } finally {
       this.initClientPromise = null;
@@ -256,4 +259,20 @@ export class MatrixDriver extends StandardDriver {
   useChatLocalUser(user: User | null | undefined) {
     return () => useMatrixChatUser(user);
   }
+
+  async getChatList() {
+    if (!this.mx) return Promise.resolve([])
+    const list = getRoomLists(this.mx);
+
+    return Promise.resolve(list);
+  }
+
+  onChatList(callback: () => void): void {
+    const eventName = "matrix:roomlist:update";
+    this.unsubscribeList.set(eventName, applicationEmitter.subscribe(eventName, async () => {
+      console.log("*** in matrix driver onChatList");
+      callback();
+    }));
+  }
+
 }

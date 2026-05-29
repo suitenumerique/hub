@@ -5,7 +5,7 @@ import {
   ToggleChatReactionParams,
   ToggleChatThreadReactionParams,
 } from "../Driver";
-import { getMockChat } from "../mocks/mockChats";
+import { ALL_CHATS, getMockChat } from "../mocks/mockChats";
 import { getMockChatDocuments } from "../mocks/mockDocuments";
 import {
   getMockAuthorsForChat,
@@ -212,5 +212,13 @@ export class MockDriver extends StandardDriver {
         userId: user?.id,
         accessToken: ""
     } as ChatLocalUser,  isProcessingCallback: false, isStartOidcFlow: false });
+  }
+
+  getChatList() {
+    return Promise.resolve(ALL_CHATS);
+  }
+
+  onChatList(cb: (chatList: Chat[]) => void) {
+    cb(ALL_CHATS);
   }
 }
