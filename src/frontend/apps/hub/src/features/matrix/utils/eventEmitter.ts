@@ -41,6 +41,7 @@ export type MatrixUserInitializedEvent = {
 
 export type ApplicationEventMap = {
   "matrix:user:initialized": MatrixUserInitializedEvent;
+  "matrix:roomlist:update": null;
   // Add more event types here as needed
 };
 
