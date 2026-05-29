@@ -1,10 +1,10 @@
 import { CunninghamProvider } from "@gouvfr-lasuite/ui-kit";
 import {
-  MutationCache,
-  Query,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
+    MutationCache,
+    Query,
+    QueryCache,
+    QueryClient,
+    QueryClientProvider,
 } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import Head from "next/head";
@@ -14,8 +14,8 @@ import { useTranslation } from "react-i18next";
 import "@/i18n/initI18n";
 import "../styles/globals.scss";
 
-import { APIError, errorToString } from "@/features/api/APIError";
 import { AnalyticsProvider } from "@/features/analytics/AnalyticsProvider";
+import { APIError, errorToString } from "@/features/api/APIError";
 import { Auth } from "@/features/auth/Auth";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
@@ -37,7 +37,8 @@ const onError = (error: Error, query: unknown) => {
 
 const queryClient = new QueryClient({
   mutationCache: new MutationCache({
-    onError: (error, _variables, _context, mutation) => onError(error, mutation),
+    onError: (error, _variables, _context, mutation) =>
+      onError(error, mutation),
   }),
   queryCache: new QueryCache({
     onError: (error, query) => onError(error, query),

@@ -1,3 +1,4 @@
+import { useMatrixChatUser } from "@/features/matrix/hooks/useMatrixUser";
 import {
   GetChatMessagesParams,
   GetChatThreadParams,
@@ -20,18 +21,21 @@ import {
 import {
   Chat,
   ChatDocumentsPage,
-  ChatLocalUser,
   ChatMessage,
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
-  User,
+  User
 } from "../types";
 
+import { initClient, startClient } from "@/features/matrix/initMatrix";
+import { applicationEmitter, MatrixUserInitializedEvent } from "@/features/matrix/utils/eventEmitter";
+import { MatrixClient } from "matrix-js-sdk/lib/matrix";
 import { StandardDriver } from "./StandardDriver";
 
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 const MOCK_CHAT_LATENCY_MS = 250;
+export const CHAT_USER_LISTENER_KEY = "chat-local-user";
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -44,7 +48,50 @@ const delay = (ms: number) =>
  * replaced by — once the backend ships, fold each method back into
  * `StandardDriver` and delete this file.
  */
-export class MockDriver extends StandardDriver {
+export class MatrixDriver extends StandardDriver {
+
+  private mx: MatrixClient | null | undefined;
+  private initClientPromise: Promise<MatrixClient> | null = null;
+
+  private unsubscribeList = new Map<string, (() => void) | null>;
+
+  constructor() {
+    super();
+    this.unsubscribeList.set("matrix:user:initialized", applicationEmitter.subscribe(
+      "matrix:user:initialized",
+      this.onChatUser.bind(this)
+    ))
+  }
+
+  destroy() {
+    this.unsubscribeList.forEach(cb => {
+      if (cb) cb();
+    })
+  }
+
+  // When a chat user as been authenticated, we can initialize the matrix client
+  private async onChatUser({ user }: MatrixUserInitializedEvent) {
+    // if the client is already initialized and userId the same, don't do anything
+    if (this.mx && this.mx.getUserId() === user.mxId) return;
+    // if initialization is already in progress, wait for it to complete
+    if (this.initClientPromise) {
+       console.log("*** Init already in progress, waiting...");
+      await this.initClientPromise;
+      return;
+    }
+
+    console.log("*** Starting initClient");
+    this.initClientPromise = initClient(user);
+    try {
+      const mx = await this.initClientPromise;
+      console.log("*** mx initialized", mx.getUserId());
+      startClient(mx);
+      this.mx = mx;
+    } finally {
+      this.initClientPromise = null;
+    }
+  }
+
   async getChat(chatId: string): Promise<Chat> {
     // MOCK — replace this block with `fetchAPI('chats/:id/')` when the
     // backend exposes a single-chat endpoint. The driver contract
@@ -207,10 +254,6 @@ export class MockDriver extends StandardDriver {
   }
 
   useChatLocalUser(user: User | null | undefined) {
-    return () => ({
-      chatUser: {
-        userId: user?.id,
-        accessToken: ""
-    } as ChatLocalUser,  isProcessingCallback: false, isStartOidcFlow: false });
+    return () => useMatrixChatUser(user);
   }
 }

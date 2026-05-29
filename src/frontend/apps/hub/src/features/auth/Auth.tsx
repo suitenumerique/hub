@@ -1,14 +1,16 @@
-import { Spinner } from '@gouvfr-lasuite/ui-kit';
-import { posthog } from 'posthog-js';
-import React, { PropsWithChildren, useEffect, useState } from 'react';
+import { Spinner } from "@gouvfr-lasuite/ui-kit";
+import { posthog } from "posthog-js";
+import React, { PropsWithChildren, useEffect, useState } from "react";
 
-import { APIError } from '../api/APIError';
-import { fetchAPI } from '@/features/api/fetchApi';
-import { baseApiUrl } from '../api/utils';
-import { useConfig } from '../config/ConfigProvider';
-import { authUrl } from './authUrl';
-import { attemptSilentLogin, canAttemptSilentLogin } from './silentLogin';
-import { User } from '@/features/auth/types';
+import { fetchAPI } from "@/features/api/fetchApi";
+import { User } from "@/features/auth/types";
+import { APIError } from "../api/APIError";
+import { baseApiUrl } from "../api/utils";
+import { getDriver } from "../config/Config";
+import { useConfig } from "../config/ConfigProvider";
+import { ChatLocalUser } from "../drivers/types";
+import { authUrl } from "./authUrl";
+import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
 
 export const logout = () => {
   window.location.replace(new URL('logout/', baseApiUrl()).href);
@@ -24,6 +26,7 @@ interface AuthContextInterface {
   user?: User | null;
   init?: () => Promise<User | null>;
   refreshUser?: () => Promise<void>;
+  chatUser?: ChatLocalUser | null;
 }
 
 export const AuthContext = React.createContext<AuthContextInterface>({});
@@ -33,6 +36,11 @@ export const useAuth = () => React.useContext(AuthContext);
 export const Auth = ({ children }: PropsWithChildren) => {
   const [user, setUser] = useState<User | null>();
   const { config } = useConfig();
+  const driver = getDriver();
+
+  // Fetch Matrix chat user credentials when regular user is authenticated
+  const useChatLocalUser = driver.useChatLocalUser(user);
+  const { chatUser, isProcessingCallback, isStartOidcFlow } = useChatLocalUser();
 
   const init = async () => {
     try {
@@ -76,7 +84,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     }
   }, [user]);
 
-  if (user === undefined) {
+  if (user === undefined || isProcessingCallback || isStartOidcFlow) {
     return (
       <div className="hub-auth-loader">
         <Spinner size="xl" />
@@ -90,6 +98,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
         user,
         init,
         refreshUser,
+        chatUser,
       }}
     >
       {children}

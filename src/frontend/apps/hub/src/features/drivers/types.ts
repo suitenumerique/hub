@@ -185,3 +185,13 @@ export type ChatThreadDetail = {
    */
   firstUnreadIndex: number | null;
 };
+
+
+/**
+ * Content of a user from the chat engine
+ */
+export type ChatLocalUser = {
+  userId: string;
+  accessToken: string;
+  refreshToken?: string;
+}
