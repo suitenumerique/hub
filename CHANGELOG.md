@@ -16,5 +16,6 @@ and this project adheres to
 - ✨(frontend) Add file preview (PDF, image, video, audio) from the tools panel
 - ✨(frontend) Add message reactions bar with reaction toggle and emoji picker
 - ✨(frontend) Add conversation threads with tools panel and unread banner
+- ✨(frontend) Add new conversation page logic
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main
