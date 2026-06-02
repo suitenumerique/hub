@@ -21,20 +21,19 @@ const buildPage = (
       timestamp: new Date(2026, 0, 1, 8, start + i).toISOString(),
       reactions: [],
     })),
-    authors: [
-      { id: "alice", name: "Alice", initials: "A", color: "blue-1" },
-    ],
+    authors: [{ id: "alice", name: "Alice", initials: "A", color: "blue-1" }],
     nextCursor: options.hasOlder ? `cursor-${index + 1}` : null,
   };
 };
 
-const getChatMessages = vi.fn<
-  (params: {
-    chatId: string;
-    cursor?: string | null;
-    limit?: number;
-  }) => Promise<ChatMessagesPage>
->();
+const getChatMessages =
+  vi.fn<
+    (params: {
+      chatId: string;
+      cursor?: string | null;
+      limit?: number;
+    }) => Promise<ChatMessagesPage>
+  >();
 
 vi.mock("@/features/config/Config", () => ({
   getDriver: () => ({ getChatMessages }),

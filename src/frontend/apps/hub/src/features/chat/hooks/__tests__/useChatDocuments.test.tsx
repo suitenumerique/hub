@@ -32,7 +32,8 @@ const buildPage = (): ChatDocumentsPage => ({
   ],
 });
 
-const getChatDocuments = vi.fn<(chatId: string) => Promise<ChatDocumentsPage>>();
+const getChatDocuments =
+  vi.fn<(chatId: string) => Promise<ChatDocumentsPage>>();
 
 vi.mock("@/features/config/Config", () => ({
   getDriver: () => ({ getChatDocuments }),

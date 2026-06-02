@@ -109,11 +109,7 @@ export const useToggleReaction = (
         queryClient.setQueryData(
           queryKey,
           threadId
-            ? applyThreadToggle(
-                previous as ChatThreadDetail,
-                messageId,
-                emoji,
-              )
+            ? applyThreadToggle(previous as ChatThreadDetail, messageId, emoji)
             : applyToggle(previous as ChatMessagesData, messageId, emoji),
         );
       }

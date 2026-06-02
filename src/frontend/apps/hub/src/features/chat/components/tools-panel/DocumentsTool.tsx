@@ -1,10 +1,10 @@
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from "react-i18next";
 
-import { useChatDocuments } from '@/features/chat/hooks/useChatDocuments';
-import type { ChatDocument } from '@/features/drivers/types';
+import { useChatDocuments } from "@/features/chat/hooks/useChatDocuments";
+import type { ChatDocument } from "@/features/drivers/types";
 
-import { DocumentList } from './DocumentList';
-import { CollapsibleSection, PinnedSection } from './DocumentSection';
+import { DocumentList } from "./DocumentList";
+import { CollapsibleSection, PinnedSection } from "./DocumentSection";
 
 type DocumentsToolProps = {
   chatId: string;
@@ -21,7 +21,7 @@ const SectionBody = ({ documents, onOpenFile }: SectionBodyProps) => {
 
   if (documents.length === 0) {
     return (
-      <p className="hub__chat-tools-panel__empty">{t('No documents yet')}</p>
+      <p className="hub__chat-tools-panel__empty">{t("No documents yet")}</p>
     );
   }
 
@@ -37,7 +37,7 @@ export const DocumentsTool = ({ chatId, onOpenFile }: DocumentsToolProps) => {
     return (
       <div className="hub__chat-tools-panel__content">
         <p className="hub__chat-tools-panel__state" role="status">
-          {t('Loading documents…')}
+          {t("Loading documents…")}
         </p>
       </div>
     );
@@ -47,13 +47,13 @@ export const DocumentsTool = ({ chatId, onOpenFile }: DocumentsToolProps) => {
     return (
       <div className="hub__chat-tools-panel__content">
         <div className="hub__chat-tools-panel__state" role="alert">
-          <p>{t('Documents could not be loaded.')}</p>
+          <p>{t("Documents could not be loaded.")}</p>
           <button
             type="button"
             className="hub__chat-tools-panel__state__retry"
             onClick={refetch}
           >
-            {t('Retry')}
+            {t("Retry")}
           </button>
         </div>
       </div>
@@ -62,13 +62,13 @@ export const DocumentsTool = ({ chatId, onOpenFile }: DocumentsToolProps) => {
 
   return (
     <div className="hub__chat-tools-panel__content">
-      <PinnedSection title={t('Pinned')}>
+      <PinnedSection title={t("Pinned")}>
         <SectionBody documents={pinned} onOpenFile={onOpenFile} />
       </PinnedSection>
-      <CollapsibleSection title={t('Shared Files')}>
+      <CollapsibleSection title={t("Shared Files")}>
         <SectionBody documents={shared} onOpenFile={onOpenFile} />
       </CollapsibleSection>
-      <CollapsibleSection title={t('Multimedia')}>
+      <CollapsibleSection title={t("Multimedia")}>
         <SectionBody documents={multimedia} onOpenFile={onOpenFile} />
       </CollapsibleSection>
     </div>

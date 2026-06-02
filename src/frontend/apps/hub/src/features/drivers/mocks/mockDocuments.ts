@@ -1,7 +1,4 @@
-import type {
-  ChatDocument,
-  ChatDocumentsPage,
-} from "@/features/drivers/types";
+import type { ChatDocument, ChatDocumentsPage } from "@/features/drivers/types";
 
 const MOCK_PINNED: ChatDocument[] = [
   {

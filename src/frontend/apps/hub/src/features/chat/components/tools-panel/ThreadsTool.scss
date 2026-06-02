@@ -72,7 +72,10 @@
     font-size: 14px;
     font-weight: 500;
     line-height: 18px;
-    color: var(--c--contextuals--content--semantic--neutral--secondary, #555e74);
+    color: var(
+      --c--contextuals--content--semantic--neutral--secondary,
+      #555e74
+    );
   }
 
   &[data-unread] &__author {
@@ -84,7 +87,10 @@
     flex: 0 0 auto;
     font-size: 12px;
     line-height: 16px;
-    color: var(--c--contextuals--content--semantic--neutral--secondary, #555e74);
+    color: var(
+      --c--contextuals--content--semantic--neutral--secondary,
+      #555e74
+    );
   }
 
   &__preview {
@@ -95,7 +101,10 @@
     -webkit-box-orient: vertical;
     font-size: 12px;
     line-height: 16px;
-    color: var(--c--contextuals--content--semantic--neutral--secondary, #555e74);
+    color: var(
+      --c--contextuals--content--semantic--neutral--secondary,
+      #555e74
+    );
   }
 
   &[data-unread] &__preview {

@@ -14,6 +14,7 @@ export const MOCK_CHATS: Chat[] = [
     name: "Didier Salambo",
     section: "favourites",
     kind: "direct",
+    participantIds: ["user-didier-salambo"],
     visual: { kind: "initials" },
   },
   {
@@ -21,6 +22,11 @@ export const MOCK_CHATS: Chat[] = [
     name: "Working group",
     section: "favourites",
     kind: "group",
+    participantIds: [
+      "user-didier-salambo",
+      "user-anabelle-dupontel",
+      "user-jean-dustaff",
+    ],
     visual: { kind: "emoji", emoji: "🌲" },
   },
   {
@@ -29,6 +35,7 @@ export const MOCK_CHATS: Chat[] = [
     section: "all",
     kind: "direct",
     unread: true,
+    participantIds: ["user-anabelle-dupontel"],
     visual: { kind: "initials" },
   },
   {
@@ -37,6 +44,7 @@ export const MOCK_CHATS: Chat[] = [
     section: "all",
     kind: "group",
     unread: true,
+    participantIds: ["user-andre-campan", "user-edouard-mcdonald"],
     visual: { kind: "icon", icon: "groups" },
   },
   {
@@ -44,6 +52,11 @@ export const MOCK_CHATS: Chat[] = [
     name: "Fichiers team",
     section: "all",
     kind: "group",
+    participantIds: [
+      "user-berangere-becker",
+      "user-jean-dustaff",
+      "user-anabelle-dupontel",
+    ],
     visual: { kind: "emoji", emoji: "🎉" },
   },
   {
@@ -51,6 +64,7 @@ export const MOCK_CHATS: Chat[] = [
     name: "Teams team",
     section: "all",
     kind: "group",
+    participantIds: ["user-didier-salambo", "user-berangere-becker"],
     visual: { kind: "emoji", emoji: "👎" },
   },
   {
@@ -58,6 +72,7 @@ export const MOCK_CHATS: Chat[] = [
     name: "Jean Dustaff",
     section: "all",
     kind: "direct",
+    participantIds: ["user-jean-dustaff"],
     visual: { kind: "initials" },
   },
   {
@@ -65,6 +80,7 @@ export const MOCK_CHATS: Chat[] = [
     name: "Bérangère Becker",
     section: "all",
     kind: "direct",
+    participantIds: ["user-berangere-becker"],
     visual: { kind: "initials" },
   },
   {
@@ -72,6 +88,7 @@ export const MOCK_CHATS: Chat[] = [
     name: "Team chocolate",
     section: "all",
     kind: "group",
+    participantIds: ["user-amandine-salambo", "user-daniel-ferioux"],
     visual: { kind: "emoji", emoji: "❤️" },
   },
 ];
@@ -83,3 +100,17 @@ export const ALL_CHATS = MOCK_CHATS.filter((chat) => chat.section === "all");
 
 export const getMockChat = (id: string): Chat | undefined =>
   MOCK_CHATS.find((chat) => chat.id === id);
+
+const sameParticipantSet = (left: string[], right: string[]) => {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.every((id, index) => id === sortedRight[index]);
+};
+
+export const getMockChatForUsers = (userIds: string[]): Chat | null =>
+  MOCK_CHATS.find((chat) => sameParticipantSet(chat.participantIds, userIds)) ??
+  null;

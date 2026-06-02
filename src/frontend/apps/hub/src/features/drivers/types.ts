@@ -32,6 +32,11 @@ export type Chat = {
    * stable when the real backend ships.
    */
   kind: "direct" | "group";
+  /**
+   * User ids that make up the conversation. The current user is implicit, so a
+   * direct chat carries one participant and a group chat carries two or more.
+   */
+  participantIds: string[];
   visual: ChatVisual;
 };
 
@@ -68,6 +73,12 @@ export type ChatMessageAuthor = {
   name: string;
   initials: string;
   color: AvatarColor;
+};
+
+export type ChatUser = ChatMessageAuthor & {
+  email: string;
+  /** Secondary line shown in people search results. */
+  subtitle: string;
 };
 
 /**

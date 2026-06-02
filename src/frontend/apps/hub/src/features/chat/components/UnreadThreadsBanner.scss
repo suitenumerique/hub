@@ -1,11 +1,17 @@
-// Wraps the unread-threads banner and the composer in one bordered box, as in
-// the Figma "Answer Field" unread variant.
+// Always wraps the composer so its instance stays mounted across the
+// empty → chat transition. Only when an unread-threads banner is present does
+// it become the bordered box from the Figma "Answer Field" unread variant —
+// otherwise it is a transparent passthrough and the composer keeps its own
+// border.
 .hub__chat-composer-stack {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
-  border-radius: var(--c--globals--spacings--xs, 8px);
-  overflow: clip;
+
+  &:has(.hub__unread-threads-banner) {
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-radius: var(--c--globals--spacings--xs, 8px);
+    overflow: clip;
+  }
 }
 
 .hub__unread-threads-banner {

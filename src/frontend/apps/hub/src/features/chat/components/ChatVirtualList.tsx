@@ -2,10 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
-import type {
-  ChatMessage,
-  ChatMessageAuthor,
-} from "@/features/drivers/types";
+import type { ChatMessage, ChatMessageAuthor } from "@/features/drivers/types";
 
 import { useChatMessages } from "../hooks/useChatMessages";
 

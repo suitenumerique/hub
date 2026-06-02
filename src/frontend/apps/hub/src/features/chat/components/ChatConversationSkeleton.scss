@@ -52,11 +52,13 @@
   &__body {
     background: linear-gradient(
       90deg,
-      var(--c--contextuals--background--semantic--neutral--tertiary, #eef1f4)
-        0%,
+      var(--c--contextuals--background--semantic--neutral--tertiary, #eef1f4) 0%,
       color-mix(
           in srgb,
-          var(--c--contextuals--background--semantic--neutral--tertiary, #eef1f4)
+          var(
+              --c--contextuals--background--semantic--neutral--tertiary,
+              #eef1f4
+            )
             60%,
           transparent
         )

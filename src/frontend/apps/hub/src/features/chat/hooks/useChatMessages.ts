@@ -2,10 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 import { getDriver } from "@/features/config/Config";
-import type {
-  ChatMessage,
-  ChatMessageAuthor,
-} from "@/features/drivers/types";
+import type { ChatMessage, ChatMessageAuthor } from "@/features/drivers/types";
 
 export const CHAT_PAGE_SIZE = 50;
 
@@ -51,9 +48,7 @@ export const useChatMessages = (chatId: string): UseChatMessagesResult => {
     // pages are ordered [newest-fetch-first, ..., oldest-fetch-last]; each page
     // already holds messages in chronological ASC order. Older pages must come
     // first in the flat array, so iterate pages in reverse.
-    return [...query.data.pages]
-      .reverse()
-      .flatMap((page) => page.messages);
+    return [...query.data.pages].reverse().flatMap((page) => page.messages);
   }, [query.data]);
 
   const authorsById = useMemo(() => {

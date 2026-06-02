@@ -123,8 +123,7 @@ const buildMessagesForChat = (authors: ChatMessageAuthor[]): ChatMessage[] => {
   let cursorMs = CONVERSATION_START;
 
   for (let index = 0; index < MESSAGES_PER_CHAT; index += 1) {
-    cursorMs +=
-      faker.number.int({ min: 0, max: MAX_GAP_MINUTES }) * 60 * 1000;
+    cursorMs += faker.number.int({ min: 0, max: MAX_GAP_MINUTES }) * 60 * 1000;
     messages.push({
       id: `m-${index + 1}`,
       authorId: faker.helpers.weightedArrayElement(pool),
@@ -173,9 +172,8 @@ const ensureGenerated = (chatId: string): GeneratedChat | null => {
 export const getMockMessages = (chatId: string): ChatMessage[] =>
   ensureGenerated(chatId)?.messages ?? [];
 
-export const getMockAuthorsForChat = (
-  chatId: string,
-): ChatMessageAuthor[] => ensureGenerated(chatId)?.authors ?? [];
+export const getMockAuthorsForChat = (chatId: string): ChatMessageAuthor[] =>
+  ensureGenerated(chatId)?.authors ?? [];
 
 /**
  * Toggles the current user's reaction with `emoji` on a stored message and
