@@ -1,17 +1,17 @@
-import { Spinner } from '@gouvfr-lasuite/ui-kit';
-import { posthog } from 'posthog-js';
-import React, { PropsWithChildren, useEffect, useState } from 'react';
+import { Spinner } from "@gouvfr-lasuite/ui-kit";
+import { posthog } from "posthog-js";
+import React, { PropsWithChildren, useEffect, useState } from "react";
 
-import { APIError } from '../api/APIError';
-import { fetchAPI } from '@/features/api/fetchApi';
-import { baseApiUrl } from '../api/utils';
-import { useConfig } from '../config/ConfigProvider';
-import { authUrl } from './authUrl';
-import { attemptSilentLogin, canAttemptSilentLogin } from './silentLogin';
-import { User } from '@/features/auth/types';
+import { APIError } from "../api/APIError";
+import { fetchAPI } from "@/features/api/fetchApi";
+import { baseApiUrl } from "../api/utils";
+import { useConfig } from "../config/ConfigProvider";
+import { authUrl } from "./authUrl";
+import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
+import { User } from "@/features/auth/types";
 
 export const logout = () => {
-  window.location.replace(new URL('logout/', baseApiUrl()).href);
+  window.location.replace(new URL("logout/", baseApiUrl()).href);
   posthog.reset();
 };
 

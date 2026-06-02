@@ -76,7 +76,7 @@ db.sqlite3
 
 # IDEs
 .idea/
-.vscode/
+.vscode/*
 *.iml
 .devcontainer
 .agents/

@@ -419,6 +419,14 @@ frontend-lint-fix: ## run the frontend linter with auto-fix option
 	@$(FRONT_YARN) lint-fix
 .PHONY: frontend-lint-fix
 
+frontend-format: ## run the frontend formatter (prettier --write)
+	@$(FRONT_YARN) format
+.PHONY: frontend-format
+
+frontend-format-check: ## check the frontend formatting (prettier --check)
+	@$(FRONT_YARN) format:check
+.PHONY: frontend-format-check
+
 run-frontend-development: ## Run the frontend in development mode
 	@$(COMPOSE) stop frontend-development
 	@$(FRONT_DEV_YARN) dev

@@ -25,8 +25,7 @@ export const AnalyticsProvider = ({
         defaults: "2025-05-24",
         opt_out_useragent_filter:
           process.env.NEXT_PUBLIC_POSTHOG_TEST_MODE === "true",
-        request_batching:
-          process.env.NEXT_PUBLIC_POSTHOG_TEST_MODE !== "true",
+        request_batching: process.env.NEXT_PUBLIC_POSTHOG_TEST_MODE !== "true",
       }}
     >
       {children}

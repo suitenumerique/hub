@@ -11,7 +11,7 @@
   background: var(--c--contextuals--background--surface--tertiary, #f6f8f9);
   border-right: 1px solid
     var(--c--contextuals--border--surface--primary, #dfe2ea);
-  font-family: var(--c--globals--font--families--base, 'Marianne', sans-serif);
+  font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
   color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
   position: relative;
 
@@ -159,7 +159,7 @@
       }
     }
 
-    &[data-open='false'] {
+    &[data-open="false"] {
       .hub__left-panel__section__chevron {
         transform: rotate(-90deg);
       }

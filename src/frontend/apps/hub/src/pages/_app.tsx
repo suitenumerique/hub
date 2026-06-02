@@ -37,7 +37,8 @@ const onError = (error: Error, query: unknown) => {
 
 const queryClient = new QueryClient({
   mutationCache: new MutationCache({
-    onError: (error, _variables, _context, mutation) => onError(error, mutation),
+    onError: (error, _variables, _context, mutation) =>
+      onError(error, mutation),
   }),
   queryCache: new QueryCache({
     onError: (error, query) => onError(error, query),

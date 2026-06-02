@@ -1,9 +1,9 @@
-import { ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
-import { useRequireAuth } from '@/features/auth/hooks/useRequireAuth';
+import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 
-import { LeftPanel } from './LeftPanel/LeftPanel';
+import { LeftPanel } from "./LeftPanel/LeftPanel";
 
 type HubLayoutProps = {
   children: ReactNode;
@@ -26,7 +26,7 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
   return (
     <div className="hub__layout">
       <a href="#hub__layout__main" className="hub__layout__skip-link">
-        {t('Skip to main content')}
+        {t("Skip to main content")}
       </a>
       {user && <LeftPanel />}
 

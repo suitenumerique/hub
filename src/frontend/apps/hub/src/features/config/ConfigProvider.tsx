@@ -22,11 +22,7 @@ export const useConfig = () => {
   return context;
 };
 
-export const ConfigProvider = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => {
+export const ConfigProvider = ({ children }: { children: React.ReactNode }) => {
   const { data: config } = useApiConfig();
 
   if (!config) {
