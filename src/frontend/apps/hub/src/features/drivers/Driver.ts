@@ -6,11 +6,17 @@ import {
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
+  ChatUser,
   User,
 } from "./types";
 
 export type UserFilters = {
   q?: string;
+};
+
+export type ChatUserFilters = {
+  q?: string;
+  excludeIds?: string[];
 };
 
 export type GetChatMessagesParams = {
@@ -54,6 +60,10 @@ export abstract class Driver {
   abstract getConfig(): Promise<ApiConfig>;
   abstract getUsers(filters?: UserFilters): Promise<User[]>;
   abstract updateUser(payload: Partial<User> & { id: string }): Promise<User>;
+  /** People available when composing a new chat. */
+  abstract getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]>;
+  /** Existing conversation for exactly these participants, or `null`. */
+  abstract getChatForUsers(userIds: string[]): Promise<Chat | null>;
   /** Single conversation, fetched by id. */
   abstract getChat(chatId: string): Promise<Chat>;
   abstract getChatMessages(

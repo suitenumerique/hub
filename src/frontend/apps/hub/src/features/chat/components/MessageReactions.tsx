@@ -1,15 +1,15 @@
-import { EmojiAdd, Plus } from '@gouvfr-lasuite/ui-kit/icons';
-import clsx from 'clsx';
-import { useCallback, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { EmojiAdd, Plus } from "@gouvfr-lasuite/ui-kit/icons";
+import clsx from "clsx";
+import { useCallback, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
-import type { ChatReaction } from '@/features/drivers/types';
+import type { ChatReaction } from "@/features/drivers/types";
 
-import { emojiToCodepoints } from '../fluentEmoji';
+import { emojiToCodepoints } from "../fluentEmoji";
 
-import { EmojiPickerPopover } from './EmojiPickerPopover';
-import { FluentEmoji } from './FluentEmoji';
-import { Button, ButtonElement } from '@gouvfr-lasuite/cunningham-react';
+import { EmojiPickerPopover } from "./EmojiPickerPopover";
+import { FluentEmoji } from "./FluentEmoji";
+import { Button, ButtonElement } from "@gouvfr-lasuite/cunningham-react";
 
 type MessageReactionsProps = {
   reactions: ChatReaction[];
@@ -56,17 +56,17 @@ export const MessageReactions = ({
             size="nano"
             color="neutral"
             variant="bordered"
-            className={clsx('hub__message-reactions__chip', {
-              'hub__message-reactions__chip--mine': reaction.reactedByMe,
+            className={clsx("hub__message-reactions__chip", {
+              "hub__message-reactions__chip--mine": reaction.reactedByMe,
             })}
             aria-pressed={reaction.reactedByMe}
             aria-label={
               reaction.reactedByMe
-                ? t('Remove your {{emoji}} reaction ({{total}})', {
+                ? t("Remove your {{emoji}} reaction ({{total}})", {
                     emoji: reaction.emoji,
                     total: reaction.count,
                   })
-                : t('React with {{emoji}} ({{total}})', {
+                : t("React with {{emoji}} ({{total}})", {
                     emoji: reaction.emoji,
                     total: reaction.count,
                   })
@@ -86,7 +86,7 @@ export const MessageReactions = ({
           color="neutral"
           variant="bordered"
           className="hub__message-reactions__chip "
-          aria-label={t('Add a reaction')}
+          aria-label={t("Add a reaction")}
           aria-haspopup="dialog"
           aria-expanded={isPickerOpen}
           onClick={() => setIsPickerOpen((open) => !open)}

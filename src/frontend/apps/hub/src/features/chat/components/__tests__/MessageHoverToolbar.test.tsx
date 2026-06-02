@@ -18,12 +18,8 @@ describe("MessageHoverToolbar", () => {
     render(<MessageHoverToolbar onReact={vi.fn()} compact />);
 
     expect(screen.queryByText("Reply")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "More actions" }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Add a reaction" }),
-    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add a reaction" })).toBeTruthy();
   });
 
   it("forwards a quick reaction to onReact in compact mode", () => {

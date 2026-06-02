@@ -1,21 +1,31 @@
 import { FilePreview } from "@gouvfr-lasuite/ui-kit";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-import type { ChatDocument } from "@/features/drivers/types";
+import type { Chat, ChatDocument } from "@/features/drivers/types";
 
 import {
   ChatPanelProvider,
   type ChatPanelContextValue,
 } from "../ChatPanelContext";
 import { useChat } from "../hooks/useChat";
+import { useChatThreads } from "../hooks/useChatThreads";
 
+import { ChatComposer } from "./ChatComposer";
 import { ChatConversation } from "./ChatConversation";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
 import { documentToPreviewFile } from "./tools-panel/documentToPreviewFile";
+import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 
 type ChatViewProps = {
-  chatId: string;
+  chatId: string | null;
+  renderHeader?: (props: {
+    chat: Chat | null;
+    activeTool: ChatTool | null;
+    onToggleTool: (tool: ChatTool) => void;
+  }) => ReactNode;
+  /** Rendered in the main area when there is no conversation yet. */
+  renderEmpty?: () => ReactNode;
 };
 
 /**
@@ -24,7 +34,11 @@ type ChatViewProps = {
  * `chatId` directly and loading the conversation through `useChat` —
  * `<ChatHeader>` renders a skeleton while the chat is being fetched.
  */
-export const ChatView = ({ chatId }: ChatViewProps) => {
+export const ChatView = ({
+  chatId,
+  renderHeader,
+  renderEmpty,
+}: ChatViewProps) => {
   const { chat } = useChat(chatId);
 
   const [activeTool, setActiveTool] = useState<ChatTool | null>(null);
@@ -82,26 +96,56 @@ export const ChatView = ({ chatId }: ChatViewProps) => {
 
   return (
     <ChatPanelProvider value={panelContext}>
-      <div className="hub__chat-view" data-panel-open={activeTool !== null}>
-        <ChatHeader
-          chat={chat}
-          activeTool={activeTool}
-          onToggleTool={toggleTool}
-        />
+      <div
+        className="hub__chat-view"
+        data-panel-open={activeTool !== null}
+        data-header-variant={renderHeader ? "search" : "chat"}
+      >
+        {renderHeader ? (
+          <>
+            {renderHeader({
+              chat,
+              activeTool,
+              onToggleTool: toggleTool,
+            })}
+          </>
+        ) : (
+          <>
+            <ChatHeader
+              chat={chat}
+              activeTool={activeTool}
+              onToggleTool={toggleTool}
+            />
+          </>
+        )}
+
         <div className="hub__chat-view__main">
-          <ChatConversation chatId={chatId} />
+          <div className="hub__chat-view__content">
+            {chatId ? <ChatConversation chatId={chatId} /> : renderEmpty?.()}
+          </div>
+          <div className="hub__chat-view__composer">
+            {/* The composer keeps a single instance across the empty → chat
+                transition so an in-progress draft and the input focus survive
+                when a conversation resolves. */}
+            <div className="hub__chat-composer-stack">
+              {chatId ? <ConversationUnreadBanner chatId={chatId} /> : null}
+              <ChatComposer />
+            </div>
+          </div>
         </div>
         <div className="hub__chat-view__panel">
-          <ChatToolsPanel
-            tool={activeTool ?? displayedTool}
-            isOpen={activeTool !== null}
-            chatId={chatId}
-            threadId={activeThreadId}
-            onClose={closePanel}
-            onOpenThread={openThread}
-            onCloseThread={closeThread}
-            onOpenFile={setOpenedDocument}
-          />
+          {chatId && (
+            <ChatToolsPanel
+              tool={activeTool ?? displayedTool}
+              isOpen={activeTool !== null}
+              chatId={chatId}
+              threadId={activeThreadId}
+              onClose={closePanel}
+              onOpenThread={openThread}
+              onCloseThread={closeThread}
+              onOpenFile={setOpenedDocument}
+            />
+          )}
         </div>
         <FilePreview
           isOpen={openedDocument !== null}
@@ -112,4 +156,14 @@ export const ChatView = ({ chatId }: ChatViewProps) => {
       </div>
     </ChatPanelProvider>
   );
+};
+
+const ConversationUnreadBanner = ({ chatId }: { chatId: string }) => {
+  const { unreadThreads } = useChatThreads(chatId);
+
+  if (unreadThreads.length === 0) {
+    return null;
+  }
+
+  return <UnreadThreadsBanner chatId={chatId} unreadThreads={unreadThreads} />;
 };

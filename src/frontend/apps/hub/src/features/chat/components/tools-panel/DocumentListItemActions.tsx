@@ -1,9 +1,9 @@
-import { Button } from '@gouvfr-lasuite/cunningham-react';
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import {
   DropdownMenu,
   DropdownMenuItem,
   useDropdownMenu,
-} from '@gouvfr-lasuite/ui-kit';
+} from "@gouvfr-lasuite/ui-kit";
 import {
   ArrowUpLeft,
   Download,
@@ -12,10 +12,10 @@ import {
   More,
   Pin,
   Trash,
-} from '@gouvfr-lasuite/ui-kit/icons';
-import { useTranslation } from 'react-i18next';
+} from "@gouvfr-lasuite/ui-kit/icons";
+import { useTranslation } from "react-i18next";
 
-import type { ChatDocument } from '@/features/drivers/types';
+import type { ChatDocument } from "@/features/drivers/types";
 
 type Props = {
   document: ChatDocument;
@@ -29,38 +29,38 @@ export const DocumentListItemActions = ({ document }: Props) => {
   const options: DropdownMenuItem[] = [
     {
       icon: <Folder />,
-      label: t('Open in Drive'),
+      label: t("Open in Drive"),
       isHidden: !isShared,
     },
     {
       icon: <FolderAdd />,
-      label: t('Add to Drive'),
+      label: t("Add to Drive"),
       isHidden: isShared,
     },
     {
       icon: <ArrowUpLeft />,
-      label: t('Show in chat'),
+      label: t("Show in chat"),
     },
     {
-      type: 'separator',
+      type: "separator",
     },
     {
       icon: <Download />,
-      label: t('Download'),
+      label: t("Download"),
     },
     {
-      type: 'separator',
+      type: "separator",
     },
     {
       icon: <Pin />,
-      label: t('Pin'),
+      label: t("Pin"),
     },
     {
-      type: 'separator',
+      type: "separator",
     },
     {
       icon: <Trash />,
-      label: t('Delete'),
+      label: t("Delete"),
     },
   ];
 

@@ -7,7 +7,7 @@
   position: relative;
   transition: grid-template-columns 220ms ease;
 
-  &[data-panel-open='true'] {
+  &[data-panel-open="true"] {
     grid-template-columns: 1fr 379px;
   }
 
@@ -17,6 +17,31 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  &__content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  // Mirrors the bubble row layout: spans the full width with a 24px gutter,
+  // while its inner child is capped at 750px and centered — so the composer's
+  // visible edges line up with `.hub__chat-conversation__row-inner` above it.
+  &__composer {
+    flex: 0 0 auto;
+    width: 100%;
+    padding: var(--c--globals--spacings--xs, 8px)
+      var(--c--globals--spacings--md, 24px)
+      var(--c--globals--spacings--md, 24px);
+    display: flex;
+    justify-content: center;
+
+    > * {
+      width: 100%;
+      max-width: 750px;
+    }
   }
 
   &__panel {

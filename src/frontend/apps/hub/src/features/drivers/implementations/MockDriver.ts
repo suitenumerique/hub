@@ -1,4 +1,5 @@
-import { getMockChat } from "../mocks/mockChats";
+import { getMockChat, getMockChatForUsers } from "../mocks/mockChats";
+import { getMockChatUsers } from "../mocks/mockChatUsers";
 import { getMockChatDocuments } from "../mocks/mockDocuments";
 import {
   getMockAuthorsForChat,
@@ -16,6 +17,7 @@ import {
   MarkChatThreadReadParams,
   ToggleChatReactionParams,
   ToggleChatThreadReactionParams,
+  ChatUserFilters,
 } from "../Driver";
 import {
   Chat,
@@ -24,6 +26,7 @@ import {
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
+  ChatUser,
 } from "../types";
 
 import { StandardDriver } from "./StandardDriver";
@@ -43,6 +46,26 @@ const delay = (ms: number) =>
  * `StandardDriver` and delete this file.
  */
 export class MockDriver extends StandardDriver {
+  async getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]> {
+    // MOCK — replace this block with `fetchAPI('chat-users/?q=…')` or the
+    // eventual people-search endpoint. The driver contract
+    // (query + exclusions → people shown in the composer search) is the swap
+    // point for the New Chat UI.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    return getMockChatUsers(filters);
+  }
+
+  async getChatForUsers(userIds: string[]): Promise<Chat | null> {
+    // MOCK — replace this block with `fetchAPI('chats/resolve/', { params })`
+    // when the backend can resolve an exact participant set. The driver
+    // contract (participant ids → existing chat or null) lets the UI keep the
+    // placeholder for genuinely new conversations.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    return getMockChatForUsers(userIds);
+  }
+
   async getChat(chatId: string): Promise<Chat> {
     // MOCK — replace this block with `fetchAPI('chats/:id/')` when the
     // backend exposes a single-chat endpoint. The driver contract
@@ -81,7 +104,7 @@ export class MockDriver extends StandardDriver {
     const startIndex = Math.max(0, endIndex - limit);
 
     const messages = all.slice(startIndex, endIndex);
-    const nextCursor = startIndex === 0 ? null : messages[0]?.id ?? null;
+    const nextCursor = startIndex === 0 ? null : (messages[0]?.id ?? null);
 
     return { messages, authors, nextCursor };
   }
@@ -195,9 +218,7 @@ export class MockDriver extends StandardDriver {
     // { method: 'POST' })` when the backend tracks read state. The driver
     // contract (chatId → void) is the swap point.
     if (!chatId) {
-      throw new Error(
-        "MockDriver.markAllChatThreadsRead: chatId is required.",
-      );
+      throw new Error("MockDriver.markAllChatThreadsRead: chatId is required.");
     }
     await delay(MOCK_CHAT_LATENCY_MS);
 

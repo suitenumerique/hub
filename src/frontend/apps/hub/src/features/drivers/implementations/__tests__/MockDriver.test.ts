@@ -5,6 +5,53 @@ import { MockDriver } from "../MockDriver";
 
 const CHAT_ID = MOCK_CHATS[0].id;
 
+describe("MockDriver new chat", () => {
+  it("searches chat users by name and excludes already selected users", async () => {
+    const driver = new MockDriver();
+
+    const results = await driver.getChatUsers({
+      q: "amandine",
+      excludeIds: ["user-amandine-salambo"],
+    });
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.some((user) => user.id === "user-amandine-salambo")).toBe(
+      false,
+    );
+    expect(results.every((user) => user.name.includes("Amandine"))).toBe(true);
+  });
+
+  it("resolves an existing direct conversation from one participant", async () => {
+    const driver = new MockDriver();
+
+    const chat = await driver.getChatForUsers(["user-didier-salambo"]);
+
+    expect(chat?.id).toBe(MOCK_CHATS[0].id);
+  });
+
+  it("resolves an existing group regardless of participant order", async () => {
+    const driver = new MockDriver();
+
+    const chat = await driver.getChatForUsers([
+      "user-daniel-ferioux",
+      "user-amandine-salambo",
+    ]);
+
+    expect(chat?.name).toBe("Team chocolate");
+  });
+
+  it("keeps unknown participant sets unresolved", async () => {
+    const driver = new MockDriver();
+
+    await expect(
+      driver.getChatForUsers([
+        "user-amandine-salambo",
+        "user-amandine-korsgaard",
+      ]),
+    ).resolves.toBeNull();
+  });
+});
+
 describe("MockDriver.toggleChatReaction", () => {
   it("toggles a reaction on a stored message and persists it", async () => {
     const driver = new MockDriver();
@@ -33,9 +80,9 @@ describe("MockDriver.toggleChatReaction", () => {
       messageId: "m-1",
       emoji: "🔥",
     });
-    expect(
-      removed.reactions.some((reaction) => reaction.emoji === "🔥"),
-    ).toBe(false);
+    expect(removed.reactions.some((reaction) => reaction.emoji === "🔥")).toBe(
+      false,
+    );
   });
 
   it("rejects when the message does not exist", async () => {

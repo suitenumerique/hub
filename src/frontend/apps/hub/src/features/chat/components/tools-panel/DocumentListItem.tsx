@@ -1,10 +1,10 @@
-import { FileIcon } from '@gouvfr-lasuite/ui-kit';
-import { FolderDrive, Globe2, Link } from '@gouvfr-lasuite/ui-kit/icons';
-import { useTranslation } from 'react-i18next';
+import { FileIcon } from "@gouvfr-lasuite/ui-kit";
+import { FolderDrive, Globe2, Link } from "@gouvfr-lasuite/ui-kit/icons";
+import { useTranslation } from "react-i18next";
 
-import type { ChatDocument } from '@/features/drivers/types';
+import type { ChatDocument } from "@/features/drivers/types";
 
-import { DocumentListItemActions } from './DocumentListItemActions';
+import { DocumentListItemActions } from "./DocumentListItemActions";
 
 type DocumentListItemProps = {
   document: ChatDocument;
@@ -20,7 +20,7 @@ export const DocumentListItem = ({
   const { t } = useTranslation();
 
   const handleClick = () => {
-    if (document.kind === 'file') {
+    if (document.kind === "file") {
       onOpenFile?.(document);
     }
   };
@@ -31,9 +31,9 @@ export const DocumentListItem = ({
         className="hub__chat-tools-panel__list-item__icon"
         aria-hidden="true"
       >
-        {document.kind === 'folder' ? (
+        {document.kind === "folder" ? (
           <FolderDrive />
-        ) : document.kind === 'link' ? (
+        ) : document.kind === "link" ? (
           <Link />
         ) : (
           <FileIcon
@@ -48,7 +48,7 @@ export const DocumentListItem = ({
       {document.isShared && (
         <span
           className="hub__chat-tools-panel__list-item__badge"
-          aria-label={t('Shared with others')}
+          aria-label={t("Shared with others")}
         >
           <Globe2 />
         </span>
@@ -61,7 +61,7 @@ export const DocumentListItem = ({
       className="hub__chat-tools-panel__list-item"
       data-active={active || undefined}
     >
-      {document.kind === 'link' && document.url ? (
+      {document.kind === "link" && document.url ? (
         <a
           className="hub__chat-tools-panel__list-item__button"
           href={document.url}

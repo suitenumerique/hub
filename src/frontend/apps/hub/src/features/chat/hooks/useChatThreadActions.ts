@@ -77,8 +77,7 @@ export const useChatThreadActions = (
     // Stop any in-flight refetch from overwriting the optimistic write.
     await queryClient.cancelQueries({ queryKey: threadsKey });
     await queryClient.cancelQueries({ queryKey: messagesKey });
-    const previousThreads =
-      queryClient.getQueryData<ChatThread[]>(threadsKey);
+    const previousThreads = queryClient.getQueryData<ChatThread[]>(threadsKey);
     const previousMessages =
       queryClient.getQueryData<ChatMessagesData>(messagesKey);
     queryClient.setQueryData<ChatThread[]>(threadsKey, (old) =>

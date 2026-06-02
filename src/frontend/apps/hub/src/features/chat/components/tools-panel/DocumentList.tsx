@@ -1,8 +1,8 @@
-import { Fragment } from 'react';
+import { Fragment } from "react";
 
-import type { ChatDocument } from '@/features/drivers/types';
+import type { ChatDocument } from "@/features/drivers/types";
 
-import { DocumentListItem } from './DocumentListItem';
+import { DocumentListItem } from "./DocumentListItem";
 
 type DocumentListProps = {
   documents: ChatDocument[];

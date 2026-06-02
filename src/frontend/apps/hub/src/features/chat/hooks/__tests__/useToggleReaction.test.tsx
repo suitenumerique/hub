@@ -37,9 +37,7 @@ const makeMessage = (
   reactions,
 });
 
-const makeData = (
-  pages: ChatMessage[][],
-): InfiniteData<ChatMessagesPage> => ({
+const makeData = (pages: ChatMessage[][]): InfiniteData<ChatMessagesPage> => ({
   pages: pages.map((messages) => ({ messages, authors: [], nextCursor: null })),
   pageParams: pages.map(() => null),
 });

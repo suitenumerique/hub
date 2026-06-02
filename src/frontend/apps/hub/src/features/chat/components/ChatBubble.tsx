@@ -72,10 +72,7 @@ const ChatBubbleFooter = ({
   return (
     <div className="hub__chat-bubble__footer">
       {thread && (
-        <ThreadButton
-          summary={thread}
-          onOpen={() => openThread(thread.id)}
-        />
+        <ThreadButton summary={thread} onOpen={() => openThread(thread.id)} />
       )}
       <MessageReactions reactions={reactions} onReact={onReact} />
     </div>
@@ -135,16 +132,14 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       )}
       <div className="hub__chat-bubble__row">
         {showAvatar ? (
-          <Avatar
-            label={author.name}
-            color={author.color}
-            decorative
-            size="sm"
-          >
+          <Avatar label={author.name} color={author.color} decorative size="sm">
             {author.initials}
           </Avatar>
         ) : (
-          <span className="hub__chat-bubble__avatar-spacer" aria-hidden="true" />
+          <span
+            className="hub__chat-bubble__avatar-spacer"
+            aria-hidden="true"
+          />
         )}
         <div className="hub__chat-bubble__body">
           {content}

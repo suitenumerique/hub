@@ -42,10 +42,7 @@ export const UnreadThreadsBanner = ({
         className="hub__unread-threads-banner__open"
         onClick={handleOpen}
       >
-        <span
-          className="hub__unread-threads-banner__icon"
-          aria-hidden="true"
-        >
+        <span className="hub__unread-threads-banner__icon" aria-hidden="true">
           <Reply />
         </span>
         {count === 1
@@ -57,10 +54,7 @@ export const UnreadThreadsBanner = ({
         className="hub__unread-threads-banner__mark"
         onClick={markAllRead}
       >
-        <span
-          className="hub__unread-threads-banner__icon"
-          aria-hidden="true"
-        >
+        <span className="hub__unread-threads-banner__icon" aria-hidden="true">
           <CircleCheck />
         </span>
         {t("Mark all as read")}

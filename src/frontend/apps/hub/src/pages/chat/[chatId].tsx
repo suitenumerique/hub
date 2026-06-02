@@ -1,10 +1,6 @@
 import type { GetStaticPaths, GetStaticProps } from "next";
-import { useRouter } from "next/router";
 
-import { ChatView } from "@/features/chat/components/ChatView";
 import { MOCK_CHATS } from "@/features/drivers/mocks/mockChats";
-import { HubLayout } from "@/features/layouts/HubLayout";
-import type { NextPageWithLayout } from "@/features/layouts/NextPageWithLayout";
 
 // `getStaticPaths` is required for dynamic routes under `output: "export"`. We
 // intentionally keep `getStaticProps` empty so navigating between two chats no
@@ -19,18 +15,5 @@ export const getStaticPaths: GetStaticPaths = () => ({
 
 export const getStaticProps: GetStaticProps = () => ({ props: {} });
 
-const ChatPage: NextPageWithLayout = () => {
-  const router = useRouter();
-  const chatId =
-    router.isReady && typeof router.query.chatId === "string"
-      ? router.query.chatId
-      : null;
-  if (!chatId) {
-    return null;
-  }
-  return <ChatView chatId={chatId} />;
-};
-
-ChatPage.getLayout = (page) => <HubLayout>{page}</HubLayout>;
-
-export default ChatPage;
+// Shared with `/chat/new` — see that route for the rationale.
+export { default } from "@/features/chat/components/ChatRoute";

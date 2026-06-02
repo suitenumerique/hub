@@ -118,19 +118,14 @@ export const ThreadDetail = ({
             const prev = thread.messages[index - 1];
             const next = thread.messages[index + 1];
             const isSent = message.authorId === "me";
-            const isFirstOfGroup =
-              !prev || prev.authorId !== message.authorId;
-            const isLastOfGroup =
-              !next || next.authorId !== message.authorId;
+            const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
+            const isLastOfGroup = !next || next.authorId !== message.authorId;
             const author = authorsById.get(message.authorId);
 
             return (
               <Fragment key={message.id}>
                 {index === thread.firstUnreadIndex && (
-                  <div
-                    className="hub__thread-detail__unread"
-                    role="separator"
-                  >
+                  <div className="hub__thread-detail__unread" role="separator">
                     <span>{t("Unread")}</span>
                   </div>
                 )}
