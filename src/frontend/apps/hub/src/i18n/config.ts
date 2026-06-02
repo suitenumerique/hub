@@ -1,1 +1,1 @@
-export const fallbackLng = 'en';
+export const fallbackLng = "en";

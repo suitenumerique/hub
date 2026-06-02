@@ -13,10 +13,7 @@ import { useRouter } from "next/router";
 import { ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import {
-  ALL_CHATS,
-  FAVOURITE_CHATS,
-} from "@/features/drivers/mocks/mockChats";
+import { ALL_CHATS, FAVOURITE_CHATS } from "@/features/drivers/mocks/mockChats";
 import type { Chat } from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 

@@ -1,0 +1,23 @@
+# Dependencies
+**/node_modules
+
+# Build artifacts
+**/.next
+**/out
+**/coverage
+**/dist
+**/.turbo
+
+# Playwright generated reports/results
+apps/e2e/report*
+apps/e2e/test-results
+apps/e2e/blob-report
+apps/e2e/playwright-report
+
+# Static assets / vendored bundles (e.g. minified pdf.js worker)
+apps/hub/public
+
+# Generated files
+apps/hub/src/i18n/translations.json
+apps/hub/src/styles/cunningham-tokens*
+**/*.min.*

@@ -1,30 +1,30 @@
-import { Locator, Page, expect } from '@playwright/test';
+import { Locator, Page, expect } from "@playwright/test";
 
 export const getChatHeader = (page: Page): Locator =>
-  page.getByLabel('Chat header');
+  page.getByLabel("Chat header");
 
 export const getHeaderChatNameButton = (
   page: Page,
   chatName: string,
-): Locator => getChatHeader(page).getByRole('button', { name: chatName });
+): Locator => getChatHeader(page).getByRole("button", { name: chatName });
 
 export const getHeaderStartMeetingButton = (page: Page): Locator =>
-  getChatHeader(page).getByRole('button', { name: 'Start a meeting' });
+  getChatHeader(page).getByRole("button", { name: "Start a meeting" });
 
 export const getHeaderThreadsButton = (page: Page): Locator =>
-  getChatHeader(page).getByRole('button', { name: 'Threads' });
+  getChatHeader(page).getByRole("button", { name: "Threads" });
 
 export const getHeaderFilesButton = (page: Page): Locator =>
-  getChatHeader(page).getByRole('button', { name: 'Files' });
+  getChatHeader(page).getByRole("button", { name: "Files" });
 
 export const getChatBubbles = (page: Page): Locator =>
-  page.locator('.hub__chat-bubble');
+  page.locator(".hub__chat-bubble");
 
 export const getChatScroller = (page: Page): Locator =>
   page.locator('[data-testid="virtuoso-scroller"]');
 
 export const getTopLoader = (page: Page): Locator =>
-  page.getByText('Loading older messages…');
+  page.getByText("Loading older messages…");
 
 export const getChatScrollState = (page: Page) =>
   page.evaluate(() => {
@@ -42,13 +42,13 @@ export const getChatScrollState = (page: Page) =>
   });
 
 export const getChatComposerInput = (page: Page): Locator =>
-  page.getByRole('textbox', { name: 'Message' });
+  page.getByRole("textbox", { name: "Message" });
 
 export const getChatComposerSendButton = (page: Page): Locator =>
-  page.getByRole('button', { name: 'Send message' });
+  page.getByRole("button", { name: "Send message" });
 
 export const getChatComposerAttachButton = (page: Page): Locator =>
-  page.getByRole('button', { name: 'Attach a file' });
+  page.getByRole("button", { name: "Attach a file" });
 
 export const expectConversationLoaded = async (page: Page) => {
   await expect(getChatHeader(page)).toBeVisible();

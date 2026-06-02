@@ -1,4 +1,4 @@
-import { baseApiUrl } from '../api/utils'
+import { baseApiUrl } from "../api/utils";
 
 export const authUrl = ({
   silent = false,
@@ -6,6 +6,6 @@ export const authUrl = ({
 } = {}) => {
   return new URL(
     `authenticate/?silent=${encodeURIComponent(silent)}&returnTo=${encodeURIComponent(returnTo)}`,
-    baseApiUrl()
-  )
-}
+    baseApiUrl(),
+  );
+};

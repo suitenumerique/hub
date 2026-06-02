@@ -1,7 +1,7 @@
 const config = {
   customValueTemplate: {
-    message: '${key}',
-    description: '${description}',
+    message: "${key}",
+    description: "${description}",
   },
   keepRemoved: false,
   keySeparator: false,
@@ -10,10 +10,10 @@ const config = {
   lexers: {
     tsx: [
       {
-        lexer: 'JsxLexer',
-        functions: ['t'],
+        lexer: "JsxLexer",
+        functions: ["t"],
         transSupportBasicHtmlNodes: true, // Disable automatic conversion
-        transKeepBasicHtmlNodesFor: ['strong', 'b', 'i', 'code', 'br'],
+        transKeepBasicHtmlNodesFor: ["strong", "b", "i", "code", "br"],
       },
     ],
   },

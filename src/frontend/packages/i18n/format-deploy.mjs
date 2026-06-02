@@ -1,14 +1,14 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-import yargs from 'yargs';
+import yargs from "yargs";
 
 // Get our args
 const argv = yargs(process.argv).argv;
 const { app, output } = argv;
 
-const folderPath = './locales/' + app;
-const namefile = 'translations.json';
+const folderPath = "./locales/" + app;
+const namefile = "translations.json";
 const jsonI18n = {};
 
 // Fetch the files in the locales folder
@@ -30,7 +30,7 @@ fs.readdirSync(folderPath).map((language) => {
     throw new Error(`File ${pathTranslateFile} not found!`);
   }
 
-  const json = JSON.parse(fs.readFileSync(pathTranslateFile, 'utf8'));
+  const json = JSON.parse(fs.readFileSync(pathTranslateFile, "utf8"));
 
   // Transform the json file to the format expected by i18next
   const jsonKeyMessage = {};
@@ -50,6 +50,6 @@ if (!Object.keys(jsonI18n).length) {
 }
 
 // Write the file to the output
-fs.writeFileSync(output, JSON.stringify(jsonI18n), 'utf8');
+fs.writeFileSync(output, JSON.stringify(jsonI18n), "utf8");
 
 console.log(`${app} translations deployed!`);

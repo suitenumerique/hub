@@ -24,10 +24,15 @@
     "e2e:test": "yarn APP_E2E run test",
     "lint": "yarn APP_HUB run lint && yarn APP_E2E run lint && yarn I18N run lint",
     "lint-fix": "yarn APP_HUB run lint --fix && yarn APP_E2E run lint --fix && yarn I18N run lint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "i18n:extract": "yarn I18N run extract-translation",
-    "i18n:deploy": "yarn I18N run format-deploy && yarn APP_HUB prettier",
+    "i18n:deploy": "yarn I18N run format-deploy",
     "i18n:test": "yarn I18N run test",
     "test": "yarn app:test"
+  },
+  "devDependencies": {
+    "prettier": "3.8.3"
   },
   "resolutions": {
     "@next/eslint-plugin-next": "15.1.7",

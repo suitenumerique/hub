@@ -12,12 +12,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "incremental": true,
+    "incremental": true
   },
-  "include": [
-    "**/*.ts",
-    "**/*.js",
-    "**/*.mjs"
-  ],
+  "include": ["**/*.ts", "**/*.js", "**/*.mjs"],
   "exclude": ["node_modules"]
 }

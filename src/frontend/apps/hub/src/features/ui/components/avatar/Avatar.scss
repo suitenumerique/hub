@@ -1,15 +1,6 @@
 $avatar-colors:
-  "blue-1",
-  "blue-2",
-  "brand",
-  "brown",
-  "gray",
-  "green",
-  "orange",
-  "pink",
-  "purple",
-  "red",
-  "yellow";
+  "blue-1", "blue-2", "brand", "brown", "gray", "green", "orange", "pink",
+  "purple", "red", "yellow";
 
 .hub__avatar {
   flex: 0 0 auto;
@@ -46,7 +37,9 @@ $avatar-colors:
 
   @each $color in $avatar-colors {
     &--#{$color} {
-      background: var(--c--contextuals--background--palette--#{$color}--primary);
+      background: var(
+        --c--contextuals--background--palette--#{$color}--primary
+      );
     }
   }
 

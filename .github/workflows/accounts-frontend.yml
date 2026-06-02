@@ -66,6 +66,9 @@ jobs:
       - name: Check linting
         run: cd src/frontend/ && yarn lint
 
+      - name: Check formatting
+        run: cd src/frontend/ && yarn format:check
+
   test-e2e:
     uses: ./.github/workflows/e2e-tests.yml
 

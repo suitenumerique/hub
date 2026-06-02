@@ -1,9 +1,9 @@
-import i18next from 'i18next';
-import LanguageDetector from 'i18next-browser-languagedetector';
-import { initReactI18next } from 'react-i18next';
+import i18next from "i18next";
+import LanguageDetector from "i18next-browser-languagedetector";
+import { initReactI18next } from "react-i18next";
 
-import { fallbackLng } from './config';
-import resources from './translations.json';
+import { fallbackLng } from "./config";
+import resources from "./translations.json";
 
 // Add an initialization guard
 let isInitialized = false;
@@ -20,13 +20,13 @@ if (!isInitialized && !i18next.isInitialized) {
       fallbackLng,
       debug: false,
       detection: {
-        order: ['cookie', 'navigator'],
-        caches: ['cookie'],
-        lookupCookie: 'hub_language',
+        order: ["cookie", "navigator"],
+        caches: ["cookie"],
+        lookupCookie: "hub_language",
         cookieMinutes: 525600,
         cookieOptions: {
-          path: '/',
-          sameSite: 'lax',
+          path: "/",
+          sameSite: "lax",
         },
       },
       interpolation: {
@@ -37,17 +37,17 @@ if (!isInitialized && !i18next.isInitialized) {
       keySeparator: false,
     })
     .then(() => {
-      if (typeof document !== 'undefined') {
+      if (typeof document !== "undefined") {
         document.documentElement.setAttribute(
-          'lang',
+          "lang",
           i18next.language || fallbackLng,
         );
-        i18next.on('languageChanged', (lang) => {
-          document.documentElement.setAttribute('lang', lang);
+        i18next.on("languageChanged", (lang) => {
+          document.documentElement.setAttribute("lang", lang);
         });
       }
     })
-    .catch((e) => console.error('i18n initialization failed:', e));
+    .catch((e) => console.error("i18n initialization failed:", e));
 }
 
 export default i18next;

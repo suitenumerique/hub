@@ -16,7 +16,7 @@ COPY ./src/frontend/apps/hub/package.json ./apps/hub/package.json
 RUN yarn install --frozen-lockfile
 
 COPY .dockerignore ./.dockerignore
-COPY ./src/frontend/.prettierrc.js ./.prettierrc.js
+COPY ./src/frontend/.prettierrc ./.prettierrc
 COPY ./src/frontend/apps/hub ./apps/hub
 
 ### ---- Front-end builder image ----

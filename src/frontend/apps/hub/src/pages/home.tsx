@@ -58,7 +58,7 @@ const HomePageContent = () => {
         <meta
           name="description"
           content={t(
-            "LaSuite Hub: the gateway to La Suite collaborative tools, with account management features coming soon."
+            "LaSuite Hub: the gateway to La Suite collaborative tools, with account management features coming soon.",
           )}
         />
       </Head>
@@ -74,7 +74,7 @@ const HomePageContent = () => {
             banner=""
             title={t("LaSuite Hub, your gateway to the collaborative suite.")}
             subtitle={t(
-              "Login to La Suite collaborative tools from one place. Soon, you will also be able to manage your account information here."
+              "Login to La Suite collaborative tools from one place. Soon, you will also be able to manage your account information here.",
             )}
             mainButton={
               <div className="c__hero__buttons">

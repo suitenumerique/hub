@@ -12,7 +12,7 @@ export const LoginButton = () => {
       onClick={() => {
         sessionStorage.setItem(
           SESSION_STORAGE_REDIRECT_AFTER_LOGIN_URL,
-          window.location.href
+          window.location.href,
         );
         login();
       }}

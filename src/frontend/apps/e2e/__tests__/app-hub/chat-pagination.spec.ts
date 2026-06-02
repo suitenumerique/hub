@@ -45,7 +45,9 @@ test.describe("Chat conversation scroll & pagination", () => {
     expect(state).not.toBeNull();
     if (!state) return;
     expect(state.scrollHeight).toBeGreaterThan(state.clientHeight);
-    expect(state.scrollHeight - state.scrollTop - state.clientHeight).toBeLessThan(4);
+    expect(
+      state.scrollHeight - state.scrollTop - state.clientHeight,
+    ).toBeLessThan(4);
   });
 
   test("scrolling to the top loads older messages without losing position", async ({
@@ -69,15 +71,12 @@ test.describe("Chat conversation scroll & pagination", () => {
     // messages was added) and Virtuoso has shifted scrollTop away from 0 so
     // the previously visible content stays in view.
     const heightBefore = stateBefore!.scrollHeight;
-    await page.waitForFunction(
-      (before) => {
-        const scroller = document.querySelector(
-          '[data-testid="virtuoso-scroller"]',
-        ) as HTMLElement | null;
-        return !!scroller && scroller.scrollHeight > before;
-      },
-      heightBefore,
-    );
+    await page.waitForFunction((before) => {
+      const scroller = document.querySelector(
+        '[data-testid="virtuoso-scroller"]',
+      ) as HTMLElement | null;
+      return !!scroller && scroller.scrollHeight > before;
+    }, heightBefore);
     const stateAfter = await getChatScrollState(page);
     expect(stateAfter?.scrollTop).toBeGreaterThan(0);
   });

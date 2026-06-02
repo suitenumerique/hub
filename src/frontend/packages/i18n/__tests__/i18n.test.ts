@@ -1,79 +1,79 @@
-import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
+import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
 
-describe('integration testing on i18n package', () => {
+describe("integration testing on i18n package", () => {
   afterAll(() => {
-    fs.rmSync('./locales/tests', { recursive: true, force: true });
+    fs.rmSync("./locales/tests", { recursive: true, force: true });
   });
 
-  test('cmd extract-translation:hub', () => {
+  test("cmd extract-translation:hub", () => {
     // To be sure the file is not here
-    fs.rmSync('./locales/hub/translations-crowdin.json', {
+    fs.rmSync("./locales/hub/translations-crowdin.json", {
       recursive: true,
       force: true,
     });
     expect(
-      fs.existsSync('./locales/hub/translations-crowdin.json'),
+      fs.existsSync("./locales/hub/translations-crowdin.json"),
     ).toBeFalsy();
 
     // Generate the file
-    execSync('yarn extract-translation:hub');
+    execSync("yarn extract-translation:hub");
     expect(
-      fs.existsSync('./locales/hub/translations-crowdin.json'),
+      fs.existsSync("./locales/hub/translations-crowdin.json"),
     ).toBeTruthy();
   });
 
-  test('cmd format-deploy', () => {
+  test("cmd format-deploy", () => {
     // To be sure the tests folder is not here
-    fs.rmSync('./locales/tests', { recursive: true, force: true });
-    expect(fs.existsSync('./locales/tests')).toBeFalsy();
+    fs.rmSync("./locales/tests", { recursive: true, force: true });
+    expect(fs.existsSync("./locales/tests")).toBeFalsy();
 
     // Generate english json file
-    fs.mkdirSync('./locales/tests/en/', { recursive: true });
+    fs.mkdirSync("./locales/tests/en/", { recursive: true });
     fs.writeFileSync(
-      './locales/tests/en/translations.json',
-      JSON.stringify({ test: { message: 'My test' } }),
-      'utf8',
+      "./locales/tests/en/translations.json",
+      JSON.stringify({ test: { message: "My test" } }),
+      "utf8",
     );
-    expect(fs.existsSync('./locales/tests/en/translations.json')).toBeTruthy();
+    expect(fs.existsSync("./locales/tests/en/translations.json")).toBeTruthy();
 
-    fs.mkdirSync('./locales/tests/fr/', { recursive: true });
+    fs.mkdirSync("./locales/tests/fr/", { recursive: true });
     fs.writeFileSync(
-      './locales/tests/fr/translations.json',
-      JSON.stringify({ test: { message: 'Mon test' } }),
-      'utf8',
+      "./locales/tests/fr/translations.json",
+      JSON.stringify({ test: { message: "Mon test" } }),
+      "utf8",
     );
-    expect(fs.existsSync('./locales/tests/fr/translations.json')).toBeTruthy();
+    expect(fs.existsSync("./locales/tests/fr/translations.json")).toBeTruthy();
 
     // Execute format-deploy command
-    const output = './locales/tests/translations.json';
+    const output = "./locales/tests/translations.json";
     execSync(`node ./format-deploy.mjs --app=tests --output=${output}`);
-    const json = JSON.parse(fs.readFileSync(output, 'utf8'));
+    const json = JSON.parse(fs.readFileSync(output, "utf8"));
     expect(json).toEqual({
       en: {
-        translation: { test: 'My test' },
+        translation: { test: "My test" },
       },
       fr: {
-        translation: { test: 'Mon test' },
+        translation: { test: "Mon test" },
       },
     });
   });
 
-  test('cmd format-deploy throws an error when translation file is not found', () => {
+  test("cmd format-deploy throws an error when translation file is not found", () => {
     // To be sure the tests folder is not here
-    fs.rmSync('./locales/tests', { recursive: true, force: true });
-    expect(fs.existsSync('./locales/tests')).toBeFalsy();
+    fs.rmSync("./locales/tests", { recursive: true, force: true });
+    expect(fs.existsSync("./locales/tests")).toBeFalsy();
 
     // Generate english json file
-    fs.mkdirSync('./locales/tests/en/', { recursive: true });
+    fs.mkdirSync("./locales/tests/en/", { recursive: true });
 
     // Execute format-deploy command
-    const output = './locales/tests/translations.json';
+    const output = "./locales/tests/translations.json";
 
     const cmd = () => {
       execSync(`node ./format-deploy.mjs --app=tests --output=${output}`, {
-        stdio: 'pipe',
+        stdio: "pipe",
       });
     };
 
@@ -82,23 +82,23 @@ describe('integration testing on i18n package', () => {
     );
   });
 
-  test('cmd format-deploy throws an error when no translation to deploy', () => {
+  test("cmd format-deploy throws an error when no translation to deploy", () => {
     // To be sure the tests folder is not here
-    fs.rmSync('./locales/tests', { recursive: true, force: true });
-    expect(fs.existsSync('./locales/tests')).toBeFalsy();
+    fs.rmSync("./locales/tests", { recursive: true, force: true });
+    expect(fs.existsSync("./locales/tests")).toBeFalsy();
 
     // Generate english json file
-    fs.mkdirSync('./locales/tests/', { recursive: true });
+    fs.mkdirSync("./locales/tests/", { recursive: true });
 
     // Execute format-deploy command
-    const output = './locales/tests/translations.json';
+    const output = "./locales/tests/translations.json";
 
     const cmd = () => {
       execSync(`node ./format-deploy.mjs --app=tests --output=${output}`, {
-        stdio: 'pipe',
+        stdio: "pipe",
       });
     };
 
-    expect(cmd).toThrow('Error: No translation to deploy');
+    expect(cmd).toThrow("Error: No translation to deploy");
   });
 });
