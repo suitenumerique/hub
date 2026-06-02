@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from "@playwright/test";
 
-import { setupAuthenticatedUser } from './utils-auth';
+import { setupAuthenticatedUser } from "./utils-auth";
 import {
   expectLeftPanelVisible,
   getActiveChatLink,
@@ -8,22 +8,22 @@ import {
   getNewChatAction,
   getSearchAction,
   getStartMeetingAction,
-} from './utils-left-panel';
+} from "./utils-left-panel";
 
 const FIRST_CHAT = {
-  id: 'a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c',
-  name: 'Didier Salambo',
+  id: "a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c",
+  name: "Didier Salambo",
 };
 
 const SECOND_CHAT = {
-  id: 'c5d3e4f2-3f4a-4b5c-9d0e-7f8a9b0c1d2e',
-  name: 'Anabelle Dupontel',
+  id: "c5d3e4f2-3f4a-4b5c-9d0e-7f8a9b0c1d2e",
+  name: "Anabelle Dupontel",
 };
 
-test.describe('LeftPanel quick actions', () => {
+test.describe("LeftPanel quick actions", () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedUser(page);
-    await page.goto('/chat/new');
+    await page.goto("/chat/new");
     await expectLeftPanelVisible(page);
   });
 
@@ -32,12 +32,12 @@ test.describe('LeftPanel quick actions', () => {
   }) => {
     const newAction = getNewChatAction(page);
     await expect(newAction).toBeVisible();
-    await expect(newAction).toHaveAttribute('href', '/chat/new');
+    await expect(newAction).toHaveAttribute("href", "/chat/new");
 
     await newAction.click();
 
-    await page.waitForURL('**/chat/new');
-    await expect(page.getByText('New discussion')).toBeVisible();
+    await page.waitForURL("**/chat/new");
+    await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
   });
 
   test('"Start a meeting" button is visible and does not navigate', async ({
@@ -52,9 +52,7 @@ test.describe('LeftPanel quick actions', () => {
     expect(page.url()).toBe(urlBefore);
   });
 
-  test('"Search" button is visible and does not navigate', async ({
-    page,
-  }) => {
+  test('"Search" button is visible and does not navigate', async ({ page }) => {
     const action = getSearchAction(page);
     await expect(action).toBeVisible();
     await expect(action).toBeEnabled();
@@ -65,14 +63,14 @@ test.describe('LeftPanel quick actions', () => {
   });
 });
 
-test.describe('Chat navigation from the LeftPanel', () => {
+test.describe("Chat navigation from the LeftPanel", () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedUser(page);
-    await page.goto('/chat/new');
+    await page.goto("/chat/new");
     await expectLeftPanelVisible(page);
   });
 
-  test('clicking a chat updates the URL and marks the row active', async ({
+  test("clicking a chat updates the URL and marks the row active", async ({
     page,
   }) => {
     await getChatLink(page, FIRST_CHAT.name).click();
@@ -80,12 +78,12 @@ test.describe('Chat navigation from the LeftPanel', () => {
     await page.waitForURL(`**/chat/${FIRST_CHAT.id}`);
     await expect(getActiveChatLink(page)).toHaveCount(1);
     await expect(getActiveChatLink(page)).toHaveAttribute(
-      'href',
+      "href",
       `/chat/${FIRST_CHAT.id}`,
     );
   });
 
-  test('switching between two chats updates the active row', async ({
+  test("switching between two chats updates the active row", async ({
     page,
   }) => {
     await getChatLink(page, FIRST_CHAT.name).click();
@@ -96,7 +94,7 @@ test.describe('Chat navigation from the LeftPanel', () => {
 
     await expect(getActiveChatLink(page)).toHaveCount(1);
     await expect(getActiveChatLink(page)).toHaveAttribute(
-      'href',
+      "href",
       `/chat/${SECOND_CHAT.id}`,
     );
   });
