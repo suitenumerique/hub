@@ -12,7 +12,11 @@ import {
   getHeaderStartMeetingButton,
   getHeaderThreadsButton,
 } from "./utils-chat-conversation";
-import { expectLeftPanelVisible, getChatLink } from "./utils-left-panel";
+import {
+  expectLeftPanelVisible,
+  getChatLink,
+  waitForChatUrl,
+} from "./utils-left-panel";
 
 const FIRST_CHAT = {
   id: "a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c",
@@ -26,7 +30,7 @@ test.describe("Chat conversation view", () => {
     await expectLeftPanelVisible(page);
 
     await getChatLink(page, FIRST_CHAT.name).click();
-    await page.waitForURL(`**/chat/${FIRST_CHAT.id}`);
+    await waitForChatUrl(page, FIRST_CHAT.id);
   });
 
   test("header is visible and displays the chat name", async ({ page }) => {

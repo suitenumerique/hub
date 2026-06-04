@@ -2,12 +2,15 @@ import { expect, test } from "@playwright/test";
 
 import { setupAuthenticatedUser } from "./utils-auth";
 import {
+  chatPath,
   expectLeftPanelVisible,
   getActiveChatLink,
   getChatLink,
+  getChatScopeSelector,
   getNewChatAction,
   getSearchAction,
   getStartMeetingAction,
+  waitForChatUrl,
 } from "./utils-left-panel";
 
 const FIRST_CHAT = {
@@ -75,11 +78,11 @@ test.describe("Chat navigation from the LeftPanel", () => {
   }) => {
     await getChatLink(page, FIRST_CHAT.name).click();
 
-    await page.waitForURL(`**/chat/${FIRST_CHAT.id}`);
+    await waitForChatUrl(page, FIRST_CHAT.id);
     await expect(getActiveChatLink(page)).toHaveCount(1);
     await expect(getActiveChatLink(page)).toHaveAttribute(
       "href",
-      `/chat/${FIRST_CHAT.id}`,
+      chatPath(FIRST_CHAT.id),
     );
   });
 
@@ -87,15 +90,68 @@ test.describe("Chat navigation from the LeftPanel", () => {
     page,
   }) => {
     await getChatLink(page, FIRST_CHAT.name).click();
-    await page.waitForURL(`**/chat/${FIRST_CHAT.id}`);
+    await waitForChatUrl(page, FIRST_CHAT.id);
 
     await getChatLink(page, SECOND_CHAT.name).click();
-    await page.waitForURL(`**/chat/${SECOND_CHAT.id}`);
+    await waitForChatUrl(page, SECOND_CHAT.id);
 
     await expect(getActiveChatLink(page)).toHaveCount(1);
     await expect(getActiveChatLink(page)).toHaveAttribute(
       "href",
-      `/chat/${SECOND_CHAT.id}`,
+      chatPath(SECOND_CHAT.id),
     );
+  });
+});
+
+test.describe("Chat scope selection from the LeftPanel", () => {
+  test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedUser(page);
+    await page.goto("/chat/new");
+    await expectLeftPanelVisible(page);
+  });
+
+  test("defaults to the aggregate scope and shows chats from both mock servers", async ({
+    page,
+  }) => {
+    await expect(getChatScopeSelector(page)).toHaveValue("mock-aggregate");
+    await expect(getChatLink(page, FIRST_CHAT.name, "Hub")).toBeVisible();
+    await expect(
+      getChatLink(page, `${FIRST_CHAT.name} (Support)`, "Support"),
+    ).toBeVisible();
+  });
+
+  test("switching to the Hub scope shows only Hub chats", async ({ page }) => {
+    await getChatScopeSelector(page).selectOption("mock-hub");
+
+    await expect(getChatScopeSelector(page)).toHaveValue("mock-hub");
+    await expect(getChatLink(page, FIRST_CHAT.name, null)).toBeVisible();
+    await expect(
+      getChatLink(page, `${FIRST_CHAT.name} (Support)`, "Support"),
+    ).toHaveCount(0);
+  });
+
+  test("switching to the Support scope shows only Support chats", async ({
+    page,
+  }) => {
+    await getChatScopeSelector(page).selectOption("mock-support");
+
+    await expect(getChatScopeSelector(page)).toHaveValue("mock-support");
+    await expect(
+      getChatLink(page, `${FIRST_CHAT.name} (Support)`, null),
+    ).toBeVisible();
+    await expect(getChatLink(page, FIRST_CHAT.name, "Hub")).toHaveCount(0);
+  });
+
+  test("switching away from the active account returns to the new chat page", async ({
+    page,
+  }) => {
+    await getChatLink(page, `${FIRST_CHAT.name} (Support)`, "Support").click();
+    await waitForChatUrl(page, FIRST_CHAT.id, "mock-support");
+
+    await getChatScopeSelector(page).selectOption("mock-hub");
+
+    await page.waitForURL("**/chat/new");
+    await expect(page.getByRole("heading", { name: "New chat" })).toBeVisible();
+    await expect(getChatScopeSelector(page)).toHaveValue("mock-hub");
   });
 });

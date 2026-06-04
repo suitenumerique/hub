@@ -6,7 +6,11 @@ import {
   getChatHeader,
   getHeaderThreadsButton,
 } from "./utils-chat-conversation";
-import { expectLeftPanelVisible, getChatLink } from "./utils-left-panel";
+import {
+  expectLeftPanelVisible,
+  getChatLink,
+  waitForChatUrl,
+} from "./utils-left-panel";
 import {
   getBubbleThreadButtons,
   getThreadBackButton,
@@ -36,7 +40,7 @@ test.describe("Chat threads", () => {
     await expectLeftPanelVisible(page);
 
     await getChatLink(page, FIRST_CHAT.name).click();
-    await page.waitForURL(`**/chat/${FIRST_CHAT.id}`);
+    await waitForChatUrl(page, FIRST_CHAT.id);
     await expectConversationLoaded(page);
   });
 

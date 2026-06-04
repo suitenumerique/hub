@@ -15,7 +15,11 @@ import {
   getFilePreviewPreviousButton,
   getFilePreviewTitle,
 } from "./utils-file-preview";
-import { expectLeftPanelVisible, getChatLink } from "./utils-left-panel";
+import {
+  expectLeftPanelVisible,
+  getChatLink,
+  waitForChatUrl,
+} from "./utils-left-panel";
 import {
   expectToolsPanelClosed,
   expectToolsPanelOpen,
@@ -47,7 +51,7 @@ test.describe("Chat tools panel", () => {
     await expectLeftPanelVisible(page);
 
     await getChatLink(page, FIRST_CHAT.name).click();
-    await page.waitForURL(`**/chat/${FIRST_CHAT.id}`);
+    await waitForChatUrl(page, FIRST_CHAT.id);
     await expect(getChatHeader(page)).toBeVisible();
   });
 
@@ -196,14 +200,14 @@ test.describe("Chat tools panel", () => {
     // chat switch is exercised via browser back-navigation: go to a second
     // chat, open a preview there, then navigate back.
     await getChatLink(page, SECOND_CHAT.name).click();
-    await page.waitForURL(`**/chat/${SECOND_CHAT.id}`);
+    await waitForChatUrl(page, SECOND_CHAT.id);
 
     await getHeaderFilesButton(page).click();
     await getDocumentItem(page, PDF_MOCK_TITLE).click();
     await expectFilePreviewOpen(page);
 
     await page.goBack();
-    await page.waitForURL(`**/chat/${FIRST_CHAT.id}`);
+    await waitForChatUrl(page, FIRST_CHAT.id);
     await expect(getFilePreview(page)).toHaveCount(0);
   });
 });
