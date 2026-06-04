@@ -35,6 +35,7 @@ import {
   ChatMessage,
   ChatMessageAuthor,
   ChatMessagesPage,
+  ChatThreadMutationResult,
   LocalChat,
   LocalChatSections,
   User,
@@ -208,6 +209,8 @@ const resolveLoginHint = (user: User | null | undefined): string => {
  * the real plumbing that mapping will hang off.
  */
 export class MatrixDriver extends MockDriver {
+  override readonly supportsComposition: boolean = false;
+
   private mx: MatrixClient | null = null;
   /** Subscribers to the single global event stream. */
   private eventListeners = new Set<ChatEventListener>();
@@ -308,6 +311,24 @@ export class MatrixDriver extends MockDriver {
     const nextCursor =
       startIndex === 0 && reachedStart ? null : (messages[0]?.id ?? null);
     return { messages, authors, nextCursor };
+  }
+
+  async sendChatMessage(): Promise<ChatMessage> {
+    throw new Error(
+      "MatrixDriver.sendChatMessage: Matrix composition is not implemented yet.",
+    );
+  }
+
+  async sendChatThreadReply(): Promise<ChatThreadMutationResult> {
+    throw new Error(
+      "MatrixDriver.sendChatThreadReply: Matrix composition is not implemented yet.",
+    );
+  }
+
+  async startChatThread(): Promise<ChatThreadMutationResult> {
+    throw new Error(
+      "MatrixDriver.startChatThread: Matrix composition is not implemented yet.",
+    );
   }
 
   /**

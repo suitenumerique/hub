@@ -3,6 +3,9 @@ import {
   GetChatMessagesParams,
   GetChatThreadParams,
   MarkChatThreadReadParams,
+  SendChatMessageParams,
+  SendChatThreadReplyParams,
+  StartChatThreadParams,
   ToggleChatReactionParams,
   ToggleChatThreadReactionParams,
   ChatUserFilters,
@@ -21,6 +24,9 @@ import {
   getMockThreads,
   markAllMockThreadsRead,
   markMockThreadRead,
+  sendMockMessage,
+  sendMockThreadReply,
+  startMockThread,
   toggleMockReaction,
   toggleMockThreadReaction,
 } from "../mocks/mockMessages";
@@ -31,6 +37,7 @@ import {
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
+  ChatThreadMutationResult,
   ChatUser,
   LocalChat,
   LocalChatSections,
@@ -67,6 +74,8 @@ const readNumberSetting = (
  * a real chat driver and delete this file.
  */
 export class MockDriver extends Driver {
+  override readonly supportsComposition: boolean = true;
+
   private readonly chats: LocalChat[];
 
   constructor(
@@ -166,6 +175,26 @@ export class MockDriver extends Driver {
     return { messages, authors, nextCursor };
   }
 
+  async sendChatMessage({
+    chatId,
+    content,
+  }: SendChatMessageParams): Promise<ChatMessage> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/messages/',
+    // { method: 'POST' })` when the backend exposes message composition.
+    // The driver contract (chatId + content → ChatMessage) is the swap point.
+
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const message = sendMockMessage(chatId, content, this.getSeedChat(chatId));
+    if (!message) {
+      throw new Error(
+        `MockDriver.sendChatMessage: chat "${chatId}" not found.`,
+      );
+    }
+    this.touchChat(chatId, message.timestamp);
+    return message;
+  }
+
   async toggleChatReaction({
     chatId,
     messageId,
@@ -231,6 +260,54 @@ export class MockDriver extends Driver {
       );
     }
     return detail;
+  }
+
+  async sendChatThreadReply({
+    chatId,
+    threadId,
+    content,
+  }: SendChatThreadReplyParams): Promise<ChatThreadMutationResult> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/threads/:id/
+    // messages/', { method: 'POST' })` when the backend exposes thread replies.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const result = sendMockThreadReply(
+      chatId,
+      threadId,
+      content,
+      this.getSeedChat(chatId),
+    );
+    if (!result) {
+      throw new Error(
+        `MockDriver.sendChatThreadReply: thread "${threadId}" not found in chat "${chatId}".`,
+      );
+    }
+    this.touchChat(chatId, result.message.timestamp);
+    return result;
+  }
+
+  async startChatThread({
+    chatId,
+    rootMessageId,
+    content,
+  }: StartChatThreadParams): Promise<ChatThreadMutationResult> {
+    // MOCK — replace this block with `fetchAPI('chats/:id/messages/:id/
+    // thread/', { method: 'POST' })` when the backend exposes thread creation.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const result = startMockThread(
+      chatId,
+      rootMessageId,
+      content,
+      this.getSeedChat(chatId),
+    );
+    if (!result) {
+      throw new Error(
+        `MockDriver.startChatThread: message "${rootMessageId}" could not start a thread in chat "${chatId}".`,
+      );
+    }
+    this.touchChat(chatId, result.message.timestamp);
+    return result;
   }
 
   async toggleChatThreadReaction({
@@ -301,5 +378,13 @@ export class MockDriver extends Driver {
       ...chat,
       id: `${this.accountId}:${chat.id}`,
     };
+  }
+
+  private touchChat(chatId: string, timestamp: string): void {
+    const chat = this.getLocalChat(chatId);
+    if (chat) {
+      chat.lastActivityAt = timestamp;
+      chat.unread = false;
+    }
   }
 }

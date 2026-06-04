@@ -8,6 +8,7 @@ import {
   ChatReaction,
   ChatThread,
   ChatThreadDetail,
+  ChatThreadMutationResult,
   ChatUser,
   LocalChat,
   LocalChatSections,
@@ -54,6 +55,23 @@ export type ToggleChatThreadReactionParams = {
 export type MarkChatThreadReadParams = {
   chatId: string;
   threadId: string;
+};
+
+export type SendChatMessageParams = {
+  chatId: string;
+  content: string;
+};
+
+export type SendChatThreadReplyParams = {
+  chatId: string;
+  threadId: string;
+  content: string;
+};
+
+export type StartChatThreadParams = {
+  chatId: string;
+  rootMessageId: string;
+  content: string;
 };
 
 /**
@@ -116,6 +134,7 @@ export type ChatEventListener = (event: ChatEvent) => void;
 
 export abstract class Driver {
   readonly accountId: AccountId;
+  readonly supportsComposition: boolean = false;
 
   constructor(accountId: AccountId = "default") {
     this.accountId = accountId;
@@ -154,6 +173,36 @@ export abstract class Driver {
   abstract markChatThreadRead(params: MarkChatThreadReadParams): Promise<void>;
   /** Marks every thread of a conversation as read for the current user. */
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
+
+  // --- Composition --------------------------------------------------------
+  // Unsupported by default so drivers can opt into composition incrementally.
+  // MockDriver enables these methods; MatrixDriver intentionally does not in
+  // the `chat-message-composition` change.
+
+  async sendChatMessage(_params: SendChatMessageParams): Promise<ChatMessage> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.sendChatMessage: composition is not supported by this driver.`,
+    );
+  }
+
+  async sendChatThreadReply(
+    _params: SendChatThreadReplyParams,
+  ): Promise<ChatThreadMutationResult> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.sendChatThreadReply: composition is not supported by this driver.`,
+    );
+  }
+
+  async startChatThread(
+    _params: StartChatThreadParams,
+  ): Promise<ChatThreadMutationResult> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.startChatThread: composition is not supported by this driver.`,
+    );
+  }
 
   // --- Connection lifecycle (generic) -------------------------------------
   // Default implementations make a driver "connected" with no handshake, so

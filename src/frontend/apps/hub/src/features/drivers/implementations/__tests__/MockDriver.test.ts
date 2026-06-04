@@ -241,3 +241,83 @@ describe("MockDriver threads", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("MockDriver composition", () => {
+  it("sends a conversation message and persists it", async () => {
+    const driver = new MockDriver();
+
+    const sent = await driver.sendChatMessage({
+      chatId: CHAT_ID,
+      content: "Hello from the composer",
+    });
+
+    expect(sent.authorId).toBe("me");
+    expect(sent.content).toBe("Hello from the composer");
+
+    const refetched = await driver.getChatMessages({
+      chatId: CHAT_ID,
+      limit: 1_000,
+    });
+    expect(refetched.messages.some((message) => message.id === sent.id)).toBe(
+      true,
+    );
+  });
+
+  it("sends a thread reply and updates thread metadata", async () => {
+    const driver = new MockDriver();
+    const [thread] = await driver.getChatThreads(CHAT_ID);
+    expect(thread).toBeDefined();
+    if (!thread) {
+      return;
+    }
+
+    const result = await driver.sendChatThreadReply({
+      chatId: CHAT_ID,
+      threadId: thread.id,
+      content: "Reply from me",
+    });
+
+    expect(result.message.authorId).toBe("me");
+    expect(result.thread.replyCount).toBe(thread.replyCount + 1);
+    expect(result.thread.lastReplyPreview).toBe("Reply from me");
+    expect(result.thread.unreadCount).toBe(0);
+
+    const refetched = await driver.getChatThread({
+      chatId: CHAT_ID,
+      threadId: thread.id,
+    });
+    expect(
+      refetched.messages.some((message) => message.id === result.message.id),
+    ).toBe(true);
+  });
+
+  it("starts a new thread from a root message and persists it", async () => {
+    const driver = new MockDriver();
+    const messages = await driver.getChatMessages({
+      chatId: CHAT_ID,
+      limit: 1_000,
+    });
+    const root = messages.messages.find((message) => !message.thread);
+    expect(root).toBeDefined();
+    if (!root) {
+      return;
+    }
+
+    const result = await driver.startChatThread({
+      chatId: CHAT_ID,
+      rootMessageId: root.id,
+      content: "First reply",
+    });
+
+    expect(result.thread.rootMessageId).toBe(root.id);
+    expect(result.thread.replyCount).toBe(1);
+    expect(result.rootMessage.thread?.id).toBe(result.thread.id);
+    expect(result.threadDetail.messages.map((message) => message.id)).toEqual([
+      root.id,
+      result.message.id,
+    ]);
+
+    const threads = await driver.getChatThreads(CHAT_ID);
+    expect(threads.some((thread) => thread.id === result.thread.id)).toBe(true);
+  });
+});

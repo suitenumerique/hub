@@ -247,6 +247,17 @@ export type ChatThreadDetail = {
   firstUnreadIndex: number | null;
 };
 
+export type ChatThreadMutationResult = {
+  /** Reply message that was sent inside the thread. */
+  message: ChatMessage;
+  /** Updated thread list row. */
+  thread: ChatThread;
+  /** Updated thread detail snapshot. */
+  threadDetail: ChatThreadDetail;
+  /** Root timeline message with its latest thread summary. */
+  rootMessage: ChatMessage;
+};
+
 /**
  * Content of a user from the chat engine
  */
