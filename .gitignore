@@ -91,3 +91,4 @@ CLAUDE.md
 
 # Cursor rules
 .cursorrules
+src/frontend/apps/hub/.env.development
