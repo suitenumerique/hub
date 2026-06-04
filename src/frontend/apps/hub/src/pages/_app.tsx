@@ -14,8 +14,8 @@ import { useTranslation } from "react-i18next";
 import "@/i18n/initI18n";
 import "../styles/globals.scss";
 
-import { APIError, errorToString } from "@/features/api/APIError";
 import { AnalyticsProvider } from "@/features/analytics/AnalyticsProvider";
+import { APIError, errorToString } from "@/features/api/APIError";
 import { Auth } from "@/features/auth/Auth";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";

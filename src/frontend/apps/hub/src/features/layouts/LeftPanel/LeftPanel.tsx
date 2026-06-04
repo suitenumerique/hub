@@ -13,8 +13,11 @@ import { useRouter } from "next/router";
 import { ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ALL_CHATS, FAVOURITE_CHATS } from "@/features/drivers/mocks/mockChats";
-import type { Chat } from "@/features/drivers/types";
+import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
+import { useChatScopes } from "@/features/chat/hooks/useChatAccounts";
+import { useChats } from "@/features/chat/hooks/useChats";
+import { useDriverEntries } from "@/features/drivers/DriverRegistry";
+import type { Chat, ChatRef, ChatScope } from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 type ActionItem =
@@ -23,6 +26,14 @@ type ActionItem =
 
 export const LeftPanel = () => {
   const { t } = useTranslation();
+  const router = useRouter();
+  const chats = useChats();
+  const { activeScopeId, scopes, setActiveScopeId } = useChatScopes();
+  const entries = useDriverEntries();
+  const accountLabels = new Map(
+    entries.map((entry) => [entry.accountId, entry.label]),
+  );
+  const showAccountLabels = entries.length > 1;
 
   const actions: ActionItem[] = [
     {
@@ -45,25 +56,70 @@ export const LeftPanel = () => {
 
   return (
     <aside className="hub__left-panel" aria-label={t("Side panel")}>
-      <div className="hub__left-panel__logo">
-        <Image
-          src="/assets/logo_text.svg"
-          alt={t("LaSuite Hub")}
-          width={168}
-          height={40}
-          priority
-          unoptimized
-        />
+      <div className="hub__left-panel__top">
+        <div className="hub__left-panel__logo">
+          <Image
+            src="/assets/logo_text.svg"
+            alt={t("LaSuite Hub")}
+            width={168}
+            height={40}
+            priority
+            unoptimized
+          />
+        </div>
+
+        {scopes.length > 1 && activeScopeId && (
+          <ScopeSelector
+            activeScopeId={activeScopeId}
+            scopes={scopes}
+            currentChatRef={readChatRef(router.query)}
+            onChangeScope={(scopeId) => {
+              const nextScope = scopes.find(
+                (scope) => scope.scopeId === scopeId,
+              );
+              const currentChatRef = readChatRef(router.query);
+              const currentAccountStillActive =
+                !currentChatRef ||
+                nextScope?.accounts.some(
+                  (account) => account.accountId === currentChatRef.accountId,
+                );
+
+              if (currentAccountStillActive) {
+                setActiveScopeId(scopeId);
+                return;
+              }
+
+              void router
+                .push("/chat/new", undefined, { shallow: true })
+                .then(() => setActiveScopeId(scopeId));
+            }}
+          />
+        )}
+
+        <nav
+          className="hub__left-panel__actions"
+          aria-label={t("Quick actions")}
+        >
+          {actions.map((action) => (
+            <ActionRow key={action.id} action={action} />
+          ))}
+        </nav>
       </div>
 
-      <nav className="hub__left-panel__actions" aria-label={t("Quick actions")}>
-        {actions.map((action) => (
-          <ActionRow key={action.id} action={action} />
-        ))}
-      </nav>
-
-      <ChatSection title={t("Favourites")} chats={FAVOURITE_CHATS} />
-      <ChatSection title={t("All chats")} chats={ALL_CHATS} />
+      <div className="hub__left-panel__scroll">
+        <ChatSection
+          title={t("Favourites")}
+          chats={chats.favourites}
+          accountLabels={accountLabels}
+          showAccountLabels={showAccountLabels}
+        />
+        <ChatSection
+          title={t("All chats")}
+          chats={chats.all}
+          accountLabels={accountLabels}
+          showAccountLabels={showAccountLabels}
+        />
+      </div>
 
       <div className="hub__left-panel__footer">
         <button
@@ -82,6 +138,53 @@ export const LeftPanel = () => {
         </button>
       </div>
     </aside>
+  );
+};
+
+type ScopeSelectorProps = {
+  activeScopeId: string;
+  scopes: ChatScope[];
+  currentChatRef: ChatRef | null;
+  onChangeScope: (scopeId: string) => void;
+};
+
+const ScopeSelector = ({
+  activeScopeId,
+  scopes,
+  currentChatRef,
+  onChangeScope,
+}: ScopeSelectorProps) => {
+  const { t } = useTranslation();
+  const currentScopeContainsChat = scopes
+    .find((scope) => scope.scopeId === activeScopeId)
+    ?.accounts.some(
+      (account) => account.accountId === currentChatRef?.accountId,
+    );
+
+  return (
+    <div className="hub__left-panel__scope">
+      <select
+        className="hub__left-panel__scope__select"
+        aria-label={t("Chat scope")}
+        value={activeScopeId}
+        onChange={(event) => onChangeScope(event.target.value)}
+      >
+        {scopes.map((scope) => (
+          <option key={scope.scopeId} value={scope.scopeId}>
+            {scope.label}
+          </option>
+        ))}
+      </select>
+      <ArrowDropDown
+        className="hub__left-panel__scope__icon"
+        aria-hidden="true"
+      />
+      {currentChatRef && currentScopeContainsChat === false && (
+        <span className="hub__visually-hidden">
+          {t("The selected chat is outside the active scope.")}
+        </span>
+      )}
+    </div>
   );
 };
 
@@ -112,9 +215,16 @@ const ActionRow = ({ action }: { action: ActionItem }) => {
 type ChatSectionProps = {
   title: string;
   chats: Chat[];
+  accountLabels: Map<string, string>;
+  showAccountLabels: boolean;
 };
 
-const ChatSection = ({ title, chats }: ChatSectionProps) => {
+const ChatSection = ({
+  title,
+  chats,
+  accountLabels,
+  showAccountLabels,
+}: ChatSectionProps) => {
   const [isOpen, setIsOpen] = useState(true);
   const reactId = useId();
   const titleId = `${reactId}-title`;
@@ -143,8 +253,12 @@ const ChatSection = ({ title, chats }: ChatSectionProps) => {
       >
         <ul className="hub__left-panel__list" inert={!isOpen}>
           {chats.map((chat) => (
-            <li key={chat.id}>
-              <ChatRow chat={chat} />
+            <li key={`${chat.accountId}:${chat.id}`}>
+              <ChatRow
+                chat={chat}
+                accountLabel={accountLabels.get(chat.accountId)}
+                showAccountLabel={showAccountLabels}
+              />
             </li>
           ))}
         </ul>
@@ -153,15 +267,28 @@ const ChatSection = ({ title, chats }: ChatSectionProps) => {
   );
 };
 
-const ChatRow = ({ chat }: { chat: Chat }) => {
+const ChatRow = ({
+  chat,
+  accountLabel,
+  showAccountLabel,
+}: {
+  chat: Chat;
+  accountLabel?: string;
+  showAccountLabel: boolean;
+}) => {
   const { t } = useTranslation();
   const router = useRouter();
-  const isActive = router.query.chatId === chat.id;
+  const isActive = sameChatRef(readChatRef(router.query), chat.ref);
 
   return (
     <Link
-      href={`/chat/${chat.id}`}
+      href={chatHref(chat.ref)}
       shallow
+      aria-label={
+        showAccountLabel && accountLabel
+          ? `${chat.name} ${accountLabel}`
+          : chat.name
+      }
       aria-current={isActive ? "page" : undefined}
       className={clsx(
         "hub__left-panel__chat",
@@ -188,13 +315,18 @@ const ChatRow = ({ chat }: { chat: Chat }) => {
       ) : (
         <Avatar label={chat.name} decorative />
       )}
-      <span
-        className={clsx(
-          "hub__left-panel__chat__name",
-          (chat.unread || isActive) && "hub__left-panel__chat__name--strong",
+      <span className="hub__left-panel__chat__text">
+        <span
+          className={clsx(
+            "hub__left-panel__chat__name",
+            (chat.unread || isActive) && "hub__left-panel__chat__name--strong",
+          )}
+        >
+          {chat.name}
+        </span>
+        {showAccountLabel && accountLabel && (
+          <span className="hub__left-panel__chat__account">{accountLabel}</span>
         )}
-      >
-        {chat.name}
       </span>
       {chat.unread && (
         <span className="hub__visually-hidden">{t("Unread message")}</span>

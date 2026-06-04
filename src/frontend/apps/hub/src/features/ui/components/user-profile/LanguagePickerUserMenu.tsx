@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/features/auth/Auth";
-import { getDriver } from "@/features/config/Config";
+import { getHubApi } from "@/features/config/HubApi";
 
 const LANGUAGES = [
   { label: "Français", value: "fr-FR", shortLabel: "FR" },
@@ -14,7 +14,7 @@ const LANGUAGES = [
 export const LanguagePickerUserMenu = () => {
   const { i18n } = useTranslation();
   const { user, refreshUser } = useAuth();
-  const driver = getDriver();
+  const hubApi = getHubApi();
   const [selected, setSelected] = useState<string>(
     user?.language ?? i18n.language,
   );
@@ -34,7 +34,7 @@ export const LanguagePickerUserMenu = () => {
     if (!user) {
       return;
     }
-    driver
+    hubApi
       .updateUser({ id: user.id, language: value })
       .then(() => refreshUser?.())
       .catch(() => {
