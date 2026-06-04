@@ -25,12 +25,7 @@ export const useChatConnections = (
   return useQueries({
     queries: entries.map((entry) => ({
       queryKey: chatKeys.connection(entry.accountId, userId),
-      queryFn: async () => {
-        console.log("entry", entry);
-        const a = await entry.driver.connect(user);
-        console.log("a", a);
-        return a;
-      },
+      queryFn: () => entry.driver.connect(user),
       enabled: user !== undefined && user !== null,
       staleTime: Infinity,
       meta: { noGlobalError: true },

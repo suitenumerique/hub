@@ -9,19 +9,13 @@ import type { AccountId, DriverKind } from "../drivers/types";
  * Account manifests can override this per account.
  */
 export const resolveDriverKind = (): DriverKind => {
-  console.log("resolveDriverKind");
   if (typeof window !== "undefined") {
     const param = new URLSearchParams(window.location.search).get("driver");
     if (param === "matrix" || param === "mock") {
-      const driver = param;
-      console.log("driver A", driver);
-      return driver;
+      return param;
     }
   }
-  const driver =
-    process.env.NEXT_PUBLIC_CHAT_DRIVER === "matrix" ? "matrix" : "mock";
-  console.log("driver B", driver);
-  return driver;
+  return process.env.NEXT_PUBLIC_CHAT_DRIVER === "matrix" ? "matrix" : "mock";
 };
 
 export const createDriver = (
@@ -29,7 +23,6 @@ export const createDriver = (
   accountId: AccountId,
   settings: Record<string, unknown> = {},
 ): Driver => {
-  console.log("createDriver", kind);
   if (kind === "matrix") {
     return new MatrixDriver(accountId, settings);
   }

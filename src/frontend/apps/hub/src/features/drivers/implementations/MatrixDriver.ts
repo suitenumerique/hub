@@ -226,13 +226,11 @@ export class MatrixDriver extends MockDriver {
     // exposes a conversation-list endpoint. The driver returns account-local
     // chats; hooks decorate them with the global account identity.
     const matrixChats = this.mx?.getVisibleRooms() ?? [];
-    console.log("matrixChats", matrixChats);
     const currentUserId = this.mx?.getUserId() ?? undefined;
     const localChats = matrixChats.map((room) =>
       matrixRoomToLocalChat(room, currentUserId),
     );
 
-    console.log("localChats", localChats);
     return {
       favourites: [],
       all: localChats,
@@ -309,9 +307,6 @@ export class MatrixDriver extends MockDriver {
     const authors = buildAuthors(room, pageEvents, selfUserId);
     const nextCursor =
       startIndex === 0 && reachedStart ? null : (messages[0]?.id ?? null);
-    console.log("messages", messages);
-    console.log("authors", authors);
-    console.log("nextCursor", nextCursor);
     return { messages, authors, nextCursor };
   }
 
@@ -321,7 +316,6 @@ export class MatrixDriver extends MockDriver {
    * caching and de-duplication are handled by React Query — no bespoke store.
    */
   async connect(user: User | null | undefined): Promise<ChatConnectionState> {
-    console.log("connect");
     // The whole flow touches window/localStorage/IndexedDB. Static export has
     // no server runtime, but guard regardless.
     if (typeof window === "undefined") {
@@ -339,7 +333,6 @@ export class MatrixDriver extends MockDriver {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");
-    console.log("code", code);
     if (code && state) {
       if (sessionStorage.getItem(this.key(STORAGE.oidcState)) !== state) {
         return { status: "idle", chatUser: null };

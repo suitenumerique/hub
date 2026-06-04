@@ -28,6 +28,7 @@ share/python-wheels/
 MANIFEST
 .DS_Store
 .next/
+out/
 
 # Translations	# Translations
 *.mo
@@ -91,4 +92,3 @@ CLAUDE.md
 
 # Cursor rules
 .cursorrules
-src/frontend/apps/hub/.env.development

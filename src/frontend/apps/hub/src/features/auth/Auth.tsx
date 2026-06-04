@@ -47,7 +47,6 @@ export const Auth = ({ children }: PropsWithChildren) => {
   // Backend-agnostic chat connection: the driver owns the handshake, the UI
   // only observes a generic aggregate status.
   const { status: chatStatus, chatUser, redirectTo } = useChatConnections(user);
-  console.log("chatStatus", chatStatus, chatUser, redirectTo);
 
   const init = async () => {
     try {
