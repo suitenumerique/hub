@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { getDriver } from "./Config";
+
+import { getHubApi } from "./HubApi";
 
 export function useApiConfig() {
-  const driver = getDriver();
+  const hubApi = getHubApi();
   return useQuery({
     queryKey: ["config"],
-    queryFn: () => driver.getConfig(),
+    queryFn: () => hubApi.getConfig(),
     staleTime: 1000,
   });
 }
