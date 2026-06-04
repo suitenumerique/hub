@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -113,6 +117,50 @@ describe("useChatMessages", () => {
     // firstItemIndex shifts by exactly the number of newly prepended messages.
     expect(result.current.firstItemIndex).toBe(firstIndexBefore - 10);
     expect(result.current.hasOlder).toBe(false);
+  });
+
+  it("keeps firstItemIndex stable when a new message is appended", async () => {
+    getChatMessages.mockResolvedValueOnce(buildPage(0));
+
+    const { result } = renderHook(() => useChatMessages(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(10));
+    const firstIndexBefore = result.current.firstItemIndex;
+
+    act(() => {
+      queryClient.setQueryData<InfiniteData<ChatMessagesPage>>(
+        chatKeys.messages(CHAT_REF),
+        (old) =>
+          old
+            ? {
+                ...old,
+                pages: [
+                  {
+                    ...old.pages[0],
+                    messages: [
+                      ...old.pages[0].messages,
+                      {
+                        id: "m-appended",
+                        authorId: "me",
+                        content: "new message",
+                        timestamp: "2026-01-01T09:00:00Z",
+                        reactions: [],
+                      },
+                    ],
+                  },
+                  ...old.pages.slice(1),
+                ],
+              }
+            : old,
+      );
+    });
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(11));
+
+    expect(result.current.messages.at(-1)?.id).toBe("m-appended");
+    expect(result.current.firstItemIndex).toBe(firstIndexBefore);
   });
 
   it("does not refetch while a fetchOlder is already in flight", async () => {
