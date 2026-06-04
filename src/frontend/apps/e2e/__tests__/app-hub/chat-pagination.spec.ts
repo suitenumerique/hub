@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test";
 import { setupAuthenticatedUser } from "./utils-auth";
 import {
   getChatBubbles,
+  getChatComposerInput,
+  getChatComposerSendButton,
   getChatScrollState,
   getChatScroller,
   getTopLoader,
@@ -83,5 +85,55 @@ test.describe("Chat conversation scroll & pagination", () => {
     }, heightBefore);
     const stateAfter = await getChatScrollState(page);
     expect(stateAfter?.scrollTop).toBeGreaterThan(0);
+  });
+
+  test("sending a message from an older scroll position returns to the bottom", async ({
+    page,
+  }) => {
+    await page.waitForFunction(() => {
+      const scroller = document.querySelector(
+        '[data-testid="virtuoso-scroller"]',
+      ) as HTMLElement | null;
+      if (!scroller) return false;
+      return (
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 4
+      );
+    });
+
+    await getChatScroller(page).evaluate((el) => {
+      const scroller = el as HTMLElement;
+      scroller.scrollTop = Math.max(
+        0,
+        scroller.scrollHeight - scroller.clientHeight - 400,
+      );
+    });
+
+    await page.waitForFunction(() => {
+      const scroller = document.querySelector(
+        '[data-testid="virtuoso-scroller"]',
+      ) as HTMLElement | null;
+      return (
+        !!scroller &&
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 100
+      );
+    });
+
+    await getChatComposerInput(page).fill("Scroll follow conversation");
+    await getChatComposerSendButton(page).click();
+
+    await expect(
+      page.locator(".hub__chat-bubble--sent", {
+        hasText: "Scroll follow conversation",
+      }),
+    ).toBeVisible();
+    await page.waitForFunction(() => {
+      const scroller = document.querySelector(
+        '[data-testid="virtuoso-scroller"]',
+      ) as HTMLElement | null;
+      return (
+        !!scroller &&
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 4
+      );
+    });
   });
 });

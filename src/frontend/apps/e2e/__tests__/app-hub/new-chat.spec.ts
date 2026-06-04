@@ -3,8 +3,11 @@ import { expect, test } from "@playwright/test";
 import {
   getChatBubbles,
   getChatComposerInput,
+  getChatComposerSendButton,
+  getChatScroller,
 } from "./utils-chat-conversation";
 import { setupAuthenticatedUser } from "./utils-auth";
+import { waitForChatUrl } from "./utils-left-panel";
 import {
   getCreateGroupButton,
   getNewChatSearchInput,
@@ -12,6 +15,11 @@ import {
   getRemoveSelectedUserButton,
   getSelectedUserChip,
 } from "./utils-new-chat";
+
+const DIDIER_CHAT = {
+  id: "a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c",
+  name: "Didier Salambo",
+};
 
 test.describe("New chat", () => {
   test.beforeEach(async ({ page }) => {
@@ -203,5 +211,41 @@ test.describe("New chat", () => {
     await expect(getSelectedUserChip(page, "Bérangère Becker")).toBeVisible();
     await expect(getChatBubbles(page).first()).toBeVisible();
     await expect(page).toHaveURL(/\/chat\/new$/);
+  });
+
+  test("opens the existing conversation in place when sending from the search", async ({
+    page,
+  }) => {
+    // Resolve Didier's existing conversation inline — the URL stays on
+    // /chat/new until the user actually sends.
+    await getNewChatSearchInput(page).fill("didier");
+    await getNewChatUserOption(page, "Didier Salambo").click();
+    await expect(getSelectedUserChip(page, "Didier Salambo")).toBeVisible();
+    await expect(getChatBubbles(page).first()).toBeVisible();
+    await expect(page).toHaveURL(/\/chat\/new$/);
+
+    // Tag the virtualized scroller's DOM node: a remount during the redirect
+    // would replace the node and drop the marker, so its survival proves the
+    // conversation list stayed mounted (no flicker).
+    await getChatScroller(page).evaluate((el) => {
+      (el as HTMLElement).dataset.persistMarker = "kept";
+    });
+
+    await getChatComposerInput(page).fill("Opening you up");
+    await getChatComposerSendButton(page).click();
+
+    // The URL commits to the real conversation…
+    await waitForChatUrl(page, DIDIER_CHAT.id);
+
+    // …the sent message is visible…
+    await expect(
+      page.locator(".hub__chat-bubble--sent", { hasText: "Opening you up" }),
+    ).toBeVisible();
+
+    // …and the scroller is the very same DOM node (no remount, no skeleton).
+    await expect(getChatScroller(page)).toHaveAttribute(
+      "data-persist-marker",
+      "kept",
+    );
   });
 });

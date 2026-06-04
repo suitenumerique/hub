@@ -26,6 +26,7 @@
     "lint-fix": "yarn APP_HUB run lint --fix && yarn APP_E2E run lint --fix && yarn I18N run lint --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "format:fix": "prettier --write .",
     "i18n:extract": "yarn I18N run extract-translation",
     "i18n:deploy": "yarn I18N run format-deploy",
     "i18n:test": "yarn I18N run test",

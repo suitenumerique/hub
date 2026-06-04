@@ -17,5 +17,17 @@ and this project adheres to
 - ✨(frontend) Add message reactions bar with reaction toggle and emoji picker
 - ✨(frontend) Add conversation threads with tools panel and unread banner
 - ✨(frontend) Add new conversation page logic
+- ✨(frontend) Add mocked chat message composition and thread replies
+- ✨(frontend) Open conversation when sending to it from the new chat search
+
+### Changed
+
+- ♻️(frontend) Simplify the conversation auto-scroll onto the Virtuoso API
+
+### Fixed
+
+- 🐛(frontend) Show an error toast when a chat message fails to send
+- 🐛(frontend) Reset the composer draft when switching to another conversation
+- 🌐(frontend) Translate the current user's optimistic thread author
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main

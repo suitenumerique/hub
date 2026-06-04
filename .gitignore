@@ -84,6 +84,7 @@ db.sqlite3
 .agents
 .claude/
 .claude
+.codex/
 .playwright-mcp/
 openspec/
 .zed/
