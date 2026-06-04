@@ -51,7 +51,8 @@
   }
 
   &--received &__body {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
+    width: fit-content;
     padding: var(--c--globals--spacings--xs, 8px);
     background: var(
       --c--contextuals--background--semantic--neutral--tertiary,

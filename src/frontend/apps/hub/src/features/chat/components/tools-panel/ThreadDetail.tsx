@@ -1,11 +1,12 @@
 import { Bell } from "@gouvfr-lasuite/ui-kit/icons";
-import { Fragment, useEffect, useMemo, useRef } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ChatMessageAuthor, ChatRef } from "@/features/drivers/types";
 
 import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
+import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
 
@@ -17,6 +18,7 @@ type ThreadDetailProps = {
   isOpen: boolean;
   onClose: () => void;
   onBack: () => void;
+  autoFocusComposer?: boolean;
 };
 
 /** Threads panel detail view — a single thread's root message and replies. */
@@ -26,6 +28,7 @@ export const ThreadDetail = ({
   isOpen,
   onClose,
   onBack,
+  autoFocusComposer = false,
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
   const { thread, isInitialLoading, isError, refetch } = useChatThread(
@@ -33,7 +36,21 @@ export const ThreadDetail = ({
     threadId,
   );
   const { markThreadRead } = useChatThreadActions(chatRef);
+  const { sendReply, isSending, isSupported } = useSendChatThreadReply(
+    chatRef,
+    threadId,
+  );
   const messagesRef = useRef<HTMLDivElement>(null);
+  const previousMessagesRef = useRef<{
+    threadId: string | null;
+    messageCount: number;
+    lastMessageId: string | null;
+  }>({
+    threadId: null,
+    messageCount: 0,
+    lastMessageId: null,
+  });
+  const lastMessage = thread?.messages[thread.messages.length - 1];
 
   // On open, jump to the first unread reply — or to the latest message when the
   // thread is fully read — so the reader lands on what matters. Gated by
@@ -51,7 +68,39 @@ export const ThreadDetail = ({
     container.scrollTop = separator
       ? Math.max(0, separator.offsetTop - 12)
       : container.scrollHeight;
-  }, [isOpen, thread]);
+  }, [isOpen, thread?.id]);
+
+  useLayoutEffect(() => {
+    const previous = previousMessagesRef.current;
+    const isSameThread = previous.threadId === threadId;
+    const didAppendLatest =
+      (thread?.messages.length ?? 0) > previous.messageCount &&
+      lastMessage?.id !== previous.lastMessageId;
+
+    previousMessagesRef.current = {
+      threadId,
+      messageCount: thread?.messages.length ?? 0,
+      lastMessageId: lastMessage?.id ?? null,
+    };
+
+    if (
+      !isOpen ||
+      !isSameThread ||
+      !didAppendLatest ||
+      lastMessage?.authorId !== "me" ||
+      !messagesRef.current
+    ) {
+      return;
+    }
+
+    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+  }, [
+    isOpen,
+    lastMessage?.authorId,
+    lastMessage?.id,
+    thread?.messages.length,
+    threadId,
+  ]);
 
   // Opening a thread marks its replies read. `markThreadRead` updates the list
   // and the bubble badge but not this thread's cache entry, so the "Unread"
@@ -161,7 +210,19 @@ export const ThreadDetail = ({
           })}
         </div>
         <div className="hub__thread-detail__composer">
-          <ChatComposer placeholder={t("Answer")} inputLabel={t("Answer")} />
+          <ChatComposer
+            conversationId={threadId}
+            placeholder={
+              isSupported
+                ? t("Answer")
+                : t("Replying isn't available on this account yet.")
+            }
+            inputLabel={t("Answer")}
+            disabled={!isSupported}
+            isSubmitting={isSending}
+            autoFocus={autoFocusComposer}
+            onSubmit={sendReply}
+          />
         </div>
       </div>
     );

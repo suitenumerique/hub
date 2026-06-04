@@ -1,4 +1,11 @@
-import { memo, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
@@ -39,12 +46,25 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
     firstItemIndex,
     fetchOlder,
   } = useChatMessages(chatRef);
+  const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
+  const lastMessage = messages[messages.length - 1];
 
   // Keep one Virtuoso instance alive across chat switches — remounting it on
   // every chat change costs ~500ms of measurement + layout, which is what
   // made switching feel sluggish.
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const previousChatRef = useRef(chatRef);
+  const previousAppendState = useRef({
+    chatKey,
+    messageCount: messages.length,
+    lastMessageId: lastMessage?.id ?? null,
+  });
+  const atBottomRef = useRef(true);
+  // Set while a freshly appended message should stay pinned to the bottom.
+  // Virtuoso estimates row heights before measuring, so the first scroll can
+  // land a few px short; `totalListHeightChanged` re-pins once the real height
+  // is known. Cleared as soon as the viewport actually reaches the bottom.
+  const shouldStickToBottomRef = useRef(false);
   const pendingScrollRaf = useRef<number | null>(null);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
@@ -85,7 +105,7 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
         virtuosoRef.current?.scrollToIndex({
           index: "LAST",
           align: "end",
-          behavior: "auto",
+          behavior: "smooth",
         });
       });
     });
@@ -96,6 +116,51 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
       }
     };
   }, [chatRef]);
+
+  // Scroll so the latest message's bottom aligns with the viewport bottom,
+  // through Virtuoso's measurement-aware API rather than touching `scrollTop`
+  // directly — on a virtualised list the scroller's `scrollHeight` is only an
+  // estimate, so manual `scrollTop = scrollHeight` overshoots and janks.
+  const scrollToBottom = useCallback(() => {
+    virtuosoRef.current?.scrollToIndex({
+      index: "LAST",
+      align: "end",
+      behavior: "auto",
+    });
+  }, []);
+
+  // Stick to the bottom when a new latest message arrives — but only when the
+  // reader is already at the bottom, or it is their own send (they expect to
+  // follow it even from an older scroll position). `followOutput` handles the
+  // "already at bottom" case on its own; this covers "my own send while
+  // scrolled up", which `followOutput` deliberately ignores.
+  useLayoutEffect(() => {
+    const previous = previousAppendState.current;
+    const isSameChat = previous.chatKey === chatKey;
+    const didAppendLatest =
+      messages.length > previous.messageCount &&
+      lastMessage?.id !== previous.lastMessageId;
+    const shouldFollowAppend =
+      atBottomRef.current || lastMessage?.authorId === "me";
+    previousAppendState.current = {
+      chatKey,
+      messageCount: messages.length,
+      lastMessageId: lastMessage?.id ?? null,
+    };
+
+    if (!isSameChat || !didAppendLatest || !shouldFollowAppend) {
+      return;
+    }
+
+    shouldStickToBottomRef.current = true;
+    scrollToBottom();
+  }, [
+    chatKey,
+    lastMessage?.authorId,
+    lastMessage?.id,
+    messages.length,
+    scrollToBottom,
+  ]);
 
   return (
     <div className="hub__chat-conversation__list">
@@ -109,6 +174,21 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
           // Honoured only on the very first mount; subsequent chat switches
           // rely on the imperative scrollToIndex above.
           initialTopMostItemIndex={Math.max(0, messages.length - 1)}
+          followOutput="auto"
+          atBottomStateChange={(atBottom) => {
+            atBottomRef.current = atBottom;
+            if (atBottom) {
+              shouldStickToBottomRef.current = false;
+            }
+          }}
+          totalListHeightChanged={() => {
+            // Re-pin to the bottom while a stick is pending: the just-appended
+            // row's real height differs from the initial estimate, and that
+            // height change would otherwise leave a gap below the last message.
+            if (shouldStickToBottomRef.current) {
+              scrollToBottom();
+            }
+          }}
           startReached={hasOlder ? fetchOlder : undefined}
           increaseViewportBy={{ top: 400, bottom: 0 }}
           components={{

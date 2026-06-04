@@ -14,6 +14,22 @@ describe("MessageHoverToolbar", () => {
     expect(screen.getByRole("button", { name: "More actions" })).toBeTruthy();
   });
 
+  it("forwards Reply to onReply when available", () => {
+    const onReply = vi.fn();
+    render(<MessageHoverToolbar onReact={vi.fn()} onReply={onReply} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+    expect(onReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Reply disabled when no reply callback is provided", () => {
+    render(<MessageHoverToolbar onReact={vi.fn()} />);
+
+    expect(
+      screen.getByRole("button", { name: "Reply" }).getAttribute("disabled"),
+    ).not.toBeNull();
+  });
+
   it("drops Reply and More in compact mode but keeps the reactions", () => {
     render(<MessageHoverToolbar onReact={vi.fn()} compact />);
 

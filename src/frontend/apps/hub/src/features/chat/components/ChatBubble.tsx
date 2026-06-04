@@ -10,6 +10,7 @@ import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { useChatPanel } from "../ChatPanelContext";
 import { formatChatTime } from "../formatTimestamp";
+import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
 import { useToggleReaction } from "../hooks/useToggleReaction";
 
 import { MessageHoverToolbar } from "./MessageHoverToolbar";
@@ -28,6 +29,8 @@ type ChatBubbleReceivedProps = {
   thread?: ChatThreadSummary;
   /** Set when this bubble is rendered inside a thread's detail view. */
   threadId?: string;
+  /** Drops the Reply / More toolbar actions while keeping timeline reactions. */
+  compactToolbar?: boolean;
   showHeader: boolean;
   showAvatar: boolean;
 };
@@ -43,6 +46,8 @@ type ChatBubbleSentProps = {
   thread?: ChatThreadSummary;
   /** Set when this bubble is rendered inside a thread's detail view. */
   threadId?: string;
+  /** Drops the Reply / More toolbar actions while keeping timeline reactions. */
+  compactToolbar?: boolean;
   showTimestamp: boolean;
 };
 
@@ -82,6 +87,8 @@ const ChatBubbleFooter = ({
 
 export const ChatBubble = (props: ChatBubbleProps) => {
   const { chatRef, messageId, reactions, thread, threadId } = props;
+  const { openThread, openDraftThread } = useChatPanel();
+  const isCompositionSupported = useChatCompositionSupport(chatRef);
 
   // Single integration point with the data layer: the hover toolbar and the
   // reactions bar both receive the bound `onReact` callback and stay purely
@@ -93,14 +100,49 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     [toggle, messageId],
   );
   // Inside a thread the toolbar drops the Reply / More actions.
-  const compactToolbar = threadId !== undefined;
+  const compactToolbar =
+    threadId !== undefined || props.compactToolbar === true;
+  const rootAuthor = props.variant === "received" ? props.author : undefined;
+  const rootAuthorId = props.variant === "sent" ? "me" : props.author.id;
+  const canReply = Boolean(thread) || isCompositionSupported;
+  const onReply = useCallback(() => {
+    if (thread) {
+      openThread(thread.id);
+      return;
+    }
+    openDraftThread({
+      message: {
+        id: messageId,
+        authorId: rootAuthorId,
+        content: props.content,
+        timestamp: props.timestamp,
+        reactions,
+        thread,
+      },
+      author: rootAuthor,
+    });
+  }, [
+    messageId,
+    openDraftThread,
+    openThread,
+    props.content,
+    props.timestamp,
+    reactions,
+    rootAuthor,
+    rootAuthorId,
+    thread,
+  ]);
 
   if (props.variant === "sent") {
     return (
       <div className="hub__chat-bubble hub__chat-bubble--sent">
         <div className="hub__chat-bubble__body">
           {props.content}
-          <MessageHoverToolbar onReact={onReact} compact={compactToolbar} />
+          <MessageHoverToolbar
+            onReact={onReact}
+            onReply={canReply ? onReply : undefined}
+            compact={compactToolbar}
+          />
         </div>
         <ChatBubbleFooter
           thread={thread}
@@ -144,7 +186,11 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         )}
         <div className="hub__chat-bubble__body">
           {content}
-          <MessageHoverToolbar onReact={onReact} compact={compactToolbar} />
+          <MessageHoverToolbar
+            onReact={onReact}
+            onReply={canReply ? onReply : undefined}
+            compact={compactToolbar}
+          />
         </div>
       </div>
       <ChatBubbleFooter

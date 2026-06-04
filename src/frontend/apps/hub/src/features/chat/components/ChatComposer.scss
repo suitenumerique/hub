@@ -38,6 +38,14 @@
     &:focus {
       outline: none;
     }
+
+    &:disabled {
+      cursor: not-allowed;
+      color: var(
+        --c--contextuals--content--semantic--neutral--tertiary,
+        #626a80
+      );
+    }
   }
 
   &__actions {
@@ -74,6 +82,11 @@
       );
     }
 
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
     &:focus-visible {
       outline: 2px solid
         var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
@@ -104,6 +117,12 @@
 
     &:hover {
       filter: brightness(1.08);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      filter: none;
     }
 
     &:focus-visible {

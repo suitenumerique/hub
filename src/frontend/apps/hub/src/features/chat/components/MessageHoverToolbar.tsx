@@ -8,6 +8,8 @@ import { FluentEmoji } from "./FluentEmoji";
 type MessageHoverToolbarProps = {
   /** Toggles the current user's reaction with the given emoji. */
   onReact: (emoji: string) => void;
+  /** Opens a reply flow for this message. Omitted when reply is unavailable. */
+  onReply?: () => void;
   /**
    * Drops the Reply / More actions, keeping only the reaction controls — used
    * for bubbles inside the threads panel.
@@ -38,6 +40,7 @@ const QUICK_REACTIONS: QuickReaction[] = [
  */
 export const MessageHoverToolbar = ({
   onReact,
+  onReply,
   compact = false,
 }: MessageHoverToolbarProps) => {
   const { t } = useTranslation();
@@ -91,12 +94,12 @@ export const MessageHoverToolbar = ({
               aria-hidden="true"
             />
 
-            {/* Inert — Reply is wired in a later change. */}
             <button
               type="button"
               className="hub__message-toolbar__button hub__message-toolbar__button--labelled"
-              disabled
-              aria-disabled="true"
+              disabled={!onReply}
+              aria-disabled={!onReply}
+              onClick={onReply}
             >
               <Reply size={16} />
               <span className="hub__message-toolbar__label">{t("Reply")}</span>

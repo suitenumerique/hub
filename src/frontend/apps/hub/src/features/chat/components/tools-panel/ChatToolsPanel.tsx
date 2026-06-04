@@ -1,6 +1,10 @@
 import { useTranslation } from "react-i18next";
 
 import type { ChatDocument, ChatRef } from "@/features/drivers/types";
+import type {
+  DraftThreadRoot,
+  OpenThreadOptions,
+} from "../../ChatPanelContext";
 
 import { DocumentsTool } from "./DocumentsTool";
 import { ThreadsTool } from "./ThreadsTool";
@@ -14,8 +18,12 @@ type ChatToolsPanelProps = {
   chatRef: ChatRef;
   /** Thread whose detail view is open, or `null` for the thread list. */
   threadId: string | null;
+  /** Whether a freshly opened thread detail should focus its composer. */
+  focusThreadComposer: boolean;
+  /** Root message for a not-yet-created thread draft. */
+  draftThreadRoot: DraftThreadRoot | null;
   onClose: () => void;
-  onOpenThread: (threadId: string) => void;
+  onOpenThread: (threadId: string, options?: OpenThreadOptions) => void;
   onCloseThread: () => void;
   onOpenFile?: (doc: ChatDocument) => void;
 };
@@ -25,6 +33,8 @@ export const ChatToolsPanel = ({
   isOpen,
   chatRef,
   threadId,
+  focusThreadComposer,
+  draftThreadRoot,
   onClose,
   onOpenThread,
   onCloseThread,
@@ -52,6 +62,8 @@ export const ChatToolsPanel = ({
         <ThreadsTool
           chatRef={chatRef}
           threadId={threadId}
+          focusThreadComposer={focusThreadComposer}
+          draftThreadRoot={draftThreadRoot}
           isOpen={isOpen}
           onClose={onClose}
           onOpenThread={onOpenThread}

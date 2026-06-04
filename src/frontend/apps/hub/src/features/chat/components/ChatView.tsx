@@ -1,14 +1,18 @@
 import { FilePreview } from "@gouvfr-lasuite/ui-kit";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Chat, ChatDocument, ChatRef } from "@/features/drivers/types";
 
 import {
   ChatPanelProvider,
+  type DraftThreadRoot,
   type ChatPanelContextValue,
+  type OpenThreadOptions,
 } from "../ChatPanelContext";
 import { useChat } from "../hooks/useChat";
 import { useChatThreads } from "../hooks/useChatThreads";
+import { useSendChatMessage } from "../hooks/useSendChatMessage";
 
 import { ChatComposer } from "./ChatComposer";
 import { ChatConversation } from "./ChatConversation";
@@ -26,6 +30,11 @@ type ChatViewProps = {
   }) => ReactNode;
   /** Rendered in the main area when there is no conversation yet. */
   renderEmpty?: () => ReactNode;
+  /**
+   * Called after a message is successfully sent. Lets the new-chat host commit
+   * the URL to the resolved conversation once the user actually sends.
+   */
+  onSent?: (ref: ChatRef) => void;
 };
 
 /**
@@ -38,14 +47,38 @@ export const ChatView = ({
   chatRef,
   renderHeader,
   renderEmpty,
+  onSent,
 }: ChatViewProps) => {
+  const { t } = useTranslation();
   const { chat } = useChat(chatRef);
+  const {
+    sendMessage,
+    isSending: isSendingMessage,
+    isSupported: isCompositionSupported,
+  } = useSendChatMessage(chatRef);
+
+  // Send, then notify `onSent` only on success so the host can commit the URL.
+  // A failed send rejects before `onSent`, so navigation never happens and the
+  // composer surfaces its error toast instead.
+  const handleSend = useCallback(
+    async (content: string) => {
+      const message = await sendMessage(content);
+      if (chatRef) {
+        onSent?.(chatRef);
+      }
+      return message;
+    },
+    [sendMessage, onSent, chatRef],
+  );
 
   const [activeTool, setActiveTool] = useState<ChatTool | null>(null);
   const [displayedTool, setDisplayedTool] = useState<ChatTool | null>(null);
   // Thread whose detail view is open; `null` keeps the threads tool on its
   // list view.
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [focusThreadComposer, setFocusThreadComposer] = useState(false);
+  const [draftThreadRoot, setDraftThreadRoot] =
+    useState<DraftThreadRoot | null>(null);
   const [openedDocument, setOpenedDocument] = useState<ChatDocument | null>(
     null,
   );
@@ -60,6 +93,8 @@ export const ChatView = ({
   useEffect(() => {
     setOpenedDocument(null);
     setActiveThreadId(null);
+    setFocusThreadComposer(false);
+    setDraftThreadRoot(null);
   }, [chatRef?.accountId, chatRef?.chatId]);
 
   const toggleTool = (tool: ChatTool) => {
@@ -70,6 +105,7 @@ export const ChatView = ({
     // back to the list during the slide-out animation.
     if (willOpen && tool === "threads") {
       setActiveThreadId(null);
+      setFocusThreadComposer(false);
     }
   };
 
@@ -77,21 +113,39 @@ export const ChatView = ({
 
   const closePreview = () => setOpenedDocument(null);
 
-  const openThread = useCallback((threadId: string) => {
-    setActiveTool("threads");
-    setActiveThreadId(threadId);
-  }, []);
+  const openThread = useCallback(
+    (threadId: string, options?: OpenThreadOptions) => {
+      setActiveTool("threads");
+      setActiveThreadId(threadId);
+      setFocusThreadComposer(Boolean(options?.focusComposer));
+      setDraftThreadRoot(null);
+    },
+    [],
+  );
 
   const openThreadList = useCallback(() => {
     setActiveTool("threads");
     setActiveThreadId(null);
+    setFocusThreadComposer(false);
+    setDraftThreadRoot(null);
   }, []);
 
-  const closeThread = useCallback(() => setActiveThreadId(null), []);
+  const openDraftThread = useCallback((root: DraftThreadRoot) => {
+    setActiveTool("threads");
+    setActiveThreadId(null);
+    setFocusThreadComposer(false);
+    setDraftThreadRoot(root);
+  }, []);
+
+  const closeThread = useCallback(() => {
+    setActiveThreadId(null);
+    setFocusThreadComposer(false);
+    setDraftThreadRoot(null);
+  }, []);
 
   const panelContext = useMemo<ChatPanelContextValue>(
-    () => ({ openThread, openThreadList }),
-    [openThread, openThreadList],
+    () => ({ openThread, openDraftThread, openThreadList }),
+    [openDraftThread, openThread, openThreadList],
   );
 
   return (
@@ -129,7 +183,19 @@ export const ChatView = ({
                 when a conversation resolves. */}
             <div className="hub__chat-composer-stack">
               {chatRef ? <ConversationUnreadBanner chatRef={chatRef} /> : null}
-              <ChatComposer />
+              <ChatComposer
+                conversationId={
+                  chatRef ? `${chatRef.accountId}:${chatRef.chatId}` : undefined
+                }
+                placeholder={
+                  chatRef && !isCompositionSupported
+                    ? t("Sending messages isn't available on this account yet.")
+                    : undefined
+                }
+                disabled={!chatRef || !isCompositionSupported}
+                isSubmitting={isSendingMessage}
+                onSubmit={chatRef ? handleSend : undefined}
+              />
             </div>
           </div>
         </div>
@@ -140,6 +206,8 @@ export const ChatView = ({
               isOpen={activeTool !== null}
               chatRef={chatRef}
               threadId={activeThreadId}
+              focusThreadComposer={focusThreadComposer}
+              draftThreadRoot={draftThreadRoot}
               onClose={closePanel}
               onOpenThread={openThread}
               onCloseThread={closeThread}

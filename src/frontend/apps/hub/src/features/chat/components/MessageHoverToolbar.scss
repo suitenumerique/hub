@@ -7,6 +7,8 @@
   position: absolute;
   bottom: 100%;
   left: 0;
+  right: auto;
+  width: max-content;
   z-index: 3;
   padding-bottom: var(--c--globals--spacings--xxxs, 4px);
   opacity: 0;
@@ -17,7 +19,9 @@
   &__bar {
     display: inline-flex;
     align-items: center;
+    flex-wrap: nowrap;
     gap: var(--c--globals--spacings--xxxs, 4px);
+    width: max-content;
     padding: var(--c--globals--spacings--xxxs, 4px);
     background: var(--c--contextuals--background--surface--primary, #fff);
     border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
@@ -33,6 +37,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex: 0 0 auto;
     gap: var(--c--globals--spacings--xxxs, 4px);
     height: 24px;
     min-width: 24px;
@@ -72,6 +77,7 @@
     font-size: 12px;
     font-weight: 500;
     line-height: 16px;
+    white-space: nowrap;
   }
 
   &__separator {
@@ -80,6 +86,16 @@
     height: 16px;
     background: var(--c--contextuals--border--surface--primary, #dfe2ea);
   }
+}
+
+.hub__chat-bubble--received .hub__message-toolbar {
+  left: 0;
+  right: auto;
+}
+
+.hub__chat-bubble--sent .hub__message-toolbar {
+  left: auto;
+  right: 0;
 }
 
 // Scoped to the bubble body — not the whole bubble — so hovering or focusing

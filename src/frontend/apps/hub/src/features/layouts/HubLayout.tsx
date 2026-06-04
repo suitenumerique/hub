@@ -37,8 +37,6 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
       {user && <LeftPanel />}
 
       <main id="hub__layout__main" className="hub__layout__main" tabIndex={-1}>
-        {process.env.NEXT_PUBLIC_MATRIX_DEV_LOGIN_HINT} ---&nbsp;
-        {process.env.NEXT_PUBLIC_CHAT_DRIVER}
         {children}
       </main>
     </div>
