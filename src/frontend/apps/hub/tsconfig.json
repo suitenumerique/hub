@@ -19,5 +19,9 @@
     }
   },
   "include": ["next-env.d.ts", "svg.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "node_modules/uniffi-bindgen-react-native/**/*",
+    "src/generated/**/*"
+  ]
 }

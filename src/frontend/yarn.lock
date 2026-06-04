@@ -8581,6 +8581,10 @@ unhomoglyph@^1.0.6:
   resolved "https://registry.yarnpkg.com/unhomoglyph/-/unhomoglyph-1.0.6.tgz#ea41f926d0fcf598e3b8bb2980c2ddac66b081d3"
   integrity sha512-7uvcWI3hWshSADBu4JpnyYbTVc7YlhF5GDW/oPD5AxIxl34k4wXR3WDkPnzLxkN32LiTCTKMQLtKVZiwki3zGg==
 
+"uniffi-bindgen-react-native@git+https://github.com/jhugman/uniffi-bindgen-react-native":
+  version "0.31.0-3"
+  resolved "git+https://github.com/jhugman/uniffi-bindgen-react-native#dcb5c4ab2350d57f6d26f5fa81a99c77ed86d449"
+
 universalify@^0.1.0:
   version "0.1.2"
   resolved "https://registry.yarnpkg.com/universalify/-/universalify-0.1.2.tgz#b646f69be3942dabcecc9d6639c80dc105efaa66"

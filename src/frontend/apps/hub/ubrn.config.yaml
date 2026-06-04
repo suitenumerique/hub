@@ -1,0 +1,9 @@
+rust:
+  repo: https://github.com/matrix-org/matrix-rust-sdk
+  ref: main
+  manifestPath: bindings/matrix-sdk-ffi/Cargo.toml
+web:
+  workspace: true
+  manifestPath: rust_modules/matrix-rust-sdk/bindings/wasm/Cargo.toml
+  features: ["js", "indexeddb"]
+  defaultFeatures: false

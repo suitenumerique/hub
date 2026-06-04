@@ -92,3 +92,6 @@ CLAUDE.md
 
 # Cursor rules
 .cursorrules
+
+
+./src/frontend/apps/hub/rust_modules/*

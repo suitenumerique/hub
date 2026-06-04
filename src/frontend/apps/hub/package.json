@@ -9,11 +9,19 @@
     "lint": "next lint",
     "build-theme": "cunningham -g css,scss,ts -o src/styles && mv src/styles/cunningham-tokens.scss src/styles/cunningham-tokens-sass.scss",
     "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ubrn:web:build:release": "ubrn build web --config ubrn.config.yaml --release",
+    "ubrn:web:build": "ubrn build web --config ubrn.config.yaml",
+    "ubrn:checkout": "ubrn checkout --config ubrn.config.yaml",
+    "ubrn:clean": "rm -Rf cpp/ src/generated/ src/index.web.ts*"
   },
   "engines": {
     "node": ">=22.0.0 <25.0.0",
     "yarn": "1.22.22"
+  },
+  "repository": {
+      "type": "git",
+      "url": "https://github.com/suitenumerique/hub"
   },
   "dependencies": {
     "@faker-js/faker": "9.9.0",
@@ -34,7 +42,8 @@
     "react-hook-form": "7.66.0",
     "react-i18next": "16.3.3",
     "react-virtuoso": "4.14.0",
-    "sass": "1.94.0"
+    "sass": "1.94.0",
+    "uniffi-bindgen-react-native": "git+https://github.com/jhugman/uniffi-bindgen-react-native"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.2.0",
