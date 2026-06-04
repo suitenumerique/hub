@@ -1,0 +1,166 @@
+// DINUM/DSFR "Toast" surface (Figma UI kit, node 3003:1534). The three Figma
+// variants — Brand (blue), Error (red), Warning (amber) — share this layout and
+// only swap the per-variant colour tokens declared at the bottom. react-toastify
+// renders this component as a toast's content and supplies positioning, stacking
+// and animation only; its own surface chrome is stripped in `styles/toast.scss`.
+.hub__toast {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: var(--c--globals--spacings--xs, 8px);
+  overflow: hidden;
+  font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+  color: var(--hub-toast-primary);
+  background: var(--hub-toast-bg);
+  border: 1px solid var(--hub-toast-border);
+  border-radius: var(--c--globals--spacings--xs, 8px);
+  box-shadow: var(--hub-toast-shadow);
+
+  &__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--c--globals--spacings--xs, 8px);
+    width: 100%;
+  }
+
+  &__content {
+    display: flex;
+    flex: 1 0 0;
+    min-width: 0;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+    padding: 0 var(--c--globals--spacings--xxxs, 4px);
+  }
+
+  &__icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    color: var(--hub-toast-primary);
+
+    svg {
+      width: 24px;
+      height: 24px;
+    }
+  }
+
+  &__text {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    padding: 0 var(--c--globals--spacings--xxxs, 4px);
+  }
+
+  &__message {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--hub-toast-primary);
+    overflow-wrap: anywhere;
+  }
+
+  &__side {
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 18px;
+    color: var(--hub-toast-secondary);
+  }
+
+  &__actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 1px;
+  }
+
+  &__action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 var(--c--globals--spacings--xxxs, 4px);
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 22px;
+    color: var(--hub-toast-tertiary);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--hub-toast-tertiary);
+      outline-offset: 2px;
+    }
+  }
+
+  &--brand {
+    --hub-toast-bg: var(
+      --c--contextuals--background--semantic--brand--tertiary
+    );
+    --hub-toast-border: var(
+      --c--contextuals--border--semantic--brand--tertiary
+    );
+    --hub-toast-shadow: 0 6px 18px 0 rgba(0, 0, 145, 0.05);
+    --hub-toast-primary: var(
+      --c--contextuals--content--semantic--brand--primary
+    );
+    --hub-toast-secondary: var(
+      --c--contextuals--content--semantic--brand--secondary
+    );
+    --hub-toast-tertiary: var(
+      --c--contextuals--content--semantic--brand--tertiary
+    );
+  }
+
+  &--error {
+    --hub-toast-bg: var(
+      --c--contextuals--background--semantic--error--tertiary
+    );
+    --hub-toast-border: var(
+      --c--contextuals--border--semantic--error--tertiary
+    );
+    --hub-toast-shadow: 0 6px 18px 0 rgba(206, 5, 0, 0.05);
+    --hub-toast-primary: var(
+      --c--contextuals--content--semantic--error--primary
+    );
+    --hub-toast-secondary: var(
+      --c--contextuals--content--semantic--error--secondary
+    );
+    --hub-toast-tertiary: var(
+      --c--contextuals--content--semantic--error--tertiary
+    );
+  }
+
+  &--warning {
+    --hub-toast-bg: var(
+      --c--contextuals--background--semantic--warning--tertiary
+    );
+    --hub-toast-border: var(
+      --c--contextuals--border--semantic--warning--tertiary
+    );
+    --hub-toast-shadow: 0 6px 18px 0 rgba(206, 5, 0, 0.05);
+    --hub-toast-primary: var(
+      --c--contextuals--content--semantic--warning--primary
+    );
+    --hub-toast-secondary: var(
+      --c--contextuals--content--semantic--warning--secondary
+    );
+    --hub-toast-tertiary: var(
+      --c--contextuals--content--semantic--warning--tertiary
+    );
+  }
+}

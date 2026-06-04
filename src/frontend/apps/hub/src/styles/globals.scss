@@ -6,6 +6,7 @@
 @use "./../features/layouts/LeftPanel/LeftPanel.scss";
 @use "./../features/layouts/components/AccountSelector/AccountSelector.scss";
 @use "./../features/ui/components/avatar/Avatar.scss";
+@use "./../features/ui/components/toast/Toast.scss";
 @use "./../features/chat/components/header/ChatHeader.scss";
 @use "./../features/chat/components/ChatBubble.scss";
 @use "./../features/chat/components/ChatComposer.scss";
@@ -22,6 +23,7 @@
 @use "./../features/chat/components/EmojiPicker.scss";
 @use "./../features/chat/components/tools-panel/ChatToolsPanel.scss";
 @use "./../features/chat/components/tools-panel/ThreadsTool.scss";
+@use "./toast.scss";
 
 body {
   margin: 0;

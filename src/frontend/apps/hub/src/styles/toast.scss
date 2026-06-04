@@ -1,0 +1,56 @@
+// react-toastify wrapper neutralisation. The visible toast surface is rendered
+// by the custom `Toast` component (features/ui/components/toast), reproducing the
+// Figma design pixel-for-pixel; react-toastify only handles positioning,
+// stacking and the enter/exit animation. We strip the library's own surface
+// chrome (padding, background, shadow, radius, min-height) so the custom
+// component owns the look.
+//
+// IMPORTANT: react-toastify's stylesheet is imported AFTER this file in
+// `_app.tsx`, so equal-specificity overrides lose on source order. The resets
+// below are therefore scoped under `.Toastify__toast-container` (two classes) to
+// out-specify the library's single-class rules. Width is driven through the
+// library's own `--toastify-toast-width` variable instead of overriding `width`,
+// which would hit the same specificity problem.
+.Toastify__toast-container {
+  // Match the Figma toast width; cap to the viewport on narrow screens.
+  --toastify-toast-width: min(576px, calc(100vw - 2rem));
+
+  .Toastify__toast {
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  // Fill the toast so the custom surface spans the full width (the library
+  // leaves the body at its content size, which would shrink the surface).
+  .Toastify__toast-body {
+    flex: 1 1 auto;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+// On narrow screens react-toastify makes the container full-bleed (width: 100vw,
+// left: 0, no transform), which drops the rounded-card margins. Restore them so
+// the toast keeps the Figma card look and stays clear of the screen edges. The
+// doubled class out-specifies the library's mobile rule, which loads later.
+@media (max-width: 480px) {
+  .Toastify__toast-container.Toastify__toast-container {
+    // `--toastify-toast-width` already caps to `calc(100vw - 2rem)`, so this
+    // leaves a 1rem gutter on each side.
+    width: var(--toastify-toast-width);
+    left: 50%;
+    right: auto;
+    margin: 0;
+    padding: 0;
+    transform: translateX(-50%);
+  }
+
+  .Toastify__toast-container--top-center.Toastify__toast-container--top-center {
+    top: 1rem;
+  }
+}

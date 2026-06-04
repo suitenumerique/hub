@@ -10,7 +10,9 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import Head from "next/head";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { ToastContainer } from "react-toastify";
 
+import "react-toastify/ReactToastify.css";
 import "@/i18n/initI18n";
 import "../styles/globals.scss";
 
@@ -77,6 +79,15 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             </AnalyticsProvider>
           </ConfigProvider>
         </CunninghamProvider>
+        <ToastContainer
+          position="top-center"
+          autoClose={5000}
+          hideProgressBar
+          newestOnTop
+          closeOnClick
+          pauseOnFocusLoss={false}
+          theme="light"
+        />
         {process.env.NODE_ENV === "development" && (
           <ReactQueryDevtools initialIsOpen={false} />
         )}
