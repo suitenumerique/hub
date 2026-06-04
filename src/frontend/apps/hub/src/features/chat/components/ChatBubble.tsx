@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import type {
+  ChatRef,
   ChatMessageAuthor,
   ChatReaction,
   ChatThreadSummary,
@@ -17,7 +18,7 @@ import { ThreadButton } from "./ThreadButton";
 
 type ChatBubbleReceivedProps = {
   variant: "received";
-  chatId: string;
+  chatRef: ChatRef;
   messageId: string;
   content: string;
   author: ChatMessageAuthor;
@@ -33,7 +34,7 @@ type ChatBubbleReceivedProps = {
 
 type ChatBubbleSentProps = {
   variant: "sent";
-  chatId: string;
+  chatRef: ChatRef;
   messageId: string;
   content: string;
   timestamp: string;
@@ -80,13 +81,13 @@ const ChatBubbleFooter = ({
 };
 
 export const ChatBubble = (props: ChatBubbleProps) => {
-  const { chatId, messageId, reactions, thread, threadId } = props;
+  const { chatRef, messageId, reactions, thread, threadId } = props;
 
   // Single integration point with the data layer: the hover toolbar and the
   // reactions bar both receive the bound `onReact` callback and stay purely
   // presentational. `messageId` is stable per row, so `onReact` is too. Passing
   // `threadId` routes the toggle to the thread cache when inside a thread.
-  const { toggle } = useToggleReaction(chatId, threadId);
+  const { toggle } = useToggleReaction(chatRef, threadId);
   const onReact = useCallback(
     (emoji: string) => toggle(messageId, emoji),
     [toggle, messageId],

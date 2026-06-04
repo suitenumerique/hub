@@ -1,8 +1,10 @@
+import type { ChatRef } from "@/features/drivers/types";
+
 import { ThreadDetail } from "./ThreadDetail";
 import { ThreadList } from "./ThreadList";
 
 type ThreadsToolProps = {
-  chatId: string;
+  chatRef: ChatRef;
   /** Thread whose detail view is open, or `null` for the thread list. */
   threadId: string | null;
   isOpen: boolean;
@@ -17,7 +19,7 @@ type ThreadsToolProps = {
  * `ChatView` so it survives the panel close animation.
  */
 export const ThreadsTool = ({
-  chatId,
+  chatRef,
   threadId,
   isOpen,
   onClose,
@@ -27,7 +29,7 @@ export const ThreadsTool = ({
   if (threadId !== null) {
     return (
       <ThreadDetail
-        chatId={chatId}
+        chatRef={chatRef}
         threadId={threadId}
         isOpen={isOpen}
         onClose={onClose}
@@ -38,7 +40,7 @@ export const ThreadsTool = ({
 
   return (
     <ThreadList
-      chatId={chatId}
+      chatRef={chatRef}
       isOpen={isOpen}
       onClose={onClose}
       onOpenThread={onOpenThread}

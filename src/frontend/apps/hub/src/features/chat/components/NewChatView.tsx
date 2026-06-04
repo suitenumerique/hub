@@ -61,7 +61,7 @@ export const NewChatView = () => {
 
   return (
     <ChatView
-      chatId={chat?.id ?? null}
+      chatRef={chat?.ref ?? null}
       renderHeader={({ activeTool, onToggleTool }) =>
         searchBar({ activeTool, onToggleTool })
       }

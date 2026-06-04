@@ -1,7 +1,7 @@
 import { FilePreview } from "@gouvfr-lasuite/ui-kit";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-import type { Chat, ChatDocument } from "@/features/drivers/types";
+import type { Chat, ChatDocument, ChatRef } from "@/features/drivers/types";
 
 import {
   ChatPanelProvider,
@@ -18,7 +18,7 @@ import { documentToPreviewFile } from "./tools-panel/documentToPreviewFile";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 
 type ChatViewProps = {
-  chatId: string | null;
+  chatRef: ChatRef | null;
   renderHeader?: (props: {
     chat: Chat | null;
     activeTool: ChatTool | null;
@@ -31,15 +31,15 @@ type ChatViewProps = {
 /**
  * Top-level chat surface. Keeps its shell mounted across conversation
  * switches (so `<AccountSelector>` and the panel state survive) by taking
- * `chatId` directly and loading the conversation through `useChat` —
+ * `chatRef` directly and loading the conversation through `useChat` —
  * `<ChatHeader>` renders a skeleton while the chat is being fetched.
  */
 export const ChatView = ({
-  chatId,
+  chatRef,
   renderHeader,
   renderEmpty,
 }: ChatViewProps) => {
-  const { chat } = useChat(chatId);
+  const { chat } = useChat(chatRef);
 
   const [activeTool, setActiveTool] = useState<ChatTool | null>(null);
   const [displayedTool, setDisplayedTool] = useState<ChatTool | null>(null);
@@ -60,7 +60,7 @@ export const ChatView = ({
   useEffect(() => {
     setOpenedDocument(null);
     setActiveThreadId(null);
-  }, [chatId]);
+  }, [chatRef?.accountId, chatRef?.chatId]);
 
   const toggleTool = (tool: ChatTool) => {
     const willOpen = activeTool !== tool;
@@ -121,24 +121,24 @@ export const ChatView = ({
 
         <div className="hub__chat-view__main">
           <div className="hub__chat-view__content">
-            {chatId ? <ChatConversation chatId={chatId} /> : renderEmpty?.()}
+            {chatRef ? <ChatConversation chatRef={chatRef} /> : renderEmpty?.()}
           </div>
           <div className="hub__chat-view__composer">
             {/* The composer keeps a single instance across the empty → chat
                 transition so an in-progress draft and the input focus survive
                 when a conversation resolves. */}
             <div className="hub__chat-composer-stack">
-              {chatId ? <ConversationUnreadBanner chatId={chatId} /> : null}
+              {chatRef ? <ConversationUnreadBanner chatRef={chatRef} /> : null}
               <ChatComposer />
             </div>
           </div>
         </div>
         <div className="hub__chat-view__panel">
-          {chatId && (
+          {chatRef && (
             <ChatToolsPanel
               tool={activeTool ?? displayedTool}
               isOpen={activeTool !== null}
-              chatId={chatId}
+              chatRef={chatRef}
               threadId={activeThreadId}
               onClose={closePanel}
               onOpenThread={openThread}
@@ -158,12 +158,14 @@ export const ChatView = ({
   );
 };
 
-const ConversationUnreadBanner = ({ chatId }: { chatId: string }) => {
-  const { unreadThreads } = useChatThreads(chatId);
+const ConversationUnreadBanner = ({ chatRef }: { chatRef: ChatRef }) => {
+  const { unreadThreads } = useChatThreads(chatRef);
 
   if (unreadThreads.length === 0) {
     return null;
   }
 
-  return <UnreadThreadsBanner chatId={chatId} unreadThreads={unreadThreads} />;
+  return (
+    <UnreadThreadsBanner chatRef={chatRef} unreadThreads={unreadThreads} />
+  );
 };

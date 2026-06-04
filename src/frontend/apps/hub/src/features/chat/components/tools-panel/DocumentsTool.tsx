@@ -1,13 +1,13 @@
 import { useTranslation } from "react-i18next";
 
 import { useChatDocuments } from "@/features/chat/hooks/useChatDocuments";
-import type { ChatDocument } from "@/features/drivers/types";
+import type { ChatDocument, ChatRef } from "@/features/drivers/types";
 
 import { DocumentList } from "./DocumentList";
 import { CollapsibleSection, PinnedSection } from "./DocumentSection";
 
 type DocumentsToolProps = {
-  chatId: string;
+  chatRef: ChatRef;
   onOpenFile?: (doc: ChatDocument) => void;
 };
 
@@ -28,10 +28,10 @@ const SectionBody = ({ documents, onOpenFile }: SectionBodyProps) => {
   return <DocumentList documents={documents} onOpenFile={onOpenFile} />;
 };
 
-export const DocumentsTool = ({ chatId, onOpenFile }: DocumentsToolProps) => {
+export const DocumentsTool = ({ chatRef, onOpenFile }: DocumentsToolProps) => {
   const { t } = useTranslation();
   const { pinned, shared, multimedia, isInitialLoading, isError, refetch } =
-    useChatDocuments(chatId);
+    useChatDocuments(chatRef);
 
   if (isInitialLoading) {
     return (

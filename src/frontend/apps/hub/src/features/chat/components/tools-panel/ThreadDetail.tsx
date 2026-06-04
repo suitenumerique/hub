@@ -2,7 +2,7 @@ import { Bell } from "@gouvfr-lasuite/ui-kit/icons";
 import { Fragment, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatMessageAuthor } from "@/features/drivers/types";
+import type { ChatMessageAuthor, ChatRef } from "@/features/drivers/types";
 
 import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
@@ -12,7 +12,7 @@ import { ChatComposer } from "../ChatComposer";
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
 type ThreadDetailProps = {
-  chatId: string;
+  chatRef: ChatRef;
   threadId: string;
   isOpen: boolean;
   onClose: () => void;
@@ -21,7 +21,7 @@ type ThreadDetailProps = {
 
 /** Threads panel detail view — a single thread's root message and replies. */
 export const ThreadDetail = ({
-  chatId,
+  chatRef,
   threadId,
   isOpen,
   onClose,
@@ -29,10 +29,10 @@ export const ThreadDetail = ({
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
   const { thread, isInitialLoading, isError, refetch } = useChatThread(
-    chatId,
+    chatRef,
     threadId,
   );
-  const { markThreadRead } = useChatThreadActions(chatId);
+  const { markThreadRead } = useChatThreadActions(chatRef);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   // On open, jump to the first unread reply — or to the latest message when the
@@ -132,7 +132,7 @@ export const ThreadDetail = ({
                 {isSent ? (
                   <ChatBubble
                     variant="sent"
-                    chatId={chatId}
+                    chatRef={chatRef}
                     messageId={message.id}
                     content={message.content}
                     timestamp={message.timestamp}
@@ -144,7 +144,7 @@ export const ThreadDetail = ({
                   author && (
                     <ChatBubble
                       variant="received"
-                      chatId={chatId}
+                      chatRef={chatRef}
                       messageId={message.id}
                       content={message.content}
                       author={author}

@@ -1,13 +1,13 @@
 import { CircleCheck, Reply } from "@gouvfr-lasuite/ui-kit/icons";
 import { useTranslation } from "react-i18next";
 
-import type { ChatThread } from "@/features/drivers/types";
+import type { ChatRef, ChatThread } from "@/features/drivers/types";
 
 import { useChatPanel } from "../ChatPanelContext";
 import { useChatThreadActions } from "../hooks/useChatThreadActions";
 
 type UnreadThreadsBannerProps = {
-  chatId: string;
+  chatRef: ChatRef;
   /** Threads with unread replies — guaranteed non-empty by the caller. */
   unreadThreads: ChatThread[];
 };
@@ -18,12 +18,12 @@ type UnreadThreadsBannerProps = {
  * only one unread, otherwise it opens the thread list.
  */
 export const UnreadThreadsBanner = ({
-  chatId,
+  chatRef,
   unreadThreads,
 }: UnreadThreadsBannerProps) => {
   const { t } = useTranslation();
   const { openThread, openThreadList } = useChatPanel();
-  const { markAllRead } = useChatThreadActions(chatId);
+  const { markAllRead } = useChatThreadActions(chatRef);
 
   const count = unreadThreads.length;
 

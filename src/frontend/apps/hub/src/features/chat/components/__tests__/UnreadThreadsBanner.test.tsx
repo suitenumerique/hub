@@ -9,15 +9,21 @@ import {
   ChatPanelProvider,
   type ChatPanelContextValue,
 } from "../../ChatPanelContext";
-import type { ChatThread } from "@/features/drivers/types";
+import type { ChatRef, ChatThread } from "@/features/drivers/types";
 
 import { UnreadThreadsBanner } from "../UnreadThreadsBanner";
 
 const markAllChatThreadsRead = vi.fn().mockResolvedValue(undefined);
 
-vi.mock("@/features/config/Config", () => ({
-  getDriver: () => ({ markAllChatThreadsRead }),
+const registry = {
+  get: vi.fn(() => ({ markAllChatThreadsRead })),
+};
+
+vi.mock("@/features/drivers/DriverRegistry", () => ({
+  getRegistry: () => registry,
 }));
+
+const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 
 const buildThread = (id: string): ChatThread => ({
   id,
@@ -47,7 +53,7 @@ const renderBanner = (
     </QueryClientProvider>
   );
   render(
-    <UnreadThreadsBanner chatId="chat-1" unreadThreads={unreadThreads} />,
+    <UnreadThreadsBanner chatRef={CHAT_REF} unreadThreads={unreadThreads} />,
     { wrapper: Wrapper },
   );
   return value;
@@ -56,6 +62,7 @@ const renderBanner = (
 describe("UnreadThreadsBanner", () => {
   beforeEach(() => {
     markAllChatThreadsRead.mockClear();
+    registry.get.mockClear();
   });
 
   it("jumps straight to the thread when only one is unread", () => {
@@ -88,6 +95,7 @@ describe("UnreadThreadsBanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mark all as read" }));
     await waitFor(() => {
       expect(markAllChatThreadsRead).toHaveBeenCalledWith("chat-1");
+      expect(registry.get).toHaveBeenCalledWith("account-a");
     });
   });
 });

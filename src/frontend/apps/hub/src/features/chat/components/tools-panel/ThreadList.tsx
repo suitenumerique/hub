@@ -1,13 +1,15 @@
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 
+import type { ChatRef } from "@/features/drivers/types";
+
 import { useChatThreads } from "../../hooks/useChatThreads";
 
 import { ThreadListItem } from "./ThreadListItem";
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
 type ThreadListProps = {
-  chatId: string;
+  chatRef: ChatRef;
   isOpen: boolean;
   onClose: () => void;
   onOpenThread: (threadId: string) => void;
@@ -15,14 +17,14 @@ type ThreadListProps = {
 
 /** Threads panel list view — every thread of the active conversation. */
 export const ThreadList = ({
-  chatId,
+  chatRef,
   isOpen,
   onClose,
   onOpenThread,
 }: ThreadListProps) => {
   const { t } = useTranslation();
   const { threads, isInitialLoading, isError, refetch } =
-    useChatThreads(chatId);
+    useChatThreads(chatRef);
 
   const renderBody = () => {
     if (isInitialLoading) {

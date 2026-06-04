@@ -2,7 +2,11 @@ import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
-import type { ChatMessage, ChatMessageAuthor } from "@/features/drivers/types";
+import type {
+  ChatRef,
+  ChatMessage,
+  ChatMessageAuthor,
+} from "@/features/drivers/types";
 
 import { useChatMessages } from "../hooks/useChatMessages";
 
@@ -10,7 +14,7 @@ import { ChatBubble } from "./ChatBubble";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
 
 type ChatVirtualListProps = {
-  chatId: string;
+  chatRef: ChatRef;
 };
 
 // Average bubble height. Lets Virtuoso lay out rows without waiting on the
@@ -24,7 +28,7 @@ const DEFAULT_ITEM_HEIGHT = 72;
 // transition-end handler flips it to `hidden`, at which point we unmount it.
 type SkeletonState = "visible" | "leaving" | "hidden";
 
-export const ChatVirtualList = ({ chatId }: ChatVirtualListProps) => {
+export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
   const { t } = useTranslation();
   const {
     messages,
@@ -34,13 +38,13 @@ export const ChatVirtualList = ({ chatId }: ChatVirtualListProps) => {
     isInitialLoading,
     firstItemIndex,
     fetchOlder,
-  } = useChatMessages(chatId);
+  } = useChatMessages(chatRef);
 
   // Keep one Virtuoso instance alive across chat switches — remounting it on
   // every chat change costs ~500ms of measurement + layout, which is what
   // made switching feel sluggish.
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const previousChatIdRef = useRef(chatId);
+  const previousChatRef = useRef(chatRef);
   const pendingScrollRaf = useRef<number | null>(null);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
@@ -65,10 +69,13 @@ export const ChatVirtualList = ({ chatId }: ChatVirtualListProps) => {
   }, [isInitialLoading]);
 
   useEffect(() => {
-    if (previousChatIdRef.current === chatId) {
+    if (
+      previousChatRef.current.accountId === chatRef.accountId &&
+      previousChatRef.current.chatId === chatRef.chatId
+    ) {
       return;
     }
-    previousChatIdRef.current = chatId;
+    previousChatRef.current = chatRef;
     // Two rAFs: the first lets React commit the new `data` + `firstItemIndex`,
     // the second lets Virtuoso recompute its internal layout before we ask it
     // to scroll to the last row.
@@ -88,7 +95,7 @@ export const ChatVirtualList = ({ chatId }: ChatVirtualListProps) => {
         pendingScrollRaf.current = null;
       }
     };
-  }, [chatId]);
+  }, [chatRef]);
 
   return (
     <div className="hub__chat-conversation__list">
@@ -129,7 +136,7 @@ export const ChatVirtualList = ({ chatId }: ChatVirtualListProps) => {
             return (
               <Row
                 message={message}
-                chatId={chatId}
+                chatRef={chatRef}
                 prev={messages[arrayIndex - 1]}
                 next={messages[arrayIndex + 1]}
                 authorsById={authorsById}
@@ -158,7 +165,7 @@ export const ChatVirtualList = ({ chatId }: ChatVirtualListProps) => {
 type RowProps = {
   message: ChatMessage;
   /** Stable for the whole list — does not invalidate the row memo. */
-  chatId: string;
+  chatRef: ChatRef;
   prev: ChatMessage | undefined;
   next: ChatMessage | undefined;
   authorsById: Map<string, ChatMessageAuthor>;
@@ -166,7 +173,7 @@ type RowProps = {
 
 const Row = memo(function Row({
   message,
-  chatId,
+  chatRef,
   prev,
   next,
   authorsById,
@@ -180,7 +187,7 @@ const Row = memo(function Row({
       <RowShell>
         <ChatBubble
           variant="sent"
-          chatId={chatId}
+          chatRef={chatRef}
           messageId={message.id}
           content={message.content}
           timestamp={message.timestamp}
@@ -200,7 +207,7 @@ const Row = memo(function Row({
     <RowShell>
       <ChatBubble
         variant="received"
-        chatId={chatId}
+        chatRef={chatRef}
         messageId={message.id}
         content={message.content}
         author={author}
