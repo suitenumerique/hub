@@ -4,7 +4,8 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ChatThread } from "@/features/drivers/types";
+import { chatKeys } from "../../chatKeys";
+import type { ChatRef, ChatThread } from "@/features/drivers/types";
 
 import { useChatThreads } from "../useChatThreads";
 
@@ -21,9 +22,15 @@ const buildThread = (over: Partial<ChatThread> = {}): ChatThread => ({
 
 const getChatThreads = vi.fn<(chatId: string) => Promise<ChatThread[]>>();
 
-vi.mock("@/features/config/Config", () => ({
-  getDriver: () => ({ getChatThreads }),
+const registry = {
+  get: vi.fn(() => ({ getChatThreads })),
+};
+
+vi.mock("@/features/drivers/DriverRegistry", () => ({
+  getRegistry: () => registry,
 }));
+
+const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 
 const wrapper = (queryClient: QueryClient) => {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -41,6 +48,7 @@ describe("useChatThreads", () => {
       defaultOptions: { queries: { retry: false } },
     });
     getChatThreads.mockReset();
+    registry.get.mockClear();
   });
 
   afterEach(() => {
@@ -53,7 +61,7 @@ describe("useChatThreads", () => {
       buildThread({ id: "t-2", unreadCount: 3 }),
     ]);
 
-    const { result } = renderHook(() => useChatThreads("chat-1"), {
+    const { result } = renderHook(() => useChatThreads(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
 
@@ -70,22 +78,35 @@ describe("useChatThreads", () => {
     expect(result.current.isError).toBe(false);
   });
 
-  it("keys the query by chatId", async () => {
+  it("keys the query by ChatRef", async () => {
     getChatThreads.mockResolvedValue([]);
 
-    renderHook(() => useChatThreads("chat-42"), {
-      wrapper: wrapper(queryClient),
-    });
+    renderHook(
+      () =>
+        useChatThreads({
+          accountId: "account-b",
+          chatId: "chat-42",
+        }),
+      {
+        wrapper: wrapper(queryClient),
+      },
+    );
 
     await waitFor(() => {
       expect(getChatThreads).toHaveBeenCalledWith("chat-42");
     });
+    expect(registry.get).toHaveBeenCalledWith("account-b");
+    expect(
+      queryClient.getQueryData(
+        chatKeys.threads({ accountId: "account-b", chatId: "chat-42" }),
+      ),
+    ).toBeDefined();
   });
 
   it("surfaces query errors without throwing", async () => {
     getChatThreads.mockRejectedValueOnce(new Error("boom"));
 
-    const { result } = renderHook(() => useChatThreads("chat-1"), {
+    const { result } = renderHook(() => useChatThreads(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
 

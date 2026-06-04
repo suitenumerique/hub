@@ -4,7 +4,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ChatMessagesPage } from "@/features/drivers/types";
+import { chatKeys } from "../../chatKeys";
+import type { ChatMessagesPage, ChatRef } from "@/features/drivers/types";
 
 import { useChatMessages } from "../useChatMessages";
 
@@ -35,9 +36,15 @@ const getChatMessages =
     }) => Promise<ChatMessagesPage>
   >();
 
-vi.mock("@/features/config/Config", () => ({
-  getDriver: () => ({ getChatMessages }),
+const registry = {
+  get: vi.fn(() => ({ getChatMessages })),
+};
+
+vi.mock("@/features/drivers/DriverRegistry", () => ({
+  getRegistry: () => registry,
 }));
+
+const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 
 const wrapper = (queryClient: QueryClient) => {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -55,6 +62,7 @@ describe("useChatMessages", () => {
       defaultOptions: { queries: { retry: false } },
     });
     getChatMessages.mockReset();
+    registry.get.mockClear();
   });
 
   afterEach(() => {
@@ -64,7 +72,7 @@ describe("useChatMessages", () => {
   it("flattens pages oldest-first and reports loading then ready states", async () => {
     getChatMessages.mockResolvedValueOnce(buildPage(0, { hasOlder: true }));
 
-    const { result } = renderHook(() => useChatMessages("chat-1"), {
+    const { result } = renderHook(() => useChatMessages(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
 
@@ -86,7 +94,7 @@ describe("useChatMessages", () => {
       .mockResolvedValueOnce(buildPage(0, { hasOlder: true }))
       .mockResolvedValueOnce(buildPage(1, { hasOlder: false }));
 
-    const { result } = renderHook(() => useChatMessages("chat-1"), {
+    const { result } = renderHook(() => useChatMessages(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
 
@@ -118,7 +126,7 @@ describe("useChatMessages", () => {
           }),
       );
 
-    const { result } = renderHook(() => useChatMessages("chat-1"), {
+    const { result } = renderHook(() => useChatMessages(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
     await waitFor(() => expect(result.current.messages).toHaveLength(10));
@@ -172,7 +180,7 @@ describe("useChatMessages", () => {
         nextCursor: null,
       });
 
-    const { result } = renderHook(() => useChatMessages("chat-1"), {
+    const { result } = renderHook(() => useChatMessages(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
     await waitFor(() => expect(result.current.messages).toHaveLength(1));
@@ -189,12 +197,30 @@ describe("useChatMessages", () => {
   it("surfaces query errors without throwing", async () => {
     getChatMessages.mockRejectedValueOnce(new Error("boom"));
 
-    const { result } = renderHook(() => useChatMessages("chat-1"), {
+    const { result } = renderHook(() => useChatMessages(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(result.current.messages).toEqual([]);
     expect(result.current.isInitialLoading).toBe(false);
+  });
+
+  it("keys the cache with accountId and chatId", async () => {
+    getChatMessages.mockResolvedValueOnce(buildPage(0));
+
+    renderHook(() => useChatMessages(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(getChatMessages).toHaveBeenCalledWith({
+        chatId: "chat-1",
+        cursor: null,
+        limit: 50,
+      });
+    });
+    expect(queryClient.getQueryData(chatKeys.messages(CHAT_REF))).toBeDefined();
+    expect(registry.get).toHaveBeenCalledWith("account-a");
   });
 });

@@ -1,8 +1,14 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
-import { getDriver } from "@/features/config/Config";
-import type { ChatMessage, ChatMessageAuthor } from "@/features/drivers/types";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
+import type {
+  ChatRef,
+  ChatMessage,
+  ChatMessageAuthor,
+} from "@/features/drivers/types";
+
+import { chatKeys } from "../chatKeys";
 
 export const CHAT_PAGE_SIZE = 50;
 
@@ -24,14 +30,12 @@ export type UseChatMessagesResult = {
   fetchOlder: () => void;
 };
 
-export const useChatMessages = (chatId: string): UseChatMessagesResult => {
-  const driver = getDriver();
-
+export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
   const query = useInfiniteQuery({
-    queryKey: ["chat-messages", chatId],
+    queryKey: chatKeys.messages(ref),
     queryFn: ({ pageParam }) =>
-      driver.getChatMessages({
-        chatId,
+      getRegistry().get(ref.accountId).getChatMessages({
+        chatId: ref.chatId,
         cursor: pageParam,
         limit: CHAT_PAGE_SIZE,
       }),

@@ -6,12 +6,14 @@ import {
 } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { getDriver } from "@/features/config/Config";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
+  ChatRef,
   ChatMessagesPage,
   ChatThreadDetail,
 } from "@/features/drivers/types";
 
+import { chatKeys } from "../chatKeys";
 import { toggleReaction } from "../reactions";
 
 type ChatMessagesData = InfiniteData<ChatMessagesPage>;
@@ -77,10 +79,9 @@ export type UseToggleReactionResult = {
  * cache back to its pre-toggle snapshot.
  */
 export const useToggleReaction = (
-  chatId: string,
+  ref: ChatRef,
   threadId?: string,
 ): UseToggleReactionResult => {
-  const driver = getDriver();
   const queryClient = useQueryClient();
 
   const { mutate } = useMutation<
@@ -89,19 +90,21 @@ export const useToggleReaction = (
     ToggleVariables,
     ToggleContext
   >({
-    mutationFn: ({ messageId, emoji }) =>
-      threadId
+    mutationFn: ({ messageId, emoji }) => {
+      const driver = getRegistry().get(ref.accountId);
+      return threadId
         ? driver.toggleChatThreadReaction({
-            chatId,
+            chatId: ref.chatId,
             threadId,
             messageId,
             emoji,
           })
-        : driver.toggleChatReaction({ chatId, messageId, emoji }),
+        : driver.toggleChatReaction({ chatId: ref.chatId, messageId, emoji });
+    },
     onMutate: async ({ messageId, emoji }) => {
       const queryKey: QueryKey = threadId
-        ? ["chat-thread", chatId, threadId]
-        : ["chat-messages", chatId];
+        ? chatKeys.thread(ref, threadId)
+        : chatKeys.messages(ref);
       // Stop any in-flight refetch from overwriting the optimistic write.
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData(queryKey);

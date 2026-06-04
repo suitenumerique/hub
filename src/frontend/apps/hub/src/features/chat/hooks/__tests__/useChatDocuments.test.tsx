@@ -4,7 +4,8 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ChatDocumentsPage } from "@/features/drivers/types";
+import { chatKeys } from "../../chatKeys";
+import type { ChatDocumentsPage, ChatRef } from "@/features/drivers/types";
 
 import { useChatDocuments } from "../useChatDocuments";
 
@@ -35,9 +36,15 @@ const buildPage = (): ChatDocumentsPage => ({
 const getChatDocuments =
   vi.fn<(chatId: string) => Promise<ChatDocumentsPage>>();
 
-vi.mock("@/features/config/Config", () => ({
-  getDriver: () => ({ getChatDocuments }),
+const registry = {
+  get: vi.fn(() => ({ getChatDocuments })),
+};
+
+vi.mock("@/features/drivers/DriverRegistry", () => ({
+  getRegistry: () => registry,
 }));
+
+const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 
 const wrapper = (queryClient: QueryClient) => {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -55,6 +62,7 @@ describe("useChatDocuments", () => {
       defaultOptions: { queries: { retry: false } },
     });
     getChatDocuments.mockReset();
+    registry.get.mockClear();
   });
 
   afterEach(() => {
@@ -64,7 +72,7 @@ describe("useChatDocuments", () => {
   it("reports loading then exposes the three document groups", async () => {
     getChatDocuments.mockResolvedValueOnce(buildPage());
 
-    const { result } = renderHook(() => useChatDocuments("chat-1"), {
+    const { result } = renderHook(() => useChatDocuments(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
 
@@ -81,21 +89,34 @@ describe("useChatDocuments", () => {
     expect(result.current.isError).toBe(false);
   });
 
-  it("keys the query by chatId", async () => {
+  it("keys the query by ChatRef", async () => {
     getChatDocuments.mockResolvedValue(buildPage());
 
-    renderHook(() => useChatDocuments("chat-1"), {
-      wrapper: wrapper(queryClient),
-    });
+    renderHook(
+      () =>
+        useChatDocuments({
+          accountId: "account-b",
+          chatId: "chat-1",
+        }),
+      {
+        wrapper: wrapper(queryClient),
+      },
+    );
     await waitFor(() => {
       expect(getChatDocuments).toHaveBeenCalledWith("chat-1");
     });
+    expect(registry.get).toHaveBeenCalledWith("account-b");
+    expect(
+      queryClient.getQueryData(
+        chatKeys.documents({ accountId: "account-b", chatId: "chat-1" }),
+      ),
+    ).toBeDefined();
   });
 
   it("surfaces query errors without throwing", async () => {
     getChatDocuments.mockRejectedValueOnce(new Error("boom"));
 
-    const { result } = renderHook(() => useChatDocuments("chat-1"), {
+    const { result } = renderHook(() => useChatDocuments(CHAT_REF), {
       wrapper: wrapper(queryClient),
     });
     await waitFor(() => expect(result.current.isError).toBe(true));

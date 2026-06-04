@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
-import { getDriver } from "@/features/config/Config";
-import type { ChatThread } from "@/features/drivers/types";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
+import type { ChatRef, ChatThread } from "@/features/drivers/types";
+
+import { chatKeys } from "../chatKeys";
 
 export type UseChatThreadsResult = {
   threads: ChatThread[];
@@ -20,12 +22,10 @@ const EMPTY: ChatThread[] = [];
  * `chatId`, so the threads stay scoped to the active conversation; the threads
  * panel and the unread banner share this single cache entry.
  */
-export const useChatThreads = (chatId: string): UseChatThreadsResult => {
-  const driver = getDriver();
-
+export const useChatThreads = (ref: ChatRef): UseChatThreadsResult => {
   const query = useQuery({
-    queryKey: ["chat-threads", chatId],
-    queryFn: () => driver.getChatThreads(chatId),
+    queryKey: chatKeys.threads(ref),
+    queryFn: () => getRegistry().get(ref.accountId).getChatThreads(ref.chatId),
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });

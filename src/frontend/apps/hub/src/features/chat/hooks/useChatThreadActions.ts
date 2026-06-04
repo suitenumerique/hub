@@ -6,8 +6,14 @@ import {
 } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { getDriver } from "@/features/config/Config";
-import type { ChatMessagesPage, ChatThread } from "@/features/drivers/types";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
+import type {
+  ChatMessagesPage,
+  ChatRef,
+  ChatThread,
+} from "@/features/drivers/types";
+
+import { chatKeys } from "../chatKeys";
 
 type ChatMessagesData = InfiniteData<ChatMessagesPage>;
 
@@ -64,16 +70,15 @@ export type UseChatThreadActionsResult = {
  * in-memory store, so a later refetch agrees with the optimistic write.
  */
 export const useChatThreadActions = (
-  chatId: string,
+  ref: ChatRef,
 ): UseChatThreadActionsResult => {
-  const driver = getDriver();
   const queryClient = useQueryClient();
 
   const applyOptimisticRead = async (
     matches: ThreadMatcher,
   ): Promise<ReadContext> => {
-    const threadsKey: QueryKey = ["chat-threads", chatId];
-    const messagesKey: QueryKey = ["chat-messages", chatId];
+    const threadsKey: QueryKey = chatKeys.threads(ref);
+    const messagesKey: QueryKey = chatKeys.messages(ref);
     // Stop any in-flight refetch from overwriting the optimistic write.
     await queryClient.cancelQueries({ queryKey: threadsKey });
     await queryClient.cancelQueries({ queryKey: messagesKey });
@@ -108,7 +113,9 @@ export const useChatThreadActions = (
     ReadContext
   >({
     mutationFn: (threadId: string) =>
-      driver.markChatThreadRead({ chatId, threadId }),
+      getRegistry()
+        .get(ref.accountId)
+        .markChatThreadRead({ chatId: ref.chatId, threadId }),
     onMutate: (threadId) => applyOptimisticRead((id) => id === threadId),
     onError: (_error, _variables, context) => rollback(context),
     meta: { noGlobalError: true },
@@ -120,7 +127,8 @@ export const useChatThreadActions = (
     void,
     ReadContext
   >({
-    mutationFn: () => driver.markAllChatThreadsRead(chatId),
+    mutationFn: () =>
+      getRegistry().get(ref.accountId).markAllChatThreadsRead(ref.chatId),
     onMutate: () => applyOptimisticRead(() => true),
     onError: (_error, _variables, context) => rollback(context),
     meta: { noGlobalError: true },

@@ -8,7 +8,9 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { chatKeys } from "../../chatKeys";
 import type {
+  ChatRef,
   ChatMessage,
   ChatMessagesPage,
   ChatThreadDetail,
@@ -19,12 +21,17 @@ import { useToggleReaction } from "../useToggleReaction";
 const toggleChatReaction = vi.fn();
 const toggleChatThreadReaction = vi.fn();
 
-vi.mock("@/features/config/Config", () => ({
-  getDriver: () => ({ toggleChatReaction, toggleChatThreadReaction }),
+const registry = {
+  get: vi.fn(() => ({ toggleChatReaction, toggleChatThreadReaction })),
+};
+
+vi.mock("@/features/drivers/DriverRegistry", () => ({
+  getRegistry: () => registry,
 }));
 
+const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 const CHAT_ID = "chat-1";
-const QUERY_KEY = ["chat-messages", CHAT_ID];
+const QUERY_KEY = chatKeys.messages(CHAT_REF);
 
 const makeMessage = (
   id: string,
@@ -53,6 +60,8 @@ describe("useToggleReaction", () => {
       },
     });
     toggleChatReaction.mockReset();
+    toggleChatThreadReaction.mockReset();
+    registry.get.mockClear();
   });
 
   afterEach(() => {
@@ -64,7 +73,7 @@ describe("useToggleReaction", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     Wrapper.displayName = "TestQueryClientProvider";
-    return renderHook(() => useToggleReaction(CHAT_ID), { wrapper: Wrapper });
+    return renderHook(() => useToggleReaction(CHAT_REF), { wrapper: Wrapper });
   };
 
   const reactionsAt = (pageIndex: number, messageIndex: number) =>
@@ -148,7 +157,7 @@ describe("useToggleReaction (thread mode)", () => {
   let queryClient: QueryClient;
 
   const THREAD_ID = "t-1";
-  const THREAD_KEY = ["chat-thread", CHAT_ID, THREAD_ID];
+  const THREAD_KEY = chatKeys.thread(CHAT_REF, THREAD_ID);
 
   beforeEach(() => {
     queryClient = new QueryClient({
@@ -159,6 +168,7 @@ describe("useToggleReaction (thread mode)", () => {
     });
     toggleChatReaction.mockReset();
     toggleChatThreadReaction.mockReset();
+    registry.get.mockClear();
   });
 
   afterEach(() => {
@@ -178,7 +188,7 @@ describe("useToggleReaction (thread mode)", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     Wrapper.displayName = "TestQueryClientProvider";
-    return renderHook(() => useToggleReaction(CHAT_ID, THREAD_ID), {
+    return renderHook(() => useToggleReaction(CHAT_REF, THREAD_ID), {
       wrapper: Wrapper,
     });
   };

@@ -4,8 +4,8 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ChatThreadDetail } from "@/features/drivers/types";
 import type { GetChatThreadParams } from "@/features/drivers/Driver";
+import type { ChatRef, ChatThreadDetail } from "@/features/drivers/types";
 
 import { useChatThread } from "../useChatThread";
 
@@ -37,9 +37,15 @@ const buildDetail = (): ChatThreadDetail => ({
 const getChatThread =
   vi.fn<(params: GetChatThreadParams) => Promise<ChatThreadDetail>>();
 
-vi.mock("@/features/config/Config", () => ({
-  getDriver: () => ({ getChatThread }),
+const registry = {
+  get: vi.fn(() => ({ getChatThread })),
+};
+
+vi.mock("@/features/drivers/DriverRegistry", () => ({
+  getRegistry: () => registry,
 }));
+
+const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 
 const wrapper = (queryClient: QueryClient) => {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -57,6 +63,7 @@ describe("useChatThread", () => {
       defaultOptions: { queries: { retry: false } },
     });
     getChatThread.mockReset();
+    registry.get.mockClear();
   });
 
   afterEach(() => {
@@ -66,7 +73,7 @@ describe("useChatThread", () => {
   it("loads a thread keyed by chatId and threadId", async () => {
     getChatThread.mockResolvedValueOnce(buildDetail());
 
-    const { result } = renderHook(() => useChatThread("chat-1", "t-1"), {
+    const { result } = renderHook(() => useChatThread(CHAT_REF, "t-1"), {
       wrapper: wrapper(queryClient),
     });
 
@@ -81,6 +88,7 @@ describe("useChatThread", () => {
       chatId: "chat-1",
       threadId: "t-1",
     });
+    expect(registry.get).toHaveBeenCalledWith("account-a");
     expect(result.current.thread?.messages).toHaveLength(2);
     expect(result.current.thread?.firstUnreadIndex).toBe(1);
   });
@@ -88,7 +96,7 @@ describe("useChatThread", () => {
   it("surfaces query errors without throwing", async () => {
     getChatThread.mockRejectedValueOnce(new Error("boom"));
 
-    const { result } = renderHook(() => useChatThread("chat-1", "t-1"), {
+    const { result } = renderHook(() => useChatThread(CHAT_REF, "t-1"), {
       wrapper: wrapper(queryClient),
     });
 

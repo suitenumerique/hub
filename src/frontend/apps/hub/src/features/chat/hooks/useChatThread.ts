@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { getDriver } from "@/features/config/Config";
-import type { ChatThreadDetail } from "@/features/drivers/types";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
+import type { ChatRef, ChatThreadDetail } from "@/features/drivers/types";
+
+import { chatKeys } from "../chatKeys";
 
 export type UseChatThreadResult = {
   thread: ChatThreadDetail | null;
@@ -16,14 +18,16 @@ export type UseChatThreadResult = {
  * the driver, keyed by `chatId` + `threadId`.
  */
 export const useChatThread = (
-  chatId: string,
+  ref: ChatRef,
   threadId: string,
 ): UseChatThreadResult => {
-  const driver = getDriver();
-
   const query = useQuery({
-    queryKey: ["chat-thread", chatId, threadId],
-    queryFn: () => driver.getChatThread({ chatId, threadId }),
+    queryKey: chatKeys.thread(ref, threadId),
+    queryFn: () =>
+      getRegistry().get(ref.accountId).getChatThread({
+        chatId: ref.chatId,
+        threadId,
+      }),
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });

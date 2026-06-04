@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { getDriver } from "@/features/config/Config";
-import type { Chat } from "@/features/drivers/types";
+import { decorateChat } from "@/features/chat/chatRefs";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
+import type { Chat, ChatRef } from "@/features/drivers/types";
+
+import { chatKeys } from "../chatKeys";
 
 export type UseChatResult = {
   chat: Chat | null;
@@ -12,16 +15,22 @@ export type UseChatResult = {
 };
 
 /**
- * Loads a single conversation through the driver. Keyed by `chatId` so two
- * tabs on different chats keep distinct caches; shared with no other query.
+ * Loads a single conversation through the matching account driver. Keyed by
+ * full `ChatRef` so identical local ids from different accounts never collide.
  */
-export const useChat = (chatId: string | null): UseChatResult => {
-  const driver = getDriver();
-
+export const useChat = (ref: ChatRef | null): UseChatResult => {
   const query = useQuery({
-    queryKey: ["chat", chatId],
-    queryFn: () => driver.getChat(chatId as string),
-    enabled: chatId !== null,
+    queryKey: ref ? chatKeys.chat(ref) : chatKeys.noChat(),
+    queryFn: async () => {
+      if (!ref) {
+        throw new Error("useChat requires a ChatRef.");
+      }
+      const localChat = await getRegistry()
+        .get(ref.accountId)
+        .getChat(ref.chatId);
+      return decorateChat(ref.accountId, localChat);
+    },
+    enabled: ref !== null,
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });

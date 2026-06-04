@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { getDriver } from "@/features/config/Config";
-import type { ChatDocument } from "@/features/drivers/types";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
+import type { ChatDocument, ChatRef } from "@/features/drivers/types";
+
+import { chatKeys } from "../chatKeys";
 
 export type UseChatDocumentsResult = {
   pinned: ChatDocument[];
@@ -15,12 +17,11 @@ export type UseChatDocumentsResult = {
 
 const EMPTY: ChatDocument[] = [];
 
-export const useChatDocuments = (chatId: string): UseChatDocumentsResult => {
-  const driver = getDriver();
-
+export const useChatDocuments = (ref: ChatRef): UseChatDocumentsResult => {
   const query = useQuery({
-    queryKey: ["chat-documents", chatId],
-    queryFn: () => driver.getChatDocuments(chatId),
+    queryKey: chatKeys.documents(ref),
+    queryFn: () =>
+      getRegistry().get(ref.accountId).getChatDocuments(ref.chatId),
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });

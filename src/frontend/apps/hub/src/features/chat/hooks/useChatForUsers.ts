@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { getDriver } from "@/features/config/Config";
+import { decorateChat } from "@/features/chat/chatRefs";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { Chat } from "@/features/drivers/types";
+
+import { useComposerAccountId } from "./useChatAccounts";
 
 export type UseChatForUsersResult = {
   chat: Chat | null;
@@ -14,16 +17,24 @@ export const normalizeChatParticipantIds = (userIds: string[]) =>
   [...new Set(userIds)].sort();
 
 export const useChatForUsers = (userIds: string[]): UseChatForUsersResult => {
-  const driver = getDriver();
+  const accountId = useComposerAccountId();
   const participantIds = useMemo(
     () => normalizeChatParticipantIds(userIds),
     [userIds],
   );
 
   const query = useQuery({
-    queryKey: ["chat-for-users", participantIds],
-    queryFn: () => driver.getChatForUsers(participantIds),
-    enabled: participantIds.length > 0,
+    queryKey: ["chat-for-users", accountId, participantIds],
+    queryFn: async () => {
+      if (!accountId) {
+        return null;
+      }
+      const localChat = await getRegistry()
+        .get(accountId)
+        .getChatForUsers(participantIds);
+      return localChat ? decorateChat(accountId, localChat) : null;
+    },
+    enabled: participantIds.length > 0 && accountId !== null,
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });
