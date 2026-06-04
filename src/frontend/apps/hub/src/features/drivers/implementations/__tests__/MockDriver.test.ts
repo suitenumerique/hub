@@ -53,6 +53,40 @@ describe("MockDriver new chat", () => {
 });
 
 describe("MockDriver.toggleChatReaction", () => {
+  it("returns account-local chat sections", async () => {
+    const driver = new MockDriver("mock-support", { nameSuffix: "Support" });
+
+    const sections = await driver.getChats();
+
+    expect(sections.favourites[0].id).toBe(CHAT_ID);
+    expect(sections.favourites[0].name).toContain("Support");
+  });
+
+  it("keeps the same local chat id isolated per account", async () => {
+    const main = new MockDriver("mock-main");
+    const support = new MockDriver("mock-support", { nameSuffix: "Support" });
+
+    await main.toggleChatReaction({
+      chatId: CHAT_ID,
+      messageId: "m-1",
+      emoji: "🔥",
+    });
+
+    const mainMessage = (
+      await main.getChatMessages({ chatId: CHAT_ID, limit: 1_000 })
+    ).messages.find((message) => message.id === "m-1");
+    const supportMessage = (
+      await support.getChatMessages({ chatId: CHAT_ID, limit: 1_000 })
+    ).messages.find((message) => message.id === "m-1");
+
+    expect(
+      mainMessage?.reactions.some((reaction) => reaction.emoji === "🔥"),
+    ).toBe(true);
+    expect(
+      supportMessage?.reactions.some((reaction) => reaction.emoji === "🔥"),
+    ).toBe(false);
+  });
+
   it("toggles a reaction on a stored message and persists it", async () => {
     const driver = new MockDriver();
 

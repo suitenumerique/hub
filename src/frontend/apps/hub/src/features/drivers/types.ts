@@ -2,6 +2,32 @@ import { FooterProps } from "@gouvfr-lasuite/ui-kit";
 
 import { AvatarColor } from "@/features/ui/components/avatar/palette";
 
+export type AccountId = string;
+
+export type DriverKind = "mock" | "matrix";
+
+export type ChatRef = {
+  accountId: AccountId;
+  chatId: string;
+};
+
+export type ChatAccountConfig = {
+  accountId: AccountId;
+  kind: DriverKind;
+  label: string;
+  criticality: "required" | "optional";
+  enabled: boolean;
+  settings?: Record<string, unknown>;
+};
+
+export type ChatScope = {
+  scopeId: string;
+  label: string;
+  kind: "aggregate" | "server";
+  isDefault?: boolean;
+  accounts: ChatAccountConfig[];
+};
+
 export type User = {
   id: string;
   email: string;
@@ -21,8 +47,9 @@ export type ChatVisual =
   | { kind: "emoji"; emoji: string }
   | { kind: "icon"; icon: string };
 
-export type Chat = {
+export type LocalChat = {
   id: string;
+  lastActivityAt?: string;
   name: string;
   unread?: boolean;
   section: "favourites" | "all";
@@ -38,6 +65,29 @@ export type Chat = {
    */
   participantIds: string[];
   visual: ChatVisual;
+};
+
+export type Chat = LocalChat & {
+  accountId: AccountId;
+  ref: ChatRef;
+};
+
+export type LocalChatSections = {
+  favourites: LocalChat[];
+  all: LocalChat[];
+};
+
+export type ChatSections = {
+  favourites: Chat[];
+  all: Chat[];
+};
+
+export type MergedChatsResult = ChatSections & {
+  byAccount: Map<AccountId, ChatSections>;
+  accountErrors: Map<AccountId, unknown>;
+  isLoadingRequiredAccounts: boolean;
+  isLoading: boolean;
+  isError: boolean;
 };
 
 export type LocalizedThemeCustomization<T> = {
@@ -195,4 +245,13 @@ export type ChatThreadDetail = {
    * unread. Drives the "Unread" separator in the detail view.
    */
   firstUnreadIndex: number | null;
+};
+
+/**
+ * Content of a user from the chat engine
+ */
+export type ChatLocalUser = {
+  userId: string;
+  accessToken: string;
+  refreshToken?: string;
 };

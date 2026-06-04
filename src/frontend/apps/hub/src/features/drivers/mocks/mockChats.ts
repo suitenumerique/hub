@@ -1,4 +1,4 @@
-import type { Chat } from "@/features/drivers/types";
+import type { LocalChat } from "@/features/drivers/types";
 
 /**
  * Mock conversations bundled with the frontend until the backend exposes a
@@ -6,9 +6,9 @@ import type { Chat } from "@/features/drivers/types";
  * existing imports keep working — production code should depend on `Chat`
  * from `@/features/drivers/types` and reach those mocks through the driver.
  */
-export type MockChat = Chat;
+export type MockChat = LocalChat;
 
-export const MOCK_CHATS: Chat[] = [
+export const MOCK_CHATS: LocalChat[] = [
   {
     id: "a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c",
     name: "Didier Salambo",
@@ -98,7 +98,7 @@ export const FAVOURITE_CHATS = MOCK_CHATS.filter(
 );
 export const ALL_CHATS = MOCK_CHATS.filter((chat) => chat.section === "all");
 
-export const getMockChat = (id: string): Chat | undefined =>
+export const getMockChat = (id: string): LocalChat | undefined =>
   MOCK_CHATS.find((chat) => chat.id === id);
 
 const sameParticipantSet = (left: string[], right: string[]) => {
@@ -111,6 +111,6 @@ const sameParticipantSet = (left: string[], right: string[]) => {
   return sortedLeft.every((id, index) => id === sortedRight[index]);
 };
 
-export const getMockChatForUsers = (userIds: string[]): Chat | null =>
+export const getMockChatForUsers = (userIds: string[]): LocalChat | null =>
   MOCK_CHATS.find((chat) => sameParticipantSet(chat.participantIds, userIds)) ??
   null;

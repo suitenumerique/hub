@@ -155,25 +155,33 @@ const generateForChat = (chat: MockChat): GeneratedChat => {
   return { authors, messages, threads, threadDetails: details };
 };
 
-const ensureGenerated = (chatId: string): GeneratedChat | null => {
-  const cached = chatCache.get(chatId);
+const ensureGenerated = (
+  chatId: string,
+  chatOverride?: MockChat,
+): GeneratedChat | null => {
+  const cacheKey = chatOverride?.id ?? chatId;
+  const cached = chatCache.get(cacheKey);
   if (cached) {
     return cached;
   }
-  const chat = getMockChat(chatId);
+  const chat = chatOverride ?? getMockChat(chatId);
   if (!chat) {
     return null;
   }
   const generated = generateForChat(chat);
-  chatCache.set(chatId, generated);
+  chatCache.set(cacheKey, generated);
   return generated;
 };
 
-export const getMockMessages = (chatId: string): ChatMessage[] =>
-  ensureGenerated(chatId)?.messages ?? [];
+export const getMockMessages = (
+  chatId: string,
+  chatOverride?: MockChat,
+): ChatMessage[] => ensureGenerated(chatId, chatOverride)?.messages ?? [];
 
-export const getMockAuthorsForChat = (chatId: string): ChatMessageAuthor[] =>
-  ensureGenerated(chatId)?.authors ?? [];
+export const getMockAuthorsForChat = (
+  chatId: string,
+  chatOverride?: MockChat,
+): ChatMessageAuthor[] => ensureGenerated(chatId, chatOverride)?.authors ?? [];
 
 /**
  * Toggles the current user's reaction with `emoji` on a stored message and
@@ -187,8 +195,9 @@ export const toggleMockReaction = (
   chatId: string,
   messageId: string,
   emoji: string,
+  chatOverride?: MockChat,
 ): ChatMessage | null => {
-  const message = ensureGenerated(chatId)?.messages.find(
+  const message = ensureGenerated(chatId, chatOverride)?.messages.find(
     (candidate) => candidate.id === messageId,
   );
   if (!message) {
@@ -199,8 +208,13 @@ export const toggleMockReaction = (
 };
 
 /** Threads of a conversation, most recent first. Returns fresh copies. */
-export const getMockThreads = (chatId: string): ChatThread[] =>
-  (ensureGenerated(chatId)?.threads ?? []).map((thread) => ({ ...thread }));
+export const getMockThreads = (
+  chatId: string,
+  chatOverride?: MockChat,
+): ChatThread[] =>
+  (ensureGenerated(chatId, chatOverride)?.threads ?? []).map((thread) => ({
+    ...thread,
+  }));
 
 /**
  * Full content of a single thread, or `null` when unknown. Returns a snapshot
@@ -209,8 +223,11 @@ export const getMockThreads = (chatId: string): ChatThread[] =>
 export const getMockThread = (
   chatId: string,
   threadId: string,
+  chatOverride?: MockChat,
 ): ChatThreadDetail | null => {
-  const detail = ensureGenerated(chatId)?.threadDetails.get(threadId);
+  const detail = ensureGenerated(chatId, chatOverride)?.threadDetails.get(
+    threadId,
+  );
   if (!detail) {
     return null;
   }
@@ -228,8 +245,9 @@ export const getMockThread = (
 export const markMockThreadRead = (
   chatId: string,
   threadId: string,
+  chatOverride?: MockChat,
 ): boolean => {
-  const generated = ensureGenerated(chatId);
+  const generated = ensureGenerated(chatId, chatOverride);
   const thread = generated?.threads.find(
     (candidate) => candidate.id === threadId,
   );
@@ -259,8 +277,11 @@ export const toggleMockThreadReaction = (
   threadId: string,
   messageId: string,
   emoji: string,
+  chatOverride?: MockChat,
 ): ChatMessage | null => {
-  const detail = ensureGenerated(chatId)?.threadDetails.get(threadId);
+  const detail = ensureGenerated(chatId, chatOverride)?.threadDetails.get(
+    threadId,
+  );
   const message = detail?.messages.find(
     (candidate) => candidate.id === messageId,
   );
@@ -272,8 +293,11 @@ export const toggleMockThreadReaction = (
 };
 
 /** Clears the unread state of every thread of a conversation. */
-export const markAllMockThreadsRead = (chatId: string): void => {
-  ensureGenerated(chatId)?.threads.forEach((thread) => {
-    markMockThreadRead(chatId, thread.id);
+export const markAllMockThreadsRead = (
+  chatId: string,
+  chatOverride?: MockChat,
+): void => {
+  ensureGenerated(chatId, chatOverride)?.threads.forEach((thread) => {
+    markMockThreadRead(chatId, thread.id, chatOverride);
   });
 };

@@ -1,4 +1,17 @@
-import { getMockChat, getMockChatForUsers } from "../mocks/mockChats";
+import {
+  Driver,
+  GetChatMessagesParams,
+  GetChatThreadParams,
+  MarkChatThreadReadParams,
+  ToggleChatReactionParams,
+  ToggleChatThreadReactionParams,
+  ChatUserFilters,
+} from "../Driver";
+import {
+  MOCK_CHATS,
+  type MockChat,
+  getMockChatForUsers,
+} from "../mocks/mockChats";
 import { getMockChatUsers } from "../mocks/mockChatUsers";
 import { getMockChatDocuments } from "../mocks/mockDocuments";
 import {
@@ -12,40 +25,83 @@ import {
   toggleMockThreadReaction,
 } from "../mocks/mockMessages";
 import {
-  GetChatMessagesParams,
-  GetChatThreadParams,
-  MarkChatThreadReadParams,
-  ToggleChatReactionParams,
-  ToggleChatThreadReactionParams,
-  ChatUserFilters,
-} from "../Driver";
-import {
-  Chat,
+  AccountId,
   ChatDocumentsPage,
   ChatMessage,
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
   ChatUser,
+  LocalChat,
+  LocalChatSections,
 } from "../types";
-
-import { StandardDriver } from "./StandardDriver";
 
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 const MOCK_CHAT_LATENCY_MS = 250;
+const BASE_LAST_ACTIVITY = new Date("2026-05-12T18:00:00Z").getTime();
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+type MockDriverSettings = {
+  nameSuffix?: string;
+  lastActivityOffsetMinutes?: number;
+};
+
+const readStringSetting = (
+  settings: Record<string, unknown>,
+  key: keyof MockDriverSettings,
+): string | undefined =>
+  typeof settings[key] === "string" ? settings[key] : undefined;
+
+const readNumberSetting = (
+  settings: Record<string, unknown>,
+  key: keyof MockDriverSettings,
+): number => (typeof settings[key] === "number" ? settings[key] : 0);
+
 /**
  * Driver used while the chat backend does not exist yet. Inherits the real
- * endpoints implemented by `StandardDriver` (config, users) and stubs every
- * chat-related method with deterministic, faker-seeded mocks. Each method
+ * chat contract with deterministic, faker-seeded mocks. Each method
  * holds the swap-point comment indicating which `fetchAPI` call it will be
  * replaced by — once the backend ships, fold each method back into
- * `StandardDriver` and delete this file.
+ * a real chat driver and delete this file.
  */
-export class MockDriver extends StandardDriver {
+export class MockDriver extends Driver {
+  private readonly chats: LocalChat[];
+
+  constructor(
+    accountId: AccountId = "default",
+    settings: Record<string, unknown> = {},
+  ) {
+    super(accountId);
+    const nameSuffix = readStringSetting(settings, "nameSuffix");
+    const offsetMinutes = readNumberSetting(
+      settings,
+      "lastActivityOffsetMinutes",
+    );
+
+    this.chats = MOCK_CHATS.map((chat, index) => ({
+      ...chat,
+      name: nameSuffix ? `${chat.name} (${nameSuffix})` : chat.name,
+      lastActivityAt: new Date(
+        BASE_LAST_ACTIVITY - (offsetMinutes + index * 7) * 60 * 1000,
+      ).toISOString(),
+    }));
+  }
+
+  async getChats(): Promise<LocalChatSections> {
+    // MOCK — replace this block with `fetchAPI('chats/')` when the backend
+    // exposes a conversation-list endpoint. The driver returns account-local
+    // chats; hooks decorate them with the global account identity.
+
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    return {
+      favourites: this.chats.filter((chat) => chat.section === "favourites"),
+      all: this.chats.filter((chat) => chat.section === "all"),
+    };
+  }
+
   async getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]> {
     // MOCK — replace this block with `fetchAPI('chat-users/?q=…')` or the
     // eventual people-search endpoint. The driver contract
@@ -56,7 +112,7 @@ export class MockDriver extends StandardDriver {
     return getMockChatUsers(filters);
   }
 
-  async getChatForUsers(userIds: string[]): Promise<Chat | null> {
+  async getChatForUsers(userIds: string[]): Promise<LocalChat | null> {
     // MOCK — replace this block with `fetchAPI('chats/resolve/', { params })`
     // when the backend can resolve an exact participant set. The driver
     // contract (participant ids → existing chat or null) lets the UI keep the
@@ -66,13 +122,13 @@ export class MockDriver extends StandardDriver {
     return getMockChatForUsers(userIds);
   }
 
-  async getChat(chatId: string): Promise<Chat> {
+  async getChat(chatId: string): Promise<LocalChat> {
     // MOCK — replace this block with `fetchAPI('chats/:id/')` when the
     // backend exposes a single-chat endpoint. The driver contract
-    // (chatId → Chat) is the swap point.
+    // (chatId → LocalChat) is the swap point.
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    const chat = getMockChat(chatId);
+    const chat = this.getLocalChat(chatId);
     if (!chat) {
       throw new Error(`MockDriver.getChat: chat "${chatId}" not found.`);
     }
@@ -89,8 +145,9 @@ export class MockDriver extends StandardDriver {
     // (cursor + limit → { messages, authors, nextCursor }) is the swap point.
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    const all = getMockMessages(chatId);
-    const authors = getMockAuthorsForChat(chatId);
+    const seedChat = this.getSeedChat(chatId);
+    const all = getMockMessages(chatId, seedChat);
+    const authors = getMockAuthorsForChat(chatId, seedChat);
 
     let endIndex = all.length;
     if (cursor) {
@@ -120,7 +177,12 @@ export class MockDriver extends StandardDriver {
     // is the swap point.
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    const message = toggleMockReaction(chatId, messageId, emoji);
+    const message = toggleMockReaction(
+      chatId,
+      messageId,
+      emoji,
+      this.getSeedChat(chatId),
+    );
     if (!message) {
       throw new Error(
         `MockDriver.toggleChatReaction: message "${messageId}" not found in chat "${chatId}".`,
@@ -150,7 +212,7 @@ export class MockDriver extends StandardDriver {
     }
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    return getMockThreads(chatId);
+    return getMockThreads(chatId, this.getSeedChat(chatId));
   }
 
   async getChatThread({
@@ -162,7 +224,7 @@ export class MockDriver extends StandardDriver {
     // (chatId + threadId → ChatThreadDetail) is the swap point.
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    const detail = getMockThread(chatId, threadId);
+    const detail = getMockThread(chatId, threadId, this.getSeedChat(chatId));
     if (!detail) {
       throw new Error(
         `MockDriver.getChatThread: thread "${threadId}" not found in chat "${chatId}".`,
@@ -188,6 +250,7 @@ export class MockDriver extends StandardDriver {
       threadId,
       messageId,
       emoji,
+      this.getSeedChat(chatId),
     );
     if (!message) {
       throw new Error(
@@ -206,7 +269,7 @@ export class MockDriver extends StandardDriver {
     // contract (chatId + threadId → void) is the swap point.
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    if (!markMockThreadRead(chatId, threadId)) {
+    if (!markMockThreadRead(chatId, threadId, this.getSeedChat(chatId))) {
       throw new Error(
         `MockDriver.markChatThreadRead: thread "${threadId}" not found in chat "${chatId}".`,
       );
@@ -222,6 +285,21 @@ export class MockDriver extends StandardDriver {
     }
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    markAllMockThreadsRead(chatId);
+    markAllMockThreadsRead(chatId, this.getSeedChat(chatId));
+  }
+
+  private getLocalChat(chatId: string): LocalChat | undefined {
+    return this.chats.find((chat) => chat.id === chatId);
+  }
+
+  private getSeedChat(chatId: string): MockChat | undefined {
+    const chat = this.getLocalChat(chatId);
+    if (!chat) {
+      return undefined;
+    }
+    return {
+      ...chat,
+      id: `${this.accountId}:${chat.id}`,
+    };
   }
 }
