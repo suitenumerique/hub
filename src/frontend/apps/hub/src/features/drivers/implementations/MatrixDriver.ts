@@ -1,7 +1,6 @@
 import {
   EventType,
-  type MatrixEvent,
-  type Room
+  type MatrixEvent
 } from "matrix-js-sdk/lib/matrix";
 
 import { type IdTokenClaims } from "oidc-client-ts";
@@ -20,8 +19,9 @@ import {
 } from "@/features/ui/components/avatar/palette";
 
 import { createAuthenticationClient, restoreClient, validateNativeSlidingSync } from "@/features/matrix/clientBuilder";
+import { loadMembers, updatedRooms } from "@/features/matrix/utils/room";
 import { applyTimelineDiff, getEventContent, getEventSender, getEventTimestamp, getInternalId } from "@/features/matrix/utils/timeline";
-import { ClientLike, ClientSessionDelegate, EventTimelineItem, RoomLike, RoomListServiceLike, Session, SyncServiceLike, TimelineDiff, TimelineItem } from "@/index.web";
+import { ClientLike, ClientSessionDelegate, EventTimelineItem, LatestEventValue_Tags, RoomLike, RoomListEntriesUpdate, RoomListServiceLike, Session, SyncServiceLike, TimelineDiff, TimelineItem } from "@/index.web";
 import {
   ChatConnectionState,
   ChatEvent,
@@ -78,21 +78,23 @@ const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   refreshToken: user.refreshToken,
 });
 
-const matrixRoomToLocalChat = (
-  room: Room,
+const matrixRoomToLocalChat = async (
+  room: RoomLike,
   currentUserId: string | undefined,
-): LocalChat => {
-  const participantIds = room
-    .getMembers()
-    .map((member) => member.userId)
-    .filter((userId) => userId !== currentUserId);
+): Promise<LocalChat> => {
+  const members = await loadMembers(room);
+  const participantIds = members.map(m => m.userId);
   const kind: LocalChat["kind"] =
-    room.getJoinedMemberCount() === 2 ? "direct" : "group";
-  const timestamp = room.getLastActiveTimestamp();
+    members.length === 2 ? "direct" : "group";
+  const latestEvent = await room.latestEvent();
+  let timestamp = 0
+  if (latestEvent.tag == LatestEventValue_Tags.Remote) {
+    timestamp = Number(latestEvent.inner.timestamp);
+  }
 
   return {
-    id: room.roomId,
-    name: room.name || participantIds[0] || room.roomId,
+    id: room.id(),
+    name: room.displayName()|| room.id(),
     ...(timestamp > 0
       ? { lastActivityAt: new Date(timestamp).toISOString() }
       : {}),
@@ -101,8 +103,8 @@ const matrixRoomToLocalChat = (
     participantIds,
     visual:
       kind === "direct"
-        ? { kind: "initials" }
-        : { kind: "icon", icon: "groups" },
+        ? { kind: "initials" as const }
+        : { kind: "icon" as const, icon: "groups" },
   };
 };
 
@@ -168,11 +170,11 @@ const matrixEventToChatMessage = (
  * The current user is omitted: their messages render as "sent" bubbles, which
  * never look an author up (see `ChatVirtualList`).
  */
-const buildAuthors = (
+const buildAuthors = async (
   room: RoomLike,
   events: EventTimelineItem[],
   selfUserId: string | undefined,
-): ChatMessageAuthor[] => {
+): Promise<ChatMessageAuthor[]> => {
   const senderIds = [
     ...new Set(
       events
@@ -180,9 +182,17 @@ const buildAuthors = (
         .filter((id): id is string => Boolean(id) && id !== selfUserId),
     ),
   ];
-  return senderIds.map((id) => {
-    const name = room .getMember(id)?.name ?? id;
-    return { id, name, initials: initialsFor(name), color: colorFor(id) };
+
+  const getDisplayName = async (id: string) => {
+    const name = await room.memberDisplayName(id);
+    return { id, name: name || id };
+  }
+  const allDisplayName = await Promise.all(senderIds.map(getDisplayName));
+
+  return allDisplayName.map(displayNameObject => {
+    const name = displayNameObject.name;
+    const id = displayNameObject.id;
+    return { id, name, initials: initialsFor(name), color: colorFor(id) }
   });
 };
 
@@ -218,6 +228,7 @@ export class MatrixDriver extends MockDriver {
   private detachSync: () => void = () => {};
 
   private roomListService: RoomListServiceLike | null = null;
+  private roomListEntries: RoomListEntriesUpdate[] | null = null;
   private syncService: SyncServiceLike | null = null;
   /** Detaches the RoomListService listeners. */
   private detachRoomListListeners: () => void = () => {};
@@ -232,15 +243,41 @@ export class MatrixDriver extends MockDriver {
     super(accountId, settings);
   }
 
+  private async initializeRoomListListener(): Promise<void> {
+    if (!this.roomListService) return;
+    const roomListLike = await this.roomListService.allRooms();
+    // initialize room list listenner
+    roomListLike.entriesWithDynamicAdapters(
+      200,
+      {
+        onUpdate: (entries: RoomListEntriesUpdate[]) => {
+          this.roomListEntries = entries;
+          this.emit({ type: "chats:changed" })
+        }
+      }
+    );
+  }
+
   async getChats(): Promise<LocalChatSections> {
     // MOCK — replace this block with `fetchAPI('chats/')` when the backend
     // exposes a conversation-list endpoint. The driver returns account-local
     // chats; hooks decorate them with the global account identity.
-    const matrixChats = await this.roomListService?.allRooms() ?? [];
+
+    if (this.roomListEntries) return {
+      favourites: [],
+      all: [],
+    };
+
     const currentUserId = this.mx?.userId() ?? undefined;
 
-    const localChats = matrixChats.map((room) =>
-      matrixRoomToLocalChat(room, currentUserId),
+    // Get the current entries
+    const entries = updatedRooms(this.roomListEntries || []);
+    // Map room entries to local chats
+    const localChats = await Promise.all(entries
+      .map((roomEntry) => matrixRoomToLocalChat(roomEntry, currentUserId)));
+
+    console.log(
+      `[MatrixDriver.getChats] Loaded ${localChats.length} chats`,
     );
 
     return {
@@ -263,175 +300,122 @@ export class MatrixDriver extends MockDriver {
        cursor,
        limit = DEFAULT_CHAT_PAGE_SIZE,
      }: GetChatMessagesParams): Promise<ChatMessagesPage> {
-       if (!this.mx) {
-         throw new Error("MatrixDriver.getChatMessages: client is not connected.");
-       }
+      if (!this.mx) {
+        throw new Error("MatrixDriver.getChatMessages: client is not connected.");
+      }
+      // Get room from client
+      const room = this.mx.getRoom(chatId);
+      if (!room) {
+        throw new Error(
+          `MatrixDriver.getChatMessages: room "${chatId}" not found.`,
+        );
+      }
 
-       try {
-         // Get room from client
-         const room = this.mx.getRoom(chatId);
-         if (!room) {
-           throw new Error(
-             `MatrixDriver.getChatMessages: room "${chatId}" not found.`,
-           );
-         }
+        // Get the timeline for the room
+      const timeline = await room.timeline();
+      if (!timeline) {
+        throw new Error(
+          `MatrixDriver.getChatMessages: failed to get timeline for room "${chatId}".`,
+        );
+      }
 
-         // Get the timeline for the room
-         const timeline = await room.timeline();
-         if (!timeline) {
-           throw new Error(
-             `MatrixDriver.getChatMessages: failed to get timeline for room "${chatId}".`,
-           );
-         }
+      const selfUserId = this.mx.userId() ?? undefined;
+      const items: TimelineItem[] = [];
+      let reachedStart = false;
 
-         const selfUserId = this.mx.userId() ?? undefined;
-         const items: TimelineItem[] = [];
-         let reachedStart = false;
-
-         // Create a temporary listener to capture timeline items
-         const timelineListener = {
-           onUpdate: (diffs: TimelineDiff[]): void => {
-             for (const diff of diffs) {
-               applyTimelineDiff(items, diff);
-             }
-           }
-         };
-
-         try {
-           // Add listener to get current items
-           const listener = await timeline.addListener(timelineListener);
-
-           // Paginate backwards to load more items
-           while (
-             items.length < limit &&
-             !reachedStart
-           ) {
-             const hasMore = await timeline.paginateBackwards(limit);
-             if (!hasMore) {
-               reachedStart = true;
-             }
-           }
-
-           // Clean up listener
-            listener.cancel();
-
-            // Find cursor position
-            let endIndex = items.length;
-            if (cursor) {
-              endIndex = items.findIndex(
-                (item) => getInternalId(item) === cursor,
-              );
-
-              if (endIndex < 0) {
-                throw new Error(
-                  `MatrixDriver.getChatMessages: cursor "${cursor}" not found in room "${chatId}".`,
-                );
-              }
-            }
-
-            const startIndex = Math.max(0, endIndex - limit);
-            const pageItems = items.slice(startIndex, endIndex);
-            const pageEvents = pageItems.map(i => i.asEvent());
-
-            // Map timeline items to chat messages
-            const messages: ChatMessage[] = pageItems
-              .map((item) => {
-                try {
-                  const eventId = getInternalId(item);
-                  const event = item.asEvent()!;
-                  const timestamp = getEventTimestamp(event);
-                  const content = getEventContent(event);
-                  const sender = getEventSender(event);
-
-                  return {
-                    id: eventId,
-                    authorId: toAuthorId(sender || "", selfUserId),
-                    content,
-                    timestamp,
-                  };
-                } catch (e) {
-                  console.warn(
-                    "[MatrixDriver.getChatMessages] Failed to map event:",
-                    e,
-                  );
-                  return null;
-                }
-              })
-              .filter((msg): msg is ChatMessage => msg !== null);
-
-            // Build authors map from events
-            const authors: Record<string, ChatMessageAuthor> = buildAuthors(room, pageEvents, selfUserId);
-
-            // Determine next cursor for pagination
-            const nextCursor =
-              startIndex === 0 && reachedStart ? null : (messages[0]?.id ?? null);
-
-            console.log(
-              `[MatrixDriver.getChatMessages] Loaded ${messages.length} messages for room ${chatId}`,
-            );
-
-            return { messages, authors, nextCursor };
-          } catch (error) {
-            console.error(
-              "[MatrixDriver.getChatMessages] Error fetching messages:",
-              error,
-            );
-            throw error;
+      // Create a temporary listener to capture timeline items
+      const timelineListener = {
+        onUpdate: (diffs: TimelineDiff[]): void => {
+          for (const diff of diffs) {
+            applyTimelineDiff(items, diff);
           }
+        }
+      };
 
-       } catch {
+      try {
+        // Add listener to get current items
+        const listener = await timeline.addListener(timelineListener);
 
-       }
+        // Paginate backwards to load more items
+        while (
+          items.length < limit &&
+          !reachedStart
+        ) {
+          const hasMore = await timeline.paginateBackwards(limit);
+          if (!hasMore) {
+            reachedStart = true;
+          }
+        }
 
-     }
+        // Clean up listener
+        listener.cancel();
 
-     /**
-      * Sends a message to a room
-      */
-     async sendMessage(roomId: string, message: string): Promise<void> {
-       if (!this.mx) {
-         throw new Error("MatrixDriver.sendMessage: client is not connected.");
-       }
+        // Find cursor position
+        let endIndex = items.length;
+        if (cursor) {
+          endIndex = items.findIndex(
+            (item) => getInternalId(item) === cursor,
+          );
 
-       try {
-         const room = await this.mx.getRoom(roomId);
-         if (!room) {
-           throw new Error(
-             `MatrixDriver.sendMessage: room "${roomId}" not found.`,
-           );
-         }
+          if (endIndex < 0) {
+            throw new Error(
+              `MatrixDriver.getChatMessages: cursor "${cursor}" not found in room "${chatId}".`,
+            );
+          }
+        }
 
-         const timeline = await room.timeline();
-         if (!timeline) {
-           throw new Error(
-             `MatrixDriver.sendMessage: failed to get timeline for room "${roomId}".`,
-           );
-         }
+        const startIndex = Math.max(0, endIndex - limit);
+        const pageItems = items.slice(startIndex, endIndex);
+        const pageEvents: EventTimelineItem[] = pageItems.filter(i => i.asEvent()).map(i => i.asEvent()!) || [];
 
-         // Create message content
-         const messageContent = timeline.createMessageContent(
-           MessageType.Text.new({
-             content: {
-               body: message,
-               formatted: undefined,
-             },
-           }),
-         );
+        // Map timeline items to chat messages
+        const messages: ChatMessage[] = pageItems
+          .map((item) => {
+            try {
+              const eventId = getInternalId(item);
+              const event = item.asEvent()!;
+              const timestamp = getEventTimestamp(event);
+              const content = getEventContent(event);
+              const sender = getEventSender(event);
 
-         if (!messageContent) {
-           throw new Error("Failed to create message content");
-         }
+              return {
+                id: eventId,
+                authorId: toAuthorId(sender || "", selfUserId),
+                content,
+                timestamp,
+              };
+            } catch (e) {
+              console.warn(
+                "[MatrixDriver.getChatMessages] Failed to map event:",
+                e,
+              );
+              return null;
+            }
+          })
+          .filter((msg): msg is ChatMessage => msg !== null);
 
-         // Send the message
-         await timeline.send(messageContent);
-         console.log(
-           `[MatrixDriver.sendMessage] Message sent to room ${roomId}`,
-         );
-       } catch (error) {
-         console.error("[MatrixDriver.sendMessage] Error sending message:", error);
-         throw error;
-       }
-     }
+        // Build authors map from events
+        const authors = await buildAuthors(room, pageEvents, selfUserId);
+
+        // Determine next cursor for pagination
+        const nextCursor =
+          startIndex === 0 && reachedStart ? null : (messages[0]?.id ?? null);
+
+        console.log(
+          `[MatrixDriver.getChatMessages] Loaded ${messages.length} messages for room ${chatId}`,
+        );
+
+        return { messages, authors, nextCursor };
+      } catch (error) {
+        console.error(
+          "[MatrixDriver.getChatMessages] Error fetching messages:",
+          error,
+        );
+        throw error;
+      }
+   }
+
+
 
   /**
    * Establishes the Matrix session and resolves with the connection state.
@@ -682,7 +666,6 @@ export class MatrixDriver extends MockDriver {
     this.detachSync();
     this.detachSync = () => {};
     this.eventListeners.clear();
-    this.mx?.stopClient();
     this.mx = null;
   }
 
@@ -740,20 +723,20 @@ export class MatrixDriver extends MockDriver {
   }
 
 
-  private readStoredSession(): SessionInterface | null {
+  private readStoredSession(): Session | null {
     const raw = localStorage.getItem(this.key(STORAGE.session));
     if (!raw) {
       return null;
     }
     try {
-      return JSON.parse(raw) as SessionInterface;
+      return JSON.parse(raw) as Session;
     } catch {
       localStorage.removeItem(this.key(STORAGE.session));
       return null;
     }
   }
 
-  private persistSession(session: SessionInterface): void {
+  private persistSession(session: Session): void {
     localStorage.setItem(this.key(STORAGE.session), JSON.stringify(session));
   }
 
