@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""Dev-only deterministic seed for the local Matrix stack.
+
+Run with `make seed-matrix` after `make run-matrix`.
+
+The seed is intentionally small for this PR:
+  - provision three Matrix users linked to existing Keycloak users;
+  - create one direct conversation and one multi-user conversation;
+  - add a few plaintext messages.
+
+Idempotency is alias-based: each room has a fixed alias, so a later run finds
+the room and does not post the transcript again.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+KEYCLOAK = "http://localhost:9803"
+HOMESERVER = "http://localhost:9808"
+SERVER_NAME = "localhost"
+
+MAS_CONTAINER = "hub-mas-1"
+MAS_CONFIG = "/config/config.yaml"
+# Keycloak upstream provider id in docker/matrix/mas/config.yaml.
+PROVIDER_ID = "0XZP24DYZ8BJXR093M5TH4PKB9"
+
+LINKED_USERS = [
+    ("hub", "Hub"),
+    ("user-e2e-chromium", "E2E Chromium"),
+    ("user-e2e-webkit", "E2E WebKit"),
+]
+
+DIRECT_ALIAS_LOCALPART = "hub-seed-webkit"
+DIRECT_MESSAGES = [
+    ("hub", "Local Matrix direct conversation seeded from Hub."),
+    ("user-e2e-webkit", "Hello from the WebKit account."),
+]
+
+GROUP_ALIAS_LOCALPART = "hub-seed-group"
+GROUP_NAME = "Local Matrix seed group"
+GROUP_MESSAGES = [
+    ("hub", "Welcome to the local Matrix group."),
+    ("user-e2e-chromium", "Chromium can read this room too."),
+    ("user-e2e-webkit", "WebKit is also present."),
+]
+
+
+def fail(message: str) -> None:
+    print(f"seed-matrix: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def http_json(
+    method: str,
+    url: str,
+    token: str = "",
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    data = json.dumps(body).encode() if body is not None else None
+    attempts = 8
+
+    for attempt in range(attempts):
+        request = urllib.request.Request(url, data=data, method=method)
+        if token:
+            request.add_header("Authorization", f"Bearer {token}")
+        if data is not None:
+            request.add_header("Content-Type", "application/json")
+
+        try:
+            with urllib.request.urlopen(request) as response:
+                payload = response.read()
+                return json.loads(payload or "{}")
+        except urllib.error.HTTPError as error:
+            if error.code != 429 or attempt == attempts - 1:
+                raise
+
+            retry_ms = 1000
+            try:
+                retry_ms = int(
+                    json.loads(error.read() or "{}").get("retry_after_ms", 1000)
+                )
+            except (ValueError, json.JSONDecodeError):
+                pass
+            time.sleep(min(retry_ms / 1000 + 0.2, 5))
+
+    raise RuntimeError("http_json exhausted retries")
+
+
+def keycloak_admin_token() -> str:
+    url = f"{KEYCLOAK}/realms/master/protocol/openid-connect/token"
+    data = urllib.parse.urlencode(
+        {
+            "client_id": "admin-cli",
+            "username": "admin",
+            "password": "admin",
+            "grant_type": "password",
+        }
+    ).encode()
+
+    try:
+        with urllib.request.urlopen(url, data=data) as response:
+            return json.loads(response.read())["access_token"]
+    except urllib.error.URLError as error:
+        fail(f"cannot reach Keycloak at {KEYCLOAK} ({error}). Is `make run-matrix` up?")
+
+
+def keycloak_sub(admin_token: str, username: str) -> str:
+    query = urllib.parse.urlencode({"username": username, "exact": "true"})
+    users = http_json(
+        "GET",
+        f"{KEYCLOAK}/admin/realms/hub/users?{query}",
+        token=admin_token,
+    )
+    if not users:
+        fail(f"no Keycloak user '{username}' in realm hub.")
+    return users[0]["id"]
+
+
+def mas_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "docker",
+            "exec",
+            MAS_CONTAINER,
+            "mas-cli",
+            "manage",
+            "--config",
+            MAS_CONFIG,
+            *args,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def issue_token(username: str) -> str:
+    issued = mas_cli("issue-compatibility-token", username)
+    if issued.returncode != 0:
+        fail(
+            f"issue-compatibility-token failed for '{username}': "
+            f"{issued.stderr.strip()}"
+        )
+
+    marker = "Compatibility token issued: "
+    for line in (issued.stdout + issued.stderr).splitlines():
+        if marker in line:
+            return line.split(marker, 1)[1].split()[0]
+
+    fail(f"could not parse the access token for '{username}'.")
+
+
+def provision_linked_user(admin_token: str, username: str, display_name: str) -> str:
+    sub = keycloak_sub(admin_token, username)
+    registered = mas_cli(
+        "register-user",
+        "--yes",
+        "--display-name",
+        display_name,
+        "--upstream-provider-mapping",
+        f"{PROVIDER_ID}:{sub}",
+        username,
+    )
+    output = registered.stdout + registered.stderr
+    if registered.returncode != 0 and "already exists" not in output.lower():
+        fail(f"register-user failed for '{username}': {output.strip()}")
+    return issue_token(username)
+
+
+def existing_room_id(token: str, alias: str) -> str | None:
+    quoted = urllib.parse.quote(alias)
+    try:
+        return http_json(
+            "GET",
+            f"{HOMESERVER}/_matrix/client/v3/directory/room/{quoted}",
+            token=token,
+        ).get("room_id")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+
+
+def create_room(
+    token: str,
+    alias_localpart: str,
+    name: str,
+    invited_localparts: list[str],
+    is_direct: bool = False,
+) -> str:
+    body: dict[str, Any] = {
+        "room_alias_name": alias_localpart,
+        "preset": "private_chat",
+        "visibility": "private",
+        "is_direct": is_direct,
+        "invite": [f"@{localpart}:{SERVER_NAME}" for localpart in invited_localparts],
+    }
+    if name:
+        body["name"] = name
+    return http_json(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/createRoom",
+        token=token,
+        body=body,
+    )["room_id"]
+
+
+def join_room(token: str, room_id: str) -> None:
+    http_json(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/join",
+        token=token,
+    )
+
+
+def send_message(token: str, room_id: str, body: str, txn_id: str) -> str:
+    return http_json(
+        "PUT",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}",
+        token=token,
+        body={"msgtype": "m.text", "body": body},
+    )["event_id"]
+
+
+def ensure_room(
+    tokens: dict[str, str],
+    owner: str,
+    alias_localpart: str,
+    name: str,
+    invited: list[str],
+    messages: list[tuple[str, str]],
+    is_direct: bool = False,
+) -> str:
+    alias = f"#{alias_localpart}:{SERVER_NAME}"
+    room_id = existing_room_id(tokens[owner], alias)
+    if room_id:
+        print(f"seed-matrix: room {alias} already exists ({room_id}).")
+        for localpart in invited:
+            join_room(tokens[localpart], room_id)
+        return room_id
+
+    print(f"seed-matrix: creating unencrypted room {alias}...")
+    room_id = create_room(tokens[owner], alias_localpart, name, invited, is_direct)
+    for localpart in invited:
+        join_room(tokens[localpart], room_id)
+    for index, (author, body) in enumerate(messages):
+        send_message(tokens[author], room_id, body, f"{alias_localpart}-{index}")
+    print(f"seed-matrix: seeded {len(messages)} messages in {room_id}.")
+    return room_id
+
+
+def main() -> None:
+    print("seed-matrix: provisioning identities...")
+    admin_token = keycloak_admin_token()
+    tokens = {
+        localpart: provision_linked_user(admin_token, localpart, display)
+        for localpart, display in LINKED_USERS
+    }
+
+    ensure_room(
+        tokens,
+        "hub",
+        DIRECT_ALIAS_LOCALPART,
+        "",
+        ["user-e2e-webkit"],
+        DIRECT_MESSAGES,
+        is_direct=True,
+    )
+    ensure_room(
+        tokens,
+        "hub",
+        GROUP_ALIAS_LOCALPART,
+        GROUP_NAME,
+        ["user-e2e-chromium", "user-e2e-webkit"],
+        GROUP_MESSAGES,
+    )
+    print("seed-matrix: Done.")
+
+
+if __name__ == "__main__":
+    main()

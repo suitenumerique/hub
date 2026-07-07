@@ -255,6 +255,10 @@ run-matrix: \
 	@$(COMPOSE_MATRIX) up -d $(MATRIX_SERVICES)
 .PHONY: run-matrix
 
+seed-matrix: ## seed the local Matrix stack with a DM and a group room (needs run-matrix)
+	@python3 bin/seed-matrix
+.PHONY: seed-matrix
+
 clear-db-e2e: ## quickly clears the e2e database, used by Playwright between tests
 	$(PSQL_E2E) -c "$$(cat bin/clear_db_e2e.sql)"
 .PHONY: clear-db-e2e

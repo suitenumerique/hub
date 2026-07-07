@@ -19,6 +19,7 @@ and this project adheres to
 - ✨(frontend) Add new conversation page logic
 - ✨(frontend) Add mocked chat message composition and thread replies
 - ✨(frontend) Open conversation when sending to it from the new chat search
+- ✨(docker) Add a local dev-only Matrix stack with Keycloak auth and seed
 
 ### Changed
 
