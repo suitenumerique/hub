@@ -372,6 +372,10 @@ resetdb: ## flush database and create a superuser "admin"
 	@${MAKE} superuser
 .PHONY: resetdb
 
+reset-keycloak: ## drop the Keycloak DB so realm.json re-imports on next start
+	@$(COMPOSE) rm -sfv kc_postgresql
+.PHONY: reset-keycloak
+
 crowdin-download: ## Download translated message from crowdin
 	@$(COMPOSE_RUN_CROWDIN) download -c crowdin/config.yml
 .PHONY: crowdin-download

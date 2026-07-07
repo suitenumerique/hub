@@ -155,6 +155,20 @@ $ make stop-matrix
 $ make down-matrix
 ```
 
+Then open <http://localhost:9807>, click **Sign in** then SSO, and log in with
+a Keycloak realm user such as `hub` / `hub`. Element returns connected as
+`@hub:localhost`.
+
+If Element login fails because the `matrix-auth` client is missing, your local
+Keycloak database was created before this client existed in `docker/auth/realm.json`.
+Keycloak imports a realm only when it is absent, so drop the Keycloak DB and
+start the stack again:
+
+```shellscript
+$ make reset-keycloak
+$ make run-matrix
+```
+
 ## License 📝
 
 This work is released under the MIT License (see [LICENSE](https://github.com/suitenumerique/docs/blob/main/LICENSE)).
