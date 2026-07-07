@@ -122,6 +122,39 @@ When running the project, the following services are available:
 | **Redis**       | 9813                                                    | Cache and message broker | No auth required              |
 | **MinIO**       | 9805 and [http://localhost:9806](http://localhost:9806) | Local S3 storage         | No auth required              |
 
+The **dev-only Matrix stack** is started separately with `make run-matrix` and adds:
+
+| Service       | URL / Port                                     | Description                      | Credentials            |
+|---------------|------------------------------------------------|----------------------------------|------------------------|
+| **Element**   | [http://localhost:9807](http://localhost:9807) | Element Web (Matrix test client) | realm user, e.g. `hub` |
+| **Synapse**   | [http://localhost:9808](http://localhost:9808) | Matrix homeserver                | No direct auth         |
+| **MAS**       | [http://localhost:9810](http://localhost:9810) | Matrix Authentication Service    | Delegates to Keycloak  |
+
+### Local Matrix stack (dev only)
+
+A self-contained, dev-only Matrix stack - Synapse, Matrix Authentication Service
+(MAS) and Element Web - lets developers work against a real local homeserver
+without depending on Tchap. MAS delegates authentication to the project Keycloak
+realm (`hub`).
+
+Dev-only warning: the stack ships obviously-fake committed secrets, generates
+its private signing keys locally under the git-ignored `data/matrix/`, and
+allows OIDC client registration over `http://localhost`; it must never be
+deployed.
+
+It is an isolated Compose overlay (`compose.matrix.yml`). The normal stack
+(`make run`, `make run-backend`, `make stop`) never starts or stops Matrix
+services.
+
+```shellscript
+# Bring it up beside the backend stack (nginx + Keycloak included):
+$ make run-matrix
+
+# Stop or remove only the Matrix stack:
+$ make stop-matrix
+$ make down-matrix
+```
+
 ## License 📝
 
 This work is released under the MIT License (see [LICENSE](https://github.com/suitenumerique/docs/blob/main/LICENSE)).

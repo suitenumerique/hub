@@ -43,6 +43,10 @@ DOCKER_GID          := $(shell id -g)
 DOCKER_USER         := $(DOCKER_UID):$(DOCKER_GID)
 endif
 COMPOSE             = DOCKER_USER=$(DOCKER_USER) docker compose
+# Overlay file set for the local, dev-only Matrix stack (Synapse + MAS +
+# Element). Only the *-matrix targets use it, so the normal stack ignores it.
+COMPOSE_MATRIX      = $(COMPOSE) -f compose.yml -f compose.matrix.yml
+MATRIX_SERVICES     = matrix_postgresql synapse mas element
 COMPOSE_EXEC        = $(COMPOSE) exec
 COMPOSE_EXEC_APP    = $(COMPOSE_EXEC) app-dev
 COMPOSE_RUN         = $(COMPOSE) run --rm
@@ -78,6 +82,16 @@ data/static:
 data/postgresql.local:
 	@mkdir -p data/postgresql.local
 
+data/matrix/synapse:
+	@mkdir -p data/matrix/synapse
+
+data/matrix/mas: ## generate the MAS private signing keys (kept out of git)
+	@mkdir -p data/matrix/mas
+	@openssl genrsa -out data/matrix/mas/rsa.pem 2048 2> /dev/null
+	@openssl ecparam -name prime256v1 -genkey -noout -out data/matrix/mas/ec-p256.pem
+	@openssl ecparam -name secp384r1 -genkey -noout -out data/matrix/mas/ec-p384.pem
+	@openssl ecparam -name secp256k1 -genkey -noout -out data/matrix/mas/ec-k256.pem
+
 # -- Project
 
 create-env-local-files: ## create env.local files in env.d/development
@@ -86,6 +100,7 @@ create-env-local-files:
 	@touch env.d/development/common.local
 	@touch env.d/development/postgresql.local
 	@touch env.d/development/kc_postgresql.local
+	@touch env.d/development/matrix.local
 .PHONY: create-env-local-files
 
 pre-bootstrap: \
@@ -205,6 +220,10 @@ down: ## stop and remove containers, networks, images, and volumes
 	@$(COMPOSE) down
 .PHONY: down
 
+down-matrix: ## stop and remove the local Matrix stack (keeps the base stack)
+	@$(COMPOSE_MATRIX) rm -sfv $(MATRIX_SERVICES)
+.PHONY: down-matrix
+
 logs: ## display app-dev logs (follow mode)
 	@$(COMPOSE) logs -f app-dev
 .PHONY: logs
@@ -226,6 +245,15 @@ run:
 	@$(MAKE) run-backend
 	@$(COMPOSE) up --force-recreate -d frontend-development
 .PHONY: run
+
+run-matrix: ## Start the local Matrix stack (Synapse + MAS + Element) beside the base stack
+run-matrix: \
+	create-env-local-files \
+	data/matrix/synapse \
+	data/matrix/mas
+	@$(MAKE) run-backend
+	@$(COMPOSE_MATRIX) up -d $(MATRIX_SERVICES)
+.PHONY: run-matrix
 
 clear-db-e2e: ## quickly clears the e2e database, used by Playwright between tests
 	$(PSQL_E2E) -c "$$(cat bin/clear_db_e2e.sql)"
@@ -249,6 +277,10 @@ status: ## an alias for "docker compose ps"
 stop: ## stop the development server using Docker
 	@$(COMPOSE) stop
 .PHONY: stop
+
+stop-matrix: ## stop the local Matrix stack without touching the base stack
+	@$(COMPOSE_MATRIX) stop $(MATRIX_SERVICES)
+.PHONY: stop-matrix
 
 # -- Backend
 

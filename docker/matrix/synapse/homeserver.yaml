@@ -1,0 +1,67 @@
+# Synapse homeserver - DEV ONLY (local Matrix stack).
+#
+# Authentication is delegated to Matrix Authentication Service (MAS) via the
+# stable `matrix_authentication_service` block; MAS in turn delegates to the
+# project Keycloak. Local password login / registration are therefore disabled
+# by Synapse automatically.
+#
+# Bootstrapped once with `synapse generate` (server_name "localhost") then
+# trimmed; the signing key + log config live beside this file under
+# docker/matrix/synapse/ and are mounted read-only at /config. The SQLite DB
+# and media live on the git-ignored /data volume (data/matrix/synapse/).
+server_name: "localhost"
+public_baseurl: "http://localhost:9808/"
+pid_file: /data/homeserver.pid
+
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names: [client]
+        compress: false
+
+database:
+  name: sqlite3
+  args:
+    database: /data/homeserver.db
+
+log_config: "/config/localhost.log.config"
+media_store_path: /data/media_store
+signing_key_path: "/config/localhost.signing.key"
+
+report_stats: false
+enable_registration: false
+
+# Obviously-fake dev-only secrets; fine here because this stack never ships.
+registration_shared_secret: "ThisIsARegistrationSharedSecretForDev"
+macaroon_secret_key: "ThisIsAMacaroonSecretKeyForDevOnly"
+form_secret: "ThisIsAFormSecretForDevOnly"
+
+# Delegated auth (MSC3861, stabilised in Synapse >= 1.136 + MAS >= 0.20).
+# `endpoint` is the SERVER-side address (Docker network); the issuer the
+# browser sees comes from MAS's own http.public_base, relayed through
+# /_matrix/client/unstable/org.matrix.msc2965/auth_metadata (the /v1 path is
+# not served yet on this Synapse). `secret` must equal MAS `matrix.secret`.
+matrix_authentication_service:
+  enabled: true
+  endpoint: http://mas:8080/
+  secret: "ThisIsASynapseToMasSharedSecretForDevOnly"
+
+# Never force E2EE: new rooms default to plaintext (the server imposes nothing
+# with `off`; the `all`/`invite` values would prevent plaintext rooms). The
+# client still decides, so encryption stays opt-in per room.
+encryption_enabled_by_default_for_room_type: off
+
+# No federation in dev - do not contact matrix.org for keys.
+trusted_key_servers: []
+suppress_key_server_warning: true
+
+# Dev-only: make local people search find every local user, including ones the
+# logged-in user shares no room with yet. Safe here because this homeserver is
+# local-only and never federates.
+user_directory:
+  enabled: true
+  search_all_users: true
+  prefer_local_users: true

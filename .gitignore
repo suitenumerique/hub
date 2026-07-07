@@ -75,6 +75,10 @@ db.sqlite3
 # Site media
 /data/
 
+# Local dev Matrix stack runtime data (Synapse SQLite DB + media); committed
+# Matrix config lives under docker/matrix/.
+/data/matrix/
+
 # IDEs
 .idea/
 .vscode/*

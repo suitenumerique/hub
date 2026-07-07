@@ -1,0 +1,12 @@
+# DEV ONLY - local Matrix stack (Synapse + MAS + Element).
+
+# matrix_postgresql container credentials. MAS connects to this database;
+# the same values are set in docker/matrix/mas/config.yaml (database section).
+POSTGRES_DB=mas
+POSTGRES_USER=mas
+POSTGRES_PASSWORD=pass
+
+# Shared secret authenticating Synapse <-> MAS requests. Committed verbatim in
+# docker/matrix/synapse/homeserver.yaml (matrix_authentication_service.secret)
+# and docker/matrix/mas/config.yaml (matrix.secret); kept here for reference.
+SYNAPSE_MAS_SHARED_SECRET=ThisIsASynapseToMasSharedSecretForDevOnly

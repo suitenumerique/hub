@@ -1,0 +1,17 @@
+{
+  "brand": "Element (Hub dev)",
+  "default_server_config": {
+    "m.homeserver": {
+      "base_url": "http://localhost:9808",
+      "server_name": "localhost"
+    },
+    "io.element.e2ee": {
+      "default": false
+    }
+  },
+  "disable_guests": true,
+  "disable_custom_urls": true,
+  "io.element.e2ee": {
+    "default": false
+  }
+}
