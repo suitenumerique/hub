@@ -58,6 +58,13 @@ export const appendMessageToNewestPage = (
   };
 };
 
+export const messagesDataWithSingleMessage = (
+  message: ChatMessage,
+): ChatMessagesData => ({
+  pages: [{ messages: [message], authors: [], nextCursor: null }],
+  pageParams: [null],
+});
+
 export const replaceMessageInPages = (
   data: ChatMessagesData,
   messageId: string,
@@ -75,6 +82,16 @@ export const replaceMessageInPages = (
       : page,
   ),
 });
+
+export const upsertConfirmedMessage = (
+  data: ChatMessagesData,
+  optimisticMessageId: string,
+  message: ChatMessage,
+): ChatMessagesData =>
+  appendMessageToNewestPage(
+    replaceMessageInPages(data, optimisticMessageId, message),
+    message,
+  );
 
 export const removeMessageFromPages = (
   data: ChatMessagesData,

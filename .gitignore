@@ -75,6 +75,11 @@ db.sqlite3
 # Site media
 /data/
 
+# Local dev Matrix stack runtime data (Synapse SQLite DB + media); the committed
+# Matrix config lives under docker/matrix/ instead. Covered by /data/ above, kept
+# explicit for clarity.
+/data/matrix/
+
 # IDEs
 .idea/
 .vscode/*
@@ -93,3 +98,5 @@ CLAUDE.md
 
 # Cursor rules
 .cursorrules
+.specify/*
+specs/*

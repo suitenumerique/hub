@@ -12,7 +12,7 @@ import type { ChatMessageAuthor, ChatRef } from "@/features/drivers/types";
 
 import { ChatBubble } from "../ChatBubble";
 
-const useChatCompositionSupport = vi.fn(() => true);
+const useChatCompositionSupport = vi.fn<(ref: ChatRef) => boolean>(() => true);
 
 vi.mock("../../hooks/useChatCompositionSupport", () => ({
   useChatCompositionSupport: (ref: ChatRef) => useChatCompositionSupport(ref),

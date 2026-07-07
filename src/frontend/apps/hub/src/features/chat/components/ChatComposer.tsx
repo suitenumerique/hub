@@ -26,6 +26,12 @@ type ChatComposerProps = {
   disabled?: boolean;
   isSubmitting?: boolean;
   autoFocus?: boolean;
+  /**
+   * Imperative focus trigger: whenever this number changes (and the input is
+   * enabled), the composer takes focus. Lets the New Chat search bar move focus
+   * into the composer on Enter without holding a ref to it.
+   */
+  focusSignal?: number;
   /** Message shown in the error toast on send failure. Defaults to a generic one. */
   errorMessage?: string;
   onSubmit?: (content: string) => Promise<unknown> | unknown;
@@ -38,6 +44,7 @@ export const ChatComposer = ({
   disabled = false,
   isSubmitting = false,
   autoFocus = false,
+  focusSignal,
   errorMessage,
   onSubmit,
 }: ChatComposerProps) => {
@@ -76,6 +83,20 @@ export const ChatComposer = ({
 
     return () => cancelAnimationFrame(raf);
   }, [autoFocus, disabled]);
+
+  // Move focus into the input whenever the parent bumps `focusSignal` (e.g. the
+  // New Chat search bar on Enter), as long as the composer is enabled.
+  useEffect(() => {
+    if (!focusSignal || disabled) {
+      return;
+    }
+
+    const raf = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [focusSignal, disabled]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {

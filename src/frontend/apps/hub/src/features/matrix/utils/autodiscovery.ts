@@ -1,10 +1,10 @@
-import { matrixConfig } from "../config";
-
-const homeServerList = matrixConfig["homeserver_list"];
+type HomeServer = { base_url: string; server_name: string };
 
 /**
  * Resolves the Matrix homeserver hosting the given email address, via the
- * identity-server lookup of the primary (first) configured homeserver.
+ * identity-server lookup of the primary (first) homeserver in `homeServerList`.
+ * The list is passed in (from the account's preset) rather than imported, so
+ * this util carries no hard-coded Tchap configuration.
  *
  * Note: the upstream identity endpoint never errors on an unknown address — it
  * falls back to the "externe" server — so an invalid email still resolves to a
@@ -12,7 +12,8 @@ const homeServerList = matrixConfig["homeserver_list"];
  */
 export const fetchHomeserverForEmail = async (
   email: string,
-): Promise<{ base_url: string; server_name: string }> => {
+  homeServerList: ReadonlyArray<HomeServer>,
+): Promise<HomeServer> => {
   const primaryHomeServer = homeServerList[0];
   const infoUrl = "/_matrix/identity/api/v1/info?medium=email&address=";
 
@@ -28,11 +29,14 @@ export const fetchHomeserverForEmail = async (
 
   return {
     base_url: serverUrl,
-    server_name: findHomeServerNameFromUrl(serverUrl),
+    server_name: findHomeServerNameFromUrl(serverUrl, homeServerList),
   };
 };
 
-const findHomeServerNameFromUrl = (url: string): string => {
+const findHomeServerNameFromUrl = (
+  url: string,
+  homeServerList: ReadonlyArray<HomeServer>,
+): string => {
   const homeserver = homeServerList.find(
     (homeServer) => homeServer.base_url === url,
   );

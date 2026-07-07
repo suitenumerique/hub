@@ -213,6 +213,36 @@ test.describe("New chat", () => {
     await expect(page).toHaveURL(/\/chat\/new$/);
   });
 
+  test("creates a conversation when sending to people with no existing one", async ({
+    page,
+  }) => {
+    // Amandine Korsgaard has no existing conversation → the draft branch.
+    await getNewChatSearchInput(page).fill("amandine korsgaard");
+    await getNewChatUserOption(page, "Amandine Korsgaard").click();
+    await expect(getSelectedUserChip(page, "Amandine Korsgaard")).toBeVisible();
+    // No conversation exists yet, so the placeholder stays.
+    await expect(page.getByText("Add people to get started")).toBeVisible();
+    await expect(getChatBubbles(page)).toHaveCount(0);
+
+    // The composer is disabled until the empty-search Enter creates the room.
+    const composer = getChatComposerInput(page);
+    await expect(composer).toBeDisabled();
+    await getNewChatSearchInput(page).press("Enter");
+    await expect(composer).toBeEnabled();
+    await expect(composer).toBeFocused();
+
+    // Sending the first message uses the created conversation and commits the URL.
+    await composer.fill("Hello, brand new conversation");
+    await getChatComposerSendButton(page).click();
+
+    await expect(page).toHaveURL(/\/chat\?/);
+    await expect(
+      page.locator(".hub__chat-bubble--sent", {
+        hasText: "Hello, brand new conversation",
+      }),
+    ).toBeVisible();
+  });
+
   test("opens the existing conversation in place when sending from the search", async ({
     page,
   }) => {

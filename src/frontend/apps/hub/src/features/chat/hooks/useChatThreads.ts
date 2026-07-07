@@ -5,6 +5,7 @@ import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { ChatRef, ChatThread } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { CHAT_SESSION_QUERY_OPTIONS } from "../queryOptions";
 
 export type UseChatThreadsResult = {
   threads: ChatThread[];
@@ -26,7 +27,7 @@ export const useChatThreads = (ref: ChatRef): UseChatThreadsResult => {
   const query = useQuery({
     queryKey: chatKeys.threads(ref),
     queryFn: () => getRegistry().get(ref.accountId).getChatThreads(ref.chatId),
-    staleTime: Infinity,
+    ...CHAT_SESSION_QUERY_OPTIONS,
     meta: { noGlobalError: true },
   });
 

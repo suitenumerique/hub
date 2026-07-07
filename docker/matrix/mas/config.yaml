@@ -1,0 +1,174 @@
+# Matrix Authentication Service — DEV ONLY.
+#
+# Delegates authentication to the project Keycloak (realm "hub") and provisions
+# matching Matrix users on the local Synapse. Committed dev secrets and
+# permissive localhost client registration are acceptable ONLY because this
+# stack never ships to production.
+#
+# `secrets` + `matrix.secret` were produced by `mas-cli config generate`.
+
+http:
+  # Browser-facing base URL (host port). Synapse advertises this issuer to
+  # clients through /_matrix/client/v1/auth_metadata.
+  public_base: http://localhost:9810/
+  issuer: http://localhost:9810/
+  listeners:
+    - name: web
+      resources:
+        - name: discovery
+        - name: human
+        - name: oauth
+        - name: compat
+        - name: graphql
+        - name: assets
+      binds:
+        - address: "[::]:8080"
+      proxy_protocol: false
+    - name: internal
+      resources:
+        - name: health
+      binds:
+        - host: 0.0.0.0
+          port: 8081
+      proxy_protocol: false
+
+# MAS database (matrix_postgresql); credentials mirror env.d/development/matrix.
+database:
+  host: matrix_postgresql
+  port: 5432
+  username: mas
+  password: pass
+  database: mas
+
+matrix:
+  kind: synapse
+  # server_name of the homeserver (users become @<localpart>:localhost).
+  homeserver: localhost
+  # SERVER-side address MAS uses to provision/introspect on the Docker network.
+  endpoint: http://synapse:8008/
+  # Shared secret — must equal matrix_authentication_service.secret in Synapse.
+  secret: s77NBJISngqsncPOMycNGWqTxrzAmYUY
+
+# SSO-only: no local password accounts; every identity comes from Keycloak.
+passwords:
+  enabled: false
+
+# Dev-only static OAuth client used by the Hub Matrix driver. Dynamic
+# registration is still allowed below for Element Web, but Hub should keep a
+# stable, trusted client id so a reload does not create a fresh consent flow.
+clients:
+  - client_id: 01J00000000000000000000000
+    client_name: Hub
+    client_uri: http://localhost:9800
+    redirect_uris:
+      - http://localhost:9800/
+      - http://localhost:9800/chat
+      - http://localhost:9800/chat/new
+    grant_types:
+      - authorization_code
+      - refresh_token
+    response_types:
+      - code
+    application_type: web
+    client_auth_method: none
+    trusted: true
+
+secrets:
+  encryption: 8c56b77927212034817e48021720add6b0c73d8c1a743c747e87b4eed60f686e
+  keys:
+    - key: |
+        -----BEGIN RSA PRIVATE KEY-----
+        MIIEowIBAAKCAQEAqIr3KJQjzQ5HVGKUOt/HF3xa8SaUg8faDvXIUmZlBW0GAMTq
+        C0eexnghU0W0CGMtYtYeg/PO1DBjLKlLKODgZWqV1sA6+Rib5HcO8J34EP6xSsrI
+        AtzYErPZN/dzXJG05mPpgJt8BWIrt1LEpyR2sInakElp4F55N/QV1Sk/W/0iQL1Q
+        pyDyCCg/DsRmQRbB/p/+/OJHCVkK3nb2474QLmKOEN+T3cCjHd3I7t9R1R7I9Ur6
+        w00A9Xbu5CV5Q6X7WCLM1u8DZJ7uKTJSZZ42Z/VoyUu9U5HJ2264f4d3bjoNSe8V
+        By41fA+FWCewUizE/EK3YM1qtJgGC4XXY56LJQIDAQABAoIBAGyhJKwCzxBbI54/
+        60oG8Usx22uSciZ9qQ37XCG/3Vyh6DyWrkKW5r8ErnX9dwvw4E/TsddaTPR2O3WN
+        p+OxDPBQwkKno1rpgZC/K+Hp7vkFL0AFcuRlct6bDGYGF1SSlQXpX5aEoGrX21VN
+        A3K3Dci7ESPuLU9vlLF7oJbC/xNKB9d1M09VRVTRUQvOiM2zCYrVHYPszs8wwIhA
+        Fu5YJcuUQUkkbUU64VBCQgA1ED7dH4IxeGt61Yn14uf/zhdipNcJkydG7wXu97T5
+        cJazXcWm/vUd1Wul4tli82HXOQaKMvPE18IzTgdeqUfKk/k9wEIoEgIwgnBma4qB
+        CcvLnAECgYEAyCgIzJcrZo+VH6VmmD4dsIgVaIHNQzHUkv2KwNuBmQw2Sk0IDDqX
+        /4WcMf0IIA1tw/vh5uHbTy9hxmiJO7UPw3Pe5crVGhRt3/6eZ7x36/XQDlypPZd6
+        +isKolaqGr4qqj+nHDO7bbAfG1PNMhsSYviTr7tT4CE38PIDajwYzLcCgYEA15D3
+        Km9TSUbJ+NXH9Wd1b7sClfDvRvgaGB1tktd3TQaraTYJn9I8kzyAULlDs2ecRxya
+        wkAp7kD4kjFQqgXCEk5DQkpkP7tzyOfz4geS93ttFTYoQNdE4YkuGBHqYxnudOUY
+        MWng1vTIjj6b4FNPj8jeneMh2kd9x52BhxCCAwMCgYEAs7P98nHm7XYMFRWTPyzF
+        yzDix6mCeMnMaQxp/y0U9iwYsiznBNO2lBuJWPgsy1pDKqqC75/oHvgTeOdyDsFJ
+        HdpyTS4GlhuxamJYJhr4MEnKOprG+B2AtArgyU+1+byy4Ze0mYV4ycpOo2Jh4JKd
+        t24maqhtbdVlPFaM6lx6h5ECgYAUEvzhZ8KSxVPTp1zanorSH9Eq02gE7N/JNRxa
+        G1SRyLg3sP+OcY6Qi4bLfaUvVMu515EV29HLzSMYwhzn6GddOwqKZtEVGki7Ada1
+        Ss1F3KmY2xU+jI1uj07KkQiJuAV7v0XUfC6i9eKjVHNBnaCAHE2W2Grzn8q3xxQj
+        1sa0rwKBgGjO/5SZKo/FGCVahlKfKZAouAU+4HMgYmBaT8xtCsmxzVMYTYElR1p4
+        oOAXhqF1LyZFva23U4baNdVEo80Qq+JvAhg+SrI/fcywJeijEdYmb4sovhZkGBiY
+        RjZX5oCkiMhmP/EO4bcvrr58K3kLWL+pJUXLUEPByFhVenCpbzhZ
+        -----END RSA PRIVATE KEY-----
+    - key: |
+        -----BEGIN EC PRIVATE KEY-----
+        MHcCAQEEIODabQtwB4hedq7pa8pHvKS/ICXm3oN6cl3ldICChwhqoAoGCCqGSM49
+        AwEHoUQDQgAER0gkYQ4QKetHMSRY5Yp0zS4xFx4WnwGJra9WTmnW+VjmfrUp42MU
+        uZOvwG80A0LbHE+HCDdWd6y8BnhcGUdG3Q==
+        -----END EC PRIVATE KEY-----
+    - key: |
+        -----BEGIN EC PRIVATE KEY-----
+        MIGkAgEBBDCesTu1OYySL6UIX1wiAX22XCMybQA6B6xYKpazM+C1OCHFh7Z+xRHR
+        bqO5AjJlBTegBwYFK4EEACKhZANiAARh+us4LY9DKWWnQZuc/14+o20URiLQz77z
+        bQphbtA0u90FHSV7I32h5eH2dNuMI2ebcuCBMp+glSniNFU1UsufqJWB60Jh7nFf
+        YWE/nEO5NuWr3Z2JcjUJRV/a8r3bzsE=
+        -----END EC PRIVATE KEY-----
+    - key: |
+        -----BEGIN EC PRIVATE KEY-----
+        MHQCAQEEIOwjL5wp9fvo4yedbDyocf36OXuMP0isKlTduYa57SnYoAcGBSuBBAAK
+        oUQDQgAEzSoGcErXbgjHD8rsklUt6KWnO3h+DBEHbCjeQWHT+GW6EYvEoAhQJSDC
+        3PQgv93W7adiwTcnLM3KfAAnl9Uekw==
+        -----END EC PRIVATE KEY-----
+
+# Upstream Keycloak (realm "hub"). Discovery is DISABLED because Keycloak's
+# discovery document advertises localhost:9803 endpoints MAS's container cannot
+# reach. Every endpoint is set explicitly, reproducing the Django seam:
+#   - authorization (browser redirect)      -> localhost:9803
+#   - token / jwks / userinfo (server-side) -> nginx:9803
+#   - iss is validated against              -> localhost:9803/realms/hub
+upstream_oauth2:
+  providers:
+    - id: 0XZP24DYZ8BJXR093M5TH4PKB9
+      human_name: Keycloak (realm hub)
+      issuer: http://localhost:9803/realms/hub
+      client_id: matrix-auth
+      client_secret: ThisIsAMatrixAuthSecretForDevOnly
+      token_endpoint_auth_method: client_secret_basic
+      scope: "openid email profile"
+      discovery_mode: disabled
+      fetch_userinfo: true
+      authorization_endpoint: http://localhost:9803/realms/hub/protocol/openid-connect/auth
+      token_endpoint: http://nginx:9803/realms/hub/protocol/openid-connect/token
+      jwks_uri: http://nginx:9803/realms/hub/protocol/openid-connect/certs
+      userinfo_endpoint: http://nginx:9803/realms/hub/protocol/openid-connect/userinfo
+      claims_imports:
+        localpart:
+          action: require
+          template: "{{ user.preferred_username }}"
+          # The seed pre-creates local accounts (via `register-user`) and the
+          # browser then logs in through Keycloak. Without this, MAS refuses to
+          # attach the Keycloak identity to the already-existing localpart and
+          # fails with "User exists / does not allow linking an upstream account
+          # to an existing account". `add` links the upstream identity to the
+          # matching local user instead of failing. DEV ONLY.
+          on_conflict: add
+        displayname:
+          action: suggest
+          template: "{{ user.name }}"
+        email:
+          action: suggest
+          template: "{{ user.email }}"
+
+# Allow dynamic OIDC client registration over http://localhost — required by
+# Element Web (and the future Hub MatrixDriver), which register dynamically
+# with localhost redirect URIs. DEV ONLY; rejects non-localhost insecure URIs
+# is the production default.
+policy:
+  data:
+    client_registration:
+      allow_insecure_uris: true
+      allow_host_mismatch: false

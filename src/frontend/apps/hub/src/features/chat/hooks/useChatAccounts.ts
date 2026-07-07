@@ -15,6 +15,7 @@ import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { AccountId, ChatScope } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { CHAT_SESSION_QUERY_OPTIONS } from "../queryOptions";
 
 const CHAT_SCOPE_STORAGE_KEY = "hub:chat:scope";
 
@@ -71,7 +72,7 @@ export const useChatAccountsBootstrap = () => {
   const query = useQuery({
     queryKey: chatKeys.scopes(),
     queryFn: () => hubApi.getChatScopes(),
-    staleTime: Infinity,
+    ...CHAT_SESSION_QUERY_OPTIONS,
     meta: { noGlobalError: true },
   });
 

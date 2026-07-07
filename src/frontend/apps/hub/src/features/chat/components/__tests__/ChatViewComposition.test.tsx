@@ -121,4 +121,12 @@ describe("ChatView composition", () => {
     });
     expect(onSent).not.toHaveBeenCalled();
   });
+
+  it("keeps the composer disabled until a concrete conversation exists", () => {
+    render(<ChatView chatRef={null} />);
+
+    expect((screen.getByLabelText("Message") as HTMLInputElement).disabled).toBe(
+      true,
+    );
+  });
 });

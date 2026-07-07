@@ -6,6 +6,7 @@ import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatRef } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { CHAT_SESSION_QUERY_OPTIONS } from "../queryOptions";
 
 export type UseChatResult = {
   chat: Chat | null;
@@ -31,7 +32,7 @@ export const useChat = (ref: ChatRef | null): UseChatResult => {
       return decorateChat(ref.accountId, localChat);
     },
     enabled: ref !== null,
-    staleTime: Infinity,
+    ...CHAT_SESSION_QUERY_OPTIONS,
     meta: { noGlobalError: true },
   });
 

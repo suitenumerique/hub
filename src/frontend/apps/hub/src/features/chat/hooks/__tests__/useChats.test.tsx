@@ -33,6 +33,8 @@ const entries: DriverEntry[] = [
     label: "A",
     criticality: "required",
     enabled: true,
+    driverInstanceId: 1,
+    settingsFingerprint: "null",
     driver: { getChats: getChatsA } as unknown as DriverEntry["driver"],
   },
   {
@@ -41,6 +43,8 @@ const entries: DriverEntry[] = [
     label: "B",
     criticality: "optional",
     enabled: true,
+    driverInstanceId: 2,
+    settingsFingerprint: "null",
     driver: { getChats: getChatsB } as unknown as DriverEntry["driver"],
   },
 ];

@@ -1,5 +1,5 @@
 import { Driver } from "../drivers/Driver";
-import { MatrixDriver } from "../drivers/implementations/MatrixDriver";
+import { LazyMatrixDriver } from "../drivers/implementations/LazyMatrixDriver";
 import { MockDriver } from "../drivers/implementations/MockDriver";
 import type { AccountId, DriverKind } from "../drivers/types";
 
@@ -24,7 +24,7 @@ export const createDriver = (
   settings: Record<string, unknown> = {},
 ): Driver => {
   if (kind === "matrix") {
-    return new MatrixDriver(accountId, settings);
+    return new LazyMatrixDriver(accountId, settings);
   }
   return new MockDriver(accountId, settings);
 };

@@ -35,6 +35,8 @@ vi.mock("@/features/drivers/DriverRegistry", () => ({
       label: "Account A",
       criticality: "required",
       enabled: true,
+      driverInstanceId: 1,
+      settingsFingerprint: "null",
       driver: { subscribeToEvents },
     },
   ],
@@ -49,12 +51,16 @@ const author = (id: string): ChatMessageAuthor => ({
   color: "blue-1",
 });
 
-const message = (id: string): ChatMessage => ({
+const message = (
+  id: string,
+  over: Partial<ChatMessage> = {},
+): ChatMessage => ({
   id,
   authorId: "a-1",
   content: id,
   timestamp: "2026-05-12T10:00:00.000Z",
   reactions: [],
+  ...over,
 });
 
 const seedMessages = (
@@ -155,6 +161,30 @@ describe("useChatEvents", () => {
     expect(data?.pages[0].messages[0].reactions[0].emoji).toBe("👍");
   });
 
+  it("PATCHES the unread slice on unread:changed, never touching messages/chats", () => {
+    queryClient.setQueryData(chatKeys.unreadOf("account-a"), {
+      c1: { unread: false, highlight: false },
+    });
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    mount();
+
+    emit({
+      type: "unread:changed",
+      chatId: "c1",
+      unread: { unread: true, highlight: true },
+    });
+
+    expect(queryClient.getQueryData(chatKeys.unreadOf("account-a"))).toEqual({
+      c1: { unread: true, highlight: true },
+    });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: chatKeys.messages(CHAT_REF),
+    });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: chatKeys.chatsOf("account-a"),
+    });
+  });
+
   it.each<[ChatEvent, readonly unknown[]]>([
     [
       { type: "chat:changed", chatId: "c1" },
@@ -176,5 +206,65 @@ describe("useChatEvents", () => {
     emit(event);
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
+  });
+
+  it("also refreshes any open thread detail on threads:changed", () => {
+    // A reply from another session carries no threadId, so the open thread
+    // detail is refreshed via its chat-wide prefix key.
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    mount();
+
+    emit({ type: "threads:changed", chatId: "c1" });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["chat-thread", "account-a", "c1"],
+    });
+  });
+
+  it("applies the live thread-reply sequence to threads, root summary and unread", () => {
+    const root = message("root", {
+      thread: { id: "thread-1", replyCount: 1, unreadCount: 0 },
+    });
+    const updatedRoot = message("root", {
+      thread: { id: "thread-1", replyCount: 2, unreadCount: 1 },
+    });
+    seedMessages(queryClient, CHAT_REF, [root], [author("a-1")]);
+    queryClient.setQueryData(chatKeys.unreadOf("account-a"), {
+      c1: { unread: false, highlight: false },
+    });
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    mount();
+
+    emit({ type: "threads:changed", chatId: "c1" });
+    emit({ type: "message:updated", chatId: "c1", message: updatedRoot });
+    emit({
+      type: "unread:changed",
+      chatId: "c1",
+      unread: { unread: true, highlight: false },
+    });
+    // The Matrix bridge can emit the same visible refresh from Room.timeline and
+    // Thread.update; applying it twice must keep the same cache shape.
+    emit({ type: "threads:changed", chatId: "c1" });
+    emit({ type: "message:updated", chatId: "c1", message: updatedRoot });
+    emit({
+      type: "unread:changed",
+      chatId: "c1",
+      unread: { unread: true, highlight: false },
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatKeys.threads(CHAT_REF),
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatKeys.threadDetails(CHAT_REF),
+    });
+    expect(
+      queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(
+        chatKeys.messages(CHAT_REF),
+      )?.pages[0].messages[0].thread,
+    ).toEqual({ id: "thread-1", replyCount: 2, unreadCount: 1 });
+    expect(queryClient.getQueryData(chatKeys.unreadOf("account-a"))).toEqual({
+      c1: { unread: true, highlight: false },
+    });
   });
 });

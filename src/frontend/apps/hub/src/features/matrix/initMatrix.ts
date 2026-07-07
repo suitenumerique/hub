@@ -20,24 +20,30 @@ type InitClientOptions = {
   tokenRefreshFunction?: TokenRefreshFunction;
 };
 
-/**
- * Builds and bootstraps a Matrix client backed by IndexedDB stores. The whole
- * stack (IndexedDB, localStorage) is browser-only — callers must guard against
- * SSR; this app is a static export, so there is no server runtime anyway.
- */
-export const initClient = async (
+type MatrixClientStores = {
+  mx: MatrixClient;
+  indexedDBStore: IndexedDBStore;
+  cryptoStoreDbName: string;
+};
+
+const DEFAULT_SYNC_STORE_DB_NAME = "matrix-web-sync-store";
+const DEFAULT_CRYPTO_STORE_DB_NAME = "crypto-store";
+
+const buildClient = (
   user: MatrixUserInterface,
-  options: InitClientOptions = {},
-): Promise<MatrixClient> => {
+  options: InitClientOptions,
+): MatrixClientStores => {
   const indexedDBStore = new IndexedDBStore({
     indexedDB: global.indexedDB,
     localStorage: global.localStorage,
-    dbName: options.syncStoreDbName ?? "matrix-web-sync-store",
+    dbName: options.syncStoreDbName ?? DEFAULT_SYNC_STORE_DB_NAME,
   });
+  const cryptoStoreDbName =
+    options.cryptoStoreDbName ?? DEFAULT_CRYPTO_STORE_DB_NAME;
 
   const legacyCryptoStore = new IndexedDBCryptoStore(
     global.indexedDB,
-    options.cryptoStoreDbName ?? "crypto-store",
+    cryptoStoreDbName,
   );
 
   const mx = createClient({
@@ -54,10 +60,31 @@ export const initClient = async (
     verificationMethods: ["m.sas.v1"],
   });
 
+  return { mx, indexedDBStore, cryptoStoreDbName };
+};
+
+const startupClient = async ({
+  mx,
+  indexedDBStore,
+  cryptoStoreDbName,
+}: MatrixClientStores): Promise<MatrixClient> => {
+  await indexedDBStore.startup();
+  await mx.initRustCrypto({ cryptoDatabasePrefix: cryptoStoreDbName });
+  return mx;
+};
+
+/**
+ * Builds and bootstraps a Matrix client backed by IndexedDB stores. The whole
+ * stack (IndexedDB, localStorage) is browser-only — callers must guard against
+ * SSR; this app is a static export, so there is no server runtime anyway.
+ */
+export const initClient = async (
+  user: MatrixUserInterface,
+  options: InitClientOptions = {},
+): Promise<MatrixClient> => {
+  const client = buildClient(user, options);
   try {
-    await indexedDBStore.startup();
-    await mx.initRustCrypto();
-    return mx;
+    return await startupClient(client);
   } catch (error) {
     // A corrupt local store is the usual cause; reset it and retry once so the
     // user is not stuck behind a broken cache.
@@ -65,9 +92,10 @@ export const initClient = async (
       "initClient: store startup failed, clearing and retrying",
       error,
     );
-    await mx.clearStores();
-    await mx.initRustCrypto();
-    return mx;
+    await client.mx.clearStores({
+      cryptoDatabasePrefix: client.cryptoStoreDbName,
+    });
+    return startupClient(buildClient(user, options));
   }
 };
 
@@ -102,6 +130,9 @@ const waitForInitialSync = (mx: MatrixClient): Promise<void> => {
 export const startClient = async (mx: MatrixClient): Promise<void> => {
   await mx.startClient({
     lazyLoadMembers: true,
+    // Required for the SDK to organise `m.thread` replies into `Room.getThreads()`
+    // / thread timelines instead of leaving them in the main room timeline.
+    threadSupport: true,
   });
   await waitForInitialSync(mx);
 };

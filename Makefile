@@ -43,6 +43,10 @@ DOCKER_GID          := $(shell id -g)
 DOCKER_USER         := $(DOCKER_UID):$(DOCKER_GID)
 endif
 COMPOSE             = DOCKER_USER=$(DOCKER_USER) docker compose
+# Overlay file set for the local, dev-only Matrix stack (Synapse + MAS +
+# Element). Only the *-matrix targets use it, so the normal stack ignores it.
+COMPOSE_MATRIX      = $(COMPOSE) -f compose.yml -f compose.matrix.yml
+MATRIX_SERVICES     = matrix_postgresql synapse mas element
 COMPOSE_EXEC        = $(COMPOSE) exec
 COMPOSE_EXEC_APP    = $(COMPOSE_EXEC) app-dev
 COMPOSE_RUN         = $(COMPOSE) run --rm
@@ -78,6 +82,9 @@ data/static:
 data/postgresql.local:
 	@mkdir -p data/postgresql.local
 
+data/matrix/synapse:
+	@mkdir -p data/matrix/synapse
+
 # -- Project
 
 create-env-local-files: ## create env.local files in env.d/development
@@ -86,6 +93,7 @@ create-env-local-files:
 	@touch env.d/development/common.local
 	@touch env.d/development/postgresql.local
 	@touch env.d/development/kc_postgresql.local
+	@touch env.d/development/matrix.local
 .PHONY: create-env-local-files
 
 pre-bootstrap: \
@@ -227,6 +235,32 @@ run:
 	@$(COMPOSE) up --force-recreate -d frontend-development
 .PHONY: run
 
+run-matrix: ## Start the local Matrix stack (Synapse + MAS + Element) beside the base stack
+run-matrix: data/matrix/synapse
+	@$(MAKE) run-backend
+	@$(COMPOSE_MATRIX) up -d $(MATRIX_SERVICES)
+.PHONY: run-matrix
+
+stop-matrix: ## stop the local Matrix stack without touching the base stack
+	@$(COMPOSE_MATRIX) stop $(MATRIX_SERVICES)
+.PHONY: stop-matrix
+
+down-matrix: ## stop and remove the local Matrix stack (keeps the base stack)
+	@$(COMPOSE_MATRIX) rm -sfv $(MATRIX_SERVICES)
+.PHONY: down-matrix
+
+reset-keycloak: ## drop the Keycloak DB so realm.json (e.g. the matrix-auth client) re-imports on next start
+	@$(COMPOSE) rm -sfv kc_postgresql
+.PHONY: reset-keycloak
+
+seed-matrix: ## seed the local Matrix stack with a shared room (needs run-matrix)
+	@python3 bin/seed-matrix
+.PHONY: seed-matrix
+
+seed-matrix-invite: ## reset only the pending incoming invitation fixture (needs a prior seed-matrix)
+	@python3 bin/seed-matrix --invite-only
+.PHONY: seed-matrix-invite
+
 clear-db-e2e: ## quickly clears the e2e database, used by Playwright between tests
 	$(PSQL_E2E) -c "$$(cat bin/clear_db_e2e.sql)"
 .PHONY: clear-db-e2e
@@ -254,7 +288,7 @@ stop: ## stop the development server using Docker
 
 demo: ## flush db then create a demo for load testing purpose
 	@$(MAKE) resetdb
-	@$(MANAGE) create_demo
+	@$(MAKE) seed
 .PHONY: demo
 
 index: ## index all documents to remote search
@@ -339,6 +373,15 @@ resetdb: ## flush database and create a superuser "admin"
 	@$(MANAGE) flush $(FLUSH_ARGS)
 	@${MAKE} superuser
 .PHONY: resetdb
+
+resetdb-seed: ## run migrations, reset database, then seed demo data
+	@$(MAKE) migrate
+	@$(MAKE) demo
+.PHONY: resetdb-seed
+
+seed: ## seed the database with demo data
+	@$(MANAGE) create_demo
+.PHONY: seed
 
 crowdin-download: ## Download translated message from crowdin
 	@$(COMPOSE_RUN_CROWDIN) download -c crowdin/config.yml
@@ -435,6 +478,10 @@ run-frontend-development: ## Run the frontend in development mode
 frontend-test: ## Run the frontend tests
 	@$(FRONT_HUB_YARN) test
 .PHONY: frontend-test
+
+frontend-build: ## build the static export, proving the bundle compiles
+	@$(FRONT_HUB_YARN) build
+.PHONY: frontend-build
 
 frontend-i18n-extract: ## Extract the frontend translation inside a json to be used for crowdin
 	@$(FRONT_YARN) i18n:extract

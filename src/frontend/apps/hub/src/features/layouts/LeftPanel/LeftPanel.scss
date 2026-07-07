@@ -309,6 +309,14 @@
       &--visible {
         visibility: visible;
       }
+
+      // A mention (highlight) is emphasized red, like mature Matrix clients.
+      &--highlight {
+        background: var(
+          --c--contextuals--content--semantic--error--primary,
+          #ce0500
+        );
+      }
     }
 
     &__text {

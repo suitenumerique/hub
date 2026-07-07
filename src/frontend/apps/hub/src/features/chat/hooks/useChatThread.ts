@@ -5,6 +5,7 @@ import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { ChatRef, ChatThreadDetail } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { CHAT_SESSION_QUERY_OPTIONS } from "../queryOptions";
 
 export type UseChatThreadResult = {
   thread: ChatThreadDetail | null;
@@ -28,7 +29,7 @@ export const useChatThread = (
         chatId: ref.chatId,
         threadId,
       }),
-    staleTime: Infinity,
+    ...CHAT_SESSION_QUERY_OPTIONS,
     meta: { noGlobalError: true },
   });
 

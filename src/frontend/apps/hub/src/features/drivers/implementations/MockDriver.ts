@@ -1,4 +1,6 @@
 import {
+  ChatEvent,
+  ChatEventListener,
   Driver,
   GetChatMessagesParams,
   GetChatThreadParams,
@@ -12,10 +14,10 @@ import {
 } from "../Driver";
 import {
   MOCK_CHATS,
+  MOCK_UNREAD_CHAT_IDS,
   type MockChat,
-  getMockChatForUsers,
 } from "../mocks/mockChats";
-import { getMockChatUsers } from "../mocks/mockChatUsers";
+import { MOCK_CHAT_USERS, getMockChatUsers } from "../mocks/mockChatUsers";
 import { getMockChatDocuments } from "../mocks/mockDocuments";
 import {
   getMockAuthorsForChat,
@@ -38,6 +40,7 @@ import {
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
+  ChatUnread,
   ChatUser,
   LocalChat,
   LocalChatSections,
@@ -75,8 +78,12 @@ const readNumberSetting = (
  */
 export class MockDriver extends Driver {
   override readonly supportsComposition: boolean = true;
+  override readonly supportsConversationCreation: boolean = true;
 
   private readonly chats: LocalChat[];
+  /** Read-state slice, seeded from `MOCK_UNREAD_CHAT_IDS`; cleared on read/send. */
+  private readonly unreadByChat: Record<string, ChatUnread>;
+  private readonly eventListeners = new Set<ChatEventListener>();
 
   constructor(
     accountId: AccountId = "default",
@@ -96,6 +103,40 @@ export class MockDriver extends Driver {
         BASE_LAST_ACTIVITY - (offsetMinutes + index * 7) * 60 * 1000,
       ).toISOString(),
     }));
+
+    this.unreadByChat = Object.fromEntries(
+      this.chats.map((chat) => [
+        chat.id,
+        {
+          unread: MOCK_UNREAD_CHAT_IDS.includes(
+            chat.id as (typeof MOCK_UNREAD_CHAT_IDS)[number],
+          ),
+          highlight: false,
+        },
+      ]),
+    );
+  }
+
+  /** Local event stream so optimistic read clears reconcile like the real driver. */
+  override subscribeToEvents(listener: ChatEventListener): () => void {
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
+  }
+
+  private emit(event: ChatEvent): void {
+    this.eventListeners.forEach((listener) => listener(event));
+  }
+
+  private clearUnread(chatId: string): void {
+    const current = this.unreadByChat[chatId];
+    if (!current || (!current.unread && !current.highlight)) {
+      return;
+    }
+    const next: ChatUnread = { unread: false, highlight: false };
+    this.unreadByChat[chatId] = next;
+    this.emit({ type: "unread:changed", chatId, unread: next });
   }
 
   async getChats(): Promise<LocalChatSections> {
@@ -125,10 +166,51 @@ export class MockDriver extends Driver {
     // MOCK — replace this block with `fetchAPI('chats/resolve/', { params })`
     // when the backend can resolve an exact participant set. The driver
     // contract (participant ids → existing chat or null) lets the UI keep the
-    // placeholder for genuinely new conversations.
+    // placeholder for genuinely new conversations. Resolves against the driver's
+    // live list (seed + any conversation created this session) so a freshly
+    // created conversation resolves on re-selection.
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    return getMockChatForUsers(userIds);
+    return this.findLocalChatForUsers(userIds) ?? null;
+  }
+
+  async createChatForUsers(userIds: string[]): Promise<LocalChat> {
+    // MOCK — replace this block with `fetchAPI('chats/', { method: 'POST' })`
+    // when the backend can create a conversation from a participant set. The
+    // driver contract (participant ids → the new or existing LocalChat) is the
+    // swap point for the New Chat "start a conversation" flow.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const participantIds = [...new Set(userIds)].sort();
+    if (participantIds.length === 0) {
+      throw new Error(
+        "MockDriver.createChatForUsers: at least one participant is required.",
+      );
+    }
+    // Idempotent: never duplicate a conversation that already exists.
+    const existing = this.findLocalChatForUsers(participantIds);
+    if (existing) {
+      return existing;
+    }
+
+    const kind: LocalChat["kind"] =
+      participantIds.length === 1 ? "direct" : "group";
+    const chat: LocalChat = {
+      id: `mock-chat-${participantIds.join("__")}`,
+      name: this.composeChatName(participantIds),
+      section: "all",
+      lastActivityAt: new Date().toISOString(),
+      kind,
+      participantIds,
+      visual:
+        kind === "direct"
+          ? { kind: "initials" }
+          : { kind: "icon", icon: "groups" },
+    };
+    this.chats.unshift(chat);
+    this.unreadByChat[chat.id] = { unread: false, highlight: false };
+    this.emit({ type: "chats:changed" });
+    return chat;
   }
 
   async getChat(chatId: string): Promise<LocalChat> {
@@ -365,8 +447,38 @@ export class MockDriver extends Driver {
     markAllMockThreadsRead(chatId, this.getSeedChat(chatId));
   }
 
+  async markChatRead(chatId: string): Promise<void> {
+    // MOCK — replace with `fetchAPI('chats/:id/read/', { method: 'POST' })`
+    // when the backend tracks read state. Clears the unread dot and announces it
+    // immediately (before the simulated latency) so the UI reacts at once.
+    this.clearUnread(chatId);
+    await delay(MOCK_CHAT_LATENCY_MS);
+  }
+
+  async getUnread(): Promise<Record<string, ChatUnread>> {
+    // MOCK — the real driver derives this from the chat engine; here it is the
+    // seeded slice, kept in sync by `clearUnread` + the `unread:changed` event.
+    return { ...this.unreadByChat };
+  }
+
   private getLocalChat(chatId: string): LocalChat | undefined {
     return this.chats.find((chat) => chat.id === chatId);
+  }
+
+  /** The live conversation whose participant set matches, ignoring order/dupes. */
+  private findLocalChatForUsers(userIds: string[]): LocalChat | undefined {
+    const wanted = [...new Set(userIds)].sort().join(" ");
+    return this.chats.find(
+      (chat) =>
+        [...new Set(chat.participantIds)].sort().join(" ") === wanted,
+    );
+  }
+
+  /** A readable conversation name from the mock people directory. */
+  private composeChatName(participantIds: string[]): string {
+    return participantIds
+      .map((id) => MOCK_CHAT_USERS.find((user) => user.id === id)?.name ?? id)
+      .join(", ");
   }
 
   private getSeedChat(chatId: string): MockChat | undefined {
@@ -384,7 +496,9 @@ export class MockDriver extends Driver {
     const chat = this.getLocalChat(chatId);
     if (chat) {
       chat.lastActivityAt = timestamp;
-      chat.unread = false;
     }
+    // Sending in a conversation reads it (parity with the real driver, where the
+    // SDK advances the read receipt onto the user's own message).
+    this.clearUnread(chatId);
   }
 }

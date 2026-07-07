@@ -59,6 +59,20 @@
       "realmRoles": ["user"]
     },
     {
+      "username": "alice",
+      "email": "alice@hub.local",
+      "firstName": "Alice",
+      "lastName": "Martin",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice"
+        }
+      ],
+      "realmRoles": ["user"]
+    },
+    {
       "username": "user-e2e-chromium",
       "email": "user.test@chromium.test",
       "firstName": "E2E",
@@ -732,6 +746,46 @@
       "authenticationFlowBindingOverrides": {},
       "fullScopeAllowed": true,
       "nodeReRegistrationTimeout": -1,
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    },
+    {
+      "id": "a7c0ffee-d00d-4a2b-9c3d-0d1e2f3a4b5c",
+      "clientId": "matrix-auth",
+      "name": "Matrix Authentication Service",
+      "description": "DEV ONLY: the local Matrix stack's MAS delegates auth to this realm.",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "ThisIsAMatrixAuthSecretForDevOnly",
+      "redirectUris": [
+        "http://localhost:9810/upstream/callback/0XZP24DYZ8BJXR093M5TH4PKB9"
+      ],
+      "webOrigins": ["http://localhost:9810"],
+      "notBefore": 0,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "publicClient": false,
+      "frontchannelLogout": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
+      "fullScopeAllowed": true,
       "defaultClientScopes": [
         "web-origins",
         "acr",

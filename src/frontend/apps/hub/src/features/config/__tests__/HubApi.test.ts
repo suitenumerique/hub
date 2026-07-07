@@ -51,4 +51,17 @@ describe("StandardHubApi chat scopes", () => {
       expect.objectContaining({ accountId: "mock-support" }),
     ]);
   });
+
+  it("configures the local Matrix account with a stable OAuth client", async () => {
+    const api = new StandardHubApi();
+
+    await expect(api.getChatAccounts("matrix-local")).resolves.toEqual([
+      expect.objectContaining({
+        accountId: "matrix-local",
+        settings: expect.objectContaining({
+          oidcClientId: "01J00000000000000000000000",
+        }),
+      }),
+    ]);
+  });
 });

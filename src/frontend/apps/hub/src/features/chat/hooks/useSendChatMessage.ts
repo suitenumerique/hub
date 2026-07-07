@@ -14,7 +14,8 @@ import {
   appendMessageToNewestPage,
   type ChatMessagesData,
   createOptimisticMessage,
-  replaceMessageInPages,
+  messagesDataWithSingleMessage,
+  upsertConfirmedMessage,
 } from "./chatCompositionCache";
 import { useChatCompositionSupport } from "./useChatCompositionSupport";
 
@@ -73,7 +74,9 @@ export const useSendChatMessage = (
         return;
       }
       queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) =>
-        old ? replaceMessageInPages(old, context.optimisticId, message) : old,
+        old
+          ? upsertConfirmedMessage(old, context.optimisticId, message)
+          : messagesDataWithSingleMessage(message),
       );
       if (ref) {
         void queryClient.invalidateQueries({

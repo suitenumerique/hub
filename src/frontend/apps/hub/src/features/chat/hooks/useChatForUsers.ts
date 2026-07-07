@@ -5,6 +5,9 @@ import { decorateChat } from "@/features/chat/chatRefs";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { Chat } from "@/features/drivers/types";
 
+import { chatKeys } from "../chatKeys";
+import { CHAT_SESSION_QUERY_OPTIONS } from "../queryOptions";
+
 import { useComposerAccountId } from "./useChatAccounts";
 
 export type UseChatForUsersResult = {
@@ -24,7 +27,7 @@ export const useChatForUsers = (userIds: string[]): UseChatForUsersResult => {
   );
 
   const query = useQuery({
-    queryKey: ["chat-for-users", accountId, participantIds],
+    queryKey: chatKeys.chatForUsers(accountId, participantIds),
     queryFn: async () => {
       if (!accountId) {
         return null;
@@ -35,7 +38,7 @@ export const useChatForUsers = (userIds: string[]): UseChatForUsersResult => {
       return localChat ? decorateChat(accountId, localChat) : null;
     },
     enabled: participantIds.length > 0 && accountId !== null,
-    staleTime: Infinity,
+    ...CHAT_SESSION_QUERY_OPTIONS,
     meta: { noGlobalError: true },
   });
 

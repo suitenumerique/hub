@@ -5,6 +5,7 @@ import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { ChatDocument, ChatRef } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { CHAT_SESSION_QUERY_OPTIONS } from "../queryOptions";
 
 export type UseChatDocumentsResult = {
   pinned: ChatDocument[];
@@ -22,7 +23,7 @@ export const useChatDocuments = (ref: ChatRef): UseChatDocumentsResult => {
     queryKey: chatKeys.documents(ref),
     queryFn: () =>
       getRegistry().get(ref.accountId).getChatDocuments(ref.chatId),
-    staleTime: Infinity,
+    ...CHAT_SESSION_QUERY_OPTIONS,
     meta: { noGlobalError: true },
   });
 

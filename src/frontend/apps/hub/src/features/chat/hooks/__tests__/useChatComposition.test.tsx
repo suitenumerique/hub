@@ -49,6 +49,8 @@ vi.mock("@/features/drivers/DriverRegistry", () => ({
       label: "Account A",
       criticality: "required",
       enabled: true,
+      driverInstanceId: 1,
+      settingsFingerprint: "null",
       driver,
     },
   ],
@@ -178,6 +180,33 @@ describe("chat composition hooks", () => {
         ),
       ).toBe(false);
     });
+  });
+
+  it("stores a sent conversation message when the first page is not loaded yet", async () => {
+    sendChatMessage.mockResolvedValue(
+      message("m-sent", {
+        authorId: "me",
+        content: "Early send",
+      }),
+    );
+
+    const { result } = renderHook(() => useSendChatMessage(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.sendMessage("Early send");
+    });
+
+    const data = queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(
+      chatKeys.messages(CHAT_REF),
+    );
+    expect(data?.pages[0].messages).toEqual([
+      expect.objectContaining({
+        id: "m-sent",
+        content: "Early send",
+      }),
+    ]);
   });
 
   it("rolls back a failed conversation send", async () => {

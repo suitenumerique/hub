@@ -44,6 +44,7 @@ const renderBanner = (
   });
   const value: ChatPanelContextValue = {
     openThread: vi.fn(),
+    openDraftThread: vi.fn(),
     openThreadList: vi.fn(),
     ...panel,
   };

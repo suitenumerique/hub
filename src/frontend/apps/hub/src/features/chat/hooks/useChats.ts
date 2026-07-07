@@ -14,6 +14,7 @@ import type {
 } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { CHAT_SESSION_QUERY_OPTIONS } from "../queryOptions";
 
 const EMPTY_SECTIONS: ChatSections = {
   favourites: [],
@@ -90,7 +91,7 @@ export const useChats = (): MergedChatsResult => {
         const localSections: LocalChatSections = await entry.driver.getChats();
         return decorateChatSections(entry.accountId, localSections);
       },
-      staleTime: Infinity,
+      ...CHAT_SESSION_QUERY_OPTIONS,
       meta: { noGlobalError: true },
     })),
     combine: (results) =>

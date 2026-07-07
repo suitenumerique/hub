@@ -1,0 +1,612 @@
+#!/usr/bin/env python3
+"""Dev-only deterministic, idempotent seed for the local Matrix stack.
+
+Brings the running local stack (`make run-matrix`) to a readable state for the
+Hub chat UI's `matrix-local` scope:
+
+  1. Provision the identities. The LOGIN users (`hub`, Alice, the e2e users) are LINKED to
+     their Keycloak identity via `mas-cli register-user --upstream-provider-mapping`,
+     so a later browser login reuses the same `@<user>:localhost` account. The
+     CHAT-ONLY counterparties (`alice`, `bob`, …) are plain MAS accounts with no
+     login method (MAS has password auth disabled) — you never log in as them, you
+     only search for and chat with them. Each identity gets a compat access token
+     via `issue-compatibility-token`.
+  2. Seed four unencrypted rooms (by fixed aliases) so every New Chat branch is
+     testable by hand:
+       - a demo room (`hub` ↔ e2e user) with a thread + a reaction;
+       - a DIRECT conversation (`hub` ↔ `alice`) → selecting Alice previews it;
+       - a GROUP conversation (`hub` + `bob` + `carole`) → selecting both previews it.
+     `david` and `emma` are provisioned but share no room with `hub`, so selecting
+     them exercises the "start a new conversation" branch (placeholder kept).
+
+Idempotent: `register-user` "already exists" is tolerated and each room is keyed by
+a fixed alias — a second run finds existing rooms and posts nothing more, so it can
+top up new users/rooms on a live stack without a reset. Runs on the HOST (it needs
+the `docker` CLI and localhost access to Synapse/MAS/Keycloak), so invoke it through
+`make seed-matrix` rather than from inside a container.
+
+This talks to the Matrix Client-Server API directly (stdlib HTTP) instead of
+matrix-js-sdk: the seed must run host-side next to `docker` anyway, the rooms are
+plaintext (no rust-crypto needed), and stdlib keeps it dependency-free.
+"""
+
+import json
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+KEYCLOAK = "http://localhost:9803"
+HOMESERVER = "http://localhost:9808"
+SERVER_NAME = "localhost"
+
+MAS_CONTAINER = "hub-mas-1"
+MAS_CONFIG = "/config/config.yaml"
+# Keycloak upstream provider id in MAS (docker/matrix/mas/config.yaml).
+PROVIDER_ID = "0XZP24DYZ8BJXR093M5TH4PKB9"
+
+# Users you can LOG IN as: linked to their Keycloak identity so a later browser
+# login through MAS reuses the same `@<localpart>:localhost` account.
+# (localpart, Matrix display name)
+LINKED_USERS = [
+    ("hub", "Hub"),
+    ("alice", "Alice Martin"),
+    ("user-e2e-chromium", "E2E Chromium"),
+    ("user-e2e-webkit", "E2E WebKit"),
+]
+
+# Counterparty users you only CHAT WITH (never log in as): plain MAS accounts,
+# registered with NO credential (MAS has password auth disabled — login is
+# delegated to Keycloak). They cannot log in, which is fine: the seed talks to
+# them through compat tokens, and they only need to exist to populate the New
+# Chat people search and the seeded rooms below. (localpart, Matrix display name)
+LOCAL_USERS = [
+    ("bob", "Bob Dubois"),
+    ("carole", "Carole Nguyen"),
+    ("david", "David Bernard"),
+    ("emma", "Emma Lefebvre"),
+]
+
+# The seed creates two conversations: a 1:1 (hub ↔ webkit) and an un-named group
+# (hub + chromium + webkit, carrying a thread + a reaction). There is
+# intentionally NO 1:1 between hub and chromium — that conversation is created
+# live during the demo (or via New Chat). 1:1s carry no room name (shown by the
+# counterpart's display name); the group carries none either (its members' names).
+
+# --- 1:1 (hub ↔ webkit). ----------------------------------------------------
+WEBKIT_ALIAS_LOCALPART = "hub-seed-webkit"
+WEBKIT_NAME = ""
+WEBKIT_INVITED = ["user-e2e-webkit"]
+WEBKIT_MESSAGES = [
+    ("hub", "Conversation directe seedée entre Hub et user-e2e-webkit."),
+    ("user-e2e-webkit", "Hello depuis le compte WebKit."),
+]
+
+# --- Group (hub + chromium + webkit), un-named, with a thread + a reaction. --
+GROUP_ALIAS_LOCALPART = "hub-group"
+GROUP_NAME = ""
+GROUP_INVITED = ["user-e2e-chromium", "user-e2e-webkit"]
+GROUP_MESSAGES = [
+    ("hub", "Bienvenue dans la conversation de groupe (sans nom)."),
+    ("user-e2e-chromium", "Salut ! On doit voir tous les membres dans l'en-tête."),
+    ("user-e2e-webkit", "Présent aussi côté WebKit."),
+]
+
+# A thread hangs off the first group message (reply from another member) and a
+# reaction sits on the third, so threads/reactions stay demoable in the group.
+THREAD_ROOT_INDEX = 0
+THREAD_REPLY = ("user-e2e-webkit", "Réponse seedée dans un fil de la conversation de groupe.")
+REACTION_TARGET_INDEX = 2
+SEED_REACTION = ("hub", "👍")
+
+# --- Pending incoming invitation (carole → Hub login users): the invite flow.
+# Carole creates a room and invites the Hub login users WITHOUT them joining, so
+# a later browser login sees a pending invitation to accept or refuse. Targets
+# both `hub` (manual login) and `user-e2e-chromium` (e2e login). Kept pending by
+# the `matrix-local` account having `autoJoinInvites: false`.
+INVITE_ALIAS_LOCALPART = "hub-invite-carole"
+INVITE_NAME = "Invitation de Carole"
+INVITE_FROM = "carole"
+INVITE_TO = ["hub", "user-e2e-chromium"]
+INVITE_REASON = "Rejoins le salon de test des invitations."
+# Messages Carole posts BEFORE inviting, so accepting opens a conversation that
+# already has history (the room is `shared`, so a joiner sees them). All from the
+# owner (carole), since she is the only member when the room is seeded.
+INVITE_MESSAGES = [
+    ("carole", "Bonjour ! Je t'invite à rejoindre cette conversation."),
+    ("carole", "Ce message d'historique doit s'afficher après acceptation."),
+]
+
+
+def fail(message: str) -> "None":
+    print(f"seed-matrix: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def http_json(method: str, url: str, token: str = "", body: dict | None = None) -> dict:
+    # A freshly-reset Synapse rate-limits the seed's burst of room/message calls
+    # (HTTP 429). Honour the server's `retry_after_ms` and retry a few times so a
+    # full reset seeds reliably without the caller seeing the throttle.
+    data = json.dumps(body).encode() if body is not None else None
+    attempts = 8
+    for attempt in range(attempts):
+        request = urllib.request.Request(url, data=data, method=method)
+        if token:
+            request.add_header("Authorization", f"Bearer {token}")
+        if data is not None:
+            request.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(request) as response:
+                return json.loads(response.read() or "{}")
+        except urllib.error.HTTPError as error:
+            if error.code != 429 or attempt == attempts - 1:
+                raise
+            retry_ms = 1000
+            try:
+                retry_ms = int(json.loads(error.read() or "{}").get("retry_after_ms", 1000))
+            except (ValueError, json.JSONDecodeError):
+                pass
+            time.sleep(min(retry_ms / 1000 + 0.2, 5))
+    raise RuntimeError("http_json: exhausted retries")  # unreachable; for type-checkers
+
+
+def keycloak_admin_token() -> str:
+    url = f"{KEYCLOAK}/realms/master/protocol/openid-connect/token"
+    data = urllib.parse.urlencode(
+        {
+            "client_id": "admin-cli",
+            "username": "admin",
+            "password": "admin",
+            "grant_type": "password",
+        }
+    ).encode()
+    try:
+        with urllib.request.urlopen(url, data=data) as response:
+            return json.loads(response.read())["access_token"]
+    except urllib.error.URLError as error:
+        fail(f"cannot reach Keycloak at {KEYCLOAK} ({error}). Is `make run-matrix` up?")
+
+
+def keycloak_sub(admin_token: str, username: str) -> str:
+    query = urllib.parse.urlencode({"username": username, "exact": "true"})
+    users = http_json(
+        "GET", f"{KEYCLOAK}/admin/realms/hub/users?{query}", token=admin_token
+    )
+    if not users:
+        fail(f"no Keycloak user '{username}' in realm hub — seed the realm first.")
+    return users[0]["id"]
+
+
+def mas_cli(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["docker", "exec", MAS_CONTAINER, "mas-cli", "manage", "--config", MAS_CONFIG, *args],
+        capture_output=True,
+        text=True,
+    )
+
+
+def issue_token(username: str) -> str:
+    """Mints a compatibility access token for a registered user."""
+    issued = mas_cli("issue-compatibility-token", username)
+    if issued.returncode != 0:
+        fail(f"issue-compatibility-token failed for '{username}': {issued.stderr.strip()}")
+    # Output line: "... Compatibility token issued: <TOKEN> compat_access_token.id=..."
+    marker = "Compatibility token issued: "
+    for line in (issued.stdout + issued.stderr).splitlines():
+        if marker in line:
+            return line.split(marker, 1)[1].split()[0]
+    fail(f"could not parse the access token for '{username}'.")
+
+
+def provision_linked_user(admin_token: str, username: str, display_name: str) -> str:
+    """Links the Matrix identity to Keycloak and returns a fresh access token."""
+    sub = keycloak_sub(admin_token, username)
+
+    registered = mas_cli(
+        "register-user",
+        "--yes",
+        "--display-name",
+        display_name,
+        "--upstream-provider-mapping",
+        f"{PROVIDER_ID}:{sub}",
+        username,
+    )
+    output = registered.stdout + registered.stderr
+    if registered.returncode != 0 and "already exists" not in output.lower():
+        fail(f"register-user failed for '{username}': {output.strip()}")
+    return issue_token(username)
+
+
+def provision_local_user(username: str, display_name: str) -> str:
+    """Registers a chat-only MAS account (no login method) and returns its token.
+
+    No password / upstream mapping: MAS has password auth disabled and these users
+    never log in. The account exists so it can be searched and added to rooms, and
+    `issue-compatibility-token` mints a usable token regardless of login method.
+    """
+    registered = mas_cli(
+        "register-user",
+        "--yes",
+        "--no-admin",
+        "--display-name",
+        display_name,
+        username,
+    )
+    output = registered.stdout + registered.stderr
+    if registered.returncode != 0 and "already exists" not in output.lower():
+        fail(f"register-user failed for '{username}': {output.strip()}")
+    return issue_token(username)
+
+
+def existing_room_id(token: str, alias: str) -> str | None:
+    quoted = urllib.parse.quote(alias)
+    try:
+        return http_json(
+            "GET",
+            f"{HOMESERVER}/_matrix/client/v3/directory/room/{quoted}",
+            token=token,
+        ).get("room_id")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+
+
+def create_room(
+    token: str,
+    alias_localpart: str,
+    name: str,
+    invited_localparts: list,
+    is_direct: bool = False,
+) -> str:
+    # No `m.room.encryption` initial state → plaintext room (the local stack
+    # never forces encryption). Invitees are invited then self-join. A blank
+    # `name` is omitted so a 1:1 carries no `m.room.name` and is shown by the
+    # counterpart's display name (a DM is not a named salon).
+    body = {
+        "room_alias_name": alias_localpart,
+        "preset": "private_chat",
+        "visibility": "private",
+        "is_direct": is_direct,
+        "invite": [f"@{localpart}:{SERVER_NAME}" for localpart in invited_localparts],
+    }
+    if name:
+        body["name"] = name
+    return http_json(
+        "POST", f"{HOMESERVER}/_matrix/client/v3/createRoom", token=token, body=body
+    )["room_id"]
+
+
+def clear_room_name(token: str, room_id: str) -> None:
+    """Remove a room's `m.room.name` if it has one, so a 1:1 shows the person.
+
+    Self-heals data seeded before 1:1s were nameless: a second run drops the name
+    from an existing direct room without a full reset.
+    """
+    try:
+        current = http_json(
+            "GET",
+            f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/state/m.room.name",
+            token=token,
+        ).get("name")
+    except urllib.error.HTTPError as error:
+        if error.code in (403, 404):
+            return  # no name set
+        raise
+    if not current:
+        return
+    http_json(
+        "PUT",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/state/m.room.name",
+        token=token,
+        body={"name": ""},
+    )
+    print(f"seed-matrix: cleared the room name on direct room {room_id}.")
+
+
+def join_room(token: str, room_id: str) -> None:
+    http_json("POST", f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/join", token=token)
+
+
+def member_state(token: str, room_id: str, user_id: str) -> "str | None":
+    """The user's current `membership` in the room, or None when they have none."""
+    quoted = urllib.parse.quote(user_id)
+    try:
+        return http_json(
+            "GET",
+            f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/state/m.room.member/{quoted}",
+            token=token,
+        ).get("membership")
+    except urllib.error.HTTPError as error:
+        if error.code in (403, 404):
+            return None
+        raise
+
+
+def kick_user(token: str, room_id: str, user_id: str) -> None:
+    """Remove a joined user from a room (owner-issued), so they can be re-invited."""
+    http_json(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/kick",
+        token=token,
+        body={"user_id": user_id, "reason": "reset invite for testing"},
+    )
+
+
+def invite_user(token: str, room_id: str, user_id: str, reason: str = "") -> None:
+    """Invite a user to a room, carrying an optional `reason` on the invite event."""
+    body = {"user_id": user_id}
+    if reason:
+        body["reason"] = reason
+    http_json(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/invite",
+        token=token,
+        body=body,
+    )
+
+
+def force_pending_invite(
+    owner_token: str, room_id: str, user_id: str, reason: str
+) -> None:
+    """Leave `user_id` in the `invite` state regardless of their current membership.
+
+    Makes the fixture deterministic for repeated test runs: a user who accepted
+    (joined) is kicked first, a user who refused (left) or was never invited is
+    invited, and a still-pending invite is left untouched.
+    """
+    state = member_state(owner_token, room_id, user_id)
+    if state == "invite":
+        return
+    if state == "join":
+        kick_user(owner_token, room_id, user_id)
+    invite_user(owner_token, room_id, user_id, reason)
+
+
+def ensure_invitation(
+    tokens: dict,
+    owner: str,
+    alias_localpart: str,
+    name: str,
+    invited: list,
+    reason: str,
+    messages: list = (),
+) -> str:
+    """Create a room owned by `owner` and leave `invited` users in `invite` state.
+
+    Unlike `ensure_room`, the invitees are NOT joined, so the invitation stays
+    pending for the Hub invitation flow. On creation the owner posts `messages`,
+    so accepting opens a conversation that already has history (the room is
+    `shared`). Idempotent and self-healing: keyed by the fixed alias, and each
+    invitee is forced back to `invite` (see `force_pending_invite`) so a
+    previously accepted/refused invite is restored without a full reset.
+    """
+    alias = f"#{alias_localpart}:{SERVER_NAME}"
+    room_id = existing_room_id(tokens[owner], alias)
+    if room_id:
+        print(f"seed-matrix: invite room {alias} already exists ({room_id}).")
+    else:
+        print(f"seed-matrix: creating invite room {alias}…")
+        # No invitees in createRoom: invite separately so a reason is attached.
+        room_id = create_room(tokens[owner], alias_localpart, name, [])
+        for index, (author, body) in enumerate(messages):
+            send_message(tokens[author], room_id, body, f"{alias_localpart}-{index}")
+        if messages:
+            print(f"seed-matrix: seeded {len(messages)} history messages in {room_id}.")
+    for localpart in invited:
+        force_pending_invite(
+            tokens[owner], room_id, f"@{localpart}:{SERVER_NAME}", reason
+        )
+    print(f"seed-matrix: invited {', '.join(invited)} to {room_id}.")
+    return room_id
+
+
+def send_message(token: str, room_id: str, body: str, txn_id: str) -> str:
+    return http_json(
+        "PUT",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}",
+        token=token,
+        body={"msgtype": "m.text", "body": body},
+    )["event_id"]
+
+
+def ensure_room(
+    tokens: dict,
+    owner: str,
+    alias_localpart: str,
+    name: str,
+    invited: list,
+    messages: list,
+    is_direct: bool = False,
+) -> str:
+    """Create the room and post its transcript once; return its room id.
+
+    Idempotent: keyed by the fixed alias, so a second run finds the existing room
+    and posts nothing more.
+    """
+    alias = f"#{alias_localpart}:{SERVER_NAME}"
+    room_id = existing_room_id(tokens[owner], alias)
+    if room_id:
+        print(f"seed-matrix: room {alias} already exists ({room_id}).")
+        for localpart in invited:
+            join_room(tokens[localpart], room_id)
+        if is_direct:
+            clear_room_name(tokens[owner], room_id)
+        return room_id
+
+    print(f"seed-matrix: creating unencrypted room {alias}…")
+    room_id = create_room(tokens[owner], alias_localpart, name, invited, is_direct)
+    for localpart in invited:
+        join_room(tokens[localpart], room_id)
+    for index, (author, body) in enumerate(messages):
+        send_message(tokens[author], room_id, body, f"{alias_localpart}-{index}")
+    print(f"seed-matrix: seeded {len(messages)} messages in {room_id}.")
+    return room_id
+
+
+def send_thread_reply(
+    token: str, room_id: str, root_id: str, body: str, txn_id: str
+) -> None:
+    http_json(
+        "PUT",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}",
+        token=token,
+        body={
+            "msgtype": "m.text",
+            "body": body,
+            "m.relates_to": {
+                "rel_type": "m.thread",
+                "event_id": root_id,
+                "m.in_reply_to": {"event_id": root_id},
+                "is_falling_back": True,
+            },
+        },
+    )
+
+
+def send_reaction(
+    token: str, room_id: str, target_id: str, key: str, txn_id: str
+) -> None:
+    http_json(
+        "PUT",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/send/m.reaction/{txn_id}",
+        token=token,
+        body={
+            "m.relates_to": {
+                "rel_type": "m.annotation",
+                "event_id": target_id,
+                "key": key,
+            }
+        },
+    )
+
+
+def find_message_id_by_body(token: str, room_id: str, body: str) -> "str | None":
+    """The event id of the top-level (non-relation) message with this body."""
+    chunk = http_json(
+        "GET",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/messages?dir=b&limit=100",
+        token=token,
+    ).get("chunk", [])
+    for event in chunk:
+        content = event.get("content", {})
+        if (
+            event.get("type") == "m.room.message"
+            and content.get("body") == body
+            and "m.relates_to" not in content
+        ):
+            return event["event_id"]
+    return None
+
+
+def relations_of(token: str, room_id: str, event_id: str, rel_type: str) -> list:
+    """Child events of `event_id` for `rel_type` (empty when none).
+
+    The relations API lives under `/v1/` (MSC2675), not `/v3/`.
+    """
+    try:
+        return http_json(
+            "GET",
+            f"{HOMESERVER}/_matrix/client/v1/rooms/{room_id}/relations/{event_id}/{rel_type}",
+            token=token,
+        ).get("chunk", [])
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return []
+        raise
+
+
+def ensure_thread_and_reaction(
+    tokens: dict, room_id: str, root_id: "str | None", target_id: "str | None"
+) -> None:
+    """Idempotently add one thread reply and one reaction (skip if already there)."""
+    reply_author, reply_body = THREAD_REPLY
+    if root_id and not relations_of(tokens[reply_author], room_id, root_id, "m.thread"):
+        send_thread_reply(
+            tokens[reply_author], room_id, root_id, reply_body, "seed-thread-0"
+        )
+        print("seed-matrix: added a thread reply.")
+
+    react_author, emoji = SEED_REACTION
+    if target_id:
+        annotations = relations_of(
+            tokens[react_author], room_id, target_id, "m.annotation"
+        )
+        already = any(
+            event.get("content", {}).get("m.relates_to", {}).get("key") == emoji
+            for event in annotations
+        )
+        if not already:
+            send_reaction(tokens[react_author], room_id, target_id, emoji, "seed-react-0")
+            print("seed-matrix: added a reaction.")
+
+
+def seed_pending_invitation_only() -> None:
+    """Fast path: only (re-)establish the pending invitation fixture.
+
+    Used between e2e tests to restore a fresh pending invite without re-running
+    the whole seed. Assumes a prior full seed has provisioned the inviter and the
+    invitees (it only mints the inviter's token).
+    """
+    print("seed-matrix: resetting the pending invitation fixture…")
+    tokens = {INVITE_FROM: issue_token(INVITE_FROM)}
+    ensure_invitation(
+        tokens,
+        INVITE_FROM,
+        INVITE_ALIAS_LOCALPART,
+        INVITE_NAME,
+        INVITE_TO,
+        INVITE_REASON,
+        INVITE_MESSAGES,
+    )
+    print("seed-matrix: Done.")
+
+
+def main() -> None:
+    if "--invite-only" in sys.argv[1:]:
+        seed_pending_invitation_only()
+        return
+
+    print("seed-matrix: provisioning identities…")
+    admin_token = keycloak_admin_token()
+    tokens = {
+        localpart: provision_linked_user(admin_token, localpart, display)
+        for localpart, display in LINKED_USERS
+    }
+    for localpart, display in LOCAL_USERS:
+        tokens[localpart] = provision_local_user(localpart, display)
+
+    # 1. 1:1 (hub ↔ webkit). No hub ↔ chromium 1:1 by design (created live).
+    ensure_room(
+        tokens,
+        "hub",
+        WEBKIT_ALIAS_LOCALPART,
+        WEBKIT_NAME,
+        WEBKIT_INVITED,
+        WEBKIT_MESSAGES,
+        is_direct=True,
+    )
+
+    # 2. Un-named group (hub + chromium + webkit) with a thread + a reaction.
+    group_room_id = ensure_room(
+        tokens, "hub", GROUP_ALIAS_LOCALPART, GROUP_NAME, GROUP_INVITED, GROUP_MESSAGES
+    )
+    root_id = find_message_id_by_body(
+        tokens["hub"], group_room_id, GROUP_MESSAGES[THREAD_ROOT_INDEX][1]
+    )
+    target_id = find_message_id_by_body(
+        tokens["hub"], group_room_id, GROUP_MESSAGES[REACTION_TARGET_INDEX][1]
+    )
+    ensure_thread_and_reaction(tokens, group_room_id, root_id, target_id)
+
+    # The incoming-invitation fixture is intentionally NOT part of the default
+    # seed; the e2e flow creates it on demand via `make seed-matrix-invite`
+    # (`--invite-only`). The chat-only users (bob, carole, david, emma) stay
+    # roomless so New Chat's people search and "start a conversation" branch work.
+    print("seed-matrix: Done.")
+
+
+if __name__ == "__main__":
+    main()

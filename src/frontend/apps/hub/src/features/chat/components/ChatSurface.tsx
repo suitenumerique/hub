@@ -1,10 +1,15 @@
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { chatHref } from "@/features/chat/chatRefs";
 import type { ChatRef, ChatUser } from "@/features/drivers/types";
+import { notify } from "@/features/ui/components/toast";
 
+import { useComposerAccountId } from "../hooks/useChatAccounts";
+import { useChatCreationSupport } from "../hooks/useChatCreationSupport";
 import { useChatForUsers } from "../hooks/useChatForUsers";
+import { useCreateChatForUsers } from "../hooks/useCreateChatForUsers";
 
 import { ChatView } from "./ChatView";
 import { NewChatPlaceholder } from "./NewChatPlaceholder";
@@ -28,8 +33,15 @@ type ChatSurfaceProps = {
  */
 export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
   const router = useRouter();
+  const { t } = useTranslation();
+  const composerAccountId = useComposerAccountId();
   const [selectedUsers, setSelectedUsers] = useState<ChatUser[]>([]);
   const [query, setQuery] = useState("");
+  const [createdChatRef, setCreatedChatRef] = useState<ChatRef | null>(null);
+  // Bumped on Enter (empty search) to move focus into the composer.
+  const [composerFocusSignal, setComposerFocusSignal] = useState(0);
+  const isCreatingRef = useRef(false);
+  const creationTargetRef = useRef<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedUserIds = useMemo(
@@ -38,6 +50,9 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
   );
   // Only resolve from the search while on the new-chat route.
   const { chat } = useChatForUsers(isNew ? selectedUserIds : []);
+  const isCreationSupported = useChatCreationSupport(composerAccountId);
+  const { createChatForUsers, isCreating } =
+    useCreateChatForUsers(composerAccountId);
 
   // The host stays mounted across routes, so wipe the search state whenever we
   // (re-)enter new mode to start a fresh `/chat/new` instead of an old draft.
@@ -45,10 +60,19 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     if (isNew) {
       setSelectedUsers([]);
       setQuery("");
+      setCreatedChatRef(null);
+      isCreatingRef.current = false;
+      creationTargetRef.current = null;
     }
   }, [isNew]);
 
-  const resolvedChatRef = isNew ? (chat?.ref ?? null) : urlChatRef;
+  useEffect(() => {
+    setCreatedChatRef(null);
+    isCreatingRef.current = false;
+    creationTargetRef.current = null;
+  }, [composerAccountId]);
+
+  const resolvedChatRef = isNew ? (chat?.ref ?? createdChatRef) : urlChatRef;
   // Defensive fallback: should the router momentarily report the new pathname
   // before its query is populated, keep showing the last conversation so the
   // body never blanks for a frame during the redirect.
@@ -65,14 +89,75 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
       }
       return [...current, user];
     });
+    setCreatedChatRef(null);
+    creationTargetRef.current = null;
+    isCreatingRef.current = false;
     setQuery("");
     requestAnimationFrame(() => searchInputRef.current?.focus());
   }, []);
 
   const removeUser = useCallback((userId: string) => {
     setSelectedUsers((current) => current.filter((user) => user.id !== userId));
+    setCreatedChatRef(null);
+    creationTargetRef.current = null;
+    isCreatingRef.current = false;
     requestAnimationFrame(() => searchInputRef.current?.focus());
   }, []);
+
+  // Enter on an empty search confirms the selection: move focus into the
+  // composer when the conversation exists, or create it first when it does not.
+  const confirmSelection = useCallback(() => {
+    if (selectedUserIds.length === 0) {
+      return;
+    }
+    if (chat || createdChatRef) {
+      setComposerFocusSignal((signal) => signal + 1);
+      return;
+    }
+    if (!isCreationSupported || isCreating || isCreatingRef.current) {
+      return;
+    }
+
+    const participantIds = selectedUserIds;
+    const creationTarget = JSON.stringify([
+      composerAccountId,
+      [...participantIds].sort(),
+    ]);
+    isCreatingRef.current = true;
+    creationTargetRef.current = creationTarget;
+    void createChatForUsers(participantIds)
+      .then((ref) => {
+        if (creationTargetRef.current !== creationTarget) {
+          return;
+        }
+        setCreatedChatRef(ref);
+        setComposerFocusSignal((signal) => signal + 1);
+      })
+      .catch(() => {
+        if (creationTargetRef.current !== creationTarget) {
+          return;
+        }
+        notify.error(
+          t("The conversation could not be created. Please try again."),
+        );
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+      })
+      .finally(() => {
+        if (creationTargetRef.current === creationTarget) {
+          isCreatingRef.current = false;
+          creationTargetRef.current = null;
+        }
+      });
+  }, [
+    chat,
+    composerAccountId,
+    createChatForUsers,
+    createdChatRef,
+    isCreating,
+    isCreationSupported,
+    selectedUserIds,
+    t,
+  ]);
 
   const searchBar = useCallback(
     ({
@@ -87,14 +172,23 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
         query={query}
         inputRef={searchInputRef}
         activeTool={activeTool}
-        canUseChatTools={Boolean(chat && onToggleTool)}
+        canUseChatTools={Boolean((chat || createdChatRef) && onToggleTool)}
         onQueryChange={setQuery}
         onAddUser={addUser}
         onRemoveUser={removeUser}
+        onConfirm={confirmSelection}
         onToggleTool={onToggleTool}
       />
     ),
-    [addUser, chat, query, removeUser, selectedUsers],
+    [
+      addUser,
+      chat,
+      confirmSelection,
+      createdChatRef,
+      query,
+      removeUser,
+      selectedUsers,
+    ],
   );
 
   // Sending to a resolved existing conversation from the search commits the URL
@@ -111,6 +205,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     <ChatView
       chatRef={chatRef}
       onSent={isNew ? handleSent : undefined}
+      composerFocusSignal={composerFocusSignal}
       renderHeader={
         isNew
           ? ({ activeTool, onToggleTool }) =>

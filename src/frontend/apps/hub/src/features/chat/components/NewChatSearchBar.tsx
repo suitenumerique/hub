@@ -22,6 +22,8 @@ export type NewChatSearchBarProps = {
   onQueryChange: (query: string) => void;
   onAddUser: (user: ChatUser) => void;
   onRemoveUser: (userId: string) => void;
+  /** Called on Enter with an empty search and at least one selected participant. */
+  onConfirm?: () => void;
   onToggleTool?: (tool: ChatTool) => void;
 };
 
@@ -34,6 +36,7 @@ export const NewChatSearchBar = ({
   onQueryChange,
   onAddUser,
   onRemoveUser,
+  onConfirm,
   onToggleTool,
 }: NewChatSearchBarProps) => {
   const { t } = useTranslation();
@@ -75,10 +78,25 @@ export const NewChatSearchBar = ({
       const hasFocusedOption = Boolean(
         inputRef.current?.getAttribute("aria-activedescendant"),
       );
-      if (!hasFocusedOption && query.trim().length > 0 && users.length > 0) {
+      if (hasFocusedOption) {
+        // A dropdown option is highlighted — let the ComboBox select it.
+        return;
+      }
+      if (query.trim().length > 0) {
+        if (users.length > 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          onAddUser(users[0]);
+        }
+        return;
+      }
+      // Empty search with people chosen: confirm the selection so focus moves
+      // into the composer (preview the conversation when it exists, or start
+      // composing the first message of a new one).
+      if (selectedUsers.length > 0) {
         event.preventDefault();
         event.stopPropagation();
-        onAddUser(users[0]);
+        onConfirm?.();
       }
       return;
     }

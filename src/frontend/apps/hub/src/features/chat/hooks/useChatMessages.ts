@@ -9,6 +9,7 @@ import type {
 } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { CHAT_SESSION_QUERY_OPTIONS } from "../queryOptions";
 
 export const CHAT_PAGE_SIZE = 50;
 
@@ -51,7 +52,7 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: Infinity,
+    ...CHAT_SESSION_QUERY_OPTIONS,
     meta: { noGlobalError: true },
   });
 

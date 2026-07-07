@@ -13,6 +13,7 @@ import type {
   ChatRef,
   ChatMessagesPage,
   ChatThreadDetail,
+  ChatUnread,
 } from "@/features/drivers/types";
 
 type ChatMessagesData = InfiniteData<ChatMessagesPage>;
@@ -98,11 +99,31 @@ const applyChatEvent = (
         chatKeys.messages(ref),
         (data) => (data ? appendMessage(data, event) : data),
       );
-      // Touches the conversation list (last message / unread).
+      // Touches the conversation list for ordering / last message. Unread is a
+      // separate slice now, updated by `unread:changed` (below) without a refetch.
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(accountId),
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      return;
+
+    case "unread:changed":
+      // Patch ONLY the read-state slice — never the message or conversation-list
+      // caches — so a dot moving never re-fetches or re-renders a conversation.
+      queryClient.setQueryData<Record<string, ChatUnread>>(
+        chatKeys.unreadOf(accountId),
+        (current) => {
+          const existing = current?.[event.chatId];
+          if (
+            existing &&
+            existing.unread === event.unread.unread &&
+            existing.highlight === event.unread.highlight
+          ) {
+            return current; // identical snapshot — skip to avoid a re-render
+          }
+          return { ...(current ?? {}), [event.chatId]: event.unread };
+        },
+      );
       return;
 
     case "message:updated":
@@ -153,6 +174,11 @@ const applyChatEvent = (
     case "threads:changed":
       void queryClient.invalidateQueries({
         queryKey: chatKeys.threads(ref),
+      });
+      // Also refresh any open thread detail of this chat so a reply from another
+      // session appears live (the list event carries no threadId).
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.threadDetails(ref),
       });
       return;
 

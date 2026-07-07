@@ -122,6 +122,70 @@ When running the project, the following services are available:
 | **Redis**       | 9813                                                    | Cache and message broker | No auth required              |
 | **MinIO**       | 9805 and [http://localhost:9806](http://localhost:9806) | Local S3 storage         | No auth required              |
 
+The **dev-only Matrix stack** (started separately with `make run-matrix`, see below) adds:
+
+| Service       | URL / Port                                     | Description                       | Credentials             |
+|---------------|------------------------------------------------|-----------------------------------|-------------------------|
+| **Element**   | [http://localhost:9807](http://localhost:9807) | Element Web (Matrix test client)  | realm user, e.g. `hub`  |
+| **Synapse**   | [http://localhost:9808](http://localhost:9808) | Matrix homeserver                 | No direct auth          |
+| **MAS**       | [http://localhost:9810](http://localhost:9810) | Matrix Authentication Service     | Delegates to Keycloak   |
+
+### Local Matrix stack (dev only) 💬
+
+A self-contained, **dev-only** Matrix stack — [Synapse](https://github.com/element-hq/synapse)
+(homeserver), [Matrix Authentication Service](https://github.com/element-hq/matrix-authentication-service)
+(MAS) and [Element Web](https://github.com/element-hq/element-web) — lets you develop and
+test the Hub `MatrixDriver` against a real homeserver that delegates authentication to the
+project Keycloak (`realm "hub"`), exactly like the backend does.
+
+> ⚠️ Dev only. It ships committed secrets and allows OIDC client registration over
+> `http://localhost`; it must never be deployed.
+
+It is an isolated overlay (`compose.matrix.yml`): the normal stack (`make run`,
+`make run-backend`, `make stop`) never starts or stops it, and no nginx change is needed.
+
+```shellscript
+# Bring it up beside the running base stack (also ensures nginx + Keycloak are up):
+$ make run-matrix
+
+# Stop / remove just the Matrix stack:
+$ make stop-matrix
+$ make down-matrix
+```
+
+Then open <http://localhost:9807>, click **Sign in** → SSO. You are redirected to Keycloak
+`realm "hub"`; log in with a realm user (default `hub` / `hub`). You return to Element
+connected as `@hub:localhost` and can create a room and send messages.
+
+#### Seed a deterministic room and read it from the Hub chat UI
+
+The Hub frontend exposes a **`Matrix local (dev)`** chat scope (next to the Tchap
+`matrix-dev` scope) whose driver settings point at the local Synapse
+(`discovery: "fixed"`, `http://localhost:9808`). To give it something to read, seed a
+shared room:
+
+```shellscript
+$ make run-matrix     # stack must be running
+$ make seed-matrix    # idempotent: provisions @hub + @user-e2e-chromium, one
+                      # unencrypted room (#hub-seed:localhost) with a few messages
+```
+
+`seed-matrix` links each Matrix identity to its Keycloak `sub` (via
+`mas-cli register-user --upstream-provider-mapping`), so logging into Hub as the realm
+user reuses the same `@hub:localhost` account and sees the seeded room. Re-running it is
+a no-op. Then, with the frontend running (`make run-frontend-development`), pick the
+**Matrix local (dev)** scope in the chat left panel and log in via Keycloak (`hub` / `hub`)
+— the seeded room and its messages appear in real time.
+
+**If login fails with a missing `matrix-auth` client**, your Keycloak DB was bootstrapped
+before that client existed in `docker/auth/realm.json`. Keycloak only imports a realm when
+it is absent, so drop its DB to force a re-import:
+
+```shellscript
+$ make reset-keycloak   # docker compose rm -sfv kc_postgresql
+$ make run-matrix       # Keycloak re-imports realm.json (matrix-auth client included)
+```
+
 ## License 📝
 
 This work is released under the MIT License (see [LICENSE](https://github.com/suitenumerique/docs/blob/main/LICENSE)).

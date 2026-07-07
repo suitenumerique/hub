@@ -16,6 +16,8 @@ import type {
 } from "@/features/drivers/types";
 
 import { useChatMessages } from "../hooks/useChatMessages";
+import { useChatUnread } from "../hooks/useChatUnread";
+import { useMarkChatRead } from "../hooks/useMarkChatRead";
 
 import { ChatBubble } from "./ChatBubble";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
@@ -28,6 +30,10 @@ type ChatVirtualListProps = {
 // first measurement pass — eliminates the visible "flash" before the list
 // snaps to the bottom on chat open / switch.
 const DEFAULT_ITEM_HEIGHT = 72;
+
+// How long the user must dwell (focused + at bottom) before the conversation is
+// marked read — avoids clearing a room that was only glanced at.
+const MARK_READ_DEBOUNCE_MS = 500;
 
 // State machine for the skeleton overlay: it stays mounted (and fully
 // opaque) while messages are loading, then transitions to `leaving` once
@@ -67,6 +73,61 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
   const shouldStickToBottomRef = useRef(false);
   const pendingScrollRaf = useRef<number | null>(null);
 
+  // Mirror of the loading flag, read inside the chat-switch effect so a cached
+  // re-open scrolls instantly (`auto`) and only a real first load animates.
+  const isInitialLoadingRef = useRef(isInitialLoading);
+  isInitialLoadingRef.current = isInitialLoading;
+
+  const markChatRead = useMarkChatRead(chatRef);
+  const isUnread = useChatUnread()(chatRef).unread;
+  const lastMarkedEventIdRef = useRef<string | null>(null);
+  const markReadTimerRef = useRef<number | null>(null);
+
+  // Mark the conversation read only while the user is genuinely viewing it:
+  // window focused AND scrolled to the bottom, the conversation is unread, and
+  // there is something newer than what was already marked. Debounced and
+  // re-checked at fire time; the driver also no-ops when the room is already read.
+  const maybeMarkRead = useCallback(() => {
+    if (!isUnread || !atBottomRef.current) {
+      return;
+    }
+    if (typeof document !== "undefined" && !document.hasFocus()) {
+      return;
+    }
+    const latestId = lastMessage?.id;
+    if (!latestId || lastMarkedEventIdRef.current === latestId) {
+      return;
+    }
+    if (markReadTimerRef.current !== null) {
+      window.clearTimeout(markReadTimerRef.current);
+    }
+    markReadTimerRef.current = window.setTimeout(() => {
+      markReadTimerRef.current = null;
+      if (!atBottomRef.current || !document.hasFocus()) {
+        return;
+      }
+      lastMarkedEventIdRef.current = latestId;
+      markChatRead();
+    }, MARK_READ_DEBOUNCE_MS);
+  }, [isUnread, lastMessage?.id, markChatRead]);
+
+  // Fires on open of an unread chat and on each new latest message while viewing;
+  // the at-bottom transition and focus-regain paths are wired separately below.
+  useEffect(() => {
+    maybeMarkRead();
+  }, [maybeMarkRead]);
+
+  // Re-evaluate when the window regains focus; clear the pending timer on unmount.
+  useEffect(() => {
+    window.addEventListener("focus", maybeMarkRead);
+    return () => {
+      window.removeEventListener("focus", maybeMarkRead);
+      if (markReadTimerRef.current !== null) {
+        window.clearTimeout(markReadTimerRef.current);
+      }
+    };
+  }, [maybeMarkRead]);
+
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
     isInitialLoading ? "visible" : "hidden",
   );
@@ -96,6 +157,14 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
       return;
     }
     previousChatRef.current = chatRef;
+    // New conversation: allow it to be marked read once viewed.
+    lastMarkedEventIdRef.current = null;
+    // A cached re-open is already painted, so jump to the bottom instantly
+    // (`auto`); only a genuine first load animates. The smooth-scroll-on-every-
+    // switch is what made revisiting a cached conversation feel non-instant.
+    const behavior: ScrollBehavior = isInitialLoadingRef.current
+      ? "smooth"
+      : "auto";
     // Two rAFs: the first lets React commit the new `data` + `firstItemIndex`,
     // the second lets Virtuoso recompute its internal layout before we ask it
     // to scroll to the last row.
@@ -105,7 +174,7 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
         virtuosoRef.current?.scrollToIndex({
           index: "LAST",
           align: "end",
-          behavior: "smooth",
+          behavior,
         });
       });
     });
@@ -179,6 +248,8 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
             atBottomRef.current = atBottom;
             if (atBottom) {
               shouldStickToBottomRef.current = false;
+              // Reaching the bottom while focused is the signal to mark read.
+              maybeMarkRead();
             }
           }}
           totalListHeightChanged={() => {

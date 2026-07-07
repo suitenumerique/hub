@@ -24,7 +24,11 @@ export const useChatConnections = (
 
   return useQueries({
     queries: entries.map((entry) => ({
-      queryKey: chatKeys.connection(entry.accountId, userId),
+      queryKey: chatKeys.connection(
+        entry.accountId,
+        userId,
+        entry.driverInstanceId,
+      ),
       queryFn: () => entry.driver.connect(user),
       enabled: user !== undefined && user !== null,
       staleTime: Infinity,

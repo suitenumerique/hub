@@ -47,11 +47,50 @@ export type ChatVisual =
   | { kind: "emoji"; emoji: string }
   | { kind: "icon"; icon: string };
 
+/**
+ * Read state of a conversation, decoupled from the conversation-list payload and
+ * surfaced as its own slice (see `useChatUnread`). `unread` drives the dot;
+ * `highlight` emphasizes a mention. Driver-agnostic: the Matrix driver derives
+ * `unread` from read receipts and `highlight` from notification counts; the mock
+ * driver derives both from its seeded flags.
+ */
+export type ChatUnread = {
+  unread: boolean;
+  highlight: boolean;
+};
+
+/**
+ * The current user's relationship to a conversation. `join` is a normal,
+ * sendable conversation; `invite` is a pending incoming invitation that must be
+ * accepted before its timeline becomes available. Driver-neutral: the Matrix
+ * driver maps it from `room.getMyMembership()`. Optional on `LocalChat` for
+ * backwards compatibility — a chat without it is treated as `join` (see
+ * `isInvitationChat`).
+ */
+export type ChatMembership = "join" | "invite";
+
+/**
+ * Metadata of a pending incoming invitation, carried on an `invite` chat so the
+ * invitation detail view can show who invited the user, when, and why. All
+ * fields are optional because an invite room exposes only sparse state.
+ */
+export type ChatInvitation = {
+  /** Matrix id (or backend handle) of the person who sent the invite. */
+  inviterId?: string;
+  /** Display name of the inviter, when the room state carries it. */
+  inviterName?: string;
+  /** Free-text reason attached to the invite, when present. */
+  reason?: string;
+  /** ISO 8601 timestamp of the invitation event, when known. */
+  invitedAt?: string;
+  /** Whether the invite marks a direct (one-to-one) conversation. */
+  isDirect?: boolean;
+};
+
 export type LocalChat = {
   id: string;
   lastActivityAt?: string;
   name: string;
-  unread?: boolean;
   section: "favourites" | "all";
   /**
    * Determines whether the conversation has a single counterpart or several.
@@ -65,6 +104,14 @@ export type LocalChat = {
    */
   participantIds: string[];
   visual: ChatVisual;
+  /**
+   * The current user's membership. Optional for backwards compatibility: chats
+   * that omit it are treated as joined (see `isInvitationChat`). Matrix-mapped
+   * chats always set it.
+   */
+  membership?: ChatMembership;
+  /** Invitation metadata; present only when `membership === "invite"`. */
+  invitation?: ChatInvitation;
 };
 
 export type Chat = LocalChat & {

@@ -7,6 +7,8 @@ import type { AccountId, ChatAccountConfig } from "./types";
 
 export type DriverEntry = ChatAccountConfig & {
   driver: Driver;
+  driverInstanceId: number;
+  settingsFingerprint: string;
 };
 
 const fallbackConfig = (): ChatAccountConfig => ({
@@ -28,14 +30,26 @@ const snapshotEquals = (a: DriverEntry[], b: DriverEntry[]): boolean =>
       entry.label === other.label &&
       entry.criticality === other.criticality &&
       entry.enabled === other.enabled &&
+      entry.settingsFingerprint === other.settingsFingerprint &&
       entry.driver === other.driver
     );
   });
+
+const fingerprintSettings = (
+  settings: ChatAccountConfig["settings"],
+): string => {
+  try {
+    return JSON.stringify(settings ?? null);
+  } catch {
+    return String(settings);
+  }
+};
 
 export class DriverRegistry {
   private entries = new Map<AccountId, DriverEntry>();
   private snapshot: DriverEntry[] = [];
   private listeners = new Set<() => void>();
+  private nextDriverInstanceId = 1;
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -60,10 +74,19 @@ export class DriverRegistry {
 
     enabledConfigs.forEach((config) => {
       const existing = this.entries.get(config.accountId);
+      const settingsFingerprint = fingerprintSettings(config.settings);
+      const canReuseDriver =
+        existing &&
+        existing.kind === config.kind &&
+        existing.settingsFingerprint === settingsFingerprint;
       const driver =
-        existing && existing.kind === config.kind
+        canReuseDriver
           ? existing.driver
           : createDriver(config.kind, config.accountId, config.settings);
+      const driverInstanceId =
+        canReuseDriver && existing
+          ? existing.driverInstanceId
+          : this.nextDriverInstanceId++;
 
       if (existing && existing.driver !== driver) {
         existing.driver.destroy();
@@ -75,6 +98,8 @@ export class DriverRegistry {
       nextEntries.set(config.accountId, {
         ...config,
         driver,
+        driverInstanceId,
+        settingsFingerprint,
       });
     });
 

@@ -1,0 +1,80 @@
+// Invitation detail view, rendered inside `.hub__chat-view__content` while a
+// conversation is a pending incoming invitation. Quiet and centered, matching
+// the chat surface rather than a hero page.
+.hub__chat-invitation {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--c--globals--spacings--xl, 40px)
+    var(--c--globals--spacings--md, 24px);
+
+  &__card {
+    width: min(100%, 420px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--c--globals--spacings--xs, 8px);
+    text-align: center;
+  }
+
+  &__eyebrow {
+    margin: var(--c--globals--spacings--xs, 8px) 0 0;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  }
+
+  &__name {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 24px;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__details {
+    margin: var(--c--globals--spacings--xs, 8px) 0 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--xxs, 6px);
+  }
+
+  &__detail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--4xs, 2px);
+
+    dt {
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 16px;
+      color: var(
+        --c--contextuals--content--semantic--neutral--tertiary,
+        #626a80
+      );
+    }
+
+    dd {
+      margin: 0;
+      font-size: 14px;
+      line-height: 18px;
+      color: var(
+        --c--contextuals--content--semantic--neutral--primary,
+        #222631
+      );
+      overflow-wrap: anywhere;
+    }
+  }
+
+  &__actions {
+    margin-top: var(--c--globals--spacings--md, 24px);
+    display: flex;
+    gap: var(--c--globals--spacings--xs, 8px);
+  }
+}

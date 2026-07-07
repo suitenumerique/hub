@@ -9,6 +9,7 @@ import {
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
+  ChatUnread,
   ChatUser,
   LocalChat,
   LocalChatSections,
@@ -124,6 +125,7 @@ export type ChatEvent =
       /** Set when the message lives inside a thread rather than the timeline. */
       threadId?: string;
     }
+  | { type: "unread:changed"; chatId: string; unread: ChatUnread }
   // --- Coarse: only name what changed; the bridge invalidates & refetches -
   | { type: "chat:changed"; chatId: string }
   | { type: "threads:changed"; chatId: string }
@@ -135,6 +137,12 @@ export type ChatEventListener = (event: ChatEvent) => void;
 export abstract class Driver {
   readonly accountId: AccountId;
   readonly supportsComposition: boolean = false;
+  /**
+   * Whether the driver can start a brand-new conversation from a participant set
+   * (see `createChatForUsers`). Off by default so drivers opt in; gates the
+   * New Chat composer for a not-yet-existing conversation.
+   */
+  readonly supportsConversationCreation: boolean = false;
 
   constructor(accountId: AccountId = "default") {
     this.accountId = accountId;
@@ -173,6 +181,18 @@ export abstract class Driver {
   abstract markChatThreadRead(params: MarkChatThreadReadParams): Promise<void>;
   /** Marks every thread of a conversation as read for the current user. */
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
+  /**
+   * Marks the conversation's main timeline read for the current user, clearing
+   * its unread indicator. Called when the user is actually viewing the
+   * conversation (focused, scrolled to the bottom), not merely on open.
+   */
+  abstract markChatRead(chatId: string): Promise<void>;
+  /**
+   * Seeds the per-conversation read-state slice: `chatId → ChatUnread` for the
+   * conversations this account knows about. Updates after the seed flow through
+   * the `unread:changed` event, never through this method.
+   */
+  abstract getUnread(): Promise<Record<string, ChatUnread>>;
 
   // --- Composition --------------------------------------------------------
   // Unsupported by default so drivers can opt into composition incrementally.
@@ -201,6 +221,48 @@ export abstract class Driver {
     void _params;
     throw new Error(
       `${this.constructor.name}.startChatThread: composition is not supported by this driver.`,
+    );
+  }
+
+  /**
+   * Creates a brand-new conversation for exactly these participants (a direct
+   * chat for one, a group for several) and resolves with it. Idempotent where it
+   * can be: a driver that already has a conversation for the set SHOULD return it
+   * rather than create a duplicate. Drives the New Chat "start a conversation"
+   * flow — the UI creates the conversation lazily, on the first message sent.
+   * Unsupported by default so drivers opt in.
+   */
+  async createChatForUsers(_userIds: string[]): Promise<LocalChat> {
+    void _userIds;
+    throw new Error(
+      `${this.constructor.name}.createChatForUsers: creating a conversation is not supported by this driver.`,
+    );
+  }
+
+  // --- Incoming invitations -----------------------------------------------
+  // Unsupported by default so drivers opt into the invitation flow. The Matrix
+  // driver implements both; the mock driver may model them for component tests.
+
+  /**
+   * Accepts the pending incoming invitation for `chatId` and resolves with the
+   * now-joined conversation, so the open route can switch from the invitation
+   * detail view to the normal timeline. Unsupported by default.
+   */
+  async acceptChatInvitation(_chatId: string): Promise<LocalChat> {
+    void _chatId;
+    throw new Error(
+      `${this.constructor.name}.acceptChatInvitation: invitations are not supported by this driver.`,
+    );
+  }
+
+  /**
+   * Refuses the pending incoming invitation for `chatId`, removing it from the
+   * conversation list. Unsupported by default.
+   */
+  async refuseChatInvitation(_chatId: string): Promise<void> {
+    void _chatId;
+    throw new Error(
+      `${this.constructor.name}.refuseChatInvitation: invitations are not supported by this driver.`,
     );
   }
 

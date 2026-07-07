@@ -46,13 +46,42 @@ const MOCK_SUPPORT_ACCOUNT: ChatAccountConfig = {
 
 // Dev-only: a single real Matrix account pointing at the Tchap dev homeserver,
 // surfaced as its own scope so it can be toggled from the left-panel dropdown
-// without disturbing the mock scopes.
+// without disturbing the mock scopes. No `settings` → the driver parses the
+// Tchap preset (email discovery, Tchap branding), keeping Tchap unchanged.
 const MATRIX_DEV_ACCOUNT: ChatAccountConfig = {
   accountId: "matrix-dev",
   kind: "matrix",
   label: "Tchap",
   criticality: "required",
   enabled: true,
+};
+
+// Dev-only: a Matrix account pointing at the LOCAL Synapse (`make run-matrix`).
+// `discovery: "fixed"` skips Tchap email discovery and targets the homeserver
+// directly. No fixed login hint: in local dev the Matrix login follows the
+// currently authenticated Hub user, whose Keycloak identity is linked by
+// `make seed-matrix`.
+//
+// `autoJoinInvites` is off so incoming invitations stay pending and surface in
+// the Hub invitation flow (accept/refuse) instead of being silently joined —
+// this is the account the invitation flow is verified against.
+const MATRIX_LOCAL_ACCOUNT: ChatAccountConfig = {
+  accountId: "matrix-local",
+  kind: "matrix",
+  label: "Matrix local",
+  criticality: "required",
+  enabled: true,
+  settings: {
+    discovery: "fixed",
+    baseUrl: "http://localhost:9808",
+    serverName: "localhost",
+    oidcClientId: "01J00000000000000000000000",
+    branding: {
+      clientName: "Hub",
+      logoUri: "http://localhost:9800/assets/logo-icon.svg",
+    },
+    autoJoinInvites: false,
+  },
 };
 
 export const DEFAULT_CHAT_SCOPES: ChatScope[] = [
@@ -80,6 +109,12 @@ export const DEFAULT_CHAT_SCOPES: ChatScope[] = [
     label: "Tchap (Matrix dev)",
     kind: "server",
     accounts: [MATRIX_DEV_ACCOUNT],
+  },
+  {
+    scopeId: "matrix-local",
+    label: "Matrix local (dev)",
+    kind: "server",
+    accounts: [MATRIX_LOCAL_ACCOUNT],
   },
 ];
 

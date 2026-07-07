@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { ChatEvent } from "../../Driver";
 import { MOCK_CHATS } from "../../mocks/mockChats";
 import { MockDriver } from "../MockDriver";
 
@@ -52,6 +53,73 @@ describe("MockDriver new chat", () => {
   });
 });
 
+describe("MockDriver.createChatForUsers", () => {
+  it("advertises conversation creation support", () => {
+    expect(new MockDriver().supportsConversationCreation).toBe(true);
+  });
+
+  it("creates a direct conversation, named from the people directory", async () => {
+    const driver = new MockDriver();
+
+    const chat = await driver.createChatForUsers(["user-amandine-korsgaard"]);
+
+    expect(chat.kind).toBe("direct");
+    expect(chat.participantIds).toEqual(["user-amandine-korsgaard"]);
+    expect(chat.name).toBe("Amandine Korsgaard");
+    expect(chat.visual).toEqual({ kind: "initials" });
+  });
+
+  it("creates a group conversation regardless of participant order", async () => {
+    const driver = new MockDriver();
+
+    const chat = await driver.createChatForUsers([
+      "user-jean-dustaff",
+      "user-amandine-korsgaard",
+    ]);
+
+    expect(chat.kind).toBe("group");
+    expect(chat.participantIds).toEqual([
+      "user-amandine-korsgaard",
+      "user-jean-dustaff",
+    ]);
+    expect(chat.visual).toEqual({ kind: "icon", icon: "groups" });
+  });
+
+  it("is idempotent: re-creating resolves the same conversation", async () => {
+    const driver = new MockDriver();
+
+    const first = await driver.createChatForUsers(["user-amandine-korsgaard"]);
+    const second = await driver.createChatForUsers(["user-amandine-korsgaard"]);
+
+    expect(second.id).toBe(first.id);
+  });
+
+  it("returns an existing seed conversation instead of creating a duplicate", async () => {
+    const driver = new MockDriver();
+
+    const created = await driver.createChatForUsers(["user-didier-salambo"]);
+
+    expect(created.id).toBe(MOCK_CHATS[0].id);
+  });
+
+  it("makes a created conversation resolvable and fetchable", async () => {
+    const driver = new MockDriver();
+
+    const created = await driver.createChatForUsers(["user-amandine-korsgaard"]);
+
+    await expect(
+      driver.getChatForUsers(["user-amandine-korsgaard"]),
+    ).resolves.toMatchObject({ id: created.id });
+    await expect(driver.getChat(created.id)).resolves.toMatchObject({
+      id: created.id,
+    });
+  });
+
+  it("rejects an empty participant set", async () => {
+    await expect(new MockDriver().createChatForUsers([])).rejects.toThrow();
+  });
+});
+
 describe("MockDriver.toggleChatReaction", () => {
   it("returns account-local chat sections", async () => {
     const driver = new MockDriver("mock-support", { nameSuffix: "Support" });
@@ -60,6 +128,43 @@ describe("MockDriver.toggleChatReaction", () => {
 
     expect(sections.favourites[0].id).toBe(CHAT_ID);
     expect(sections.favourites[0].name).toContain("Support");
+  });
+
+  it("seeds unread from the mock flags and clears it on markChatRead", async () => {
+    const driver = new MockDriver();
+
+    const before = await driver.getUnread();
+    const unreadId = Object.keys(before).find((id) => before[id].unread);
+    expect(unreadId).toBeDefined();
+    if (!unreadId) {
+      return;
+    }
+
+    await driver.markChatRead(unreadId);
+
+    const after = await driver.getUnread();
+    expect(after[unreadId]).toEqual({ unread: false, highlight: false });
+  });
+
+  it("announces the cleared unread through the event stream", async () => {
+    const driver = new MockDriver();
+    const before = await driver.getUnread();
+    const unreadId = Object.keys(before).find((id) => before[id].unread);
+    expect(unreadId).toBeDefined();
+    if (!unreadId) {
+      return;
+    }
+
+    const events: ChatEvent[] = [];
+    driver.subscribeToEvents((event) => events.push(event));
+
+    await driver.markChatRead(unreadId);
+
+    expect(events).toContainEqual({
+      type: "unread:changed",
+      chatId: unreadId,
+      unread: { unread: false, highlight: false },
+    });
   });
 
   it("keeps the same local chat id isolated per account", async () => {
