@@ -46,13 +46,36 @@ const MOCK_SUPPORT_ACCOUNT: ChatAccountConfig = {
 
 // Dev-only: a single real Matrix account pointing at the Tchap dev homeserver,
 // surfaced as its own scope so it can be toggled from the left-panel dropdown
-// without disturbing the mock scopes.
+// without disturbing the mock scopes. No `settings` means the Matrix driver
+// parses the default Tchap preset.
 const MATRIX_DEV_ACCOUNT: ChatAccountConfig = {
   accountId: "matrix-dev",
   kind: "matrix",
   label: "Tchap",
   criticality: "required",
   enabled: true,
+};
+
+// Dev-only: a Matrix account pointing at the local Synapse/MAS stack started by
+// `make run-matrix`. Fixed discovery skips Tchap email lookup and targets the
+// homeserver directly. The stable MAS client id matches the local config.
+const MATRIX_LOCAL_ACCOUNT: ChatAccountConfig = {
+  accountId: "matrix-local",
+  kind: "matrix",
+  label: "Matrix local",
+  criticality: "required",
+  enabled: true,
+  settings: {
+    discovery: "fixed",
+    baseUrl: "http://localhost:9808",
+    serverName: "localhost",
+    oidcClientId: "01J00000000000000000000000",
+    branding: {
+      clientName: "Hub",
+      logoUri: "http://localhost:9800/assets/logo-icon.svg",
+    },
+    autoJoinInvites: false,
+  },
 };
 
 export const DEFAULT_CHAT_SCOPES: ChatScope[] = [
@@ -80,6 +103,12 @@ export const DEFAULT_CHAT_SCOPES: ChatScope[] = [
     label: "Tchap (Matrix dev)",
     kind: "server",
     accounts: [MATRIX_DEV_ACCOUNT],
+  },
+  {
+    scopeId: "matrix-local",
+    label: "Matrix local (dev)",
+    kind: "server",
+    accounts: [MATRIX_LOCAL_ACCOUNT],
   },
 ];
 
