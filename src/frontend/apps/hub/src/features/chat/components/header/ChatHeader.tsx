@@ -16,6 +16,11 @@ type ChatHeaderProps = {
   chat: Chat | null;
   activeTool: ChatTool | null;
   onToggleTool: (tool: ChatTool) => void;
+  /**
+   * Whether to render the conversation tools (meeting, threads, files). Off for
+   * a pending invitation, whose tools panel and composer are suppressed.
+   */
+  showTools?: boolean;
 };
 
 /**
@@ -28,6 +33,7 @@ export const ChatHeader = ({
   chat,
   activeTool,
   onToggleTool,
+  showTools = true,
 }: ChatHeaderProps) => {
   const { t } = useTranslation();
 
@@ -72,36 +78,38 @@ export const ChatHeader = ({
       )}
 
       <div className="hub__chat-header__actions">
-        <div className="hub__chat-header__selector">
-          <button
-            type="button"
-            className="hub__chat-header__icon-button"
-            aria-label={t("Start a meeting")}
-          >
-            <Meet />
-          </button>
-          <span className="hub__chat-header__separator" aria-hidden="true" />
-          <button
-            type="button"
-            className="hub__chat-header__icon-button"
-            aria-label={t("Threads")}
-            aria-pressed={activeTool === "threads"}
-            data-active={activeTool === "threads"}
-            onClick={() => onToggleTool("threads")}
-          >
-            <Thread />
-          </button>
-          <button
-            type="button"
-            className="hub__chat-header__icon-button"
-            aria-label={t("Files")}
-            aria-pressed={activeTool === "files"}
-            data-active={activeTool === "files"}
-            onClick={() => onToggleTool("files")}
-          >
-            <File />
-          </button>
-        </div>
+        {showTools && (
+          <div className="hub__chat-header__selector">
+            <button
+              type="button"
+              className="hub__chat-header__icon-button"
+              aria-label={t("Start a meeting")}
+            >
+              <Meet />
+            </button>
+            <span className="hub__chat-header__separator" aria-hidden="true" />
+            <button
+              type="button"
+              className="hub__chat-header__icon-button"
+              aria-label={t("Threads")}
+              aria-pressed={activeTool === "threads"}
+              data-active={activeTool === "threads"}
+              onClick={() => onToggleTool("threads")}
+            >
+              <Thread />
+            </button>
+            <button
+              type="button"
+              className="hub__chat-header__icon-button"
+              aria-label={t("Files")}
+              aria-pressed={activeTool === "files"}
+              data-active={activeTool === "files"}
+              onClick={() => onToggleTool("files")}
+            >
+              <File />
+            </button>
+          </div>
+        )}
 
         <AccountSelector />
       </div>

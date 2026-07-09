@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Chat, ChatDocument, ChatRef } from "@/features/drivers/types";
 
+import { isInvitationChat } from "../chatMembership";
 import {
   ChatPanelProvider,
   type DraftThreadRoot,
@@ -16,6 +17,7 @@ import { useSendChatMessage } from "../hooks/useSendChatMessage";
 
 import { ChatComposer } from "./ChatComposer";
 import { ChatConversation } from "./ChatConversation";
+import { ChatInvitationView } from "./ChatInvitationView";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
 import { documentToPreviewFile } from "./tools-panel/documentToPreviewFile";
@@ -32,9 +34,12 @@ type ChatViewProps = {
   renderEmpty?: () => ReactNode;
   /**
    * Called after a message is successfully sent. Lets the new-chat host commit
-   * the URL to the resolved conversation once the user actually sends.
+   * the URL to the resolved (or freshly created) conversation once the user
+   * actually sends.
    */
   onSent?: (ref: ChatRef) => void;
+  /** Bumped by the host to move focus into the composer (New Chat Enter). */
+  composerFocusSignal?: number;
 };
 
 /**
@@ -48,9 +53,14 @@ export const ChatView = ({
   renderHeader,
   renderEmpty,
   onSent,
+  composerFocusSignal,
 }: ChatViewProps) => {
   const { t } = useTranslation();
   const { chat } = useChat(chatRef);
+  // A pending incoming invitation replaces the timeline/composer/tools surfaces
+  // with the invitation detail view until it is accepted.
+  const invitationChat = isInvitationChat(chat) ? chat : null;
+  const isInvitation = invitationChat !== null;
   const {
     sendMessage,
     isSending: isSendingMessage,
@@ -169,38 +179,55 @@ export const ChatView = ({
               chat={chat}
               activeTool={activeTool}
               onToggleTool={toggleTool}
+              showTools={!isInvitation}
             />
           </>
         )}
 
         <div className="hub__chat-view__main">
           <div className="hub__chat-view__content">
-            {chatRef ? <ChatConversation chatRef={chatRef} /> : renderEmpty?.()}
+            {invitationChat && chatRef ? (
+              <ChatInvitationView chatRef={chatRef} chat={invitationChat} />
+            ) : chatRef ? (
+              <ChatConversation chatRef={chatRef} />
+            ) : (
+              renderEmpty?.()
+            )}
           </div>
-          <div className="hub__chat-view__composer">
-            {/* The composer keeps a single instance across the empty → chat
-                transition so an in-progress draft and the input focus survive
-                when a conversation resolves. */}
-            <div className="hub__chat-composer-stack">
-              {chatRef ? <ConversationUnreadBanner chatRef={chatRef} /> : null}
-              <ChatComposer
-                conversationId={
-                  chatRef ? `${chatRef.accountId}:${chatRef.chatId}` : undefined
-                }
-                placeholder={
-                  chatRef && !isCompositionSupported
-                    ? t("Sending messages isn't available on this account yet.")
-                    : undefined
-                }
-                disabled={!chatRef || !isCompositionSupported}
-                isSubmitting={isSendingMessage}
-                onSubmit={chatRef ? handleSend : undefined}
-              />
+          {/* An invitation suppresses the composer until it is accepted. */}
+          {!isInvitation && (
+            <div className="hub__chat-view__composer">
+              {/* The composer keeps a single instance across the empty → chat
+                  transition so an in-progress draft and the input focus survive
+                  when a conversation resolves. */}
+              <div className="hub__chat-composer-stack">
+                {chatRef ? (
+                  <ConversationUnreadBanner chatRef={chatRef} />
+                ) : null}
+                <ChatComposer
+                  conversationId={
+                    chatRef
+                      ? `${chatRef.accountId}:${chatRef.chatId}`
+                      : undefined
+                  }
+                  placeholder={
+                    chatRef && !isCompositionSupported
+                      ? t(
+                          "Sending messages isn't available on this account yet.",
+                        )
+                      : undefined
+                  }
+                  disabled={!chatRef || !isCompositionSupported}
+                  isSubmitting={isSendingMessage}
+                  focusSignal={composerFocusSignal}
+                  onSubmit={chatRef ? handleSend : undefined}
+                />
+              </div>
             </div>
-          </div>
+          )}
         </div>
         <div className="hub__chat-view__panel">
-          {chatRef && (
+          {chatRef && !isInvitation && (
             <ChatToolsPanel
               tool={activeTool ?? displayedTool}
               isOpen={activeTool !== null}

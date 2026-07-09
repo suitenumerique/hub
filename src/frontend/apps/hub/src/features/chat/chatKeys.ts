@@ -8,6 +8,15 @@ export const chatKeys = {
   chatsOf: (accountId: AccountId) => ["chats", accountId] as const,
   noChat: () => ["chat", "none"] as const,
 
+  /** Existing conversation resolved from a participant set (New Chat search). */
+  chatForUsers: (
+    accountId: AccountId | null,
+    participantIds: readonly string[],
+  ) => ["chat-for-users", accountId ?? "none", participantIds] as const,
+  /** Prefix matching every participant-set resolution of an account (for bulk
+   * invalidation when the account's room list changes). */
+  chatForUsersOf: (accountId: AccountId | null) =>
+    ["chat-for-users", accountId ?? "none"] as const,
   chat: (ref: ChatRef) => ["chat", ref.accountId, ref.chatId] as const,
   messages: (ref: ChatRef) =>
     ["chat-messages", ref.accountId, ref.chatId] as const,

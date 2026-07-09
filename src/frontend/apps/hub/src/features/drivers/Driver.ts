@@ -135,6 +135,12 @@ export type ChatEventListener = (event: ChatEvent) => void;
 export abstract class Driver {
   readonly accountId: AccountId;
   readonly supportsComposition: boolean = false;
+  /**
+   * Whether the driver can start a brand-new conversation from a participant set
+   * (see `createChatForUsers`). Off by default so drivers opt in; gates the
+   * New Chat composer for a not-yet-existing conversation.
+   */
+  readonly supportsConversationCreation: boolean = false;
 
   constructor(accountId: AccountId = "default") {
     this.accountId = accountId;
@@ -201,6 +207,48 @@ export abstract class Driver {
     void _params;
     throw new Error(
       `${this.constructor.name}.startChatThread: composition is not supported by this driver.`,
+    );
+  }
+
+  /**
+   * Creates a brand-new conversation for exactly these participants (a direct
+   * chat for one, a group for several) and resolves with it. Idempotent where it
+   * can be: a driver that already has a conversation for the set SHOULD return it
+   * rather than create a duplicate. Drives the New Chat "start a conversation"
+   * flow — the UI creates the conversation lazily, on confirming the selection.
+   * Unsupported by default so drivers opt in (see `supportsConversationCreation`).
+   */
+  async createChatForUsers(_userIds: string[]): Promise<LocalChat> {
+    void _userIds;
+    throw new Error(
+      `${this.constructor.name}.createChatForUsers: creating a conversation is not supported by this driver.`,
+    );
+  }
+
+  // --- Incoming invitations -----------------------------------------------
+  // Unsupported by default so drivers opt into the invitation flow. The Matrix
+  // driver implements both.
+
+  /**
+   * Accepts the pending incoming invitation for `chatId` and resolves with the
+   * now-joined conversation, so the open route can switch from the invitation
+   * detail view to the normal timeline. Unsupported by default.
+   */
+  async acceptChatInvitation(_chatId: string): Promise<LocalChat> {
+    void _chatId;
+    throw new Error(
+      `${this.constructor.name}.acceptChatInvitation: invitations are not supported by this driver.`,
+    );
+  }
+
+  /**
+   * Refuses the pending incoming invitation for `chatId`, removing it from the
+   * conversation list. Unsupported by default.
+   */
+  async refuseChatInvitation(_chatId: string): Promise<void> {
+    void _chatId;
+    throw new Error(
+      `${this.constructor.name}.refuseChatInvitation: invitations are not supported by this driver.`,
     );
   }
 
