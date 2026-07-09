@@ -7,6 +7,7 @@ import type { AccountId, ChatAccountConfig } from "./types";
 
 export type DriverEntry = ChatAccountConfig & {
   driver: Driver;
+  settingsFingerprint: string;
 };
 
 const fallbackConfig = (): ChatAccountConfig => ({
@@ -28,9 +29,20 @@ const snapshotEquals = (a: DriverEntry[], b: DriverEntry[]): boolean =>
       entry.label === other.label &&
       entry.criticality === other.criticality &&
       entry.enabled === other.enabled &&
+      entry.settingsFingerprint === other.settingsFingerprint &&
       entry.driver === other.driver
     );
   });
+
+const fingerprintSettings = (
+  settings: ChatAccountConfig["settings"],
+): string => {
+  try {
+    return JSON.stringify(settings ?? null);
+  } catch {
+    return String(settings);
+  }
+};
 
 export class DriverRegistry {
   private entries = new Map<AccountId, DriverEntry>();
@@ -60,10 +72,14 @@ export class DriverRegistry {
 
     enabledConfigs.forEach((config) => {
       const existing = this.entries.get(config.accountId);
-      const driver =
-        existing && existing.kind === config.kind
-          ? existing.driver
-          : createDriver(config.kind, config.accountId, config.settings);
+      const settingsFingerprint = fingerprintSettings(config.settings);
+      const canReuseDriver =
+        existing &&
+        existing.kind === config.kind &&
+        existing.settingsFingerprint === settingsFingerprint;
+      const driver = canReuseDriver
+        ? existing.driver
+        : createDriver(config.kind, config.accountId, config.settings);
 
       if (existing && existing.driver !== driver) {
         existing.driver.destroy();
@@ -75,6 +91,7 @@ export class DriverRegistry {
       nextEntries.set(config.accountId, {
         ...config,
         driver,
+        settingsFingerprint,
       });
     });
 

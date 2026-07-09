@@ -98,4 +98,44 @@ describe("DriverRegistry", () => {
     expect(destroy).toHaveBeenCalledTimes(1);
     expect(registry.getSnapshot()).toEqual([]);
   });
+
+  it("keeps driver instances stable until account settings change", () => {
+    const registry = new DriverRegistry();
+    const config = {
+      accountId: "matrix-local",
+      kind: "matrix" as const,
+      label: "Matrix",
+      criticality: "required" as const,
+      enabled: true,
+    };
+
+    registry.reconcile([
+      {
+        ...config,
+        settings: { baseUrl: "http://localhost:9808" },
+      },
+    ]);
+    const first = registry.getSnapshot()[0];
+
+    registry.reconcile([
+      {
+        ...config,
+        settings: { baseUrl: "http://localhost:9808" },
+      },
+    ]);
+    const second = registry.getSnapshot()[0];
+
+    expect(second.driver).toBe(first.driver);
+
+    registry.reconcile([
+      {
+        ...config,
+        settings: { baseUrl: "http://localhost:9809" },
+      },
+    ]);
+    const third = registry.getSnapshot()[0];
+
+    expect(third.driver).not.toBe(first.driver);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
 });
