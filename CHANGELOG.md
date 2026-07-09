@@ -22,6 +22,8 @@ and this project adheres to
 - ✨(docker) Add a local dev-only Matrix stack with Keycloak auth and seed
 - ✨(frontend) Add the local Matrix frontend scope with lazy MAS/OIDC client
   setup
+- ✨(frontend) Bridge Matrix `/sync` onto the real-time chat event stream
+- ✨(frontend) Send text messages from the Hub to Matrix conversations
 
 ### Changed
 

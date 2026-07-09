@@ -4,8 +4,11 @@ import {
   MatrixError,
   type MatrixClient,
   type MatrixEvent,
+  RelationType,
   type Room,
   RoomEvent,
+  SyncState,
+  type SyncStateData,
 } from "matrix-js-sdk/lib/matrix";
 import { HttpApiEvent } from "matrix-js-sdk/lib/http-api";
 
@@ -35,6 +38,7 @@ import {
   ChatEvent,
   ChatEventListener,
   GetChatMessagesParams,
+  SendChatMessageParams,
 } from "../Driver";
 import {
   AccountId,
@@ -217,16 +221,130 @@ const buildAuthors = (
 };
 
 /**
+ * A stable `ChatMessage` for a just-sent event, folded onto the `"me"` sentinel
+ * with the REAL server event id so the composer hook can swap its optimistic
+ * bubble for a `/sync`-consistent message. Kept a pure function so the send
+ * mapping is unit-testable without a live server.
+ */
+const sendResponseToChatMessage = (
+  eventId: string,
+  content: string,
+): ChatMessage => ({
+  id: eventId,
+  authorId: SELF_AUTHOR_ID,
+  content,
+  timestamp: new Date().toISOString(),
+  reactions: [],
+});
+
+/**
+ * True when `event` is THIS session's own outgoing echo — a local echo still in
+ * flight (`status` set) or the remote echo the homeserver returned to the
+ * sending device (`unsigned.transaction_id` / a local `txnId`). Those are
+ * reconciled by the composer hook's optimistic→replace flow, so the sync bridge
+ * must not re-broadcast them (that would duplicate the bubble).
+ *
+ * Deliberately NARROWER than "sent by the current user": the same user sending
+ * from ANOTHER device (e.g. Element) carries no local txn id here, so that
+ * message is delivered live like any other incoming one.
+ */
+const isOwnEcho = (event: MatrixEvent): boolean =>
+  event.status !== null ||
+  Boolean(event.getUnsigned()?.transaction_id) ||
+  Boolean(event.getTxnId());
+
+/**
+ * Translates a single LIVE timeline event into the fine-grained `ChatEvent`s the
+ * sync bridge should broadcast — an array, since "broadcast nothing" is a valid
+ * outcome. Pure (no client, no driver state) so the mapping is unit-testable.
+ *
+ * Scope for this step is text messages only: a plain message becomes
+ * `message:new` (with its `authors`) and an edit (`m.replace`) becomes
+ * `message:updated`. Reactions are ignored (a later step owns them), and
+ * everything else — redactions, thread replies, membership, other state — stays
+ * coarse (`chat:changed`) so the affected caches refetch. This session's own
+ * echo returns `[]`: the optimistic→replace flow already rendered it, so
+ * re-broadcasting would duplicate the message.
+ */
+export const timelineEventToChatEvent = (
+  event: MatrixEvent,
+  room: Room,
+  selfUserId: string | undefined,
+): ChatEvent[] => {
+  // Reactions reach the UI through a dedicated relation bridge in a later step;
+  // ignoring them here avoids a full conversation refetch on every annotation.
+  if (event.getType() === EventType.Reaction) {
+    return [];
+  }
+
+  // Non-text activity (redactions, membership, other state) stays coarse.
+  if (!isMessageEvent(event)) {
+    return [{ type: "chat:changed", chatId: room.roomId }];
+  }
+
+  // Our own echo is already on screen via the optimistic bubble; suppressing it
+  // here is what keeps a Hub-sent message from rendering twice.
+  if (isOwnEcho(event)) {
+    return [];
+  }
+
+  // A thread reply does not live in the main timeline. Threads are a later step,
+  // so refresh the conversation coarsely rather than mis-appending it as a
+  // top-level bubble.
+  if (event.threadRootId) {
+    return [{ type: "chat:changed", chatId: room.roomId }];
+  }
+
+  // An edit (`m.replace`) updates an existing bubble in place.
+  const relation = event.getRelation();
+  if (relation?.rel_type === RelationType.Replace && relation.event_id) {
+    const newBody = event.getContent<{ "m.new_content"?: { body?: string } }>()[
+      "m.new_content"
+    ]?.body;
+    // Keep the ORIGINAL send time. `matrixEventToChatMessage` (history reads)
+    // dates an edited message from its original event, so using the edit event's
+    // ts here would make the bubble's time jump live, then revert on the next
+    // refetch. Fall back to the edit ts only when the original is not loaded.
+    const original = room.findEventById(relation.event_id);
+    return [
+      {
+        type: "message:updated",
+        chatId: room.roomId,
+        message: {
+          id: relation.event_id,
+          authorId: toAuthorId(event.getSender(), selfUserId),
+          content: typeof newBody === "string" ? newBody : "",
+          timestamp: new Date(original?.getTs() ?? event.getTs()).toISOString(),
+          reactions: [],
+        },
+      },
+    ];
+  }
+
+  // A plain new message from anyone else (including the same user on another
+  // device) appears live.
+  return [
+    {
+      type: "message:new",
+      chatId: room.roomId,
+      message: matrixEventToChatMessage(event, selfUserId),
+      authors: buildAuthors(room, [event], selfUserId),
+    },
+  ];
+};
+
+/**
  * Matrix-backed chat driver. All Matrix specifics — the OIDC handshake, client
  * bootstrap and `/sync` long-polling — live here, behind the generic `Driver`
  * contract, so the UI never imports anything Matrix.
  *
- * Room and message reads are already Matrix-backed so the chat UI can inspect
- * seeded local rooms. Composition, threads, reactions and documents remain
- * intentionally unimplemented in this step.
+ * Room and message reads are Matrix-backed, `/sync` is bridged onto the generic
+ * real-time event stream, and text messages are sent through the live client.
+ * Threads, reactions and documents remain intentionally unimplemented in this
+ * step.
  */
 export class MatrixDriver extends MockDriver {
-  override readonly supportsComposition: boolean = false;
+  override readonly supportsComposition: boolean = true;
 
   private mx: MatrixClient | null = null;
   /** Subscribers to the single global event stream. */
@@ -412,10 +530,29 @@ export class MatrixDriver extends MockDriver {
     return { messages, authors, nextCursor };
   }
 
-  async sendChatMessage(): Promise<ChatMessage> {
-    throw new Error(
-      "MatrixDriver.sendChatMessage: Matrix composition is not implemented yet.",
-    );
+  /**
+   * Sends a text message as an `m.room.message` / `m.text` and resolves with the
+   * final `ChatMessage`. The id is the REAL server event id, so the composer
+   * hook replaces its optimistic bubble with a `/sync`-consistent message (see
+   * {@link sendResponseToChatMessage}); the `/sync` echo of this same event is
+   * suppressed as our own (see {@link isOwnEcho}), so it never double-renders.
+   * The conversation rises in the list for free once the hook invalidates it.
+   */
+  async sendChatMessage({
+    chatId,
+    content,
+  }: SendChatMessageParams): Promise<ChatMessage> {
+    const mx = this.mx;
+    if (!mx) {
+      throw new Error("MatrixDriver.sendChatMessage: client is not connected.");
+    }
+    if (!mx.getRoom(chatId)) {
+      throw new Error(
+        `MatrixDriver.sendChatMessage: room "${chatId}" not found.`,
+      );
+    }
+    const { event_id: eventId } = await mx.sendTextMessage(chatId, content);
+    return sendResponseToChatMessage(eventId, content);
   }
 
   async sendChatThreadReply(): Promise<ChatThreadMutationResult> {
@@ -563,25 +700,78 @@ export class MatrixDriver extends MockDriver {
 
     // Bridge Matrix `/sync` onto the generic event stream, once, for the
     // client's lifetime. The handlers fan out to whatever subscribers exist at
-    // the time (an empty set is a harmless no-op). Until the Matrix → generic
-    // data mapping lands, only COARSE events are emitted (per-room
-    // `chat:changed`, list-level `chats:changed`); fine-grained payload events
-    // (`message:new`, `reaction:updated`) get emitted here once it does.
+    // the time (an empty set is a harmless no-op). Live timeline events become
+    // fine-grained `message:new` / `message:updated` (see
+    // {@link timelineEventToChatEvent}); list membership changes and reconnects
+    // stay coarse (`chats:changed`, per-room `chat:changed`).
     this.detachSync();
-    const onTimeline = (_event: MatrixEvent, room?: Room) => {
-      if (room) {
-        this.emit({ type: "chat:changed", chatId: room.roomId });
+    const selfUserId = mx.getUserId() ?? undefined;
+    const onTimeline = (
+      event: MatrixEvent,
+      room: Room | undefined,
+      toStartOfTimeline: boolean | undefined,
+    ) => {
+      // Backward-pagination history is served by `getChatMessages`, not the
+      // live stream.
+      if (!room || toStartOfTimeline) {
+        return;
+      }
+      for (const chatEvent of timelineEventToChatEvent(
+        event,
+        room,
+        selfUserId,
+      )) {
+        this.emit(chatEvent);
       }
     };
+    // A joined / left / created room changes what the list shows; drop the
+    // cached joined-room set so `getChats` re-reads it.
     const onRoom = () => {
+      this.joinedRoomIds = null;
+      this.emit({ type: "chats:changed" });
+    };
+    // Reconnect / first authentic network sync. A warm start resolves the
+    // initial sync from IndexedDB (`fromCache`) before the network catches up,
+    // and a dropped connection resumes at `Syncing` from a non-`Syncing` state;
+    // both can leave the `staleTime: Infinity` caches behind, so force a coarse
+    // re-read of the visible rooms. Steady-state `Syncing → Syncing` and the
+    // cache-sourced state are skipped, so this fires rarely.
+    const onSync = (
+      state: SyncState,
+      prevState: SyncState | null,
+      data?: SyncStateData,
+    ) => {
+      if (
+        state !== SyncState.Syncing ||
+        prevState === SyncState.Syncing ||
+        data?.fromCache === true
+      ) {
+        return;
+      }
+      this.joinedRoomIds = null;
+      for (const room of mx.getVisibleRooms()) {
+        this.emit({ type: "chat:changed", chatId: room.roomId });
+      }
+      this.emit({ type: "chats:changed" });
+    };
+    // Our own membership changing (leaving, being kicked/banned, joining) alters
+    // the conversation list, but a leave is an ordinary incremental sync: it
+    // fires neither `ClientEvent.Room` (the room is not brand-new) nor `onSync`
+    // (steady-state `Syncing`). Drop the cached joined set and refresh the list
+    // here so a left room does not linger. `onRoom` handles brand-new joins.
+    const onMyMembership = () => {
       this.joinedRoomIds = null;
       this.emit({ type: "chats:changed" });
     };
     mx.on(RoomEvent.Timeline, onTimeline);
     mx.on(ClientEvent.Room, onRoom);
+    mx.on(ClientEvent.Sync, onSync);
+    mx.on(RoomEvent.MyMembership, onMyMembership);
     this.detachSync = () => {
       mx.off(RoomEvent.Timeline, onTimeline);
       mx.off(ClientEvent.Room, onRoom);
+      mx.off(ClientEvent.Sync, onSync);
+      mx.off(RoomEvent.MyMembership, onMyMembership);
     };
   }
 

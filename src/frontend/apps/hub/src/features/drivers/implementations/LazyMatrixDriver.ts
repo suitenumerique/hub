@@ -33,7 +33,10 @@ import type {
  * thin proxy.
  */
 export class LazyMatrixDriver extends BaseDriver {
-  override readonly supportsComposition = false;
+  // Static capability the UI reads synchronously (see `useChatCompositionSupport`),
+  // before the SDK lazy-loads. It must mirror the real `MatrixDriver`; the actual
+  // `sendChatMessage` still routes through `withTarget`, loading the driver on demand.
+  override readonly supportsComposition = true;
 
   private target: Driver | null = null;
   private targetPromise: Promise<Driver> | null = null;
