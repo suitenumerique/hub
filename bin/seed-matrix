@@ -6,7 +6,7 @@ Run with `make seed-matrix` after `make run-matrix`.
 The seed is intentionally small for this PR:
   - provision three Matrix users linked to existing Keycloak users;
   - create one direct conversation and one multi-user conversation;
-  - add a few plaintext messages.
+  - add a few plaintext messages and one thread in the group.
 
 Idempotency is alias-based: each room has a fixed alias, so a later run finds
 the room and does not post the transcript again.
@@ -50,6 +50,12 @@ GROUP_MESSAGES = [
     ("hub", "Welcome to the local Matrix group."),
     ("user-e2e-chromium", "Chromium can read this room too."),
     ("user-e2e-webkit", "WebKit is also present."),
+]
+
+THREAD_ROOT_INDEX = 0
+THREAD_REPLIES = [
+    ("user-e2e-webkit", "First seeded reply in the Matrix thread."),
+    ("user-e2e-chromium", "Second seeded reply, unread after the baseline receipt."),
 ]
 
 
@@ -142,20 +148,24 @@ def mas_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def issue_token(username: str) -> str:
+def try_issue_token(username: str) -> str | None:
     issued = mas_cli("issue-compatibility-token", username)
     if issued.returncode != 0:
-        fail(
-            f"issue-compatibility-token failed for '{username}': "
-            f"{issued.stderr.strip()}"
-        )
+        return None
 
     marker = "Compatibility token issued: "
     for line in (issued.stdout + issued.stderr).splitlines():
         if marker in line:
             return line.split(marker, 1)[1].split()[0]
+    return None
 
-    fail(f"could not parse the access token for '{username}'.")
+
+def issue_token(username: str) -> str:
+    token = try_issue_token(username)
+    if token:
+        return token
+
+    fail(f"issue-compatibility-token failed for '{username}'.")
 
 
 def provision_linked_user(admin_token: str, username: str, display_name: str) -> str:
@@ -171,6 +181,11 @@ def provision_linked_user(admin_token: str, username: str, display_name: str) ->
     )
     output = registered.stdout + registered.stderr
     if registered.returncode != 0 and "already exists" not in output.lower():
+        # MAS releases do not use a stable "already exists" error. Confirm the
+        # account directly before treating a different diagnostic as fatal.
+        existing_token = try_issue_token(username)
+        if existing_token:
+            return existing_token
         fail(f"register-user failed for '{username}': {output.strip()}")
     return issue_token(username)
 
@@ -230,6 +245,95 @@ def send_message(token: str, room_id: str, body: str, txn_id: str) -> str:
     )["event_id"]
 
 
+def send_thread_reply(
+    token: str, room_id: str, root_id: str, body: str, txn_id: str
+) -> str:
+    return http_json(
+        "PUT",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/send/m.room.message/{txn_id}",
+        token=token,
+        body={
+            "msgtype": "m.text",
+            "body": body,
+            "m.relates_to": {
+                "rel_type": "m.thread",
+                "event_id": root_id,
+                "m.in_reply_to": {"event_id": root_id},
+                "is_falling_back": True,
+            },
+        },
+    )["event_id"]
+
+
+def send_thread_receipt(
+    token: str, room_id: str, root_id: str, event_id: str
+) -> None:
+    http_json(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/receipt/m.read/{event_id}",
+        token=token,
+        body={"thread_id": root_id},
+    )
+
+
+def find_message_id_by_body(token: str, room_id: str, body: str) -> str | None:
+    events = http_json(
+        "GET",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/messages?dir=b&limit=100",
+        token=token,
+    ).get("chunk", [])
+    for event in events:
+        content = event.get("content", {})
+        if (
+            event.get("type") == "m.room.message"
+            and content.get("body") == body
+            and content.get("m.relates_to", {}).get("rel_type") != "m.thread"
+        ):
+            return event.get("event_id")
+    return None
+
+
+def thread_relations(token: str, room_id: str, root_id: str) -> list[dict[str, Any]]:
+    return http_json(
+        "GET",
+        f"{HOMESERVER}/_matrix/client/v1/rooms/{room_id}/relations/{root_id}/m.thread",
+        token=token,
+    ).get("chunk", [])
+
+
+def ensure_thread(tokens: dict[str, str], room_id: str, root_id: str) -> None:
+    existing = thread_relations(tokens["hub"], room_id, root_id)
+    by_body = {
+        event.get("content", {}).get("body"): event.get("event_id")
+        for event in existing
+    }
+    first_author, first_body = THREAD_REPLIES[0]
+    first_id = by_body.get(first_body)
+    if not first_id:
+        first_id = send_thread_reply(
+            tokens[first_author],
+            room_id,
+            root_id,
+            first_body,
+            f"{GROUP_ALIAS_LOCALPART}-thread-0",
+        )
+
+    second_author, second_body = THREAD_REPLIES[1]
+    if second_body not in by_body:
+        # Establish a real threaded baseline before the second reply. This avoids
+        # the SDK's legacy rule that treats threads predating the first threaded
+        # receipt as already read, making first-unread reproducible on a fresh DB.
+        send_thread_receipt(tokens["hub"], room_id, root_id, first_id)
+        send_thread_reply(
+            tokens[second_author],
+            room_id,
+            root_id,
+            second_body,
+            f"{GROUP_ALIAS_LOCALPART}-thread-1",
+        )
+        print(f"seed-matrix: seeded a 2-reply thread in {room_id}.")
+
+
 def ensure_room(
     tokens: dict[str, str],
     owner: str,
@@ -274,7 +378,7 @@ def main() -> None:
         DIRECT_MESSAGES,
         is_direct=True,
     )
-    ensure_room(
+    group_room_id = ensure_room(
         tokens,
         "hub",
         GROUP_ALIAS_LOCALPART,
@@ -282,6 +386,14 @@ def main() -> None:
         ["user-e2e-chromium", "user-e2e-webkit"],
         GROUP_MESSAGES,
     )
+    root_id = find_message_id_by_body(
+        tokens["hub"],
+        group_room_id,
+        GROUP_MESSAGES[THREAD_ROOT_INDEX][1],
+    )
+    if not root_id:
+        fail("could not find the seeded group message used as thread root.")
+    ensure_thread(tokens, group_room_id, root_id)
     print("seed-matrix: Done.")
 
 

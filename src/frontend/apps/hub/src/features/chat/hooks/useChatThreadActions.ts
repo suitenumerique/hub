@@ -22,8 +22,9 @@ type ThreadMatcher = (threadId: string) => boolean;
 type ReadContext = {
   threadsKey: QueryKey;
   messagesKey: QueryKey;
-  previousThreads: ChatThread[] | undefined;
-  previousMessages: ChatMessagesData | undefined;
+  affectedThreadIds: string[];
+  previousThreadUnread: Record<string, number>;
+  previousRootUnread: Record<string, number>;
 };
 
 /**
@@ -38,7 +39,10 @@ const clearThreadBadges = (
   ...data,
   pages: data.pages.map((page) => {
     const touched = page.messages.some(
-      (message) => message.thread !== undefined && matches(message.thread.id),
+      (message) =>
+        message.thread !== undefined &&
+        message.thread.unreadCount !== 0 &&
+        matches(message.thread.id),
     );
     if (!touched) {
       return page;
@@ -46,12 +50,53 @@ const clearThreadBadges = (
     return {
       ...page,
       messages: page.messages.map((message) =>
-        message.thread !== undefined && matches(message.thread.id)
+        message.thread !== undefined &&
+        message.thread.unreadCount !== 0 &&
+        matches(message.thread.id)
           ? { ...message, thread: { ...message.thread, unreadCount: 0 } }
           : message,
       ),
     };
   }),
+});
+
+const rootUnreadByThreadId = (
+  data: ChatMessagesData | undefined,
+  matches: ThreadMatcher,
+): Record<string, number> =>
+  Object.fromEntries(
+    (data?.pages ?? [])
+      .flatMap((page) => page.messages)
+      .flatMap((message) => (message.thread ? [message.thread] : []))
+      .filter((thread) => matches(thread.id))
+      .map((thread) => [thread.id, thread.unreadCount]),
+  );
+
+/** Restore only badges still carrying our optimistic zero. */
+const restoreThreadBadges = (
+  data: ChatMessagesData,
+  affectedThreadIds: Set<string>,
+  previousUnread: Record<string, number>,
+): ChatMessagesData => ({
+  ...data,
+  pages: data.pages.map((page) => ({
+    ...page,
+    messages: page.messages.map((message) => {
+      const thread = message.thread;
+      if (
+        !thread ||
+        !affectedThreadIds.has(thread.id) ||
+        thread.unreadCount !== 0 ||
+        previousUnread[thread.id] === undefined
+      ) {
+        return message;
+      }
+      return {
+        ...message,
+        thread: { ...thread, unreadCount: previousUnread[thread.id] },
+      };
+    }),
+  })),
 });
 
 export type UseChatThreadActionsResult = {
@@ -65,9 +110,8 @@ export type UseChatThreadActionsResult = {
  * Mutations that clear thread unread state through the driver. Each mutation
  * optimistically updates both the `["chat-threads", chatId]` cache (the panel
  * and the unread banner) and the `["chat-messages", chatId]` cache (the thread
- * button on the root bubble), snapshots the previous values so a failed call
- * rolls both caches back. The mock driver applies the same change to its
- * in-memory store, so a later refetch agrees with the optimistic write.
+ * button on the root bubble). A failed receipt is retried, then only its own
+ * zeroed badges are restored so a concurrently received reply is never lost.
  */
 export const useChatThreadActions = (
   ref: ChatRef,
@@ -85,6 +129,18 @@ export const useChatThreadActions = (
     const previousThreads = queryClient.getQueryData<ChatThread[]>(threadsKey);
     const previousMessages =
       queryClient.getQueryData<ChatMessagesData>(messagesKey);
+    const previousThreadUnread = Object.fromEntries(
+      (previousThreads ?? [])
+        .filter((thread) => matches(thread.id))
+        .map((thread) => [thread.id, thread.unreadCount]),
+    );
+    const previousRootUnread = rootUnreadByThreadId(previousMessages, matches);
+    const affectedThreadIds = [
+      ...new Set([
+        ...Object.keys(previousThreadUnread),
+        ...Object.keys(previousRootUnread),
+      ]),
+    ];
     queryClient.setQueryData<ChatThread[]>(threadsKey, (old) =>
       old?.map((thread) =>
         matches(thread.id) ? { ...thread, unreadCount: 0 } : thread,
@@ -93,15 +149,45 @@ export const useChatThreadActions = (
     queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
       old ? clearThreadBadges(old, matches) : old,
     );
-    return { threadsKey, messagesKey, previousThreads, previousMessages };
+    return {
+      threadsKey,
+      messagesKey,
+      affectedThreadIds,
+      previousThreadUnread,
+      previousRootUnread,
+    };
   };
 
   const rollback = (context: ReadContext | undefined) => {
     if (!context) {
       return;
     }
-    queryClient.setQueryData(context.threadsKey, context.previousThreads);
-    queryClient.setQueryData(context.messagesKey, context.previousMessages);
+    const affectedThreadIds = new Set(context.affectedThreadIds);
+    queryClient.setQueryData<ChatThread[]>(context.threadsKey, (current) =>
+      current?.map((thread) =>
+        affectedThreadIds.has(thread.id) &&
+        thread.unreadCount === 0 &&
+        context.previousThreadUnread[thread.id] !== undefined
+          ? {
+              ...thread,
+              unreadCount: context.previousThreadUnread[thread.id],
+            }
+          : thread,
+      ),
+    );
+    queryClient.setQueryData<ChatMessagesData>(
+      context.messagesKey,
+      (current) =>
+        current
+          ? restoreThreadBadges(
+              current,
+              affectedThreadIds,
+              context.previousRootUnread,
+            )
+          : current,
+    );
+    void queryClient.invalidateQueries({ queryKey: context.threadsKey });
+    void queryClient.invalidateQueries({ queryKey: context.messagesKey });
   };
 
   // `mutate` is a stable reference across renders — destructuring it keeps the
@@ -118,6 +204,8 @@ export const useChatThreadActions = (
         .markChatThreadRead({ chatId: ref.chatId, threadId }),
     onMutate: (threadId) => applyOptimisticRead((id) => id === threadId),
     onError: (_error, _variables, context) => rollback(context),
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1_000 * 2 ** attemptIndex, 8_000),
     meta: { noGlobalError: true },
   });
 
@@ -131,6 +219,8 @@ export const useChatThreadActions = (
       getRegistry().get(ref.accountId).markAllChatThreadsRead(ref.chatId),
     onMutate: () => applyOptimisticRead(() => true),
     onError: (_error, _variables, context) => rollback(context),
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1_000 * 2 ** attemptIndex, 8_000),
     meta: { noGlobalError: true },
   });
 

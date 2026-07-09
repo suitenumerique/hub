@@ -8,6 +8,11 @@ import type { LocalChat } from "@/features/drivers/types";
  */
 export type MockChat = LocalChat;
 
+export const MOCK_UNREAD_CHAT_IDS = [
+  "c5d3e4f2-3f4a-4b5c-9d0e-7f8a9b0c1d2e",
+  "d6e4f5a3-4a5b-4c6d-ae1f-8a9b0c1d2e3f",
+] as const;
+
 export const MOCK_CHATS: LocalChat[] = [
   {
     id: "a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c",
@@ -34,7 +39,6 @@ export const MOCK_CHATS: LocalChat[] = [
     name: "Anabelle Dupontel",
     section: "all",
     kind: "direct",
-    unread: true,
     participantIds: ["user-anabelle-dupontel"],
     visual: { kind: "initials" },
   },
@@ -43,7 +47,6 @@ export const MOCK_CHATS: LocalChat[] = [
     name: "André Campan, Edouard McDonald",
     section: "all",
     kind: "group",
-    unread: true,
     participantIds: ["user-andre-campan", "user-edouard-mcdonald"],
     visual: { kind: "icon", icon: "groups" },
   },

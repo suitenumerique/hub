@@ -309,6 +309,13 @@
       &--visible {
         visibility: visible;
       }
+
+      &--highlight {
+        background: var(
+          --c--contextuals--content--semantic--error--primary,
+          #ce0500
+        );
+      }
     }
 
     &__text {

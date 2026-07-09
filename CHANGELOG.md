@@ -24,6 +24,8 @@ and this project adheres to
   setup
 - ✨(frontend) Bridge Matrix `/sync` onto the real-time chat event stream
 - ✨(frontend) Send text messages from the Hub to Matrix conversations
+- ✨(frontend) Add Matrix unread indicators and read receipts
+- ✨(frontend) Add Matrix thread reading, replies, and creation
 
 ### Changed
 

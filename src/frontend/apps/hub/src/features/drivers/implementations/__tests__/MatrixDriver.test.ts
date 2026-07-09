@@ -31,6 +31,7 @@ const makeMessageEvent = (opts: {
   id?: string;
   type?: string;
   threadRootId?: string;
+  isThreadRoot?: boolean;
   relation?: { rel_type: string; event_id: string };
   newBody?: string;
   status?: string | null;
@@ -44,6 +45,7 @@ const makeMessageEvent = (opts: {
     getSender: () => opts.sender,
     getTs: () => 1_700_000_000_000,
     threadRootId: opts.threadRootId,
+    isThreadRoot: opts.isThreadRoot ?? false,
     status: opts.status ?? null,
     getContent: () => ({
       body: opts.body ?? "",
@@ -59,6 +61,7 @@ const makeRoom = (): Room =>
   ({
     roomId: ROOM_ID,
     getMember: (id: string) => ({ name: id === SELF_ID ? "Me" : id }),
+    getThread: () => null,
     findEventById: () => undefined,
   }) as unknown as Room;
 
@@ -70,11 +73,13 @@ const driverWithClient = (mx: MatrixClient | null): MatrixDriver => {
 };
 
 describe("timelineEventToChatEvent (real-time sync mapping)", () => {
-  it("emits message:new with authors for another sender", () => {
+  it("keeps a thread root on the main timeline", () => {
     const event = makeMessageEvent({
       sender: OTHER_ID,
       body: "hi",
       id: "$x:localhost",
+      threadRootId: "$x:localhost",
+      isThreadRoot: true,
     });
 
     expect(timelineEventToChatEvent(event, makeRoom(), SELF_ID)).toEqual([
@@ -147,7 +152,7 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
     expect(timelineEventToChatEvent(reaction, makeRoom(), SELF_ID)).toEqual([]);
   });
 
-  it("stays coarse for thread replies and non-message activity", () => {
+  it("refreshes threads without appending replies to the main timeline", () => {
     const threadReply = makeMessageEvent({
       sender: OTHER_ID,
       body: "reply",
@@ -158,13 +163,12 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
       type: "m.room.member",
     });
 
-    const coarse = [{ type: "chat:changed", chatId: ROOM_ID }];
-    expect(timelineEventToChatEvent(threadReply, makeRoom(), SELF_ID)).toEqual(
-      coarse,
-    );
-    expect(timelineEventToChatEvent(member, makeRoom(), SELF_ID)).toEqual(
-      coarse,
-    );
+    expect(timelineEventToChatEvent(threadReply, makeRoom(), SELF_ID)).toEqual([
+      { type: "threads:changed", chatId: ROOM_ID },
+    ]);
+    expect(timelineEventToChatEvent(member, makeRoom(), SELF_ID)).toEqual([
+      { type: "chat:changed", chatId: ROOM_ID },
+    ]);
   });
 });
 

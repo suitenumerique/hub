@@ -13,6 +13,7 @@ import type {
   ChatRef,
   ChatMessagesPage,
   ChatThreadDetail,
+  ChatUnread,
 } from "@/features/drivers/types";
 
 type ChatMessagesData = InfiniteData<ChatMessagesPage>;
@@ -98,11 +99,27 @@ const applyChatEvent = (
         chatKeys.messages(ref),
         (data) => (data ? appendMessage(data, event) : data),
       );
-      // Touches the conversation list (last message / unread).
+      // Touches list ordering / last activity. Read state has its own slice.
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(accountId),
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      return;
+
+    case "unread:changed":
+      queryClient.setQueryData<Record<string, ChatUnread>>(
+        chatKeys.unreadOf(accountId),
+        (current) => {
+          const previous = current?.[event.chatId];
+          if (
+            previous?.unread === event.unread.unread &&
+            previous.highlight === event.unread.highlight
+          ) {
+            return current;
+          }
+          return { ...(current ?? {}), [event.chatId]: event.unread };
+        },
+      );
       return;
 
     case "message:updated":
@@ -153,6 +170,9 @@ const applyChatEvent = (
     case "threads:changed":
       void queryClient.invalidateQueries({
         queryKey: chatKeys.threads(ref),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.threadDetails(ref),
       });
       return;
 
