@@ -28,6 +28,7 @@ and this project adheres to
 ### Changed
 
 - ♻️(frontend) Simplify the conversation auto-scroll onto the Virtuoso API
+- 💄(frontend) Use the brand color for the current user's message bubbles
 
 ### Fixed
 
