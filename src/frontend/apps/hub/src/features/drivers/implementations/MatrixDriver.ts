@@ -1,14 +1,21 @@
 import {
   ClientEvent,
   EventType,
+  MatrixError,
   type MatrixClient,
   type MatrixEvent,
   type Room,
   RoomEvent,
 } from "matrix-js-sdk/lib/matrix";
+import { HttpApiEvent } from "matrix-js-sdk/lib/http-api";
 
 import { type IdTokenClaims } from "oidc-client-ts";
 
+import {
+  type MatrixDriverSettings,
+  parseMatrixDriverSettings,
+  TCHAP_HOMESERVER_LIST,
+} from "@/features/matrix/config";
 import { initClient, startClient } from "@/features/matrix/initMatrix";
 import { MatrixUserInterface } from "@/features/matrix/types";
 import {
@@ -67,8 +74,33 @@ const OIDC_HS_KEY = "oidc_hs";
 const SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const CRYPTO_STORE_DB_NAME = "crypto-store";
 
-const storageKey = (accountId: AccountId, key: string): string =>
-  accountId === "default" ? key : `${key}:${accountId}`;
+const storageKey = (
+  accountId: AccountId,
+  key: string,
+  owner?: string | null,
+): string => {
+  const ownedKey = owner ? `${key}:${owner}` : key;
+  return accountId === "default" ? ownedKey : `${ownedKey}:${accountId}`;
+};
+
+const isMatrixSessionInvalidError = (error: unknown): boolean => {
+  if (!(error instanceof MatrixError)) {
+    return false;
+  }
+  return (
+    error.errcode === "M_UNKNOWN_TOKEN" ||
+    error.httpStatus === 401 ||
+    (error.httpStatus === 503 &&
+      /introspect the access token/i.test(error.message))
+  );
+};
+
+const isRecoverableMatrixPaginationError = (error: unknown): boolean => {
+  if (!(error instanceof MatrixError) || isMatrixSessionInvalidError(error)) {
+    return false;
+  }
+  return error.httpStatus === 403 || error.httpStatus === 404;
+};
 
 const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   userId: user.mxId,
@@ -185,28 +217,13 @@ const buildAuthors = (
 };
 
 /**
- * Resolves the OIDC `login_hint`. In production this is the authenticated Hub
- * user's email; in development a fixed test account can be injected through
- * `NEXT_PUBLIC_MATRIX_DEV_LOGIN_HINT` (instead of the previously hard-coded
- * address) so demos do not require a real Tchap mailbox.
- */
-const resolveLoginHint = (user: User | null | undefined): string => {
-  const devHint = process.env.NEXT_PUBLIC_MATRIX_DEV_LOGIN_HINT;
-  if (process.env.NODE_ENV === "development" && devHint) {
-    return devHint;
-  }
-  return user?.email ?? "";
-};
-
-/**
  * Matrix-backed chat driver. All Matrix specifics — the OIDC handshake, client
  * bootstrap and `/sync` long-polling — live here, behind the generic `Driver`
  * contract, so the UI never imports anything Matrix.
  *
- * Chat *data* is currently still served by the mock methods inherited from
- * `MockDriver`: the Matrix → generic data mapping (timeline → ChatMessage…) is
- * the next step. The connection lifecycle and the real-time bridge below are
- * the real plumbing that mapping will hang off.
+ * Room and message reads are already Matrix-backed so the chat UI can inspect
+ * seeded local rooms. Composition, threads, reactions and documents remain
+ * intentionally unimplemented in this step.
  */
 export class MatrixDriver extends MockDriver {
   override readonly supportsComposition: boolean = false;
@@ -216,20 +233,72 @@ export class MatrixDriver extends MockDriver {
   private eventListeners = new Set<ChatEventListener>();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
+  /** Parsed per-account config; source of truth for discovery and OIDC. */
+  private readonly settings: MatrixDriverSettings;
+  /**
+   * Server-confirmed joined rooms. `getVisibleRooms()` can include stale rooms
+   * restored from IndexedDB after the local homeserver was reset.
+   */
+  private joinedRoomIds: Set<string> | null = null;
+  /**
+   * Storage namespace for the Hub/Matrix login context currently being
+   * connected. `matrix-local` may be used by several seeded users in the same
+   * browser, so credentials must not be keyed only by account id.
+   */
+  private storageOwner: string | null = null;
 
   constructor(
     accountId: AccountId = "default",
     settings: Record<string, unknown> = {},
   ) {
     super(accountId, settings);
+    this.settings = parseMatrixDriverSettings(settings);
+  }
+
+  /**
+   * Resolves the OIDC `login_hint`. Preference order: account config, dev
+   * override, then the authenticated Hub user's email.
+   */
+  private resolveLoginHint(user: User | null | undefined): string {
+    if (this.settings.loginHint) {
+      return this.settings.loginHint;
+    }
+    const devHint = process.env.NEXT_PUBLIC_MATRIX_DEV_LOGIN_HINT;
+    if (process.env.NODE_ENV === "development" && devHint) {
+      return devHint;
+    }
+    return user?.email ?? "";
+  }
+
+  /**
+   * Resolves the homeserver per account strategy. `fixed` uses the configured
+   * base URL directly; `tchap-email` keeps the original identity-server lookup.
+   */
+  private async discoverHomeserver(
+    loginHint: string,
+  ): Promise<{ base_url: string; server_name: string }> {
+    if (this.settings.discovery === "fixed") {
+      return {
+        base_url: this.settings.baseUrl,
+        server_name: this.settings.serverName,
+      };
+    }
+    return fetchHomeserverForEmail(loginHint, TCHAP_HOMESERVER_LIST);
   }
 
   async getChats(): Promise<LocalChatSections> {
-    // MOCK — replace this block with `fetchAPI('chats/')` when the backend
-    // exposes a conversation-list endpoint. The driver returns account-local
-    // chats; hooks decorate them with the global account identity.
-    const matrixChats = this.mx?.getVisibleRooms() ?? [];
-    const currentUserId = this.mx?.getUserId() ?? undefined;
+    const mx = this.mx;
+    if (!mx) {
+      return {
+        favourites: [],
+        all: [],
+      };
+    }
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    const matrixChats = mx
+      .getVisibleRooms()
+      .filter((room) => joinedRoomIds.has(room.roomId));
+    const currentUserId = mx.getUserId() ?? undefined;
     const localChats = matrixChats.map((room) =>
       matrixRoomToLocalChat(room, currentUserId),
     );
@@ -238,7 +307,22 @@ export class MatrixDriver extends MockDriver {
       favourites: [],
       all: localChats,
     };
-    // return super.getChats();
+  }
+
+  async getChat(chatId: string): Promise<LocalChat> {
+    const mx = this.mx;
+    if (!mx) {
+      throw new Error("MatrixDriver.getChat: client is not connected.");
+    }
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (!joinedRoomIds.has(chatId)) {
+      throw new Error(`MatrixDriver.getChat: room "${chatId}" is not joined.`);
+    }
+    const room = mx.getRoom(chatId);
+    if (!room) {
+      throw new Error(`MatrixDriver.getChat: room "${chatId}" not found.`);
+    }
+    return matrixRoomToLocalChat(room, mx.getUserId() ?? undefined);
   }
 
   /**
@@ -257,6 +341,12 @@ export class MatrixDriver extends MockDriver {
     const mx = this.mx;
     if (!mx) {
       throw new Error("MatrixDriver.getChatMessages: client is not connected.");
+    }
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (!joinedRoomIds.has(chatId)) {
+      throw new Error(
+        `MatrixDriver.getChatMessages: room "${chatId}" is not joined.`,
+      );
     }
     const room = mx.getRoom(chatId);
     if (!room) {
@@ -278,10 +368,19 @@ export class MatrixDriver extends MockDriver {
 
     let reachedStart = false;
     while (eventsBeforeCursor() < limit) {
-      const more = await mx.paginateEventTimeline(timeline, {
-        backwards: true,
-        limit,
-      });
+      let more: boolean;
+      try {
+        more = await mx.paginateEventTimeline(timeline, {
+          backwards: true,
+          limit,
+        });
+      } catch (error) {
+        if (!isRecoverableMatrixPaginationError(error)) {
+          throw error;
+        }
+        reachedStart = true;
+        break;
+      }
       events = loaded();
       if (!more) {
         reachedStart = true;
@@ -342,12 +441,25 @@ export class MatrixDriver extends MockDriver {
     if (typeof window === "undefined") {
       return { status: "connecting", chatUser: null };
     }
+    this.setStorageOwner(user);
 
     // 1. Returning user — credentials already persisted.
     const stored = this.readStoredUser();
     if (stored) {
-      await this.bootstrapClient(stored);
-      return { status: "connected", chatUser: toChatUser(stored) };
+      try {
+        await this.bootstrapClient(stored);
+        return { status: "connected", chatUser: toChatUser(stored) };
+      } catch (error) {
+        if (!isMatrixSessionInvalidError(error)) {
+          throw error;
+        }
+        await this.clearStoredSession(stored);
+        if (!user?.email) {
+          return { status: "idle", chatUser: null };
+        }
+        const redirectTo = await this.startOidcFlow(user);
+        return { status: "connecting", chatUser: null, redirectTo };
+      }
     }
 
     // 2. Back from the identity provider — finish the OIDC code exchange.
@@ -375,14 +487,19 @@ export class MatrixDriver extends MockDriver {
   }
 
   private async startOidcFlow(user: User | null | undefined): Promise<string> {
-    const email = resolveLoginHint(user);
+    const loginHint = this.resolveLoginHint(user);
     let homeserver = sessionStorage.getItem(this.key(OIDC_HS_KEY));
     if (!homeserver) {
-      const discovered = await fetchHomeserverForEmail(email);
+      const discovered = await this.discoverHomeserver(loginHint);
       homeserver = discovered.base_url;
       sessionStorage.setItem(this.key(OIDC_HS_KEY), homeserver);
     }
-    const authUrl = await getOIDCAuthUrl(homeserver, email);
+    const authUrl = await getOIDCAuthUrl(
+      homeserver,
+      loginHint,
+      this.settings.branding,
+      this.settings.oidcClientId,
+    );
     const state = new URL(authUrl).searchParams.get("state");
     if (state) {
       sessionStorage.setItem(this.key(STORAGE.oidcState), state);
@@ -437,11 +554,12 @@ export class MatrixDriver extends MockDriver {
     }
     const mx = await initClient(user, {
       syncStoreDbName: this.key(SYNC_STORE_DB_NAME),
-      cryptoStoreDbName: this.key(CRYPTO_STORE_DB_NAME),
+      cryptoStoreDbName: this.cryptoStoreDbName(user),
       tokenRefreshFunction: this.buildTokenRefreshFunction(user),
     });
-    await startClient(mx);
     this.mx = mx;
+    await this.startClientOrFailOnLogout(mx);
+    await this.refreshJoinedRoomIds(mx);
 
     // Bridge Matrix `/sync` onto the generic event stream, once, for the
     // client's lifetime. The handlers fan out to whatever subscribers exist at
@@ -455,13 +573,34 @@ export class MatrixDriver extends MockDriver {
         this.emit({ type: "chat:changed", chatId: room.roomId });
       }
     };
-    const onRoom = () => this.emit({ type: "chats:changed" });
+    const onRoom = () => {
+      this.joinedRoomIds = null;
+      this.emit({ type: "chats:changed" });
+    };
     mx.on(RoomEvent.Timeline, onTimeline);
     mx.on(ClientEvent.Room, onRoom);
     this.detachSync = () => {
       mx.off(RoomEvent.Timeline, onTimeline);
       mx.off(ClientEvent.Room, onRoom);
     };
+  }
+
+  private async startClientOrFailOnLogout(mx: MatrixClient): Promise<void> {
+    let cleanup = () => {};
+    const loggedOut = new Promise<never>((_, reject) => {
+      const onLoggedOut = (error: MatrixError) => {
+        cleanup();
+        reject(error);
+      };
+      cleanup = () => mx.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+      mx.once(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+    });
+
+    try {
+      await Promise.race([startClient(mx), loggedOut]);
+    } finally {
+      cleanup();
+    }
   }
 
   /**
@@ -505,6 +644,7 @@ export class MatrixDriver extends MockDriver {
     this.eventListeners.clear();
     this.mx?.stopClient();
     this.mx = null;
+    this.joinedRoomIds = null;
   }
 
   /**
@@ -543,6 +683,43 @@ export class MatrixDriver extends MockDriver {
     localStorage.setItem(this.key(STORAGE.user), JSON.stringify(user));
   }
 
+  private async clearStoredSession(user?: MatrixUserInterface): Promise<void> {
+    this.detachSync();
+    this.detachSync = () => {};
+    this.mx?.stopClient();
+    this.mx = null;
+    this.joinedRoomIds = null;
+
+    localStorage.removeItem(this.key(STORAGE.user));
+    localStorage.removeItem(this.key(STORAGE.oidc));
+    sessionStorage.removeItem(this.key(STORAGE.oidcState));
+    sessionStorage.removeItem(this.key(OIDC_HS_KEY));
+
+    await Promise.all([
+      this.deleteIndexedDb(this.key(SYNC_STORE_DB_NAME)),
+      this.deleteIndexedDb(this.key(CRYPTO_STORE_DB_NAME)),
+      ...(user ? [this.deleteIndexedDb(this.cryptoStoreDbName(user))] : []),
+    ]);
+  }
+
+  private deleteIndexedDb(dbName: string): Promise<void> {
+    if (typeof indexedDB === "undefined") {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const request = indexedDB.deleteDatabase(dbName);
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.warn("MatrixDriver: failed to delete IndexedDB", dbName);
+        resolve();
+      };
+      request.onblocked = () => {
+        console.warn("MatrixDriver: IndexedDB deletion blocked", dbName);
+        resolve();
+      };
+    });
+  }
+
   private readStoredOidc(): StoredOidc | null {
     const raw = localStorage.getItem(this.key(STORAGE.oidc));
     if (!raw) {
@@ -560,7 +737,29 @@ export class MatrixDriver extends MockDriver {
     localStorage.setItem(this.key(STORAGE.oidc), JSON.stringify(oidc));
   }
 
+  private setStorageOwner(user: User | null | undefined): void {
+    const owner = this.resolveLoginHint(user).trim();
+    this.storageOwner = owner || null;
+  }
+
   private key(key: string): string {
-    return storageKey(this.accountId, key);
+    return storageKey(this.accountId, key, this.storageOwner);
+  }
+
+  private cryptoStoreDbName(user: MatrixUserInterface): string {
+    return this.key(
+      `${CRYPTO_STORE_DB_NAME}:${user.mxId}:${user.deviceId ?? "no-device"}`,
+    );
+  }
+
+  private async getJoinedRoomIds(mx: MatrixClient): Promise<Set<string>> {
+    return this.joinedRoomIds ?? this.refreshJoinedRoomIds(mx);
+  }
+
+  private async refreshJoinedRoomIds(mx: MatrixClient): Promise<Set<string>> {
+    const { joined_rooms: joinedRooms } = await mx.getJoinedRooms();
+    const joinedRoomIds = new Set(joinedRooms);
+    this.joinedRoomIds = joinedRoomIds;
+    return joinedRoomIds;
   }
 }

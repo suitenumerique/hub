@@ -13,14 +13,16 @@ import {
 import { secureRandomString } from "matrix-js-sdk/lib/randomstring";
 import { type IdTokenClaims } from "oidc-client-ts";
 
+import { type MatrixBranding } from "../config";
 import { CompleteOidcLoginResponse } from "../types";
 
 // OIDC response mode used for the authorization request.
 const RESPONSE_MODE = "query";
 // Nonce length, in characters. OIDC recommends a high-entropy value.
 const NONCE_LENGTH = 32;
-// localStorage prefix for the dynamically-registered client id, cached per
-// homeserver so we register once instead of on every login.
+// localStorage prefix for the dynamically-registered client id. The cache is
+// scoped by homeserver and redirect URI because a dynamic client is registered
+// with the exact redirect URI it is allowed to use.
 const REGISTERED_CLIENT_PREFIX = "oidc_dyn_client:";
 
 /**
@@ -31,6 +33,8 @@ const REGISTERED_CLIENT_PREFIX = "oidc_dyn_client:";
 export const getOIDCAuthUrl = async (
   homeserverUrl: string,
   email: string,
+  branding: MatrixBranding,
+  oidcClientId?: string,
 ): Promise<string> => {
   const delegatedAuthConfig = await fetchDelegatedAuthMetadata(homeserverUrl);
   if (!delegatedAuthConfig) {
@@ -41,20 +45,23 @@ export const getOIDCAuthUrl = async (
     .href;
   const clientUri = window.location.origin;
 
-  const clientId = await getOrRegisterClientId(
-    homeserverUrl,
-    delegatedAuthConfig,
-    {
-      clientName: "Hub",
-      clientUri,
-      redirectUris: [redirectUri],
-      logoUri: "https://www.tchap.incubateur.net/vector-icons/180.png",
-      applicationType: "web",
-      contacts: [],
-      tosUri: "",
-      policyUri: "",
-    },
-  );
+  const clientId =
+    oidcClientId ??
+    (await getOrRegisterClientId(
+      homeserverUrl,
+      redirectUri,
+      delegatedAuthConfig,
+      {
+        clientName: branding.clientName,
+        clientUri,
+        redirectUris: [redirectUri],
+        logoUri: branding.logoUri,
+        applicationType: "web",
+        contacts: [],
+        tosUri: "",
+        policyUri: "",
+      },
+    ));
 
   return generateOidcAuthorizationUrl({
     metadata: delegatedAuthConfig,
@@ -71,10 +78,11 @@ export const getOIDCAuthUrl = async (
 
 const getOrRegisterClientId = async (
   homeserverUrl: string,
+  redirectUri: string,
   metadata: OidcClientConfig,
   registration: Parameters<typeof registerOidcClient>[1],
 ): Promise<string> => {
-  const cacheKey = REGISTERED_CLIENT_PREFIX + homeserverUrl;
+  const cacheKey = `${REGISTERED_CLIENT_PREFIX}${homeserverUrl}:${redirectUri}`;
   const cached = localStorage.getItem(cacheKey);
   if (cached) {
     return cached;
