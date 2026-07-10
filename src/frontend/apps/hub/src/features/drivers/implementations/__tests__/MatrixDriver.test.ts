@@ -76,6 +76,7 @@ const makeMessageEvent = (opts: {
       ...(opts.newBody ? { "m.new_content": { body: opts.newBody } } : {}),
     }),
     getRelation: () => opts.relation ?? null,
+    replacingEventId: () => undefined,
     getUnsigned: () =>
       opts.transactionId ? { transaction_id: opts.transactionId } : {},
     getTxnId: () => opts.txnId,
@@ -89,6 +90,7 @@ const makeRoom = (
   ({
     roomId: ROOM_ID,
     getMember: (id: string) => ({ name: id === SELF_ID ? "Me" : id }),
+    currentState: { maySendRedactionForEvent: () => false },
     getThread: (threadId: string) => threadsById[threadId] ?? null,
     findEventById: (eventId: string) => eventsById[eventId],
     relations: {
@@ -184,20 +186,53 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
   });
 
   it("maps an edit (m.replace) to message:updated on the target", () => {
+    const targetId = "$target:localhost";
+    const original = makeMessageEvent({
+      sender: OTHER_ID,
+      body: "before",
+      id: targetId,
+    });
     const event = makeMessageEvent({
       sender: OTHER_ID,
       body: "* edited",
       newBody: "edited",
-      relation: { rel_type: "m.replace", event_id: "$target:localhost" },
+      relation: { rel_type: "m.replace", event_id: targetId },
     });
 
     expect(
-      timelineEventToChatEvent(event, makeRoom(), SELF_ID)[0],
+      timelineEventToChatEvent(
+        event,
+        makeRoom({}, { [targetId]: original }),
+        SELF_ID,
+      )[0],
     ).toMatchObject({
       type: "message:updated",
       chatId: ROOM_ID,
-      message: { id: "$target:localhost", content: "edited" },
+      message: { id: targetId, content: "edited" },
     });
+  });
+
+  it("ignores an m.replace event sent by somebody other than the author", () => {
+    const targetId = "$target:localhost";
+    const original = makeMessageEvent({
+      sender: OTHER_ID,
+      body: "untouched",
+      id: targetId,
+    });
+    const forgedEdit = makeMessageEvent({
+      sender: SELF_ID,
+      body: "* forged",
+      newBody: "forged",
+      relation: { rel_type: "m.replace", event_id: targetId },
+    });
+
+    expect(
+      timelineEventToChatEvent(
+        forgedEdit,
+        makeRoom({}, { [targetId]: original }),
+        SELF_ID,
+      ),
+    ).toEqual([]);
   });
 
   it("maps message annotations and live reactions to the generic shape", () => {

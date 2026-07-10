@@ -9,6 +9,7 @@ import {
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
+  ChatTypingUser,
   ChatUnread,
   ChatUser,
   LocalChat,
@@ -63,6 +64,28 @@ export type SendChatMessageParams = {
   content: string;
 };
 
+export type EditChatMessageParams = {
+  chatId: string;
+  messageId: string;
+  content: string;
+  /** Present when the edited message belongs to a Matrix thread. */
+  threadId?: string;
+};
+
+export type DeleteChatMessageParams = {
+  chatId: string;
+  messageId: string;
+  /** Present when the redacted message belongs to a Matrix thread. */
+  threadId?: string;
+};
+
+export type SendChatTypingParams = {
+  chatId: string;
+  isTyping: boolean;
+};
+
+export type ChatTypingListener = (users: ChatTypingUser[]) => void;
+
 export type SendChatThreadReplyParams = {
   chatId: string;
   threadId: string;
@@ -116,7 +139,13 @@ export type ChatEvent =
       /** Authors referenced by the message, to merge into the page cache. */
       authors?: ChatMessageAuthor[];
     }
-  | { type: "message:updated"; chatId: string; message: ChatMessage }
+  | {
+      type: "message:updated";
+      chatId: string;
+      message: ChatMessage;
+      /** Set when the updated message is also rendered in thread detail. */
+      threadId?: string;
+    }
   | {
       type: "reaction:updated";
       chatId: string;
@@ -128,7 +157,13 @@ export type ChatEvent =
   | { type: "unread:changed"; chatId: string; unread: ChatUnread }
   // --- Coarse: only name what changed; the bridge invalidates & refetches -
   | { type: "chat:changed"; chatId: string }
-  | { type: "threads:changed"; chatId: string }
+  | {
+      type: "threads:changed";
+      chatId: string;
+      /** False when a preceding fine-grained event already patched the open
+       * detail and only the thread list metadata needs a refresh. */
+      invalidateDetails?: boolean;
+    }
   | { type: "documents:changed"; chatId: string }
   | { type: "chats:changed" };
 
@@ -196,6 +231,41 @@ export abstract class Driver {
     throw new Error(
       `${this.constructor.name}.sendChatMessage: composition is not supported by this driver.`,
     );
+  }
+
+  async editChatMessage(_params: EditChatMessageParams): Promise<ChatMessage> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.editChatMessage: message editing is not supported by this driver.`,
+    );
+  }
+
+  async deleteChatMessage(
+    _params: DeleteChatMessageParams,
+  ): Promise<ChatMessage> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.deleteChatMessage: message deletion is not supported by this driver.`,
+    );
+  }
+
+  /** Sends a volatile typing state. Unsupported drivers silently ignore it. */
+  async sendChatTyping(_params: SendChatTypingParams): Promise<void> {
+    void _params;
+  }
+
+  /**
+   * Subscribes to the current typers of one conversation. This deliberately
+   * stays outside React Query: typing is ephemeral and must never enter an
+   * infinite timeline cache or survive a page reload.
+   */
+  subscribeToChatTyping(
+    _chatId: string,
+    _listener: ChatTypingListener,
+  ): () => void {
+    void _chatId;
+    void _listener;
+    return () => {};
   }
 
   async sendChatThreadReply(

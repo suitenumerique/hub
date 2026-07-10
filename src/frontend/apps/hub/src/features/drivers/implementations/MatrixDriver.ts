@@ -7,17 +7,24 @@ import {
   MatrixError,
   type MatrixClient,
   type MatrixEvent,
+  MatrixEventEvent,
+  MsgType,
   Preset,
   RelationType,
   type Room,
   RoomEvent,
+  type RoomMember,
+  RoomMemberEvent,
   SyncState,
   type SyncStateData,
   type Thread,
   ThreadEvent,
 } from "matrix-js-sdk/lib/matrix";
 import { HttpApiEvent } from "matrix-js-sdk/lib/http-api";
-import { type ReactionEventContent } from "matrix-js-sdk/lib/types";
+import {
+  type ReactionEventContent,
+  type RoomMessageEventContent,
+} from "matrix-js-sdk/lib/types";
 
 import { type IdTokenClaims } from "oidc-client-ts";
 
@@ -42,11 +49,15 @@ import {
   ChatConnectionState,
   ChatEvent,
   ChatEventListener,
+  ChatTypingListener,
   ChatUserFilters,
+  DeleteChatMessageParams,
+  EditChatMessageParams,
   GetChatThreadParams,
   GetChatMessagesParams,
   MarkChatThreadReadParams,
   SendChatMessageParams,
+  SendChatTypingParams,
   SendChatThreadReplyParams,
   StartChatThreadParams,
   ToggleChatReactionParams,
@@ -60,6 +71,7 @@ import {
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
+  ChatTypingUser,
   ChatUnread,
   ChatUser,
   LocalChat,
@@ -71,6 +83,7 @@ import {
   buildAuthors,
   computeRoomUnread,
   fetchReactionSnapshot,
+  forgetThreadReply,
   getThreadReplyCounter,
   isMainTimelineMessage,
   isMessageEvent,
@@ -103,6 +116,7 @@ import { MockDriver } from "./MockDriver";
 
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
+const MATRIX_TYPING_TIMEOUT_MS = 30_000;
 
 // A generous fetch limit is requested from the user directory and the filtered
 // list sliced to a small display count, so removing self/excluded never starves
@@ -118,6 +132,7 @@ const STORAGE = {
   // Everything needed to refresh the OIDC access token on a later page load.
   oidc: "matrixOidc",
   oidcState: "oidc_state",
+  redactedThreads: "matrixRedactedThreads",
 } as const;
 
 /** OIDC session data persisted so tokens can be refreshed after a reload. */
@@ -166,6 +181,21 @@ const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   refreshToken: user.refreshToken,
 });
 
+type RedactedThreadReply = {
+  chatId: string;
+  threadId: string;
+  eventId: string;
+  rootEvent: MatrixEvent;
+  event: MatrixEvent;
+  /** Filled once RoomEvent.Redaction has applied the tombstone shape. */
+  message?: ChatMessage;
+};
+
+type PersistedRedactedThreadReply = Pick<
+  RedactedThreadReply,
+  "chatId" | "threadId" | "eventId"
+> & { rootEventId: string };
+
 /**
  * Matrix-backed chat driver. All Matrix specifics — the OIDC handshake, client
  * bootstrap and `/sync` long-polling — live here, behind the generic `Driver`
@@ -183,8 +213,19 @@ export class MatrixDriver extends MockDriver {
   private mx: MatrixClient | null = null;
   /** Subscribers to the single global event stream. */
   private eventListeners = new Set<ChatEventListener>();
+  /** Per-room subscribers to volatile typing state (never persisted/cached). */
+  private typingListeners = new Map<string, Set<ChatTypingListener>>();
+  private typingSignatures = new Map<string, string>();
+  private typingRoomPreparations = new Map<string, Promise<void>>();
   /** Server ids sent by this driver, used to pair local and remote echoes. */
   private sentThreadReplyEventIds = new Set<string>();
+  /**
+   * Matrix redaction strips `m.thread`, so the SDK moves a deleted reply onto
+   * the main timeline and can delete the Thread object entirely. Preserve the
+   * association for this client session: it keeps the tombstone in an already
+   * opened thread and prevents it leaking into the room timeline.
+   */
+  private redactedThreadReplies = new Map<string, RedactedThreadReply>();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
   /** Parsed per-account config; source of truth for discovery and OIDC. */
@@ -478,6 +519,143 @@ export class MatrixDriver extends MockDriver {
     this.emit({ type: "chats:changed" });
   }
 
+  private redactedThreadReplyKey(chatId: string, eventId: string): string {
+    return `${chatId}\u0000${eventId}`;
+  }
+
+  private isRedactedThreadReply(chatId: string, event: MatrixEvent): boolean {
+    const eventId = event.getId();
+    return Boolean(
+      eventId &&
+      this.redactedThreadReplies.has(
+        this.redactedThreadReplyKey(chatId, eventId),
+      ),
+    );
+  }
+
+  private redactedRepliesForThread(
+    chatId: string,
+    threadId: string,
+  ): Array<RedactedThreadReply & { message: ChatMessage }> {
+    return [...this.redactedThreadReplies.values()].filter(
+      (
+        reply,
+      ): reply is RedactedThreadReply & {
+        message: ChatMessage;
+      } =>
+        reply.chatId === chatId &&
+        reply.threadId === threadId &&
+        reply.message !== undefined,
+    );
+  }
+
+  private persistRedactedThreadReplies(removed?: {
+    chatId: string;
+    eventId: string;
+  }): void {
+    // Some persisted replies may not be hydrated in the SDK's current timeline
+    // window yet. Merge instead of rebuilding from the in-memory overlay so a
+    // later redaction cannot silently discard those older associations.
+    const stored = this.readStoredJson<PersistedRedactedThreadReply[]>(
+      STORAGE.redactedThreads,
+    );
+    const entriesByKey = new Map<string, PersistedRedactedThreadReply>();
+    if (Array.isArray(stored)) {
+      stored.forEach((entry) => {
+        if (
+          typeof entry?.chatId === "string" &&
+          typeof entry.threadId === "string" &&
+          typeof entry.eventId === "string" &&
+          typeof entry.rootEventId === "string"
+        ) {
+          entriesByKey.set(
+            this.redactedThreadReplyKey(entry.chatId, entry.eventId),
+            entry,
+          );
+        }
+      });
+    }
+    if (removed) {
+      entriesByKey.delete(
+        this.redactedThreadReplyKey(removed.chatId, removed.eventId),
+      );
+    }
+    this.redactedThreadReplies.forEach((reply) => {
+      entriesByKey.set(
+        this.redactedThreadReplyKey(reply.chatId, reply.eventId),
+        {
+          chatId: reply.chatId,
+          threadId: reply.threadId,
+          eventId: reply.eventId,
+          rootEventId: reply.rootEvent.getId() ?? reply.threadId,
+        },
+      );
+    });
+    this.writeStoredJson(STORAGE.redactedThreads, [...entriesByKey.values()]);
+  }
+
+  private restoreRedactedThreadReplies(mx: MatrixClient): void {
+    const entries = this.readStoredJson<PersistedRedactedThreadReply[]>(
+      STORAGE.redactedThreads,
+    );
+    if (!Array.isArray(entries)) {
+      return;
+    }
+    const selfUserId = mx.getUserId() ?? undefined;
+    entries.forEach((entry) => {
+      const room = mx.getRoom(entry.chatId);
+      const event = room?.findEventById(entry.eventId);
+      const rootEvent = room?.findEventById(entry.rootEventId);
+      if (!room || !event || !rootEvent) {
+        return;
+      }
+      this.redactedThreadReplies.set(
+        this.redactedThreadReplyKey(entry.chatId, entry.eventId),
+        {
+          ...entry,
+          rootEvent,
+          event,
+          message: matrixEventToChatMessage(event, room, selfUserId),
+        },
+      );
+    });
+  }
+
+  private messageWithThreadOverlay(
+    room: Room,
+    event: MatrixEvent,
+    selfUserId: string | undefined,
+  ): ChatMessage {
+    const message = matrixEventToChatMessage(event, room, selfUserId);
+    const eventId = event.getId();
+    if (!eventId) {
+      return message;
+    }
+    const redactedReplies = this.redactedRepliesForThread(room.roomId, eventId);
+    if (redactedReplies.length === 0) {
+      return message;
+    }
+    const activeThread = room.getThread(eventId);
+    const activeReplyIds = new Set(
+      activeThread
+        ? sortedThreadReplyEvents(activeThread).map((reply) => reply.getId())
+        : [],
+    );
+    const missingTombstones = redactedReplies.filter(
+      ({ eventId: replyId }) => !activeReplyIds.has(replyId),
+    ).length;
+    return {
+      ...message,
+      thread: {
+        id: eventId,
+        replyCount:
+          (activeThread ? threadReplyCount(activeThread) : 0) +
+          missingTombstones,
+        unreadCount: message.thread?.unreadCount ?? 0,
+      },
+    };
+  }
+
   /**
    * Reads a page of timeline history for a room, oldest-message-first. Backed by
    * the Matrix live timeline rather than a raw `/messages` call so events are
@@ -504,9 +682,17 @@ export class MatrixDriver extends MockDriver {
         `MatrixDriver.getChatMessages: room "${chatId}" not found.`,
       );
     }
+    this.restoreRedactedThreadReplies(mx);
 
     const timeline = room.getLiveTimeline();
-    const loaded = () => timeline.getEvents().filter(isMessageEvent);
+    const loaded = () =>
+      timeline
+        .getEvents()
+        .filter(
+          (event) =>
+            isMainTimelineMessage(event) &&
+            !this.isRedactedThreadReply(chatId, event),
+        );
 
     // Number of message events strictly older than the cursor currently in
     // memory; without a cursor every loaded message counts (latest page).
@@ -517,7 +703,15 @@ export class MatrixDriver extends MockDriver {
         : events.length;
 
     let reachedStart = false;
-    while (eventsBeforeCursor() < limit) {
+    for (let page = 0; eventsBeforeCursor() < limit; page += 1) {
+      if (page >= 20) {
+        throw new Error(
+          `MatrixDriver.getChatMessages: room "${chatId}" exceeds the pagination safety limit.`,
+        );
+      }
+      const previousToken = timeline.getPaginationToken(
+        EventTimeline.BACKWARDS,
+      );
       let more: boolean;
       try {
         more = await mx.paginateEventTimeline(timeline, {
@@ -531,8 +725,17 @@ export class MatrixDriver extends MockDriver {
         reachedStart = true;
         break;
       }
+      // Pagination can bring an older redacted thread reply into the room only
+      // after the initial restoration pass. Hydrate its persisted association
+      // before rebuilding the main-timeline projection.
+      this.restoreRedactedThreadReplies(mx);
       events = loaded();
-      if (!more) {
+      const nextToken = timeline.getPaginationToken(EventTimeline.BACKWARDS);
+      // matrix-js-sdk cannot advance a timeline token when a /messages page is
+      // made entirely of already-known or thread-partitioned events. Retrying
+      // that same token would hammer the homeserver forever; keep the loaded
+      // latest range and treat this direction as exhausted for this read.
+      if (!more || nextToken === previousToken) {
         reachedStart = true;
         break;
       }
@@ -554,7 +757,7 @@ export class MatrixDriver extends MockDriver {
     // messages render as "sent" (see `toAuthorId`).
     const selfUserId = mx.getUserId() ?? undefined;
     const mappedMessages = pageEvents.map((event) =>
-      matrixEventToChatMessage(event, room, selfUserId),
+      this.messageWithThreadOverlay(room, event, selfUserId),
     );
     // Most messages have no reactions and need no extra request. For the few
     // which have a server aggregate or a locally-known relation, reconcile
@@ -597,6 +800,39 @@ export class MatrixDriver extends MockDriver {
       throw new Error(`MatrixDriver.${method}: room "${chatId}" not found.`);
     }
     return { mx, room };
+  }
+
+  /** Resolves an active message on the main timeline or inside one thread. */
+  private requireMessage(
+    method: "editChatMessage" | "deleteChatMessage",
+    {
+      chatId,
+      messageId,
+      threadId,
+    }: Pick<EditChatMessageParams, "chatId" | "messageId" | "threadId">,
+  ): { mx: MatrixClient; room: Room; event: MatrixEvent } {
+    const { mx, room } = this.requireRoom(method, chatId);
+    const thread = threadId ? room.getThread(threadId) : undefined;
+    const event = thread
+      ? (thread.findEventById(messageId) ??
+        (messageId === thread.id ? thread.rootEvent : undefined))
+      : room.findEventById(messageId);
+    const validTarget = threadId
+      ? Boolean(event && isMessageEvent(event))
+      : Boolean(event && isMainTimelineMessage(event));
+    if (!event || !validTarget) {
+      throw new Error(
+        `MatrixDriver.${method}: message "${messageId}" not found${
+          threadId ? ` in thread "${threadId}"` : " on the main timeline"
+        }.`,
+      );
+    }
+    if (event.isRedacted()) {
+      throw new Error(
+        `MatrixDriver.${method}: message "${messageId}" is already deleted.`,
+      );
+    }
+    return { mx, room, event };
   }
 
   /** Adds or removes the current user's annotation on one Matrix message. */
@@ -730,7 +966,15 @@ export class MatrixDriver extends MockDriver {
     mx: MatrixClient,
     thread: Thread,
   ): Promise<void> {
-    for (let page = 0; page < 20; page += 1) {
+    const seenTokens = new Set<string>();
+    while (true) {
+      const token = thread.liveTimeline.getPaginationToken(
+        EventTimeline.BACKWARDS,
+      );
+      if (token === null || seenTokens.has(token)) {
+        return;
+      }
+      seenTokens.add(token);
       const hasMore = await mx.paginateEventTimeline(thread.liveTimeline, {
         backwards: true,
         limit: DEFAULT_CHAT_PAGE_SIZE,
@@ -739,9 +983,6 @@ export class MatrixDriver extends MockDriver {
         return;
       }
     }
-    throw new Error(
-      `MatrixDriver.loadAllThreadReplies: thread "${thread.id}" exceeds the pagination safety limit.`,
-    );
   }
 
   /** Loads every page of the server-side room thread list. */
@@ -754,12 +995,15 @@ export class MatrixDriver extends MockDriver {
     if (!allThreadsTimeline) {
       return;
     }
-    for (let page = 0; page < 20; page += 1) {
-      if (
-        allThreadsTimeline.getPaginationToken(EventTimeline.BACKWARDS) === null
-      ) {
+    const seenTokens = new Set<string>();
+    while (true) {
+      const token = allThreadsTimeline.getPaginationToken(
+        EventTimeline.BACKWARDS,
+      );
+      if (token === null || seenTokens.has(token)) {
         return;
       }
+      seenTokens.add(token);
       const hasMore = await mx.paginateEventTimeline(allThreadsTimeline, {
         backwards: true,
         limit: DEFAULT_CHAT_PAGE_SIZE,
@@ -768,9 +1012,6 @@ export class MatrixDriver extends MockDriver {
         return;
       }
     }
-    throw new Error(
-      `MatrixDriver.loadAllRoomThreads: room "${room.roomId}" exceeds the pagination safety limit.`,
-    );
   }
 
   /** All known room threads, ordered by their latest reply. */
@@ -779,11 +1020,79 @@ export class MatrixDriver extends MockDriver {
     // Idempotent in the SDK and required even when one thread arrived via sync:
     // otherwise `getThreads()` can be a partial list.
     await this.loadAllRoomThreads(mx, room);
+    this.restoreRedactedThreadReplies(mx);
     const selfUserId = mx.getUserId() ?? undefined;
-    return room
-      .getThreads()
-      .map((thread) => threadToChatThread(room, thread, selfUserId))
-      .sort((left, right) => right.lastReplyAt.localeCompare(left.lastReplyAt));
+    const overlaysByThreadId = new Map<
+      string,
+      Array<RedactedThreadReply & { message: ChatMessage }>
+    >();
+    for (const reply of this.redactedThreadReplies.values()) {
+      if (reply.chatId !== chatId || !reply.message) {
+        continue;
+      }
+      const replies = overlaysByThreadId.get(reply.threadId) ?? [];
+      replies.push({ ...reply, message: reply.message });
+      overlaysByThreadId.set(reply.threadId, replies);
+    }
+
+    const liveThreadIds = new Set<string>();
+    const threads = room.getThreads().map((thread) => {
+      liveThreadIds.add(thread.id);
+      const summary = threadToChatThread(room, thread, selfUserId);
+      const activeIds = new Set(
+        sortedThreadReplyEvents(thread).map((event) => event.getId()),
+      );
+      const missingTombstones = (
+        overlaysByThreadId.get(thread.id) ?? []
+      ).filter(({ eventId }) => !activeIds.has(eventId));
+      const latestTombstone = missingTombstones.sort((left, right) =>
+        right.message.timestamp.localeCompare(left.message.timestamp),
+      )[0];
+      return {
+        ...summary,
+        ...(latestTombstone &&
+        latestTombstone.message.timestamp > summary.lastReplyAt
+          ? {
+              author: authorForSender(
+                room,
+                latestTombstone.event.getSender() ?? "",
+                selfUserId,
+              ),
+              lastReplyAt: latestTombstone.message.timestamp,
+              lastReplyPreview: "",
+              lastReplyDeleted: true,
+            }
+          : {}),
+        replyCount: summary.replyCount + missingTombstones.length,
+      };
+    });
+
+    for (const [threadId, replies] of overlaysByThreadId) {
+      if (liveThreadIds.has(threadId) || replies.length === 0) {
+        continue;
+      }
+      const latest = [...replies].sort((left, right) =>
+        right.message.timestamp.localeCompare(left.message.timestamp),
+      )[0];
+      threads.push({
+        id: threadId,
+        rootMessageId: threadId,
+        author: authorForSender(
+          room,
+          latest.event.getSender() ?? "",
+          selfUserId,
+        ),
+        lastReplyAt: latest.message.timestamp,
+        lastReplyPreview: "",
+        lastReplyDeleted: true,
+        replyCount: replies.length,
+        unreadCount: 0,
+      });
+    }
+
+    return threads.sort((left, right) =>
+      right.lastReplyAt.localeCompare(left.lastReplyAt),
+    );
   }
 
   /** Root + every reply, with a receipt-derived first-unread boundary. */
@@ -793,23 +1102,90 @@ export class MatrixDriver extends MockDriver {
   }: GetChatThreadParams): Promise<ChatThreadDetail> {
     const { mx, room } = this.requireRoom("getChatThread", chatId);
     await this.loadAllRoomThreads(mx, room);
+    this.restoreRedactedThreadReplies(mx);
     const thread = room.getThread(threadId);
+    const selfUserId = mx.getUserId() ?? undefined;
+    const redactedReplies = this.redactedRepliesForThread(chatId, threadId);
     if (!thread) {
-      throw new Error(
-        `MatrixDriver.getChatThread: thread "${threadId}" not found in room "${chatId}".`,
-      );
+      const rootEvent =
+        room.findEventById(threadId) ?? redactedReplies[0]?.rootEvent;
+      if (!rootEvent || redactedReplies.length === 0) {
+        throw new Error(
+          `MatrixDriver.getChatThread: thread "${threadId}" not found in room "${chatId}".`,
+        );
+      }
+      const overlayEvents = redactedReplies.map(({ event }) => event);
+      return {
+        id: threadId,
+        rootMessageId: threadId,
+        messages: [
+          this.messageWithThreadOverlay(room, rootEvent, selfUserId),
+          ...redactedReplies
+            .map(({ message }) => message)
+            .sort((left, right) =>
+              left.timestamp.localeCompare(right.timestamp),
+            ),
+        ],
+        authors: buildAuthors(room, [rootEvent, ...overlayEvents], selfUserId),
+        firstUnreadIndex: null,
+      };
     }
     await this.loadAllThreadReplies(mx, thread);
-    const selfUserId = mx.getUserId() ?? undefined;
+    this.restoreRedactedThreadReplies(mx);
     const detail = threadToChatThreadDetail(room, thread, selfUserId);
+    const firstUnreadMessageId =
+      detail.firstUnreadIndex === null
+        ? null
+        : (detail.messages[detail.firstUnreadIndex]?.id ?? null);
     const replies = sortedThreadReplyEvents(thread);
     const events = thread.rootEvent ? [thread.rootEvent, ...replies] : replies;
-    const messages = await Promise.all(
-      detail.messages.map((message, index) =>
-        reconcileMessageReactions(mx, room, events[index], message, selfUserId),
-      ),
+    const activeMessages = await Promise.all(
+      detail.messages.map((message, index) => {
+        const event = events[index];
+        const projectedMessage =
+          event?.getId() === threadId
+            ? this.messageWithThreadOverlay(room, event, selfUserId)
+            : message;
+        return reconcileMessageReactions(
+          mx,
+          room,
+          event,
+          projectedMessage,
+          selfUserId,
+        );
+      }),
     );
-    return { ...detail, messages };
+    const activeIds = new Set(activeMessages.map(({ id }) => id));
+    const rootMessage = activeMessages.find(({ id }) => id === threadId);
+    const messages = [
+      ...(rootMessage ? [rootMessage] : []),
+      ...[
+        ...activeMessages.filter(({ id }) => id !== threadId),
+        ...redactedReplies
+          .map(({ message }) => message)
+          .filter(({ id }) => !activeIds.has(id)),
+      ].sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
+    ];
+    const overlayAuthors = buildAuthors(
+      room,
+      redactedReplies.map(({ event }) => event),
+      selfUserId,
+    );
+    const authors = [
+      ...detail.authors,
+      ...overlayAuthors.filter(
+        (author) => !detail.authors.some((current) => current.id === author.id),
+      ),
+    ];
+    const firstUnreadIndex = firstUnreadMessageId
+      ? messages.findIndex(({ id }) => id === firstUnreadMessageId)
+      : -1;
+    return {
+      ...detail,
+      messages,
+      authors,
+      firstUnreadIndex: firstUnreadIndex >= 0 ? firstUnreadIndex : null,
+    };
   }
 
   /** Advances only this thread's receipt to its latest reply. */
@@ -872,6 +1248,94 @@ export class MatrixDriver extends MockDriver {
     const { mx } = this.requireRoom("sendChatMessage", chatId);
     const { event_id: eventId } = await mx.sendTextMessage(chatId, content);
     return sendResponseToChatMessage(eventId, content);
+  }
+
+  /** Sends an `m.replace` relation targeting the stable original event id. */
+  async editChatMessage({
+    chatId,
+    messageId,
+    threadId,
+    content,
+  }: EditChatMessageParams): Promise<ChatMessage> {
+    const { mx, room, event } = this.requireMessage("editChatMessage", {
+      chatId,
+      messageId,
+      threadId,
+    });
+    const selfUserId = mx.getUserId();
+    if (!selfUserId || event.getSender() !== selfUserId) {
+      throw new Error(
+        "MatrixDriver.editChatMessage: only the message author can edit it.",
+      );
+    }
+    if (event.getContent<{ msgtype?: string }>().msgtype !== MsgType.Text) {
+      throw new Error(
+        "MatrixDriver.editChatMessage: only text messages can be edited.",
+      );
+    }
+
+    const newContent = { body: content, msgtype: MsgType.Text } as const;
+    const editContent: RoomMessageEventContent = {
+      body: `* ${content}`,
+      msgtype: MsgType.Text,
+      "m.new_content": newContent,
+      "m.relates_to": {
+        rel_type: RelationType.Replace,
+        event_id: messageId,
+      },
+    };
+    await (threadId
+      ? mx.sendMessage(chatId, threadId, editContent)
+      : mx.sendMessage(chatId, editContent));
+
+    return {
+      ...matrixEventToChatMessage(event, room, selfUserId),
+      content,
+      isEdited: true,
+    };
+  }
+
+  /** Redacts the event for every room member and returns its tombstone shape. */
+  async deleteChatMessage({
+    chatId,
+    messageId,
+    threadId,
+  }: DeleteChatMessageParams): Promise<ChatMessage> {
+    const { mx, room, event } = this.requireMessage("deleteChatMessage", {
+      chatId,
+      messageId,
+      threadId,
+    });
+    const selfUserId = mx.getUserId();
+    if (
+      !selfUserId ||
+      !room.currentState.maySendRedactionForEvent(event, selfUserId)
+    ) {
+      throw new Error(
+        "MatrixDriver.deleteChatMessage: the connected user cannot delete this message.",
+      );
+    }
+
+    await (threadId
+      ? mx.redactEvent(chatId, threadId, messageId)
+      : mx.redactEvent(chatId, messageId));
+    return {
+      ...matrixEventToChatMessage(event, room, selfUserId),
+      content: "",
+      reactions: [],
+      isDeleted: true,
+      isEdited: false,
+      canEdit: false,
+      canDelete: false,
+    };
+  }
+
+  async sendChatTyping({
+    chatId,
+    isTyping,
+  }: SendChatTypingParams): Promise<void> {
+    const mx = this.requireClient("sendChatTyping");
+    await mx.sendTyping(chatId, isTyping, MATRIX_TYPING_TIMEOUT_MS);
   }
 
   async sendChatThreadReply({
@@ -1126,6 +1590,7 @@ export class MatrixDriver extends MockDriver {
     this.mx = mx;
     await this.startClientOrFailOnLogout(mx);
     await this.refreshJoinedRoomIds(mx);
+    this.restoreRedactedThreadReplies(mx);
 
     // Bridge Matrix `/sync` onto the generic event stream, once, for the
     // client's lifetime. The handlers fan out to whatever subscribers exist at
@@ -1150,9 +1615,9 @@ export class MatrixDriver extends MockDriver {
       this.emit({
         type: "message:updated",
         chatId: thread.room.roomId,
-        message: matrixEventToChatMessage(
-          thread.rootEvent,
+        message: this.messageWithThreadOverlay(
           thread.room,
+          thread.rootEvent,
           selfUserId,
         ),
       });
@@ -1175,6 +1640,15 @@ export class MatrixDriver extends MockDriver {
       threads.forEach((thread) => emitThreadRootUpdate(thread));
     };
     const pendingLiveThreadReplies = new Set<string>();
+    const pendingRedactions = new WeakMap<
+      MatrixEvent,
+      {
+        target: MatrixEvent;
+        relationTargetId?: string;
+        threadId?: string;
+        thread?: Thread;
+      }
+    >();
     const scopedThreadReplyKey = (
       thread: Thread,
       event: MatrixEvent,
@@ -1196,6 +1670,24 @@ export class MatrixDriver extends MockDriver {
         (eventId !== undefined && this.sentThreadReplyEventIds.has(eventId))
       );
     };
+    const stopTypingForMessageAuthor = (room: Room, event: MatrixEvent) => {
+      const sender = event.getSender();
+      if (!sender || sender === selfUserId || event.isRedacted()) {
+        return;
+      }
+      const member = room.getMember(sender);
+      if (!member?.typing) {
+        return;
+      }
+      // A message closes its author's current typing session. Synapse may
+      // coalesce a very brief typing=false with the message, leaving the SDK
+      // member at true and causing the next identical true snapshot to be
+      // deduplicated. Reset the volatile SDK projection explicitly so the next
+      // true is observable as a new session.
+      member.typing = false;
+      this.typingSignatures.delete(room.roomId);
+      this.emitTyping(room);
+    };
     const onTimeline = (
       event: MatrixEvent,
       room: Room | undefined,
@@ -1207,6 +1699,15 @@ export class MatrixDriver extends MockDriver {
       // live stream.
       if (!room || removed) {
         return;
+      }
+      if (this.isRedactedThreadReply(room.roomId, event)) {
+        return;
+      }
+      if (
+        data.liveEvent === true &&
+        event.getType() === EventType.RoomMessage
+      ) {
+        stopTypingForMessageAuthor(room, event);
       }
       // The Room re-emits its thread timeline. Remember only real live events
       // here (the SDK explicitly labels backfill in `data.liveEvent`), then
@@ -1289,6 +1790,206 @@ export class MatrixDriver extends MockDriver {
       emitUnread(room);
       emitThreadsRefresh(room);
     };
+    const onReplaced = (event: MatrixEvent) => {
+      const roomId = event.getRoomId();
+      const room = roomId ? mx.getRoom(roomId) : null;
+      if (!room || !isMessageEvent(event)) {
+        return;
+      }
+      const threadId = event.isThreadRoot ? event.getId() : event.threadRootId;
+      this.emit({
+        type: "message:updated",
+        chatId: room.roomId,
+        message: this.messageWithThreadOverlay(room, event, selfUserId),
+        ...(threadId ? { threadId } : {}),
+      });
+      if (threadId) {
+        this.emit({
+          type: "threads:changed",
+          chatId: room.roomId,
+          invalidateDetails: false,
+        });
+      }
+    };
+    const onBeforeRedaction = (target: MatrixEvent, redaction: MatrixEvent) => {
+      const threadId = target.isThreadRoot
+        ? target.getId()
+        : target.threadRootId;
+      const targetRoomId = target.getRoomId();
+      const thread =
+        threadId && targetRoomId
+          ? (mx.getRoom(targetRoomId)?.getThread(threadId) ?? undefined)
+          : undefined;
+      // The local redaction echo has a sending status and can still fail. Only
+      // mutate the durable projection when the server-confirmed echo arrives,
+      // matching matrix-js-sdk's own Thread.onBeforeRedaction guard.
+      if (thread && target.getId() !== thread.id && !redaction.status) {
+        forgetThreadReply(thread, target);
+        const eventId = target.getId();
+        const rootEvent =
+          thread.rootEvent ??
+          (targetRoomId
+            ? mx.getRoom(targetRoomId)?.findEventById(thread.id)
+            : null);
+        if (eventId && targetRoomId && rootEvent && isMessageEvent(target)) {
+          this.redactedThreadReplies.set(
+            this.redactedThreadReplyKey(targetRoomId, eventId),
+            {
+              chatId: targetRoomId,
+              threadId: thread.id,
+              eventId,
+              rootEvent,
+              event: target,
+            },
+          );
+          this.persistRedactedThreadReplies();
+        }
+      }
+      pendingRedactions.set(redaction, {
+        target,
+        relationTargetId: target.getRelation()?.event_id,
+        threadId,
+        ...(thread ? { thread } : {}),
+      });
+    };
+    const onRedaction = (
+      redaction: MatrixEvent,
+      room: Room,
+      emittedThreadId?: string,
+    ) => {
+      const pending = pendingRedactions.get(redaction);
+      const targetId = redaction.getAssociatedId();
+      const target =
+        pending?.target ?? (targetId ? room.findEventById(targetId) : null);
+      const threadId = pending?.threadId ?? emittedThreadId;
+      if (target?.getType() === EventType.RoomMessage) {
+        const message = matrixEventToChatMessage(target, room, selfUserId);
+        const redactedTargetId = target.getId();
+        if (threadId && redactedTargetId && redactedTargetId !== threadId) {
+          const overlay = this.redactedThreadReplies.get(
+            this.redactedThreadReplyKey(room.roomId, redactedTargetId),
+          );
+          if (overlay) {
+            overlay.message = message;
+          }
+        }
+        const emitMessageUpdate = () =>
+          this.emit({
+            type: "message:updated",
+            chatId: room.roomId,
+            message,
+            ...(threadId ? { threadId } : {}),
+          });
+        // makeRedacted() strips m.thread and the SDK repartitions the event
+        // after RoomEvent.Redaction. Publish a reply tombstone one microtask
+        // later so the cache removal wins over that transient main-timeline
+        // insertion instead of racing it.
+        if (threadId && redactedTargetId && redactedTargetId !== threadId) {
+          queueMicrotask(() => {
+            if (this.mx === mx) {
+              emitMessageUpdate();
+            }
+          });
+        } else {
+          emitMessageUpdate();
+        }
+        if (threadId || target.isThreadRoot) {
+          if (pending?.thread) {
+            emitThreadRootUpdate(pending.thread);
+          }
+          this.emit({
+            type: "threads:changed",
+            chatId: room.roomId,
+            invalidateDetails: false,
+          });
+        }
+        emitUnread(room);
+        return;
+      }
+      if (
+        target?.getType() === EventType.Reaction &&
+        pending?.relationTargetId
+      ) {
+        void fetchReactionSnapshot(
+          mx,
+          room.roomId,
+          pending.relationTargetId,
+          selfUserId,
+        )
+          .then(({ reactions }) => {
+            if (this.mx !== mx) {
+              return;
+            }
+            reactionUpdateEventsForTarget(
+              room,
+              pending.relationTargetId!,
+              reactions,
+              threadId,
+            ).forEach((chatEvent) => this.emit(chatEvent));
+          })
+          .catch(() => {
+            if (this.mx === mx) {
+              this.emit({ type: "chat:changed", chatId: room.roomId });
+              if (threadId) {
+                this.emit({ type: "threads:changed", chatId: room.roomId });
+              }
+            }
+          });
+        return;
+      }
+      this.emit({ type: "chat:changed", chatId: room.roomId });
+      if (threadId) {
+        this.emit({ type: "threads:changed", chatId: room.roomId });
+      }
+    };
+    const onRedactionCancelled = (event: MatrixEvent, room: Room) => {
+      const pending = pendingRedactions.get(event);
+      const targetId = pending?.target.getId();
+      if (targetId) {
+        this.redactedThreadReplies.delete(
+          this.redactedThreadReplyKey(room.roomId, targetId),
+        );
+        this.persistRedactedThreadReplies({
+          chatId: room.roomId,
+          eventId: targetId,
+        });
+      }
+      this.emit({ type: "chat:changed", chatId: room.roomId });
+      this.emit({ type: "threads:changed", chatId: room.roomId });
+    };
+    // One m.typing EDU updates members sequentially and can emit several
+    // RoomMemberEvent.Typing callbacks. Batch them so Alice→Bob never exposes
+    // a transient empty snapshot to React between those callbacks.
+    const pendingTypingRoomIds = new Set<string>();
+    let typingFlushQueued = false;
+    const onTyping = (_event: MatrixEvent, member: RoomMember) => {
+      pendingTypingRoomIds.add(member.roomId);
+      if (typingFlushQueued) {
+        return;
+      }
+      typingFlushQueued = true;
+      queueMicrotask(() => {
+        typingFlushQueued = false;
+        if (this.mx !== mx) {
+          pendingTypingRoomIds.clear();
+          return;
+        }
+        pendingTypingRoomIds.forEach((roomId) => {
+          const room = mx.getRoom(roomId);
+          if (room) {
+            this.emitTyping(room);
+          }
+        });
+        pendingTypingRoomIds.clear();
+      });
+    };
+    const onPowerLevel = (_event: MatrixEvent, member: RoomMember) => {
+      if (member.userId !== selfUserId) {
+        return;
+      }
+      this.emit({ type: "chat:changed", chatId: member.roomId });
+      this.emit({ type: "threads:changed", chatId: member.roomId });
+    };
     const onThreadNew = (thread: Thread, toStartOfTimeline: boolean) => {
       const reply = thread.replyToEvent ?? undefined;
       if (toStartOfTimeline || !reply) {
@@ -1319,15 +2020,20 @@ export class MatrixDriver extends MockDriver {
       room.getThreads().forEach(getThreadReplyCounter);
       room.on(ThreadEvent.New, onThreadNew);
       room.on(ThreadEvent.NewReply, onThreadReply);
+      room.on(MatrixEventEvent.BeforeRedaction, onBeforeRedaction);
       detachThreadListenersByRoomId.set(room.roomId, () => {
         room.off(ThreadEvent.New, onThreadNew);
         room.off(ThreadEvent.NewReply, onThreadReply);
+        room.off(MatrixEventEvent.BeforeRedaction, onBeforeRedaction);
       });
     };
     // A joined / left / created room changes what the list shows; drop the
     // cached joined-room set so `getChats` re-reads it.
     const onRoom = (room: Room) => {
       attachThreadListeners(room);
+      if (this.typingListeners.has(room.roomId)) {
+        this.prepareTypingRoom(room);
+      }
       this.joinedRoomIds = null;
       emitUnread(room);
       this.emit({ type: "chats:changed" });
@@ -1371,18 +2077,35 @@ export class MatrixDriver extends MockDriver {
     mx.getRooms().forEach(attachThreadListeners);
     mx.on(RoomEvent.Timeline, onTimeline);
     mx.on(RoomEvent.Receipt, onReceipt);
+    mx.on(RoomEvent.Redaction, onRedaction);
+    mx.on(RoomEvent.RedactionCancelled, onRedactionCancelled);
+    mx.on(MatrixEventEvent.Replaced, onReplaced);
+    mx.on(RoomMemberEvent.Typing, onTyping);
+    mx.on(RoomMemberEvent.PowerLevel, onPowerLevel);
     mx.on(ClientEvent.Room, onRoom);
     mx.on(ClientEvent.Sync, onSync);
     mx.on(RoomEvent.MyMembership, onMyMembership);
+    this.typingListeners.forEach((_listeners, roomId) => {
+      const room = mx.getRoom(roomId);
+      if (room) {
+        this.prepareTypingRoom(room);
+      }
+    });
     this.detachSync = () => {
       mx.off(RoomEvent.Timeline, onTimeline);
       mx.off(RoomEvent.Receipt, onReceipt);
+      mx.off(RoomEvent.Redaction, onRedaction);
+      mx.off(RoomEvent.RedactionCancelled, onRedactionCancelled);
+      mx.off(MatrixEventEvent.Replaced, onReplaced);
+      mx.off(RoomMemberEvent.Typing, onTyping);
+      mx.off(RoomMemberEvent.PowerLevel, onPowerLevel);
       mx.off(ClientEvent.Room, onRoom);
       mx.off(ClientEvent.Sync, onSync);
       mx.off(RoomEvent.MyMembership, onMyMembership);
       detachThreadListenersByRoomId.forEach((detach) => detach());
       detachThreadListenersByRoomId.clear();
       pendingLiveThreadReplies.clear();
+      pendingTypingRoomIds.clear();
     };
   }
 
@@ -1447,15 +2170,22 @@ export class MatrixDriver extends MockDriver {
   private teardownClient(): void {
     this.detachSync();
     this.detachSync = () => {};
+    this.typingListeners.forEach((listeners) => {
+      listeners.forEach((listener) => listener([]));
+    });
+    this.typingSignatures.clear();
+    this.typingRoomPreparations.clear();
     this.mx?.stopClient();
     this.mx = null;
     this.joinedRoomIds = null;
     this.sentThreadReplyEventIds.clear();
+    this.redactedThreadReplies.clear();
   }
 
   destroy(): void {
     this.teardownClient();
     this.eventListeners.clear();
+    this.typingListeners.clear();
   }
 
   /**
@@ -1468,6 +2198,84 @@ export class MatrixDriver extends MockDriver {
     this.eventListeners.add(listener);
     return () => {
       this.eventListeners.delete(listener);
+    };
+  }
+
+  private typingUsersForRoom(room: Room): ChatTypingUser[] {
+    const selfUserId = this.mx?.getUserId();
+    return room
+      .getJoinedMembers()
+      .filter((member) => member.typing && member.userId !== selfUserId)
+      .map((member) => ({ id: member.userId, name: member.name }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  private emitTyping(room: Room): void {
+    const listeners = this.typingListeners.get(room.roomId);
+    if (!listeners || listeners.size === 0) {
+      return;
+    }
+    const users = this.typingUsersForRoom(room);
+    const signature = users.map(({ id }) => id).join("\u0000");
+    if (this.typingSignatures.get(room.roomId) === signature) {
+      return;
+    }
+    this.typingSignatures.set(room.roomId, signature);
+    listeners.forEach((listener) => listener(users));
+  }
+
+  /**
+   * Typing state in matrix-js-sdk is stored on RoomMember instances. With
+   * lazy-loaded members, a freshly invited user may initially know only their
+   * own member while the inviter already knows both participants. Loading the
+   * active room's members before observing typing removes that inviter/invitee
+   * asymmetry without disabling lazy loading for every room in the account.
+   */
+  private prepareTypingRoom(room: Room): void {
+    if (this.typingRoomPreparations.has(room.roomId)) {
+      return;
+    }
+    const mx = this.mx;
+    const preparation = room
+      .loadMembersIfNeeded()
+      .then(() => {
+        if (this.mx !== mx || mx?.getRoom(room.roomId) !== room) {
+          return;
+        }
+        // Membership hydration can change the snapshot without emitting a
+        // typing transition. Force one post-hydration comparison.
+        this.typingSignatures.delete(room.roomId);
+        this.emitTyping(room);
+      })
+      // Typing is best-effort ephemeral state. A failed members request must
+      // never prevent the rest of the room from loading.
+      .catch(() => {})
+      .finally(() => {
+        if (this.typingRoomPreparations.get(room.roomId) === preparation) {
+          this.typingRoomPreparations.delete(room.roomId);
+        }
+      });
+    this.typingRoomPreparations.set(room.roomId, preparation);
+  }
+
+  subscribeToChatTyping(
+    chatId: string,
+    listener: ChatTypingListener,
+  ): () => void {
+    const listeners = this.typingListeners.get(chatId) ?? new Set();
+    listeners.add(listener);
+    this.typingListeners.set(chatId, listeners);
+    const room = this.mx?.getRoom(chatId);
+    listener(room ? this.typingUsersForRoom(room) : []);
+    if (room) {
+      this.prepareTypingRoom(room);
+    }
+    return () => {
+      const current = this.typingListeners.get(chatId);
+      current?.delete(listener);
+      if (current?.size === 0) {
+        this.typingListeners.delete(chatId);
+      }
     };
   }
 
@@ -1501,6 +2309,7 @@ export class MatrixDriver extends MockDriver {
 
     localStorage.removeItem(this.key(STORAGE.user));
     localStorage.removeItem(this.key(STORAGE.oidc));
+    localStorage.removeItem(this.key(STORAGE.redactedThreads));
     sessionStorage.removeItem(this.key(STORAGE.oidcState));
     sessionStorage.removeItem(this.key(OIDC_HS_KEY));
 

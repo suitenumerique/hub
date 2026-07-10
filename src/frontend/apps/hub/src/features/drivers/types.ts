@@ -212,8 +212,21 @@ export type ChatMessage = {
   timestamp: string;
   /** Aggregated reactions, in stable insertion order. Empty when none. */
   reactions: ChatReaction[];
+  /** Matrix redaction rendered as a stable tombstone rather than a removed row. */
+  isDeleted?: boolean;
+  /** Whether the visible body comes from an `m.replace` relation. */
+  isEdited?: boolean;
+  /** Server-derived permissions for the connected user. */
+  canEdit?: boolean;
+  canDelete?: boolean;
   /** Set when this message opened a thread; omitted otherwise. */
   thread?: ChatThreadSummary;
+};
+
+/** Volatile room member identity used only by the typing indicator. */
+export type ChatTypingUser = {
+  id: string;
+  name: string;
 };
 
 export type ChatMessagesPage = {
@@ -268,6 +281,8 @@ export type ChatThread = {
   lastReplyAt: string;
   /** Preview text of the most recent reply. */
   lastReplyPreview: string;
+  /** Lets the UI localize a redacted latest-reply tombstone. */
+  lastReplyDeleted?: boolean;
   /** Total number of replies. */
   replyCount: number;
   /** Replies the current user has not read yet. `0` when fully read. */

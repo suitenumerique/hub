@@ -58,7 +58,8 @@ const toAuthorId = (
 
 /** Timeline entries the chat UI renders as message bubbles. */
 export const isMessageEvent = (event: MatrixEvent): boolean =>
-  event.getType() === EventType.RoomMessage && !event.isRedacted();
+  event.getType() === EventType.RoomMessage &&
+  event.getRelation()?.rel_type !== RelationType.Replace;
 
 /** A user-visible message on the room's main timeline (not a reply or edit). */
 export const isMainTimelineMessage = (event: MatrixEvent): boolean =>
@@ -86,6 +87,9 @@ export const computeRoomUnread = (
     .getEvents()
     .filter(isMainTimelineMessage)
     .some((event) => {
+      if (event.isRedacted()) {
+        return false;
+      }
       const eventId = event.getId();
       return (
         Boolean(eventId) &&
@@ -210,6 +214,27 @@ export const observeThreadReply = (
     snapshot,
     liveEvent && snapshot <= previousCount ? previousCount + 1 : snapshot,
   );
+  return true;
+};
+
+/**
+ * Drops one confirmed reply before the SDK strips its `m.thread` relation.
+ * The custom counter is normally monotonic to survive stale root aggregates,
+ * so redaction is the one explicit operation allowed to decrement it.
+ */
+export const forgetThreadReply = (
+  thread: Thread,
+  event: MatrixEvent,
+): boolean => {
+  if (!isDirectThreadReply(event, thread.id)) {
+    return false;
+  }
+  const eventKey = threadReplyEventKey(event);
+  const counter = getThreadReplyCounter(thread);
+  if (!eventKey || !counter.observedEventKeys.delete(eventKey)) {
+    return false;
+  }
+  counter.count = Math.max(0, counter.count - 1);
   return true;
 };
 
@@ -545,19 +570,33 @@ export const matrixEventToChatMessage = (
   room: Room,
   selfUserId: string | undefined,
 ): ChatMessage => {
-  const body = event.getContent<{ body?: string }>().body;
+  const isDeleted = event.isRedacted();
+  const content = event.getContent<{ body?: string; msgtype?: string }>();
+  const body = content.body;
   const eventId = event.getId() ?? "";
+  const canEdit = Boolean(
+    !isDeleted &&
+    selfUserId &&
+    event.getSender() === selfUserId &&
+    content.msgtype === "m.text",
+  );
+  const canDelete = Boolean(
+    !isDeleted &&
+    selfUserId &&
+    room.currentState.maySendRedactionForEvent(event, selfUserId),
+  );
   const message: ChatMessage = {
     id: eventId,
     authorId: toAuthorId(event.getSender(), selfUserId),
-    content: typeof body === "string" ? body : "",
+    content: !isDeleted && typeof body === "string" ? body : "",
     timestamp: new Date(event.getTs()).toISOString(),
-    reactions: aggregateReactions(
-      room,
-      eventId,
-      selfUserId,
-      event.threadRootId,
-    ),
+    reactions: isDeleted
+      ? []
+      : aggregateReactions(room, eventId, selfUserId, event.threadRootId),
+    isDeleted,
+    isEdited: !isDeleted && Boolean(event.replacingEventId()),
+    canEdit,
+    canDelete,
   };
   const thread = room.getThread(eventId);
   if (thread) {
@@ -578,12 +617,14 @@ export const threadToChatThread = (
   const lastReply = thread.replyToEvent ?? thread.rootEvent;
   const sender = lastReply?.getSender() ?? "";
   const body = lastReply?.getContent<{ body?: string }>().body;
+  const lastReplyDeleted = lastReply?.isRedacted() ?? false;
   return {
     id: thread.id,
     rootMessageId: thread.id,
     author: authorForSender(room, sender, selfUserId),
     lastReplyAt: new Date(lastReply?.getTs() ?? 0).toISOString(),
-    lastReplyPreview: typeof body === "string" ? body : "",
+    lastReplyPreview: !lastReplyDeleted && typeof body === "string" ? body : "",
+    lastReplyDeleted,
     replyCount: threadReplyCount(thread),
     unreadCount: computeThreadUnread(room, thread, selfUserId),
   };
@@ -661,6 +702,10 @@ export const sendResponseToChatMessage = (
   content,
   timestamp: new Date().toISOString(),
   reactions: [],
+  isDeleted: false,
+  isEdited: false,
+  canEdit: true,
+  canDelete: true,
 });
 
 /**
@@ -699,6 +744,71 @@ export const timelineEventToChatEvent = (
     return reactionEventToChatEvent(event, room, selfUserId);
   }
 
+  const relation = event.getRelation();
+
+  // An edit (`m.replace`) updates the original bubble in place. Handle it
+  // before the generic message predicate because replacement events are not
+  // standalone timeline bubbles.
+  if (
+    event.getType() === EventType.RoomMessage &&
+    relation?.rel_type === RelationType.Replace &&
+    relation.event_id
+  ) {
+    if (isOwnEcho(event)) {
+      return [];
+    }
+    // Keep the ORIGINAL send time. `matrixEventToChatMessage` (history reads)
+    // dates an edited message from its original event, so using the edit event's
+    // ts here would make the bubble's time jump live, then revert on refetch.
+    const original = room.findEventById(relation.event_id);
+    const newBody = event.getContent<{
+      "m.new_content"?: { body?: string };
+    }>()["m.new_content"]?.body;
+    // Matrix servers accept relation events from any joined member. The SDK's
+    // Relations collection filters replacements to the original sender before
+    // applying them; this direct live bridge must enforce the same rule instead
+    // of briefly rendering somebody else's forged edit from the raw timeline.
+    if (
+      !original ||
+      !isMessageEvent(original) ||
+      original.isRedacted() ||
+      original.getSender() !== event.getSender() ||
+      typeof newBody !== "string"
+    ) {
+      return [];
+    }
+    const originalMessage = matrixEventToChatMessage(
+      original,
+      room,
+      selfUserId,
+    );
+    const threadId = original.isThreadRoot
+      ? original.getId()
+      : original.threadRootId;
+    return [
+      {
+        type: "message:updated",
+        chatId: room.roomId,
+        ...(threadId ? { threadId } : {}),
+        message: {
+          ...originalMessage,
+          id: relation.event_id,
+          authorId: toAuthorId(original.getSender(), selfUserId),
+          content: newBody,
+          timestamp: new Date(original.getTs()).toISOString(),
+          reactions: aggregateReactions(room, relation.event_id, selfUserId),
+          isDeleted: false,
+          isEdited: true,
+          canEdit: originalMessage.canEdit,
+          canDelete: originalMessage.canDelete,
+        },
+      },
+      ...(threadId
+        ? [{ type: "threads:changed" as const, chatId: room.roomId }]
+        : []),
+    ];
+  }
+
   // Non-text activity (redactions, membership, other state) stays coarse.
   if (!isMessageEvent(event)) {
     return [{ type: "chat:changed", chatId: room.roomId }];
@@ -727,36 +837,6 @@ export const timelineEventToChatEvent = (
             },
           ]
         : []),
-    ];
-  }
-
-  // An edit (`m.replace`) updates an existing bubble in place.
-  const relation = event.getRelation();
-  if (relation?.rel_type === RelationType.Replace && relation.event_id) {
-    const newBody = event.getContent<{ "m.new_content"?: { body?: string } }>()[
-      "m.new_content"
-    ]?.body;
-    // Keep the ORIGINAL send time. `matrixEventToChatMessage` (history reads)
-    // dates an edited message from its original event, so using the edit event's
-    // ts here would make the bubble's time jump live, then revert on the next
-    // refetch. Fall back to the edit ts only when the original is not loaded.
-    const original = room.findEventById(relation.event_id);
-    const originalMessage = original
-      ? matrixEventToChatMessage(original, room, selfUserId)
-      : null;
-    return [
-      {
-        type: "message:updated",
-        chatId: room.roomId,
-        message: {
-          ...originalMessage,
-          id: relation.event_id,
-          authorId: toAuthorId(event.getSender(), selfUserId),
-          content: typeof newBody === "string" ? newBody : "",
-          timestamp: new Date(original?.getTs() ?? event.getTs()).toISOString(),
-          reactions: aggregateReactions(room, relation.event_id, selfUserId),
-        },
-      },
     ];
   }
 

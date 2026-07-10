@@ -2,12 +2,16 @@ import {
   Driver as BaseDriver,
   type ChatConnectionState,
   type ChatEventListener,
+  type ChatTypingListener,
   type ChatUserFilters,
+  type DeleteChatMessageParams,
   type Driver,
+  type EditChatMessageParams,
   type GetChatMessagesParams,
   type GetChatThreadParams,
   type MarkChatThreadReadParams,
   type SendChatMessageParams,
+  type SendChatTypingParams,
   type SendChatThreadReplyParams,
   type StartChatThreadParams,
   type ToggleChatReactionParams,
@@ -47,6 +51,11 @@ export class LazyMatrixDriver extends BaseDriver {
   private targetPromise: Promise<Driver> | null = null;
   private readonly listeners = new Set<ChatEventListener>();
   private readonly unsubscriptions = new Map<ChatEventListener, () => void>();
+  private readonly typingSubscriptions = new Set<{
+    chatId: string;
+    listener: ChatTypingListener;
+    unsubscribe: () => void;
+  }>();
   private disposed = false;
 
   constructor(
@@ -72,6 +81,12 @@ export class LazyMatrixDriver extends BaseDriver {
           this.unsubscriptions.set(
             listener,
             driver.subscribeToEvents(listener),
+          );
+        });
+        this.typingSubscriptions.forEach((subscription) => {
+          subscription.unsubscribe = driver.subscribeToChatTyping(
+            subscription.chatId,
+            subscription.listener,
           );
         });
         this.target = driver;
@@ -163,6 +178,20 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.sendChatMessage(params));
   }
 
+  async editChatMessage(params: EditChatMessageParams): Promise<ChatMessage> {
+    return this.withTarget((driver) => driver.editChatMessage(params));
+  }
+
+  async deleteChatMessage(
+    params: DeleteChatMessageParams,
+  ): Promise<ChatMessage> {
+    return this.withTarget((driver) => driver.deleteChatMessage(params));
+  }
+
+  async sendChatTyping(params: SendChatTypingParams): Promise<void> {
+    return this.withTarget((driver) => driver.sendChatTyping(params));
+  }
+
   async sendChatThreadReply(
     params: SendChatThreadReplyParams,
   ): Promise<ChatThreadMutationResult> {
@@ -194,11 +223,31 @@ export class LazyMatrixDriver extends BaseDriver {
     };
   }
 
+  subscribeToChatTyping(
+    chatId: string,
+    listener: ChatTypingListener,
+  ): () => void {
+    const subscription = {
+      chatId,
+      listener,
+      unsubscribe: this.target
+        ? this.target.subscribeToChatTyping(chatId, listener)
+        : () => {},
+    };
+    this.typingSubscriptions.add(subscription);
+    return () => {
+      subscription.unsubscribe();
+      this.typingSubscriptions.delete(subscription);
+    };
+  }
+
   destroy(): void {
     this.disposed = true;
     this.unsubscriptions.forEach((unsubscribe) => unsubscribe());
     this.unsubscriptions.clear();
     this.listeners.clear();
+    this.typingSubscriptions.forEach(({ unsubscribe }) => unsubscribe());
+    this.typingSubscriptions.clear();
     this.target?.destroy();
     this.target = null;
     this.targetPromise = null;
