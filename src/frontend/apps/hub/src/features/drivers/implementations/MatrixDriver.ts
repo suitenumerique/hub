@@ -39,10 +39,7 @@ import {
   getUserIdFromAccessToken,
 } from "@/features/matrix/utils/auth";
 import { fetchHomeserverForEmail } from "@/features/matrix/utils/autodiscovery";
-import {
-  AVATAR_COLORS,
-  AvatarColor,
-} from "@/features/ui/components/avatar/palette";
+import { hashAvatarColor } from "@/features/ui/components/avatar/palette";
 
 import {
   ChatConnectionState,
@@ -163,12 +160,6 @@ const roomOtherMembers = (room: Room, currentUserId: string | undefined) =>
         (member.membership === KnownMembership.Join ||
           member.membership === KnownMembership.Invite),
     );
-
-const roomParticipantIds = (
-  room: Room,
-  currentUserId: string | undefined,
-): string[] =>
-  roomOtherMembers(room, currentUserId).map((member) => member.userId);
 
 /** Order- and duplicate-independent key for comparing two participant sets. */
 const participantSetKey = (userIds: string[]): string =>
@@ -301,22 +292,6 @@ const matrixRoomToLocalChat = (
     ? matrixInviteRoomToLocalChat(room, currentUserId)
     : matrixJoinedRoomToLocalChat(room, currentUserId);
 
-/**
- * Deterministic avatar identity for a Matrix sender, mirroring the `Avatar`
- * component's own hashing so a member keeps the same colour everywhere it is
- * rendered. The driver depends only on the palette, not on the React component.
- */
-const hashString = (value: string): number => {
-  let hash = 5381;
-  for (let i = 0; i < value.length; i++) {
-    hash = ((hash << 5) + hash + value.charCodeAt(i)) | 0;
-  }
-  return hash >>> 0;
-};
-
-const colorFor = (seed: string): AvatarColor =>
-  AVATAR_COLORS[hashString(seed) % AVATAR_COLORS.length];
-
 const initialsFor = (name: string): string => {
   const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
   const letters = parts.map((part) => part.charAt(0).toUpperCase()).join("");
@@ -344,7 +319,7 @@ const matrixDirectoryUserToChatUser = (user: MatrixDirectoryUser): ChatUser => {
     id: user.user_id,
     name,
     initials: initialsFor(name),
-    color: colorFor(user.user_id),
+    color: hashAvatarColor(user.user_id),
     email: user.user_id,
     subtitle: user.user_id,
   };
@@ -599,7 +574,7 @@ const authorForSender = (
     id: toAuthorId(userId, selfUserId),
     name,
     initials: initialsFor(name),
-    color: colorFor(userId),
+    color: hashAvatarColor(userId),
   };
 };
 
@@ -829,7 +804,7 @@ const reactionUpdateEventsForTarget = (
 };
 
 /** Fine-grained cache patches for a live `m.reaction` annotation. */
-export const reactionEventToChatEvent = (
+const reactionEventToChatEvent = (
   event: MatrixEvent,
   room: Room,
   selfUserId: string | undefined,
@@ -943,7 +918,12 @@ const buildAuthors = (
   ];
   return senderIds.map((id) => {
     const name = room.getMember(id)?.name ?? id;
-    return { id, name, initials: initialsFor(name), color: colorFor(id) };
+    return {
+      id,
+      name,
+      initials: initialsFor(name),
+      color: hashAvatarColor(id),
+    };
   });
 };
 
@@ -1193,14 +1173,7 @@ export class MatrixDriver extends MockDriver {
   }
 
   async getChat(chatId: string): Promise<LocalChat> {
-    const mx = this.mx;
-    if (!mx) {
-      throw new Error("MatrixDriver.getChat: client is not connected.");
-    }
-    const room = mx.getRoom(chatId);
-    if (!room) {
-      throw new Error(`MatrixDriver.getChat: room "${chatId}" not found.`);
-    }
+    const { mx, room } = this.requireRoom("getChat", chatId);
     // A joined room (server-confirmed) or a pending invitation is addressable;
     // anything else (left/banned) is not.
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
@@ -1265,7 +1238,9 @@ export class MatrixDriver extends MockDriver {
       .filter((room) => joinedRoomIds.has(room.roomId))
       .find(
         (room) =>
-          participantSetKey(roomParticipantIds(room, selfUserId)) === wanted,
+          participantSetKey(
+            roomOtherMembers(room, selfUserId).map((member) => member.userId),
+          ) === wanted,
       );
     return match ? matrixRoomToLocalChat(match, selfUserId) : null;
   }
@@ -1279,12 +1254,7 @@ export class MatrixDriver extends MockDriver {
    * navigation that follows.
    */
   async createChatForUsers(userIds: string[]): Promise<LocalChat> {
-    const mx = this.mx;
-    if (!mx) {
-      throw new Error(
-        "MatrixDriver.createChatForUsers: client is not connected.",
-      );
-    }
+    const mx = this.requireClient("createChatForUsers");
     const participantIds = [...new Set(userIds)].filter(Boolean);
     if (participantIds.length === 0) {
       throw new Error(
@@ -1371,12 +1341,7 @@ export class MatrixDriver extends MockDriver {
    * flipped the local membership.
    */
   async acceptChatInvitation(chatId: string): Promise<LocalChat> {
-    const mx = this.mx;
-    if (!mx) {
-      throw new Error(
-        "MatrixDriver.acceptChatInvitation: client is not connected.",
-      );
-    }
+    const mx = this.requireClient("acceptChatInvitation");
     await mx.joinRoom(chatId);
     // Drop the cached joined set so the conversation's first `getChatMessages`
     // re-reads `/joined_rooms` and sees the room as joined (it isn't in the
@@ -1394,12 +1359,7 @@ export class MatrixDriver extends MockDriver {
 
   /** Refuses an incoming invitation by leaving its room. */
   async refuseChatInvitation(chatId: string): Promise<void> {
-    const mx = this.mx;
-    if (!mx) {
-      throw new Error(
-        "MatrixDriver.refuseChatInvitation: client is not connected.",
-      );
-    }
+    const mx = this.requireClient("refuseChatInvitation");
     await mx.leave(chatId);
     this.joinedRoomIds = null;
     this.emit({ type: "chats:changed" });
@@ -1418,10 +1378,7 @@ export class MatrixDriver extends MockDriver {
     cursor,
     limit = DEFAULT_CHAT_PAGE_SIZE,
   }: GetChatMessagesParams): Promise<ChatMessagesPage> {
-    const mx = this.mx;
-    if (!mx) {
-      throw new Error("MatrixDriver.getChatMessages: client is not connected.");
-    }
+    const mx = this.requireClient("getChatMessages");
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     if (!joinedRoomIds.has(chatId)) {
       throw new Error(
@@ -1507,15 +1464,21 @@ export class MatrixDriver extends MockDriver {
     return { messages, authors, nextCursor };
   }
 
+  /** Resolves a connected client for Matrix-only operations. */
+  private requireClient(method: string): MatrixClient {
+    const mx = this.mx;
+    if (!mx) {
+      throw new Error(`MatrixDriver.${method}: client is not connected.`);
+    }
+    return mx;
+  }
+
   /** Resolves a connected client and a known room for Matrix-only operations. */
   private requireRoom(
     method: string,
     chatId: string,
   ): { mx: MatrixClient; room: Room } {
-    const mx = this.mx;
-    if (!mx) {
-      throw new Error(`MatrixDriver.${method}: client is not connected.`);
-    }
+    const mx = this.requireClient(method);
     const room = mx.getRoom(chatId);
     if (!room) {
       throw new Error(`MatrixDriver.${method}: room "${chatId}" not found.`);
@@ -1793,15 +1756,7 @@ export class MatrixDriver extends MockDriver {
     chatId,
     content,
   }: SendChatMessageParams): Promise<ChatMessage> {
-    const mx = this.mx;
-    if (!mx) {
-      throw new Error("MatrixDriver.sendChatMessage: client is not connected.");
-    }
-    if (!mx.getRoom(chatId)) {
-      throw new Error(
-        `MatrixDriver.sendChatMessage: room "${chatId}" not found.`,
-      );
-    }
+    const { mx } = this.requireRoom("sendChatMessage", chatId);
     const { event_id: eventId } = await mx.sendTextMessage(chatId, content);
     return sendResponseToChatMessage(eventId, content);
   }
@@ -1942,7 +1897,7 @@ export class MatrixDriver extends MockDriver {
     this.setStorageOwner(user);
 
     // 1. Returning user — credentials already persisted.
-    const stored = this.readStoredUser();
+    const stored = this.readStoredJson<MatrixUserInterface>(STORAGE.user);
     if (stored) {
       try {
         await this.bootstrapClient(stored);
@@ -2030,8 +1985,8 @@ export class MatrixDriver extends MockDriver {
       refreshToken: oidc.refreshToken,
       guest,
     };
-    this.persistUser(matrixUser);
-    this.persistOidc({
+    this.writeStoredJson(STORAGE.user, matrixUser);
+    this.writeStoredJson(STORAGE.oidc, {
       clientId: oidc.clientId,
       issuer: oidc.issuer,
       idToken: oidc.idToken,
@@ -2040,7 +1995,7 @@ export class MatrixDriver extends MockDriver {
       // redirect URI registered for this client.
       redirectUri: new URL(window.location.origin + window.location.pathname)
         .href,
-    });
+    } satisfies StoredOidc);
     sessionStorage.removeItem(this.key(STORAGE.oidcState));
     sessionStorage.removeItem(this.key(OIDC_HS_KEY));
     return matrixUser;
@@ -2074,23 +2029,28 @@ export class MatrixDriver extends MockDriver {
         chatId: room.roomId,
         unread: roomUnread(room, selfUserId),
       });
+    /** Replaces the root bubble so its summary count / unread badge moves live. */
+    const emitThreadRootUpdate = (thread: Thread) => {
+      if (!thread.rootEvent) {
+        return;
+      }
+      this.emit({
+        type: "message:updated",
+        chatId: thread.room.roomId,
+        message: matrixEventToChatMessage(
+          thread.rootEvent,
+          thread.room,
+          selfUserId,
+        ),
+      });
+    };
     const emitThreadChanged = (thread: Thread, event?: MatrixEvent) => {
       // The optimistic mutation owns this session's local/remote echo.
       if (event && isOwnEcho(event)) {
         return;
       }
       this.emit({ type: "threads:changed", chatId: thread.room.roomId });
-      if (thread.rootEvent) {
-        this.emit({
-          type: "message:updated",
-          chatId: thread.room.roomId,
-          message: matrixEventToChatMessage(
-            thread.rootEvent,
-            thread.room,
-            selfUserId,
-          ),
-        });
-      }
+      emitThreadRootUpdate(thread);
       emitUnread(thread.room);
     };
     const emitThreadsRefresh = (room: Room) => {
@@ -2099,19 +2059,7 @@ export class MatrixDriver extends MockDriver {
         return;
       }
       this.emit({ type: "threads:changed", chatId: room.roomId });
-      threads.forEach((thread) => {
-        if (thread.rootEvent) {
-          this.emit({
-            type: "message:updated",
-            chatId: room.roomId,
-            message: matrixEventToChatMessage(
-              thread.rootEvent,
-              room,
-              selfUserId,
-            ),
-          });
-        }
-      });
+      threads.forEach((thread) => emitThreadRootUpdate(thread));
     };
     const pendingLiveThreadReplies = new Set<string>();
     const scopedThreadReplyKey = (
@@ -2122,6 +2070,18 @@ export class MatrixDriver extends MockDriver {
       return eventKey
         ? `${thread.room.roomId}\u0000${thread.id}\u0000${eventKey}`
         : undefined;
+    };
+    /**
+     * A thread reply this session sent: either still a local echo, or the remote
+     * echo of an id the driver just wrote. Both are already on screen through the
+     * optimistic mutation, so the bridge must stay silent.
+     */
+    const isOwnThreadEcho = (event: MatrixEvent): boolean => {
+      const eventId = event.getId();
+      return (
+        isOwnEcho(event) ||
+        (eventId !== undefined && this.sentThreadReplyEventIds.has(eventId))
+      );
     };
     const onTimeline = (
       event: MatrixEvent,
@@ -2142,11 +2102,7 @@ export class MatrixDriver extends MockDriver {
         !event.isThreadRoot &&
         event.getRelation()?.rel_type === RelationType.Thread
       ) {
-        if (
-          isOwnEcho(event) ||
-          (event.getId() !== undefined &&
-            this.sentThreadReplyEventIds.has(event.getId()!))
-        ) {
+        if (isOwnThreadEcho(event)) {
           return;
         }
         const threadId = event.threadRootId;
@@ -2225,11 +2181,7 @@ export class MatrixDriver extends MockDriver {
       if (toStartOfTimeline || !reply) {
         return;
       }
-      if (
-        isOwnEcho(reply) ||
-        (reply.getId() !== undefined &&
-          this.sentThreadReplyEventIds.has(reply.getId()!))
-      ) {
+      if (isOwnThreadEcho(reply)) {
         return;
       }
       const replyKey = scopedThreadReplyKey(thread, reply);
@@ -2347,7 +2299,7 @@ export class MatrixDriver extends MockDriver {
    * load starts from a valid access token instead of a dead one.
    */
   private buildTokenRefreshFunction(user: MatrixUserInterface) {
-    const oidc = this.readStoredOidc();
+    const oidc = this.readStoredJson<StoredOidc>(STORAGE.oidc);
     if (!oidc || !user.refreshToken || !user.deviceId) {
       return undefined;
     }
@@ -2358,11 +2310,11 @@ export class MatrixDriver extends MockDriver {
       deviceId: user.deviceId,
       idTokenClaims: oidc.idTokenClaims,
       onTokensRefreshed: ({ accessToken, refreshToken }) => {
-        this.persistUser({
+        this.writeStoredJson(STORAGE.user, {
           ...user,
           accessToken,
           refreshToken: refreshToken ?? user.refreshToken,
-        });
+        } satisfies MatrixUserInterface);
       },
     });
   }
@@ -2374,14 +2326,23 @@ export class MatrixDriver extends MockDriver {
     window.history.replaceState({}, "", url.toString());
   }
 
-  destroy(): void {
+  /**
+   * Detaches the `/sync` bridge and drops every client-scoped cache. Safe to run
+   * with no client. Subscribers are left alone: `clearStoredSession` reconnects
+   * afterwards, and only {@link destroy} ends the stream for good.
+   */
+  private teardownClient(): void {
     this.detachSync();
     this.detachSync = () => {};
-    this.eventListeners.clear();
     this.mx?.stopClient();
     this.mx = null;
     this.joinedRoomIds = null;
     this.sentThreadReplyEventIds.clear();
+  }
+
+  destroy(): void {
+    this.teardownClient();
+    this.eventListeners.clear();
   }
 
   /**
@@ -2403,30 +2364,27 @@ export class MatrixDriver extends MockDriver {
 
   // --- Token persistence (driver-owned, no separate store) ----------------
 
-  private readStoredUser(): MatrixUserInterface | null {
-    const raw = localStorage.getItem(this.key(STORAGE.user));
+  /** Reads an account-scoped JSON blob, dropping it when it cannot be parsed. */
+  private readStoredJson<T>(key: string): T | null {
+    const storageKey = this.key(key);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) {
       return null;
     }
     try {
-      return JSON.parse(raw) as MatrixUserInterface;
+      return JSON.parse(raw) as T;
     } catch {
-      localStorage.removeItem(this.key(STORAGE.user));
+      localStorage.removeItem(storageKey);
       return null;
     }
   }
 
-  private persistUser(user: MatrixUserInterface): void {
-    localStorage.setItem(this.key(STORAGE.user), JSON.stringify(user));
+  private writeStoredJson(key: string, value: unknown): void {
+    localStorage.setItem(this.key(key), JSON.stringify(value));
   }
 
   private async clearStoredSession(user?: MatrixUserInterface): Promise<void> {
-    this.detachSync();
-    this.detachSync = () => {};
-    this.mx?.stopClient();
-    this.mx = null;
-    this.joinedRoomIds = null;
-    this.sentThreadReplyEventIds.clear();
+    this.teardownClient();
 
     localStorage.removeItem(this.key(STORAGE.user));
     localStorage.removeItem(this.key(STORAGE.oidc));
@@ -2456,23 +2414,6 @@ export class MatrixDriver extends MockDriver {
         resolve();
       };
     });
-  }
-
-  private readStoredOidc(): StoredOidc | null {
-    const raw = localStorage.getItem(this.key(STORAGE.oidc));
-    if (!raw) {
-      return null;
-    }
-    try {
-      return JSON.parse(raw) as StoredOidc;
-    } catch {
-      localStorage.removeItem(this.key(STORAGE.oidc));
-      return null;
-    }
-  }
-
-  private persistOidc(oidc: StoredOidc): void {
-    localStorage.setItem(this.key(STORAGE.oidc), JSON.stringify(oidc));
   }
 
   private setStorageOwner(user: User | null | undefined): void {

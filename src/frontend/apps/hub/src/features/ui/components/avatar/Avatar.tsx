@@ -1,18 +1,7 @@
 import clsx from "clsx";
 import { ReactNode } from "react";
 
-import { AVATAR_COLORS, AvatarColor } from "./palette";
-
-const hashString = (value: string): number => {
-  let hash = 5381;
-  for (let i = 0; i < value.length; i++) {
-    hash = ((hash << 5) + hash + value.charCodeAt(i)) | 0;
-  }
-  return hash >>> 0;
-};
-
-const pickColor = (label: string): AvatarColor =>
-  AVATAR_COLORS[hashString(label) % AVATAR_COLORS.length];
+import { AvatarColor, hashAvatarColor } from "./palette";
 
 const deriveInitials = (label: string): string => {
   const words = label.trim().split(/\s+/).filter(Boolean);
@@ -43,7 +32,7 @@ export const Avatar = ({
   color,
   className,
 }: AvatarProps) => {
-  const resolvedColor = color ?? pickColor(label);
+  const resolvedColor = color ?? hashAvatarColor(label);
   const a11yProps = decorative
     ? { "aria-hidden": true }
     : { role: "img", "aria-label": label };
