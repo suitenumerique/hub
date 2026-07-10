@@ -37,6 +37,9 @@ export class LazyMatrixDriver extends BaseDriver {
   // before the SDK lazy-loads. It must mirror the real `MatrixDriver`; the actual
   // `sendChatMessage` still routes through `withTarget`, loading the driver on demand.
   override readonly supportsComposition = true;
+  // Static capability mirroring the real `MatrixDriver`, read synchronously by
+  // the New Chat composer before the SDK lazy-loads.
+  override readonly supportsConversationCreation = true;
 
   private target: Driver | null = null;
   private targetPromise: Promise<Driver> | null = null;
@@ -90,6 +93,10 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async getChatForUsers(userIds: string[]): Promise<LocalChat | null> {
     return this.withTarget((driver) => driver.getChatForUsers(userIds));
+  }
+
+  async createChatForUsers(userIds: string[]): Promise<LocalChat> {
+    return this.withTarget((driver) => driver.createChatForUsers(userIds));
   }
 
   async getChat(chatId: string): Promise<LocalChat> {

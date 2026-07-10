@@ -5,6 +5,8 @@ import { decorateChat } from "@/features/chat/chatRefs";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { Chat } from "@/features/drivers/types";
 
+import { chatKeys } from "../chatKeys";
+
 import { useComposerAccountId } from "./useChatAccounts";
 
 export type UseChatForUsersResult = {
@@ -24,7 +26,7 @@ export const useChatForUsers = (userIds: string[]): UseChatForUsersResult => {
   );
 
   const query = useQuery({
-    queryKey: ["chat-for-users", accountId, participantIds],
+    queryKey: chatKeys.chatForUsers(accountId, participantIds),
     queryFn: async () => {
       if (!accountId) {
         return null;

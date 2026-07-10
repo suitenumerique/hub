@@ -32,9 +32,12 @@ type ChatViewProps = {
   renderEmpty?: () => ReactNode;
   /**
    * Called after a message is successfully sent. Lets the new-chat host commit
-   * the URL to the resolved conversation once the user actually sends.
+   * the URL to the resolved (or freshly created) conversation once the user
+   * actually sends.
    */
   onSent?: (ref: ChatRef) => void;
+  /** Bumped by the host to move focus into the composer (New Chat Enter). */
+  composerFocusSignal?: number;
 };
 
 /**
@@ -48,6 +51,7 @@ export const ChatView = ({
   renderHeader,
   renderEmpty,
   onSent,
+  composerFocusSignal,
 }: ChatViewProps) => {
   const { t } = useTranslation();
   const { chat } = useChat(chatRef);
@@ -194,6 +198,7 @@ export const ChatView = ({
                 }
                 disabled={!chatRef || !isCompositionSupported}
                 isSubmitting={isSendingMessage}
+                focusSignal={composerFocusSignal}
                 onSubmit={chatRef ? handleSend : undefined}
               />
             </div>

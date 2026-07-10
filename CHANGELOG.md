@@ -24,6 +24,7 @@ and this project adheres to
   setup
 - ✨(frontend) Bridge Matrix `/sync` onto the real-time chat event stream
 - ✨(frontend) Send text messages from the Hub to Matrix conversations
+- ✨(frontend) Start a new Matrix conversation from the new chat search
 
 ### Changed
 

@@ -26,6 +26,12 @@ type ChatComposerProps = {
   disabled?: boolean;
   isSubmitting?: boolean;
   autoFocus?: boolean;
+  /**
+   * Imperative focus trigger: whenever this number changes (and the input is
+   * enabled), the composer takes focus. Lets the New Chat search bar move focus
+   * into the composer on Enter without holding a ref to it.
+   */
+  focusSignal?: number;
   /** Message shown in the error toast on send failure. Defaults to a generic one. */
   errorMessage?: string;
   onSubmit?: (content: string) => Promise<unknown> | unknown;
@@ -38,6 +44,7 @@ export const ChatComposer = ({
   disabled = false,
   isSubmitting = false,
   autoFocus = false,
+  focusSignal,
   errorMessage,
   onSubmit,
 }: ChatComposerProps) => {
@@ -45,24 +52,30 @@ export const ChatComposer = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
-  const previousConversationId = useRef(conversationId);
+  const lastConcreteConversationId = useRef(conversationId);
   const trimmedDraft = useMemo(() => draft.trim(), [draft]);
   const isBusy = isSubmitting || isSubmittingDraft;
   const canSubmit =
     Boolean(onSubmit) && !disabled && !isBusy && trimmedDraft.length > 0;
 
-  // Drop the draft only when switching between two concrete conversations, so a
-  // message typed for conversation A can never be sent to conversation B. The
-  // `undefined → value` transition is the new-chat handoff and keeps the draft.
+  // Drop the draft when the conversation identity changes to a DIFFERENT
+  // concrete one, so a message typed for conversation A can never be sent to
+  // conversation B. Tracks the last concrete id and ignores `undefined`
+  // transitions, so the memory survives the new-chat draft state: a
+  // `undefined → value` step is the new-chat → resolved-chat handoff and keeps
+  // the draft, but `A → undefined → B` (e.g. previewing a DM, then adding a
+  // participant and creating a group) still clears it.
   useEffect(() => {
+    if (!conversationId) {
+      return;
+    }
     if (
-      previousConversationId.current &&
-      conversationId &&
-      previousConversationId.current !== conversationId
+      lastConcreteConversationId.current &&
+      lastConcreteConversationId.current !== conversationId
     ) {
       setDraft("");
     }
-    previousConversationId.current = conversationId;
+    lastConcreteConversationId.current = conversationId;
   }, [conversationId]);
 
   useEffect(() => {
@@ -76,6 +89,20 @@ export const ChatComposer = ({
 
     return () => cancelAnimationFrame(raf);
   }, [autoFocus, disabled]);
+
+  // Move focus into the input whenever the parent bumps `focusSignal` (e.g. the
+  // New Chat search bar on Enter), as long as the composer is enabled.
+  useEffect(() => {
+    if (!focusSignal || disabled) {
+      return;
+    }
+
+    const raf = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [focusSignal, disabled]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {

@@ -10,12 +10,8 @@ import {
   ToggleChatThreadReactionParams,
   ChatUserFilters,
 } from "../Driver";
-import {
-  MOCK_CHATS,
-  type MockChat,
-  getMockChatForUsers,
-} from "../mocks/mockChats";
-import { getMockChatUsers } from "../mocks/mockChatUsers";
+import { MOCK_CHATS, type MockChat } from "../mocks/mockChats";
+import { MOCK_CHAT_USERS, getMockChatUsers } from "../mocks/mockChatUsers";
 import { getMockChatDocuments } from "../mocks/mockDocuments";
 import {
   getMockAuthorsForChat,
@@ -75,6 +71,7 @@ const readNumberSetting = (
  */
 export class MockDriver extends Driver {
   override readonly supportsComposition: boolean = true;
+  override readonly supportsConversationCreation: boolean = true;
 
   private readonly chats: LocalChat[];
 
@@ -125,10 +122,49 @@ export class MockDriver extends Driver {
     // MOCK — replace this block with `fetchAPI('chats/resolve/', { params })`
     // when the backend can resolve an exact participant set. The driver
     // contract (participant ids → existing chat or null) lets the UI keep the
-    // placeholder for genuinely new conversations.
+    // placeholder for genuinely new conversations. Resolves against the driver's
+    // live list (seed + any conversation created this session) so a freshly
+    // created conversation resolves on re-selection.
     await delay(MOCK_CHAT_LATENCY_MS);
 
-    return getMockChatForUsers(userIds);
+    return this.findLocalChatForUsers(userIds) ?? null;
+  }
+
+  async createChatForUsers(userIds: string[]): Promise<LocalChat> {
+    // MOCK — replace this block with `fetchAPI('chats/', { method: 'POST' })`
+    // when the backend can create a conversation from a participant set. The
+    // driver contract (participant ids → the new or existing LocalChat) is the
+    // swap point for the New Chat "start a conversation" flow.
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const participantIds = [...new Set(userIds)].sort();
+    if (participantIds.length === 0) {
+      throw new Error(
+        "MockDriver.createChatForUsers: at least one participant is required.",
+      );
+    }
+    // Idempotent: never duplicate a conversation that already exists.
+    const existing = this.findLocalChatForUsers(participantIds);
+    if (existing) {
+      return existing;
+    }
+
+    const kind: LocalChat["kind"] =
+      participantIds.length === 1 ? "direct" : "group";
+    const chat: LocalChat = {
+      id: `mock-chat-${participantIds.join("__")}`,
+      name: this.composeChatName(participantIds),
+      section: "all",
+      lastActivityAt: new Date().toISOString(),
+      kind,
+      participantIds,
+      visual:
+        kind === "direct"
+          ? { kind: "initials" }
+          : { kind: "icon", icon: "groups" },
+    };
+    this.chats.unshift(chat);
+    return chat;
   }
 
   async getChat(chatId: string): Promise<LocalChat> {
@@ -367,6 +403,21 @@ export class MockDriver extends Driver {
 
   private getLocalChat(chatId: string): LocalChat | undefined {
     return this.chats.find((chat) => chat.id === chatId);
+  }
+
+  /** The live conversation whose participant set matches, ignoring order/dupes. */
+  private findLocalChatForUsers(userIds: string[]): LocalChat | undefined {
+    const wanted = [...new Set(userIds)].sort().join(" ");
+    return this.chats.find(
+      (chat) => [...new Set(chat.participantIds)].sort().join(" ") === wanted,
+    );
+  }
+
+  /** A readable conversation name from the mock people directory. */
+  private composeChatName(participantIds: string[]): string {
+    return participantIds
+      .map((id) => MOCK_CHAT_USERS.find((user) => user.id === id)?.name ?? id)
+      .join(", ");
   }
 
   private getSeedChat(chatId: string): MockChat | undefined {

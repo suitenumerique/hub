@@ -167,6 +167,12 @@ const applyChatEvent = (
         queryKey: chatKeys.chatsOf(accountId),
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      // The room list changed, so a New Chat participant-set resolution may now
+      // hit (or stop hitting) an existing conversation. Its cache is a separate
+      // staleTime:Infinity slice, so it only re-runs when explicitly invalidated.
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.chatForUsersOf(accountId),
+      });
       return;
   }
 };
