@@ -1,5 +1,6 @@
 import {
   ClientEvent,
+  Direction,
   EventTimeline,
   EventType,
   type IRoomTimelineData,
@@ -18,9 +19,12 @@ import {
   ThreadEvent,
 } from "matrix-js-sdk/lib/matrix";
 import { HttpApiEvent } from "matrix-js-sdk/lib/http-api";
+import { type ReactionEventContent } from "matrix-js-sdk/lib/types";
 
 import { type IdTokenClaims } from "oidc-client-ts";
 
+import { emojiToCodepoints } from "@/features/chat/fluentEmoji";
+import { toggleReaction } from "@/features/chat/reactions";
 import {
   type MatrixDriverSettings,
   parseMatrixDriverSettings,
@@ -51,6 +55,8 @@ import {
   SendChatMessageParams,
   SendChatThreadReplyParams,
   StartChatThreadParams,
+  ToggleChatReactionParams,
+  ToggleChatThreadReactionParams,
 } from "../Driver";
 import {
   AccountId,
@@ -59,6 +65,7 @@ import {
   ChatMessage,
   ChatMessageAuthor,
   ChatMessagesPage,
+  ChatReaction,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -78,6 +85,10 @@ const DEFAULT_CHAT_PAGE_SIZE = 50;
 // the New Chat dropdown.
 const PEOPLE_SEARCH_FETCH_LIMIT = 20;
 const PEOPLE_SEARCH_DISPLAY_LIMIT = 8;
+
+type ReactionRelations = NonNullable<
+  ReturnType<Room["relations"]["getChildEventsForEvent"]>
+>;
 
 // localStorage keys owned by this driver. Token persistence lives in the
 // driver itself — there is no separate store module; everything else flows
@@ -592,6 +603,249 @@ const authorForSender = (
   };
 };
 
+const addReactionRelations = (
+  containers: ReactionRelations[],
+  seen: Set<ReactionRelations>,
+  relations: ReactionRelations | undefined,
+): void => {
+  if (relations && !seen.has(relations)) {
+    seen.add(relations);
+    containers.push(relations);
+  }
+};
+
+/** Known `m.annotation` relation containers for a message or thread reply. */
+const reactionRelationContainersFor = (
+  room: Room,
+  eventId: string,
+  threadId?: string,
+): ReactionRelations[] => {
+  const containers: ReactionRelations[] = [];
+  const seen = new Set<ReactionRelations>();
+  addReactionRelations(
+    containers,
+    seen,
+    room.relations.getChildEventsForEvent(
+      eventId,
+      RelationType.Annotation,
+      EventType.Reaction,
+    ),
+  );
+
+  const target = room.findEventById(eventId);
+  const threadIds = new Set(
+    [threadId, target?.threadRootId, room.getThread(eventId)?.id].filter(
+      (id): id is string => Boolean(id),
+    ),
+  );
+  for (const id of threadIds) {
+    addReactionRelations(
+      containers,
+      seen,
+      room
+        .getThread(id)
+        ?.timelineSet.relations.getChildEventsForEvent(
+          eventId,
+          RelationType.Annotation,
+          EventType.Reaction,
+        ),
+    );
+  }
+  return containers;
+};
+
+/**
+ * Maps Matrix annotations to the driver-neutral reaction shape. A sender is
+ * counted at most once for a given emoji and variation-selector spellings are
+ * collapsed onto the same chip, matching the UI's emoji identity rules.
+ */
+const aggregateReactions = (
+  room: Room,
+  eventId: string,
+  selfUserId: string | undefined,
+  threadId?: string,
+): ChatReaction[] =>
+  aggregateReactionEvents(
+    reactionRelationContainersFor(room, eventId, threadId).flatMap(
+      (relations) => relations.getRelations(),
+    ),
+    selfUserId,
+  );
+
+/** Aggregates a concrete set of annotation events by emoji and sender. */
+const aggregateReactionEvents = (
+  events: MatrixEvent[],
+  selfUserId: string | undefined,
+): ChatReaction[] => {
+  const grouped = new Map<
+    string,
+    { emoji: string; senders: Set<string>; reactedByMe: boolean }
+  >();
+  for (const event of events) {
+    if (event.isRedacted()) {
+      continue;
+    }
+    const emoji = event.getRelation()?.key;
+    const sender = event.getSender();
+    if (!emoji || !sender) {
+      continue;
+    }
+    const key = emojiToCodepoints(emoji);
+    const group = grouped.get(key) ?? {
+      emoji,
+      senders: new Set<string>(),
+      reactedByMe: false,
+    };
+    group.senders.add(sender);
+    group.reactedByMe ||= sender === selfUserId;
+    grouped.set(key, group);
+  }
+
+  return [...grouped.values()].map(({ emoji, senders, reactedByMe }) => ({
+    emoji,
+    count: senders.size,
+    reactedByMe,
+  }));
+};
+
+type ReactionSnapshot = {
+  events: MatrixEvent[];
+  reactions: ChatReaction[];
+};
+
+/**
+ * Reads the homeserver's active annotations instead of trusting the SDK's
+ * relation container, which can temporarily retain a sent-then-redacted local
+ * echo across IndexedDB reloads. Pages are followed so counts stay exact.
+ */
+const fetchReactionSnapshot = async (
+  mx: MatrixClient,
+  roomId: string,
+  eventId: string,
+  selfUserId: string | undefined,
+): Promise<ReactionSnapshot> => {
+  const events: MatrixEvent[] = [];
+  let from: string | undefined;
+  for (let page = 0; page < 10; page += 1) {
+    const result = await mx.relations(
+      roomId,
+      eventId,
+      RelationType.Annotation,
+      EventType.Reaction,
+      {
+        dir: Direction.Backward,
+        limit: 100,
+        ...(from ? { from } : {}),
+      },
+    );
+    events.push(...result.events);
+    if (!result.nextBatch) {
+      return {
+        events,
+        reactions: aggregateReactionEvents(events, selfUserId),
+      };
+    }
+    from = result.nextBatch;
+  }
+  throw new Error(
+    `MatrixDriver: reactions for event "${eventId}" exceed the pagination safety limit.`,
+  );
+};
+
+/** Reconciles a mapped message only when Matrix reports or caches reactions. */
+const reconcileMessageReactions = async (
+  mx: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+  message: ChatMessage,
+  selfUserId: string | undefined,
+): Promise<ChatMessage> => {
+  const hasServerAggregate = Boolean(
+    event.getServerAggregatedRelation(RelationType.Annotation),
+  );
+  if (!hasServerAggregate && message.reactions.length === 0) {
+    return message;
+  }
+  const snapshot = await fetchReactionSnapshot(
+    mx,
+    room.roomId,
+    message.id,
+    selfUserId,
+  );
+  return { ...message, reactions: snapshot.reactions };
+};
+
+/** Current user's active annotations for one emoji. */
+const ownReactionEvents = (
+  events: MatrixEvent[],
+  emoji: string,
+  selfUserId: string,
+): MatrixEvent[] => {
+  const key = emojiToCodepoints(emoji);
+  return events.filter(
+    (event) =>
+      !event.isRedacted() &&
+      event.getSender() === selfUserId &&
+      emojiToCodepoints(event.getRelation()?.key ?? "") === key,
+  );
+};
+
+/** Cache patches for a reaction target on the main timeline and/or a thread. */
+const reactionUpdateEventsForTarget = (
+  room: Room,
+  targetId: string,
+  reactions: ChatReaction[],
+  threadIdHint?: string,
+): ChatEvent[] => {
+  const target = room.findEventById(targetId);
+  const rootedThreadId =
+    room.getThread(targetId)?.id ??
+    (target?.isThreadRoot ? targetId : undefined);
+  const containingThreadId = rootedThreadId
+    ? undefined
+    : (target?.threadRootId ?? threadIdHint);
+  const threadId = rootedThreadId ?? containingThreadId;
+  const events: ChatEvent[] = [];
+
+  // A thread root also lives on the main timeline; replies live only in detail.
+  if (!containingThreadId) {
+    events.push({
+      type: "reaction:updated",
+      chatId: room.roomId,
+      messageId: targetId,
+      reactions,
+    });
+  }
+  if (threadId) {
+    events.push({
+      type: "reaction:updated",
+      chatId: room.roomId,
+      messageId: targetId,
+      reactions,
+      threadId,
+    });
+  }
+  return events;
+};
+
+/** Fine-grained cache patches for a live `m.reaction` annotation. */
+export const reactionEventToChatEvent = (
+  event: MatrixEvent,
+  room: Room,
+  selfUserId: string | undefined,
+): ChatEvent[] => {
+  const relation = event.getRelation();
+  if (relation?.rel_type !== RelationType.Annotation || !relation.event_id) {
+    return [];
+  }
+  return reactionUpdateEventsForTarget(
+    room,
+    relation.event_id,
+    aggregateReactions(room, relation.event_id, selfUserId, event.threadRootId),
+    event.threadRootId,
+  );
+};
+
 const matrixEventToChatMessage = (
   event: MatrixEvent,
   room: Room,
@@ -604,9 +858,12 @@ const matrixEventToChatMessage = (
     authorId: toAuthorId(event.getSender(), selfUserId),
     content: typeof body === "string" ? body : "",
     timestamp: new Date(event.getTs()).toISOString(),
-    // Reaction aggregation is owned by a later Matrix change. Thread metadata
-    // is attached below from the SDK's relation model.
-    reactions: [],
+    reactions: aggregateReactions(
+      room,
+      eventId,
+      selfUserId,
+      event.threadRootId,
+    ),
   };
   const thread = room.getThread(eventId);
   if (thread) {
@@ -730,8 +987,8 @@ const isOwnEcho = (event: MatrixEvent): boolean =>
  *
  * A plain message becomes `message:new`, an edit becomes `message:updated`, and
  * a thread reply refreshes only the thread slices and its root summary.
- * Reactions are ignored (a later step owns them); other non-text activity stays
- * coarse (`chat:changed`). This session's own echo returns `[]` because the
+ * Reactions become targeted cache patches; other non-text activity stays coarse
+ * (`chat:changed`). This session's own message echo returns `[]` because the
  * optimistic→replace flow already rendered it.
  */
 export const timelineEventToChatEvent = (
@@ -739,10 +996,8 @@ export const timelineEventToChatEvent = (
   room: Room,
   selfUserId: string | undefined,
 ): ChatEvent[] => {
-  // Reactions reach the UI through a dedicated relation bridge in a later step;
-  // ignoring them here avoids a full conversation refetch on every annotation.
   if (event.getType() === EventType.Reaction) {
-    return [];
+    return reactionEventToChatEvent(event, room, selfUserId);
   }
 
   // Non-text activity (redactions, membership, other state) stays coarse.
@@ -800,7 +1055,7 @@ export const timelineEventToChatEvent = (
           authorId: toAuthorId(event.getSender(), selfUserId),
           content: typeof newBody === "string" ? newBody : "",
           timestamp: new Date(original?.getTs() ?? event.getTs()).toISOString(),
-          reactions: [],
+          reactions: aggregateReactions(room, relation.event_id, selfUserId),
         },
       },
     ];
@@ -823,9 +1078,9 @@ export const timelineEventToChatEvent = (
  * bootstrap and `/sync` long-polling — live here, behind the generic `Driver`
  * contract, so the UI never imports anything Matrix.
  *
- * Rooms, messages, unread state, and threads are Matrix-backed, while `/sync`
- * is bridged onto the generic real-time event stream. Reactions and documents
- * remain on their legacy implementation until their Matrix-specific changes.
+ * Rooms, messages, unread state, threads, and reactions are Matrix-backed,
+ * while `/sync` is bridged onto the generic real-time event stream. Documents
+ * remain on their legacy implementation until their Matrix-specific change.
  */
 export class MatrixDriver extends MockDriver {
   override readonly supportsComposition: boolean = true;
@@ -1228,8 +1483,23 @@ export class MatrixDriver extends MockDriver {
     // The connected Matrix user is folded onto the "me" sentinel so their
     // messages render as "sent" (see `toAuthorId`).
     const selfUserId = mx.getUserId() ?? undefined;
-    const messages = pageEvents.map((event) =>
+    const mappedMessages = pageEvents.map((event) =>
       matrixEventToChatMessage(event, room, selfUserId),
+    );
+    // Most messages have no reactions and need no extra request. For the few
+    // which have a server aggregate or a locally-known relation, reconcile
+    // against `/relations` so a stale IndexedDB local echo cannot reappear
+    // after its redaction.
+    const messages = await Promise.all(
+      mappedMessages.map((message, index) =>
+        reconcileMessageReactions(
+          mx,
+          room,
+          pageEvents[index],
+          message,
+          selfUserId,
+        ),
+      ),
     );
     const authors = buildAuthors(room, pageEvents, selfUserId);
     const nextCursor =
@@ -1251,6 +1521,132 @@ export class MatrixDriver extends MockDriver {
       throw new Error(`MatrixDriver.${method}: room "${chatId}" not found.`);
     }
     return { mx, room };
+  }
+
+  /** Adds or removes the current user's annotation on one Matrix message. */
+  private async toggleReactionOnMessage(
+    method: "toggleChatReaction" | "toggleChatThreadReaction",
+    chatId: string,
+    messageId: string,
+    emoji: string,
+    threadId?: string,
+  ): Promise<ChatMessage> {
+    const { mx, room } = this.requireRoom(method, chatId);
+    const selfUserId = mx.getUserId();
+    if (!selfUserId) {
+      throw new Error(`MatrixDriver.${method}: connected user is not known.`);
+    }
+
+    const thread = threadId ? room.getThread(threadId) : undefined;
+    if (threadId && !thread) {
+      throw new Error(
+        `MatrixDriver.${method}: thread "${threadId}" not found in room "${chatId}".`,
+      );
+    }
+    const target = thread
+      ? (thread.findEventById(messageId) ??
+        (messageId === thread.id ? thread.rootEvent : undefined))
+      : room.findEventById(messageId);
+    const validTarget = threadId
+      ? Boolean(target && isMessageEvent(target))
+      : Boolean(target && isMainTimelineMessage(target));
+    if (!target || !validTarget) {
+      throw new Error(
+        `MatrixDriver.${method}: message "${messageId}" not found${
+          threadId ? ` in thread "${threadId}"` : " on the main timeline"
+        }.`,
+      );
+    }
+
+    const snapshot = await fetchReactionSnapshot(
+      mx,
+      chatId,
+      messageId,
+      selfUserId,
+    );
+    const previousReactions = snapshot.reactions;
+    const ownReactions = ownReactionEvents(snapshot.events, emoji, selfUserId);
+
+    if (ownReactions.length > 0) {
+      const eventIds = [
+        ...new Set(
+          ownReactions
+            .map((event) => event.getId())
+            .filter((eventId): eventId is string => Boolean(eventId)),
+        ),
+      ];
+      if (eventIds.length === 0) {
+        throw new Error(
+          "MatrixDriver.toggleChatReaction: own reaction has no event id.",
+        );
+      }
+      await Promise.all(
+        eventIds.map((eventId) =>
+          threadId
+            ? mx.redactEvent(chatId, threadId, eventId)
+            : mx.redactEvent(chatId, eventId),
+        ),
+      );
+    } else {
+      const key = emojiToCodepoints(emoji);
+      if (
+        previousReactions.some(
+          (reaction) =>
+            reaction.reactedByMe && emojiToCodepoints(reaction.emoji) === key,
+        )
+      ) {
+        throw new Error(
+          "MatrixDriver.toggleChatReaction: own annotation is missing from the relation store.",
+        );
+      }
+      // Annotated: an untyped literal widens `rel_type` to `RelationType`, which
+      // no `sendEvent` overload accepts.
+      const content: ReactionEventContent = {
+        "m.relates_to": {
+          rel_type: RelationType.Annotation,
+          event_id: messageId,
+          key: emoji,
+        },
+      };
+      await (threadId
+        ? mx.sendEvent(chatId, threadId, EventType.Reaction, content)
+        : mx.sendEvent(chatId, EventType.Reaction, content));
+    }
+
+    return {
+      ...matrixEventToChatMessage(target, room, selfUserId),
+      reactions: toggleReaction(previousReactions, emoji),
+    };
+  }
+
+  /** Toggles a reaction on a main-timeline message. */
+  async toggleChatReaction({
+    chatId,
+    messageId,
+    emoji,
+  }: ToggleChatReactionParams): Promise<ChatMessage> {
+    return this.toggleReactionOnMessage(
+      "toggleChatReaction",
+      chatId,
+      messageId,
+      emoji,
+    );
+  }
+
+  /** Toggles a reaction on a root or reply inside a Matrix thread. */
+  async toggleChatThreadReaction({
+    chatId,
+    threadId,
+    messageId,
+    emoji,
+  }: ToggleChatThreadReactionParams): Promise<ChatMessage> {
+    return this.toggleReactionOnMessage(
+      "toggleChatThreadReaction",
+      chatId,
+      messageId,
+      emoji,
+      threadId,
+    );
   }
 
   /** Back-paginates a thread so detail and first-unread use its full history. */
@@ -1328,7 +1724,16 @@ export class MatrixDriver extends MockDriver {
       );
     }
     await this.loadAllThreadReplies(mx, thread);
-    return threadToChatThreadDetail(room, thread, mx.getUserId() ?? undefined);
+    const selfUserId = mx.getUserId() ?? undefined;
+    const detail = threadToChatThreadDetail(room, thread, selfUserId);
+    const replies = sortedThreadReplyEvents(thread);
+    const events = thread.rootEvent ? [thread.rootEvent, ...replies] : replies;
+    const messages = await Promise.all(
+      detail.messages.map((message, index) =>
+        reconcileMessageReactions(mx, room, events[index], message, selfUserId),
+      ),
+    );
+    return { ...detail, messages };
   }
 
   /** Advances only this thread's receipt to its latest reply. */
@@ -1658,8 +2063,9 @@ export class MatrixDriver extends MockDriver {
     // client's lifetime. The handlers fan out to whatever subscribers exist at
     // the time (an empty set is a harmless no-op). Live timeline events become
     // fine-grained `message:new` / `message:updated` (see
-    // {@link timelineEventToChatEvent}); list membership changes and reconnects
-    // stay coarse (`chats:changed`, per-room `chat:changed`).
+    // {@link timelineEventToChatEvent}); reactions are reconciled against the
+    // server before their targeted patch; list membership changes and
+    // reconnects stay coarse (`chats:changed`, per-room `chat:changed`).
     this.detachSync();
     const selfUserId = mx.getUserId() ?? undefined;
     const emitUnread = (room: Room) =>
@@ -1756,6 +2162,46 @@ export class MatrixDriver extends MockDriver {
         return;
       }
       if (toStartOfTimeline) {
+        return;
+      }
+      if (event.getType() === EventType.Reaction) {
+        // The optimistic mutation owns this session's local/remote echo. Other
+        // devices are reconciled against the homeserver because the SDK's
+        // IndexedDB relation container may still hold an older local echo.
+        if (isOwnEcho(event)) {
+          return;
+        }
+        const relation = event.getRelation();
+        if (
+          relation?.rel_type !== RelationType.Annotation ||
+          !relation.event_id
+        ) {
+          return;
+        }
+        const targetId = relation.event_id;
+        const threadIdHint = event.threadRootId;
+        void fetchReactionSnapshot(mx, room.roomId, targetId, selfUserId)
+          .then((snapshot) => {
+            if (this.mx !== mx) {
+              return;
+            }
+            for (const chatEvent of reactionUpdateEventsForTarget(
+              room,
+              targetId,
+              snapshot.reactions,
+              threadIdHint,
+            )) {
+              this.emit(chatEvent);
+            }
+          })
+          .catch(() => {
+            if (this.mx === mx) {
+              this.emit({ type: "chat:changed", chatId: room.roomId });
+              if (threadIdHint || room.getThread(targetId)) {
+                this.emit({ type: "threads:changed", chatId: room.roomId });
+              }
+            }
+          });
         return;
       }
       for (const chatEvent of timelineEventToChatEvent(

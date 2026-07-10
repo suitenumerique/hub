@@ -28,6 +28,7 @@ and this project adheres to
 - ✨(frontend) Accept and refuse incoming Matrix invitations
 - ✨(frontend) Add Matrix unread indicators and read receipts
 - ✨(frontend) Add Matrix thread reading, replies, and creation
+- ✨(frontend) Add Matrix reactions on conversation and thread timelines
 
 ### Changed
 

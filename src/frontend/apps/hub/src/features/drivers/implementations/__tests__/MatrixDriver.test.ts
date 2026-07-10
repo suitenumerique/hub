@@ -2,14 +2,15 @@ import {
   type MatrixClient,
   type MatrixEvent,
   type Room,
+  type Thread,
 } from "matrix-js-sdk/lib/matrix";
 import { describe, expect, it, vi } from "vitest";
 
 import { MatrixDriver, timelineEventToChatEvent } from "../MatrixDriver";
 
 // The full read/send/sync surface is exercised by the Matrix e2e suite; these
-// unit tests cover only the pure real-time mapping (PR "sync") and the send
-// happy/edge paths (PR "send") that are cheap to assert without a live server.
+// unit tests cover only the pure real-time mapping and the send/reaction paths
+// that are cheap to assert without a live server.
 
 const initClientMock = vi.hoisted(() => vi.fn());
 const startClientMock = vi.hoisted(() => vi.fn());
@@ -24,6 +25,28 @@ const SELF_ID = "@me:localhost";
 const OTHER_ID = "@alice:localhost";
 const SENT_EVENT_ID = "$sent:localhost";
 
+type SeedReaction = {
+  key: string;
+  sender: string;
+  id?: string;
+};
+
+const makeReactionEvent = (
+  targetId: string,
+  reaction: SeedReaction,
+): MatrixEvent =>
+  ({
+    getType: () => "m.reaction",
+    isRedacted: () => false,
+    getId: () => reaction.id ?? `$reaction-${reaction.sender}`,
+    getSender: () => reaction.sender,
+    getRelation: () => ({
+      rel_type: "m.annotation",
+      event_id: targetId,
+      key: reaction.key,
+    }),
+  }) as unknown as MatrixEvent;
+
 /** A timeline event shaped just enough for the mapper under test. */
 const makeMessageEvent = (opts: {
   sender: string;
@@ -32,7 +55,7 @@ const makeMessageEvent = (opts: {
   type?: string;
   threadRootId?: string;
   isThreadRoot?: boolean;
-  relation?: { rel_type: string; event_id: string };
+  relation?: { rel_type: string; event_id: string; key?: string };
   newBody?: string;
   status?: string | null;
   transactionId?: string;
@@ -57,13 +80,43 @@ const makeMessageEvent = (opts: {
     getTxnId: () => opts.txnId,
   }) as unknown as MatrixEvent;
 
-const makeRoom = (): Room =>
+const makeRoom = (
+  reactionsByEvent: Record<string, SeedReaction[]> = {},
+  eventsById: Record<string, MatrixEvent> = {},
+  threadsById: Record<string, Thread> = {},
+): Room =>
   ({
     roomId: ROOM_ID,
     getMember: (id: string) => ({ name: id === SELF_ID ? "Me" : id }),
-    getThread: () => null,
-    findEventById: () => undefined,
+    getThread: (threadId: string) => threadsById[threadId] ?? null,
+    findEventById: (eventId: string) => eventsById[eventId],
+    relations: {
+      getChildEventsForEvent: (eventId: string) => {
+        const reactions = reactionsByEvent[eventId];
+        return reactions
+          ? {
+              getRelations: () =>
+                reactions.map((reaction) =>
+                  makeReactionEvent(eventId, reaction),
+                ),
+            }
+          : undefined;
+      },
+    },
   }) as unknown as Room;
+
+const makeThread = (
+  threadId: string,
+  eventsById: Record<string, MatrixEvent>,
+): Thread =>
+  ({
+    id: threadId,
+    rootEvent: eventsById[threadId],
+    findEventById: (eventId: string) => eventsById[eventId],
+    timelineSet: {
+      relations: { getChildEventsForEvent: () => undefined },
+    },
+  }) as unknown as Thread;
 
 /** Injects a live client without driving the OIDC/`connect` flow. */
 const driverWithClient = (mx: MatrixClient | null): MatrixDriver => {
@@ -146,10 +199,46 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
     });
   });
 
-  it("ignores reaction events (owned by a later step)", () => {
-    const reaction = makeMessageEvent({ sender: OTHER_ID, type: "m.reaction" });
+  it("maps message annotations and live reactions to the generic shape", () => {
+    const targetId = "$target:localhost";
+    const reactions = {
+      [targetId]: [
+        { key: "👍", sender: SELF_ID },
+        { key: "👍", sender: OTHER_ID },
+        { key: "👍", sender: OTHER_ID, id: "$duplicate:localhost" },
+      ],
+    };
+    const room = makeRoom(reactions);
+    const message = makeMessageEvent({
+      sender: OTHER_ID,
+      id: targetId,
+      body: "hello",
+    });
+    const reaction = makeMessageEvent({
+      sender: OTHER_ID,
+      type: "m.reaction",
+      relation: {
+        rel_type: "m.annotation",
+        event_id: targetId,
+        key: "👍",
+      },
+    });
 
-    expect(timelineEventToChatEvent(reaction, makeRoom(), SELF_ID)).toEqual([]);
+    expect(timelineEventToChatEvent(message, room, SELF_ID)[0]).toMatchObject({
+      type: "message:new",
+      message: {
+        id: targetId,
+        reactions: [{ emoji: "👍", count: 2, reactedByMe: true }],
+      },
+    });
+    expect(timelineEventToChatEvent(reaction, room, SELF_ID)).toEqual([
+      {
+        type: "reaction:updated",
+        chatId: ROOM_ID,
+        messageId: targetId,
+        reactions: [{ emoji: "👍", count: 2, reactedByMe: true }],
+      },
+    ]);
   });
 
   it("refreshes threads without appending replies to the main timeline", () => {
@@ -201,5 +290,124 @@ describe("MatrixDriver.sendChatMessage", () => {
         content: "x",
       }),
     ).rejects.toThrow(/not connected/);
+  });
+});
+
+describe("MatrixDriver.toggleChatReaction", () => {
+  it("sends an annotation when the current user has not reacted", async () => {
+    const messageId = "$message:localhost";
+    const message = makeMessageEvent({ sender: OTHER_ID, id: messageId });
+    // The SDK relation cache may retain a redacted local echo. The empty
+    // server response remains authoritative and must take the add branch.
+    const room = makeRoom(
+      {
+        [messageId]: [{ key: "👍", sender: SELF_ID, id: "$stale:localhost" }],
+      },
+      { [messageId]: message },
+    );
+    const sendEvent = vi.fn(async () => ({ event_id: "$reaction:localhost" }));
+    const redactEvent = vi.fn();
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      relations: vi.fn(async () => ({ events: [] })),
+      sendEvent,
+      redactEvent,
+    } as unknown as MatrixClient;
+
+    const updated = await driverWithClient(mx).toggleChatReaction({
+      chatId: ROOM_ID,
+      messageId,
+      emoji: "👍",
+    });
+
+    expect(sendEvent).toHaveBeenCalledWith(ROOM_ID, "m.reaction", {
+      "m.relates_to": {
+        rel_type: "m.annotation",
+        event_id: messageId,
+        key: "👍",
+      },
+    });
+    expect(redactEvent).not.toHaveBeenCalled();
+    expect(updated.reactions).toEqual([
+      { emoji: "👍", count: 1, reactedByMe: true },
+    ]);
+  });
+
+  it("redacts the current user's existing annotation", async () => {
+    const messageId = "$message:localhost";
+    const reactionId = "$own-reaction:localhost";
+    const message = makeMessageEvent({ sender: OTHER_ID, id: messageId });
+    const room = makeRoom(
+      {
+        [messageId]: [{ key: "👍", sender: SELF_ID, id: reactionId }],
+      },
+      { [messageId]: message },
+    );
+    const redactEvent = vi.fn(async () => ({ event_id: "$redaction" }));
+    const ownReaction = makeReactionEvent(messageId, {
+      key: "👍",
+      sender: SELF_ID,
+      id: reactionId,
+    });
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      relations: vi.fn(async () => ({ events: [ownReaction] })),
+      redactEvent,
+    } as unknown as MatrixClient;
+
+    const updated = await driverWithClient(mx).toggleChatReaction({
+      chatId: ROOM_ID,
+      messageId,
+      emoji: "👍",
+    });
+
+    expect(redactEvent).toHaveBeenCalledWith(ROOM_ID, reactionId);
+    expect(updated.reactions).toEqual([]);
+  });
+
+  it("sends a thread-scoped annotation for a reply", async () => {
+    const threadId = "$thread:localhost";
+    const messageId = "$reply:localhost";
+    const root = makeMessageEvent({
+      sender: OTHER_ID,
+      id: threadId,
+      threadRootId: threadId,
+      isThreadRoot: true,
+    });
+    const reply = makeMessageEvent({
+      sender: OTHER_ID,
+      id: messageId,
+      threadRootId: threadId,
+    });
+    const events = { [threadId]: root, [messageId]: reply };
+    const thread = makeThread(threadId, events);
+    const room = makeRoom({}, events, { [threadId]: thread });
+    const sendEvent = vi.fn(async () => ({ event_id: "$reaction:localhost" }));
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      relations: vi.fn(async () => ({ events: [] })),
+      sendEvent,
+    } as unknown as MatrixClient;
+
+    const updated = await driverWithClient(mx).toggleChatThreadReaction({
+      chatId: ROOM_ID,
+      threadId,
+      messageId,
+      emoji: "👍",
+    });
+
+    expect(sendEvent).toHaveBeenCalledWith(ROOM_ID, threadId, "m.reaction", {
+      "m.relates_to": {
+        rel_type: "m.annotation",
+        event_id: messageId,
+        key: "👍",
+      },
+    });
+    expect(updated.reactions).toEqual([
+      { emoji: "👍", count: 1, reactedByMe: true },
+    ]);
   });
 });
