@@ -30,6 +30,9 @@ export const getChatLink = (
 export const getActiveChatLink = (page: Page): Locator =>
   getLeftPanel(page).locator('[aria-current="page"]');
 
+export const getChatSection = (page: Page, name: string): Locator =>
+  getLeftPanel(page).getByRole("region", { name });
+
 export const expectLeftPanelVisible = async (page: Page) => {
   await expect(getLeftPanel(page)).toBeVisible();
 };

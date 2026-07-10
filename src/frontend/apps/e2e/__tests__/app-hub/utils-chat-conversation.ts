@@ -8,6 +8,12 @@ export const getHeaderChatNameButton = (
   chatName: string,
 ): Locator => getChatHeader(page).getByRole("button", { name: chatName });
 
+export const getHeaderChatMenuItem = (page: Page, label: string): Locator =>
+  page.getByRole("menuitem", { name: label });
+
+export const getChatMembersDialog = (page: Page): Locator =>
+  page.getByRole("dialog", { name: "Share modal" });
+
 export const getHeaderStartMeetingButton = (page: Page): Locator =>
   getChatHeader(page).getByRole("button", { name: "Start a meeting" });
 
