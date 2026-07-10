@@ -45,6 +45,7 @@ import {
 } from "../Driver";
 import {
   AccountId,
+  ChatInvitation,
   ChatLocalUser,
   ChatMessage,
   ChatMessageAuthor,
@@ -158,7 +159,8 @@ const explicitRoomName = (room: Room): string | undefined => {
   return typeof name === "string" && name.trim() ? name.trim() : undefined;
 };
 
-const matrixRoomToLocalChat = (
+/** Maps a joined room to a normal conversation row. */
+const matrixJoinedRoomToLocalChat = (
   room: Room,
   currentUserId: string | undefined,
 ): LocalChat => {
@@ -191,8 +193,92 @@ const matrixRoomToLocalChat = (
     visual: isDirect
       ? { kind: "initials" }
       : { kind: "icon", icon: "groups" },
+    membership: "join",
   };
 };
+
+/**
+ * The current user's `m.room.member` event in a room, when the SDK has it. For
+ * an invited room this is the invitation event itself: its sender is the
+ * inviter, its content carries the optional reason and direct marker, and its
+ * timestamp is when the invite arrived.
+ */
+const myMemberEvent = (
+  room: Room,
+  currentUserId: string | undefined,
+): MatrixEvent | undefined =>
+  currentUserId ? room.getMember(currentUserId)?.events.member : undefined;
+
+/**
+ * Invitation metadata derived from the current user's invite membership event,
+ * plus the raw event timestamp the row uses for `lastActivityAt`/list sorting.
+ * Best-effort: an invite room exposes only stripped state, so each field is
+ * filled only when present.
+ */
+const readInviteMetadata = (
+  room: Room,
+  currentUserId: string | undefined,
+): { invitation: ChatInvitation; invitedAtTs: number } => {
+  const memberEvent = myMemberEvent(room, currentUserId);
+  const inviterId = memberEvent?.getSender();
+  const content =
+    memberEvent?.getContent<{ reason?: string; is_direct?: boolean }>() ?? {};
+  const invitedAtTs = memberEvent?.getTs() ?? 0;
+  const inviterName = inviterId ? room.getMember(inviterId)?.name : undefined;
+
+  const invitation: ChatInvitation = {
+    ...(inviterId ? { inviterId } : {}),
+    ...(inviterName ? { inviterName } : {}),
+    ...(typeof content.reason === "string" ? { reason: content.reason } : {}),
+    ...(invitedAtTs > 0
+      ? { invitedAt: new Date(invitedAtTs).toISOString() }
+      : {}),
+    ...(content.is_direct === true ? { isDirect: true } : {}),
+  };
+  return { invitation, invitedAtTs };
+};
+
+/** Maps an invited room to an invitation chat row (see {@link readInviteMetadata}). */
+const matrixInviteRoomToLocalChat = (
+  room: Room,
+  currentUserId: string | undefined,
+): LocalChat => {
+  const { invitation, invitedAtTs } = readInviteMetadata(room, currentUserId);
+  return {
+    id: room.roomId,
+    name:
+      room.name ||
+      invitation.inviterName ||
+      invitation.inviterId ||
+      room.roomId,
+    ...(invitedAtTs > 0
+      ? { lastActivityAt: new Date(invitedAtTs).toISOString() }
+      : {}),
+    section: "all",
+    // The invite event's direct marker when set; group otherwise (safe default).
+    kind: invitation.isDirect ? "direct" : "group",
+    // The inviter is the only participant an invite reliably exposes; invite
+    // rooms are excluded from `getChatForUsers` resolution until accepted.
+    participantIds: invitation.inviterId ? [invitation.inviterId] : [],
+    visual: { kind: "icon", icon: "mail" },
+    membership: "invite",
+    invitation,
+  };
+};
+
+/**
+ * Maps a room to a `LocalChat`, branching on the current user's membership: an
+ * invited room becomes an invitation row, every other room a joined
+ * conversation. Both reads (`getChats`, `getChat`) go through here so the two
+ * mappings can never drift.
+ */
+const matrixRoomToLocalChat = (
+  room: Room,
+  currentUserId: string | undefined,
+): LocalChat =>
+  room.getMyMembership() === KnownMembership.Invite
+    ? matrixInviteRoomToLocalChat(room, currentUserId)
+    : matrixJoinedRoomToLocalChat(room, currentUserId);
 
 /**
  * Deterministic avatar identity for a Matrix sender, mirroring the `Avatar`
@@ -494,14 +580,20 @@ export class MatrixDriver extends MockDriver {
         all: [],
       };
     }
+    // Joined conversations (server-confirmed, so stale rooms restored from
+    // IndexedDB after a homeserver reset don't linger) plus pending incoming
+    // invitations, which aren't in `/joined_rooms` and are surfaced by their
+    // membership instead.
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
-    const matrixChats = mx
-      .getVisibleRooms()
-      .filter((room) => joinedRoomIds.has(room.roomId));
     const currentUserId = mx.getUserId() ?? undefined;
-    const localChats = matrixChats.map((room) =>
-      matrixRoomToLocalChat(room, currentUserId),
-    );
+    const localChats = mx
+      .getVisibleRooms()
+      .filter(
+        (room) =>
+          joinedRoomIds.has(room.roomId) ||
+          room.getMyMembership() === KnownMembership.Invite,
+      )
+      .map((room) => matrixRoomToLocalChat(room, currentUserId));
 
     return {
       favourites: [],
@@ -514,13 +606,18 @@ export class MatrixDriver extends MockDriver {
     if (!mx) {
       throw new Error("MatrixDriver.getChat: client is not connected.");
     }
-    const joinedRoomIds = await this.getJoinedRoomIds(mx);
-    if (!joinedRoomIds.has(chatId)) {
-      throw new Error(`MatrixDriver.getChat: room "${chatId}" is not joined.`);
-    }
     const room = mx.getRoom(chatId);
     if (!room) {
       throw new Error(`MatrixDriver.getChat: room "${chatId}" not found.`);
+    }
+    // A joined room (server-confirmed) or a pending invitation is addressable;
+    // anything else (left/banned) is not.
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (
+      !joinedRoomIds.has(chatId) &&
+      room.getMyMembership() !== KnownMembership.Invite
+    ) {
+      throw new Error(`MatrixDriver.getChat: room "${chatId}" is not joined.`);
     }
     return matrixRoomToLocalChat(room, mx.getUserId() ?? undefined);
   }
@@ -666,6 +763,55 @@ export class MatrixDriver extends MockDriver {
       }, timeoutMs);
       mx.on(ClientEvent.Room, onRoom);
     });
+  }
+
+  // --- Incoming invitations -----------------------------------------------
+  // Accept joins the room and maps it as a joined conversation; refuse leaves
+  // it. Both drop the cached joined-room set and emit `chats:changed` so the
+  // list reflects the change at once, alongside the `RoomEvent.MyMembership`
+  // bridge (see {@link bootstrapClient}).
+
+  /**
+   * Accepts an incoming invitation by joining its room, then maps the result as
+   * a joined conversation so the open route can switch from the invitation
+   * detail view to the normal timeline. Mapped through
+   * {@link matrixJoinedRoomToLocalChat} directly (not the membership-branching
+   * mapper) so the returned chat is `membership: "join"` even before `/sync` has
+   * flipped the local membership.
+   */
+  async acceptChatInvitation(chatId: string): Promise<LocalChat> {
+    const mx = this.mx;
+    if (!mx) {
+      throw new Error(
+        "MatrixDriver.acceptChatInvitation: client is not connected.",
+      );
+    }
+    await mx.joinRoom(chatId);
+    // Drop the cached joined set so the conversation's first `getChatMessages`
+    // re-reads `/joined_rooms` and sees the room as joined (it isn't in the
+    // stale cache captured while the room was still an invite).
+    this.joinedRoomIds = null;
+    const room = mx.getRoom(chatId);
+    if (!room) {
+      throw new Error(
+        `MatrixDriver.acceptChatInvitation: room "${chatId}" not found after join.`,
+      );
+    }
+    this.emit({ type: "chats:changed" });
+    return matrixJoinedRoomToLocalChat(room, mx.getUserId() ?? undefined);
+  }
+
+  /** Refuses an incoming invitation by leaving its room. */
+  async refuseChatInvitation(chatId: string): Promise<void> {
+    const mx = this.mx;
+    if (!mx) {
+      throw new Error(
+        "MatrixDriver.refuseChatInvitation: client is not connected.",
+      );
+    }
+    await mx.leave(chatId);
+    this.joinedRoomIds = null;
+    this.emit({ type: "chats:changed" });
   }
 
   /**

@@ -225,6 +225,33 @@ export abstract class Driver {
     );
   }
 
+  // --- Incoming invitations -----------------------------------------------
+  // Unsupported by default so drivers opt into the invitation flow. The Matrix
+  // driver implements both.
+
+  /**
+   * Accepts the pending incoming invitation for `chatId` and resolves with the
+   * now-joined conversation, so the open route can switch from the invitation
+   * detail view to the normal timeline. Unsupported by default.
+   */
+  async acceptChatInvitation(_chatId: string): Promise<LocalChat> {
+    void _chatId;
+    throw new Error(
+      `${this.constructor.name}.acceptChatInvitation: invitations are not supported by this driver.`,
+    );
+  }
+
+  /**
+   * Refuses the pending incoming invitation for `chatId`, removing it from the
+   * conversation list. Unsupported by default.
+   */
+  async refuseChatInvitation(_chatId: string): Promise<void> {
+    void _chatId;
+    throw new Error(
+      `${this.constructor.name}.refuseChatInvitation: invitations are not supported by this driver.`,
+    );
+  }
+
   // --- Connection lifecycle (generic) -------------------------------------
   // Default implementations make a driver "connected" with no handshake, so
   // mock / cookie-based backends need not override them. Stateful backends

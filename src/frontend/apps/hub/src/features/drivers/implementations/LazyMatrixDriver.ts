@@ -99,6 +99,14 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.createChatForUsers(userIds));
   }
 
+  async acceptChatInvitation(chatId: string): Promise<LocalChat> {
+    return this.withTarget((driver) => driver.acceptChatInvitation(chatId));
+  }
+
+  async refuseChatInvitation(chatId: string): Promise<void> {
+    return this.withTarget((driver) => driver.refuseChatInvitation(chatId));
+  }
+
   async getChat(chatId: string): Promise<LocalChat> {
     return this.withTarget((driver) => driver.getChat(chatId));
   }

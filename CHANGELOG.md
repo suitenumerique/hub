@@ -25,6 +25,7 @@ and this project adheres to
 - ✨(frontend) Bridge Matrix `/sync` onto the real-time chat event stream
 - ✨(frontend) Send text messages from the Hub to Matrix conversations
 - ✨(frontend) Start a new Matrix conversation from the new chat search
+- ✨(frontend) Accept and refuse incoming Matrix invitations
 
 ### Changed
 
