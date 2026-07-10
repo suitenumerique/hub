@@ -30,11 +30,11 @@ describe("MessageHoverToolbar", () => {
     ).not.toBeNull();
   });
 
-  it("drops Reply and More in compact mode but keeps the reactions", () => {
+  it("drops Reply in compact mode but keeps More and the reactions", () => {
     render(<MessageHoverToolbar onReact={vi.fn()} compact />);
 
     expect(screen.queryByText("Reply")).toBeNull();
-    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "More actions" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add a reaction" })).toBeTruthy();
   });
 

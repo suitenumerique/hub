@@ -86,6 +86,11 @@
     height: 16px;
     background: var(--c--contextuals--border--surface--primary, #dfe2ea);
   }
+
+  // DropdownMenu inserts its own trigger wrapper inside the flex toolbar.
+  .c__dropdown-menu-trigger {
+    display: inline-flex;
+  }
 }
 
 .hub__chat-bubble--received .hub__message-toolbar {
@@ -104,6 +109,13 @@
 // keeps the gap up to the bubble inside that hover hit-area.
 .hub__chat-bubble__body:hover .hub__message-toolbar,
 .hub__chat-bubble__body:focus-within .hub__message-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+// Opening More makes the toolbar sticky. The DropdownMenu itself may close on
+// an outside click, but this visibility remains until an option is selected.
+.hub__message-toolbar[data-actions-pinned="true"] {
   opacity: 1;
   pointer-events: auto;
 }

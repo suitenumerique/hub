@@ -99,6 +99,31 @@ export const replaceMessageInPages = (
   ),
 });
 
+const optimisticMessageMutationMarker = Symbol("optimistic-message-mutation");
+
+export type MessageMutationMarker = object;
+
+type OptimisticMessage = ChatMessage & {
+  [optimisticMessageMutationMarker]?: MessageMutationMarker;
+};
+
+/** Marks one optimistic row without adding serialisable driver state. */
+export const markOptimisticMessageMutation = (
+  message: ChatMessage,
+  marker: MessageMutationMarker,
+): ChatMessage =>
+  ({
+    ...message,
+    [optimisticMessageMutationMarker]: marker,
+  }) as OptimisticMessage;
+
+/** A remote replacement creates a fresh object and therefore clears the mark. */
+export const hasOptimisticMessageMutation = (
+  message: ChatMessage,
+  marker: MessageMutationMarker,
+): boolean =>
+  (message as OptimisticMessage)[optimisticMessageMutationMarker] === marker;
+
 export const removeMessageFromPages = (
   data: ChatMessagesData,
   messageId: string,

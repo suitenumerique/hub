@@ -12,7 +12,10 @@ import type { ChatMessageAuthor, ChatRef } from "@/features/drivers/types";
 
 import { ChatBubble } from "../ChatBubble";
 
-const useChatCompositionSupport = vi.fn(() => true);
+const useChatCompositionSupport = vi.fn((ref: ChatRef) => {
+  void ref;
+  return true;
+});
 
 vi.mock("../../hooks/useChatCompositionSupport", () => ({
   useChatCompositionSupport: (ref: ChatRef) => useChatCompositionSupport(ref),
@@ -20,6 +23,10 @@ vi.mock("../../hooks/useChatCompositionSupport", () => ({
 
 vi.mock("../../hooks/useToggleReaction", () => ({
   useToggleReaction: () => ({ toggle: vi.fn() }),
+}));
+
+vi.mock("../../hooks/useDeleteChatMessage", () => ({
+  useDeleteChatMessage: () => ({ deleteMessage: vi.fn(), isDeleting: false }),
 }));
 
 const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };

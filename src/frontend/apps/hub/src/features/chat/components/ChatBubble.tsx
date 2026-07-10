@@ -1,7 +1,10 @@
-import { useCallback } from "react";
+import { Trash } from "@gouvfr-lasuite/ui-kit/icons";
+import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import type {
   ChatRef,
+  ChatMessage,
   ChatMessageAuthor,
   ChatReaction,
   ChatThreadSummary,
@@ -9,10 +12,14 @@ import type {
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { useChatPanel } from "../ChatPanelContext";
+import { useChatMessageEdit } from "../ChatMessageEditContext";
+import { copyTextToClipboard } from "../copyTextToClipboard";
 import { formatChatTime } from "../formatTimestamp";
 import { isOptimisticThreadId } from "../hooks/chatCompositionCache";
 import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
+import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
 import { useToggleReaction } from "../hooks/useToggleReaction";
+import { notify } from "@/features/ui/components/toast";
 
 import { MessageHoverToolbar } from "./MessageHoverToolbar";
 import { MessageReactions } from "./MessageReactions";
@@ -26,11 +33,15 @@ type ChatBubbleReceivedProps = {
   author: ChatMessageAuthor;
   timestamp: string;
   reactions: ChatReaction[];
+  isDeleted?: boolean;
+  isEdited?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   /** Thread opened from this message, if any. */
   thread?: ChatThreadSummary;
   /** Set when this bubble is rendered inside a thread's detail view. */
   threadId?: string;
-  /** Drops the Reply / More toolbar actions while keeping timeline reactions. */
+  /** Drops Reply while keeping reactions and message actions. */
   compactToolbar?: boolean;
   showHeader: boolean;
   showAvatar: boolean;
@@ -43,11 +54,15 @@ type ChatBubbleSentProps = {
   content: string;
   timestamp: string;
   reactions: ChatReaction[];
+  isDeleted?: boolean;
+  isEdited?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   /** Thread opened from this message, if any. */
   thread?: ChatThreadSummary;
   /** Set when this bubble is rendered inside a thread's detail view. */
   threadId?: string;
-  /** Drops the Reply / More toolbar actions while keeping timeline reactions. */
+  /** Drops Reply while keeping reactions and message actions. */
   compactToolbar?: boolean;
   showTimestamp: boolean;
 };
@@ -87,9 +102,12 @@ const ChatBubbleFooter = ({
 };
 
 export const ChatBubble = (props: ChatBubbleProps) => {
+  const { t } = useTranslation();
   const { chatRef, messageId, reactions, thread, threadId } = props;
   const { openThread, openDraftThread } = useChatPanel();
+  const { startEditing } = useChatMessageEdit();
   const isCompositionSupported = useChatCompositionSupport(chatRef);
+  const { deleteMessage } = useDeleteChatMessage(chatRef, threadId);
 
   // Single integration point with the data layer: the hover toolbar and the
   // reactions bar both receive the bound `onReact` callback and stay purely
@@ -100,11 +118,53 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     (emoji: string) => toggle(messageId, emoji),
     [toggle, messageId],
   );
-  // Inside a thread the toolbar drops the Reply / More actions.
+  // Inside a thread the toolbar drops Reply (Matrix has no nested threads),
+  // while Copy / Edit / Delete remain available on every reply.
   const compactToolbar =
     threadId !== undefined || props.compactToolbar === true;
   const rootAuthor = props.variant === "received" ? props.author : undefined;
   const rootAuthorId = props.variant === "sent" ? "me" : props.author.id;
+  const messageForAction = useMemo<ChatMessage>(
+    () => ({
+      id: messageId,
+      authorId: rootAuthorId,
+      content: props.content,
+      timestamp: props.timestamp,
+      reactions,
+      thread,
+      isDeleted: props.isDeleted,
+      isEdited: props.isEdited,
+      canEdit: props.canEdit,
+      canDelete: props.canDelete,
+    }),
+    [
+      messageId,
+      props.canDelete,
+      props.canEdit,
+      props.content,
+      props.isDeleted,
+      props.isEdited,
+      props.timestamp,
+      reactions,
+      rootAuthorId,
+      thread,
+    ],
+  );
+  const onCopy = useCallback(async () => {
+    try {
+      await copyTextToClipboard(props.content);
+    } catch {
+      notify.error(t("Failed to copy to clipboard"));
+    }
+  }, [props.content, t]);
+  const onEdit = useCallback(
+    () => startEditing({ id: messageId, content: props.content }),
+    [messageId, props.content, startEditing],
+  );
+  const onDelete = useCallback(
+    () => deleteMessage(messageForAction),
+    [deleteMessage, messageForAction],
+  );
   const isPendingThread = Boolean(thread && isOptimisticThreadId(thread.id));
   const canReply =
     (Boolean(thread) && !isPendingThread) ||
@@ -142,14 +202,35 @@ export const ChatBubble = (props: ChatBubbleProps) => {
 
   if (props.variant === "sent") {
     return (
-      <div className="hub__chat-bubble hub__chat-bubble--sent">
-        <div className="hub__chat-bubble__body">
-          {props.content}
-          <MessageHoverToolbar
-            onReact={onReact}
-            onReply={canReply ? onReply : undefined}
-            compact={compactToolbar}
-          />
+      <div
+        className="hub__chat-bubble hub__chat-bubble--sent"
+        data-message-id={messageId}
+      >
+        <div
+          className="hub__chat-bubble__body"
+          data-deleted={props.isDeleted || undefined}
+        >
+          {props.isDeleted ? (
+            <span className="hub__chat-bubble__tombstone">
+              <Trash size={16} aria-hidden="true" />
+              {t("Message deleted")}
+            </span>
+          ) : (
+            <>
+              {props.content}
+              {props.isEdited && (
+                <span className="hub__chat-bubble__edited">{t("edited")}</span>
+              )}
+              <MessageHoverToolbar
+                onReact={onReact}
+                onReply={canReply ? onReply : undefined}
+                onCopy={onCopy}
+                onEdit={props.canEdit ? onEdit : undefined}
+                onDelete={props.canDelete ? onDelete : undefined}
+                compact={compactToolbar}
+              />
+            </>
+          )}
         </div>
         <ChatBubbleFooter
           thread={thread}
@@ -168,7 +249,10 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   const { author, content, timestamp, showHeader, showAvatar } = props;
 
   return (
-    <div className="hub__chat-bubble hub__chat-bubble--received">
+    <div
+      className="hub__chat-bubble hub__chat-bubble--received"
+      data-message-id={messageId}
+    >
       {showHeader && (
         <div className="hub__chat-bubble__header">
           <span className="hub__chat-bubble__author">{author.name}</span>
@@ -191,13 +275,31 @@ export const ChatBubble = (props: ChatBubbleProps) => {
             aria-hidden="true"
           />
         )}
-        <div className="hub__chat-bubble__body">
-          {content}
-          <MessageHoverToolbar
-            onReact={onReact}
-            onReply={canReply ? onReply : undefined}
-            compact={compactToolbar}
-          />
+        <div
+          className="hub__chat-bubble__body"
+          data-deleted={props.isDeleted || undefined}
+        >
+          {props.isDeleted ? (
+            <span className="hub__chat-bubble__tombstone">
+              <Trash size={16} aria-hidden="true" />
+              {t("Message deleted")}
+            </span>
+          ) : (
+            <>
+              {content}
+              {props.isEdited && (
+                <span className="hub__chat-bubble__edited">{t("edited")}</span>
+              )}
+              <MessageHoverToolbar
+                onReact={onReact}
+                onReply={canReply ? onReply : undefined}
+                onCopy={onCopy}
+                onEdit={props.canEdit ? onEdit : undefined}
+                onDelete={props.canDelete ? onDelete : undefined}
+                compact={compactToolbar}
+              />
+            </>
+          )}
         </div>
       </div>
       <ChatBubbleFooter
