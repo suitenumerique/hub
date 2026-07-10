@@ -1,15 +1,32 @@
+import { Button } from "@gouvfr-lasuite/cunningham-react";
+import {
+  DropdownMenu,
+  type DropdownMenuItem,
+  useDropdownMenu,
+} from "@gouvfr-lasuite/ui-kit";
 import {
   ArrowDropDown,
+  Bell,
+  Edit,
   File,
+  Identity,
+  Leave,
   Meet,
+  Star,
+  StarFilled,
   Thread,
 } from "@gouvfr-lasuite/ui-kit/icons";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
+import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
 import type { Chat } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
+
+import { ChatMembersModal } from "./ChatMembersModal";
 
 type ChatHeaderProps = {
   /** `null` while the conversation is being fetched — renders a skeleton. */
@@ -40,25 +57,7 @@ export const ChatHeader = ({
   return (
     <header className="hub__chat-header" aria-label={t("Chat header")}>
       {chat ? (
-        <button type="button" className="hub__chat-header__breadcrumb">
-          {chat.visual.kind === "emoji" ? (
-            <Avatar label={chat.name} variant="soft" decorative>
-              {chat.visual.emoji}
-            </Avatar>
-          ) : chat.visual.kind === "icon" ? (
-            <Avatar label={chat.name} decorative>
-              <span className="material-icons" aria-hidden="true">
-                {chat.visual.icon}
-              </span>
-            </Avatar>
-          ) : (
-            <Avatar label={chat.name} decorative />
-          )}
-          <span className="hub__chat-header__breadcrumb__name">
-            {chat.name}
-          </span>
-          <ArrowDropDown />
-        </button>
+        <ChatMenu chat={chat} />
       ) : (
         <div
           className="hub__chat-header__breadcrumb hub__chat-header__breadcrumb--skeleton"
@@ -80,34 +79,42 @@ export const ChatHeader = ({
       <div className="hub__chat-header__actions">
         {showTools && (
           <div className="hub__chat-header__selector">
-            <button
+            <Button
               type="button"
+              variant="tertiary"
+              color="neutral"
+              size="small"
               className="hub__chat-header__icon-button"
               aria-label={t("Start a meeting")}
-            >
-              <Meet />
-            </button>
+              icon={<Meet />}
+            />
             <span className="hub__chat-header__separator" aria-hidden="true" />
-            <button
+            <Button
               type="button"
+              variant="tertiary"
+              color="neutral"
+              size="small"
               className="hub__chat-header__icon-button"
               aria-label={t("Threads")}
               aria-pressed={activeTool === "threads"}
               data-active={activeTool === "threads"}
+              active={activeTool === "threads"}
               onClick={() => onToggleTool("threads")}
-            >
-              <Thread />
-            </button>
-            <button
+              icon={<Thread />}
+            />
+            <Button
               type="button"
+              variant="tertiary"
+              color="neutral"
+              size="small"
               className="hub__chat-header__icon-button"
               aria-label={t("Files")}
               aria-pressed={activeTool === "files"}
               data-active={activeTool === "files"}
+              active={activeTool === "files"}
               onClick={() => onToggleTool("files")}
-            >
-              <File />
-            </button>
+              icon={<File />}
+            />
           </div>
         )}
 
@@ -115,4 +122,115 @@ export const ChatHeader = ({
       </div>
     </header>
   );
+};
+
+const ChatMenu = ({ chat }: { chat: Chat }) => {
+  const { t } = useTranslation();
+  const menu = useDropdownMenu();
+  const [isMembersOpen, setIsMembersOpen] = useState(false);
+  const { setFavourite, isPending } = useChatFavourite(chat.ref);
+  const isFavourite = chat.section === "favourites";
+  const isInvitation = isInvitationChat(chat);
+
+  useEffect(() => {
+    menu.setIsOpen(false);
+    setIsMembersOpen(false);
+  }, [chat.ref.accountId, chat.ref.chatId, menu.setIsOpen]);
+
+  const options = useMemo<DropdownMenuItem[]>(
+    () => [
+      {
+        id: "members",
+        label: t("Members"),
+        icon: <Identity />,
+        callback: () => setIsMembersOpen(true),
+      },
+      {
+        id: "favourite",
+        label: isFavourite
+          ? t("Remove from favourites")
+          : t("Add to favourites"),
+        icon: isFavourite ? <StarFilled /> : <Star />,
+        isDisabled: isPending,
+        callback: () => setFavourite(!isFavourite),
+      },
+      { type: "separator" },
+      {
+        id: "rename",
+        label: t("Rename conversation"),
+        icon: <Edit />,
+        isDisabled: true,
+      },
+      {
+        id: "notifications",
+        label: t("Notifications"),
+        icon: <Bell />,
+        isDisabled: true,
+      },
+      {
+        id: "leave",
+        label: t("Leave conversation"),
+        icon: <Leave />,
+        variant: "danger",
+        isDisabled: true,
+      },
+    ],
+    [isFavourite, isPending, setFavourite, t],
+  );
+
+  const trigger = (
+    <Button
+      type="button"
+      variant="tertiary"
+      color="neutral"
+      size="small"
+      className="hub__chat-header__breadcrumb"
+      disabled={isInvitation}
+      aria-label={chat.name}
+      aria-haspopup={isInvitation ? undefined : "menu"}
+      aria-expanded={isInvitation ? undefined : menu.isOpen}
+      onClick={() => menu.setIsOpen((open) => !open)}
+    >
+      <ChatAvatar chat={chat} />
+      <span className="hub__chat-header__breadcrumb__name">{chat.name}</span>
+      {!isInvitation && <ArrowDropDown aria-hidden="true" />}
+    </Button>
+  );
+
+  if (isInvitation) {
+    return trigger;
+  }
+
+  return (
+    <>
+      <DropdownMenu options={options} {...menu} onOpenChange={menu.setIsOpen}>
+        {trigger}
+      </DropdownMenu>
+      <ChatMembersModal
+        chat={chat}
+        isOpen={isMembersOpen}
+        onClose={() => setIsMembersOpen(false)}
+      />
+    </>
+  );
+};
+
+const ChatAvatar = ({ chat }: { chat: Chat }) => {
+  if (chat.visual.kind === "emoji") {
+    return (
+      <Avatar label={chat.name} variant="soft" decorative>
+        {chat.visual.emoji}
+      </Avatar>
+    );
+  }
+  if (chat.visual.kind === "icon") {
+    return (
+      <Avatar label={chat.name} decorative>
+        <span className="material-icons" aria-hidden="true">
+          {chat.visual.icon}
+        </span>
+      </Avatar>
+    );
+  }
+  return <Avatar label={chat.name} decorative />;
 };

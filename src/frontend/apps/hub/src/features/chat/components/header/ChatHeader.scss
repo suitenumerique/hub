@@ -24,6 +24,11 @@
   backdrop-filter: blur(0.8px);
   -webkit-backdrop-filter: blur(0.8px);
 
+  > .c__dropdown-menu-trigger {
+    min-width: 0;
+    justify-content: flex-start;
+  }
+
   &__breadcrumb {
     appearance: none;
     background: transparent;
@@ -37,6 +42,8 @@
     border-radius: var(--c--globals--spacings--xxxs, 4px);
     color: inherit;
     font: inherit;
+    min-width: 0;
+    max-width: min(420px, 50vw);
 
     &:hover {
       background: var(
@@ -49,6 +56,11 @@
       outline: 2px solid
         var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
       outline-offset: 2px;
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 1;
     }
 
     &__name {
