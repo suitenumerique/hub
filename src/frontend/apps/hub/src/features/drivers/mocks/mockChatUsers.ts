@@ -1,5 +1,11 @@
 import type { ChatUserFilters } from "../Driver";
-import type { ChatUser } from "../types";
+import type { ChatMember, ChatUser } from "../types";
+
+export const MOCK_CURRENT_CHAT_MEMBER: ChatMember = {
+  id: "mock-current-user",
+  name: "You",
+  secondaryText: "La Suite",
+};
 
 export const MOCK_CHAT_USERS: ChatUser[] = [
   {
@@ -91,6 +97,15 @@ export const MOCK_CHAT_USERS: ChatUser[] = [
     color: "red",
   },
 ];
+
+export const getMockChatMember = (id: string): ChatMember => {
+  const user = MOCK_CHAT_USERS.find((candidate) => candidate.id === id);
+  return {
+    id,
+    name: user?.name ?? id,
+    secondaryText: user?.subtitle || user?.email || id,
+  };
+};
 
 const normalize = (value: string) =>
   value

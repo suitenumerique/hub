@@ -177,6 +177,24 @@ export type ChatUser = ChatMessageAuthor & {
 };
 
 /**
+ * A member of one conversation. Kept separate from `ChatUser`: room membership
+ * comes from the room state and may expose less profile data than directory
+ * search. `secondaryText` is an email/organization in mocks and the Matrix id
+ * when Matrix has no richer profile field.
+ */
+export type ChatMember = {
+  id: string;
+  name: string;
+  secondaryText: string;
+};
+
+/** Read-only membership snapshot used by the conversation members modal. */
+export type ChatMembers = {
+  present: ChatMember[];
+  pendingInvites: ChatMember[];
+};
+
+/**
  * One emoji's worth of reactions on a message, aggregated across users. The UI
  * only needs the count and whether the current user is part of it — no per-user
  * list is carried (see the `chat-message-reactions` design).

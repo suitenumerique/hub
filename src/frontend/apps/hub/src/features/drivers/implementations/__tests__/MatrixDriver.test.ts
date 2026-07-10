@@ -1,4 +1,5 @@
 import {
+  KnownMembership,
   type MatrixClient,
   type MatrixEvent,
   type Room,
@@ -8,6 +9,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { timelineEventToChatEvent } from "../matrixEventMapping";
 import { MatrixDriver } from "../MatrixDriver";
+import {
+  matrixJoinedRoomToLocalChat,
+  MATRIX_FAVOURITE_TAG,
+} from "../matrixRoomMapping";
 
 // The full read/send/sync surface is exercised by the Matrix e2e suite; these
 // unit tests cover only the pure real-time mapping and the send/reaction paths
@@ -326,6 +331,97 @@ describe("MatrixDriver.sendChatMessage", () => {
         content: "x",
       }),
     ).rejects.toThrow(/not connected/);
+  });
+});
+
+describe("MatrixDriver room metadata", () => {
+  it("maps m.favourite to the favourites section", () => {
+    const room = {
+      roomId: ROOM_ID,
+      tags: { [MATRIX_FAVOURITE_TAG]: {} },
+      getMembers: () => [
+        {
+          userId: OTHER_ID,
+          name: "Alice",
+          membership: KnownMembership.Join,
+        },
+      ],
+      getLastActiveTimestamp: () => 0,
+      currentState: { getStateEvents: () => undefined },
+    } as unknown as Room;
+
+    expect(matrixJoinedRoomToLocalChat(room, SELF_ID).section).toBe(
+      "favourites",
+    );
+  });
+
+  it("sets and deletes the Matrix favourite tag", async () => {
+    const room = {
+      roomId: ROOM_ID,
+      tags: {},
+    } as unknown as Room;
+    const setRoomTag = vi.fn(async () => ({}));
+    const deleteRoomTag = vi.fn(async () => ({}));
+    const mx = {
+      getRoom: () => room,
+      getJoinedRooms: async () => ({ joined_rooms: [ROOM_ID] }),
+      setRoomTag,
+      deleteRoomTag,
+    } as unknown as MatrixClient;
+    const driver = driverWithClient(mx);
+
+    await driver.setChatFavourite(ROOM_ID, true);
+    expect(setRoomTag).toHaveBeenCalledWith(ROOM_ID, MATRIX_FAVOURITE_TAG, {});
+
+    room.tags[MATRIX_FAVOURITE_TAG] = {};
+    await driver.setChatFavourite(ROOM_ID, false);
+    expect(deleteRoomTag).toHaveBeenCalledWith(ROOM_ID, MATRIX_FAVOURITE_TAG);
+  });
+
+  it("hydrates and splits joined and invited room members", async () => {
+    const loadMembersIfNeeded = vi.fn(async () => true);
+    const room = {
+      roomId: ROOM_ID,
+      loadMembersIfNeeded,
+      getMembers: () => [
+        {
+          userId: OTHER_ID,
+          name: "Alice",
+          membership: KnownMembership.Join,
+        },
+        {
+          userId: SELF_ID,
+          name: "Me",
+          membership: KnownMembership.Join,
+        },
+        {
+          userId: "@bob:localhost",
+          name: "Bob",
+          membership: KnownMembership.Invite,
+        },
+        {
+          userId: "@left:localhost",
+          name: "Left",
+          membership: KnownMembership.Leave,
+        },
+      ],
+    } as unknown as Room;
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      getJoinedRooms: async () => ({ joined_rooms: [ROOM_ID] }),
+    } as unknown as MatrixClient;
+
+    const members = await driverWithClient(mx).getChatMembers(ROOM_ID);
+
+    expect(loadMembersIfNeeded).toHaveBeenCalledOnce();
+    expect(members.present.map((member) => member.id)).toEqual([
+      SELF_ID,
+      OTHER_ID,
+    ]);
+    expect(members.pendingInvites.map((member) => member.id)).toEqual([
+      "@bob:localhost",
+    ]);
   });
 });
 

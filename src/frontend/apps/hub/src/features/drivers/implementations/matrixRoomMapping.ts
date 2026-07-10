@@ -13,6 +13,12 @@ import {
 
 import { ChatInvitation, LocalChat } from "../types";
 
+export const MATRIX_FAVOURITE_TAG = "m.favourite";
+
+/** Whether the current user tagged this joined room as a favourite. */
+export const isFavouriteRoom = (room: Room): boolean =>
+  Object.hasOwn(room.tags, MATRIX_FAVOURITE_TAG);
+
 /**
  * The members that make up a conversation: everyone except the connected user
  * whose membership is `join` or `invite`. Left/banned members are excluded so
@@ -74,7 +80,7 @@ export const matrixJoinedRoomToLocalChat = (
     ...(timestamp > 0
       ? { lastActivityAt: new Date(timestamp).toISOString() }
       : {}),
-    section: "all",
+    section: isFavouriteRoom(room) ? "favourites" : "all",
     kind: isDirect ? "direct" : "group",
     participantIds,
     visual: isDirect ? { kind: "initials" } : { kind: "icon", icon: "groups" },

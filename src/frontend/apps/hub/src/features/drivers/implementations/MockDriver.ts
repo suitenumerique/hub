@@ -14,10 +14,16 @@ import {
 } from "../Driver";
 import {
   MOCK_CHATS,
+  MOCK_PENDING_CHAT_MEMBER_IDS,
   MOCK_UNREAD_CHAT_IDS,
   type MockChat,
 } from "../mocks/mockChats";
-import { MOCK_CHAT_USERS, getMockChatUsers } from "../mocks/mockChatUsers";
+import {
+  MOCK_CHAT_USERS,
+  MOCK_CURRENT_CHAT_MEMBER,
+  getMockChatMember,
+  getMockChatUsers,
+} from "../mocks/mockChatUsers";
 import { getMockChatDocuments } from "../mocks/mockDocuments";
 import {
   getMockAuthorsForChat,
@@ -37,6 +43,7 @@ import {
   ChatDocumentsPage,
   ChatMessage,
   ChatMessagesPage,
+  ChatMembers,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -158,6 +165,27 @@ export class MockDriver extends Driver {
     return getMockChatUsers(filters);
   }
 
+  async getChatMembers(chatId: string): Promise<ChatMembers> {
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const chat = this.getLocalChat(chatId);
+    if (!chat) {
+      throw new Error(`MockDriver.getChatMembers: chat "${chatId}" not found.`);
+    }
+    const pendingIds = new Set(MOCK_PENDING_CHAT_MEMBER_IDS[chat.id] ?? []);
+    const participants = chat.participantIds.map(getMockChatMember);
+
+    return {
+      present: [
+        MOCK_CURRENT_CHAT_MEMBER,
+        ...participants.filter((member) => !pendingIds.has(member.id)),
+      ],
+      pendingInvites: participants.filter((member) =>
+        pendingIds.has(member.id),
+      ),
+    };
+  }
+
   async getChatForUsers(userIds: string[]): Promise<LocalChat | null> {
     // MOCK — replace this block with `fetchAPI('chats/resolve/', { params })`
     // when the backend can resolve an exact participant set. The driver
@@ -220,6 +248,23 @@ export class MockDriver extends Driver {
       throw new Error(`MockDriver.getChat: chat "${chatId}" not found.`);
     }
     return chat;
+  }
+
+  async setChatFavourite(chatId: string, favourite: boolean): Promise<void> {
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const chat = this.getLocalChat(chatId);
+    if (!chat) {
+      throw new Error(
+        `MockDriver.setChatFavourite: chat "${chatId}" not found.`,
+      );
+    }
+    const section = favourite ? "favourites" : "all";
+    if (chat.section === section) {
+      return;
+    }
+    chat.section = section;
+    this.emitMockEvent({ type: "tags:changed", chatId });
   }
 
   async getChatMessages({

@@ -13,6 +13,11 @@ export const MOCK_UNREAD_CHAT_IDS = [
   "d6e4f5a3-4a5b-4c6d-ae1f-8a9b0c1d2e3f",
 ] as const;
 
+/** Pending outgoing invitations used by the read-only members modal. */
+export const MOCK_PENDING_CHAT_MEMBER_IDS: Record<string, string[]> = {
+  "b4e2c3d1-2e3f-4a5b-8c9d-6e7f8a9b0c1d": ["user-jean-dustaff"],
+};
+
 export const MOCK_CHATS: LocalChat[] = [
   {
     id: "a3f1b2c0-1d2e-4f5a-9c8b-7d6e5f4a3b2c",

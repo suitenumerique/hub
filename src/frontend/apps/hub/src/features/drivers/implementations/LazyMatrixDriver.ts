@@ -22,6 +22,7 @@ import type {
   ChatDocumentsPage,
   ChatMessage,
   ChatMessagesPage,
+  ChatMembers,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -108,6 +109,10 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.getChatUsers(filters));
   }
 
+  async getChatMembers(chatId: string): Promise<ChatMembers> {
+    return this.withTarget((driver) => driver.getChatMembers(chatId));
+  }
+
   async getChatForUsers(userIds: string[]): Promise<LocalChat | null> {
     return this.withTarget((driver) => driver.getChatForUsers(userIds));
   }
@@ -172,6 +177,12 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async getUnread(): Promise<Record<string, ChatUnread>> {
     return this.withTarget((driver) => driver.getUnread());
+  }
+
+  async setChatFavourite(chatId: string, favourite: boolean): Promise<void> {
+    return this.withTarget((driver) =>
+      driver.setChatFavourite(chatId, favourite),
+    );
   }
 
   async sendChatMessage(params: SendChatMessageParams): Promise<ChatMessage> {

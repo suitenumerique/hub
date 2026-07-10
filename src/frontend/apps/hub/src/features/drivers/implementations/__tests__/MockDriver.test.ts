@@ -6,6 +6,38 @@ import { MockDriver } from "../MockDriver";
 const CHAT_ID = MOCK_CHATS[0].id;
 
 describe("MockDriver new chat", () => {
+  it("splits present members from pending invitations", async () => {
+    const driver = new MockDriver();
+
+    const members = await driver.getChatMembers(
+      "b4e2c3d1-2e3f-4a5b-8c9d-6e7f8a9b0c1d",
+    );
+
+    expect(members.present[0].name).toBe("You");
+    expect(members.present.map((member) => member.id)).not.toContain(
+      "user-jean-dustaff",
+    );
+    expect(members.pendingInvites).toEqual([
+      expect.objectContaining({ id: "user-jean-dustaff" }),
+    ]);
+  });
+
+  it("moves a conversation between exclusive favourite sections", async () => {
+    const driver = new MockDriver();
+    const listener = vi.fn();
+    driver.subscribeToEvents(listener);
+
+    await driver.setChatFavourite(CHAT_ID, false);
+
+    const sections = await driver.getChats();
+    expect(sections.favourites.some((chat) => chat.id === CHAT_ID)).toBe(false);
+    expect(sections.all.some((chat) => chat.id === CHAT_ID)).toBe(true);
+    expect(listener).toHaveBeenCalledWith({
+      type: "tags:changed",
+      chatId: CHAT_ID,
+    });
+  });
+
   it("searches chat users by name and excludes already selected users", async () => {
     const driver = new MockDriver();
 

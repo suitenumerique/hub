@@ -5,6 +5,7 @@ import {
   ChatMessage,
   ChatMessageAuthor,
   ChatMessagesPage,
+  ChatMembers,
   ChatReaction,
   ChatThread,
   ChatThreadDetail,
@@ -165,6 +166,8 @@ export type ChatEvent =
       invalidateDetails?: boolean;
     }
   | { type: "documents:changed"; chatId: string }
+  | { type: "members:changed"; chatId: string }
+  | { type: "tags:changed"; chatId: string }
   | { type: "chats:changed" };
 
 export type ChatEventListener = (event: ChatEvent) => void;
@@ -187,6 +190,8 @@ export abstract class Driver {
   abstract getChats(): Promise<LocalChatSections>;
   /** People available when composing a new chat. */
   abstract getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]>;
+  /** Joined members and pending invitees of one conversation. */
+  abstract getChatMembers(chatId: string): Promise<ChatMembers>;
   /** Existing conversation for exactly these participants, or `null`. */
   abstract getChatForUsers(userIds: string[]): Promise<LocalChat | null>;
   /** Single conversation, fetched by id. */
@@ -221,6 +226,9 @@ export abstract class Driver {
   abstract markChatRead(chatId: string): Promise<void>;
   /** Initial per-conversation read state; live changes use `unread:changed`. */
   abstract getUnread(): Promise<Record<string, ChatUnread>>;
+
+  /** Sets the current user's favourite tag for one conversation. */
+  abstract setChatFavourite(chatId: string, favourite: boolean): Promise<void>;
 
   // --- Composition --------------------------------------------------------
   // Unsupported by default so drivers can opt into composition incrementally.

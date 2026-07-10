@@ -15,6 +15,7 @@ import {
   RoomEvent,
   type RoomMember,
   RoomMemberEvent,
+  RoomStateEvent,
   SyncState,
   type SyncStateData,
   type Thread,
@@ -67,6 +68,8 @@ import {
   AccountId,
   ChatLocalUser,
   ChatMessage,
+  ChatMember,
+  ChatMembers,
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
@@ -107,6 +110,8 @@ import {
 } from "./matrixEventMapping";
 import { matrixDirectoryUserToChatUser } from "./matrixIdentity";
 import {
+  isFavouriteRoom,
+  MATRIX_FAVOURITE_TAG,
   matrixJoinedRoomToLocalChat,
   matrixRoomToLocalChat,
   participantSetKey,
@@ -180,6 +185,25 @@ const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   accessToken: user.accessToken,
   refreshToken: user.refreshToken,
 });
+
+const toChatMember = (member: RoomMember): ChatMember => ({
+  id: member.userId,
+  name: member.name || member.userId,
+  secondaryText: member.userId,
+});
+
+const sortChatMembers = (
+  members: ChatMember[],
+  currentUserId: string | undefined,
+): ChatMember[] =>
+  members.toSorted((left, right) => {
+    const leftIsCurrent = left.id === currentUserId;
+    const rightIsCurrent = right.id === currentUserId;
+    if (leftIsCurrent !== rightIsCurrent) {
+      return leftIsCurrent ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name);
+  });
 
 type RedactedThreadReply = {
   chatId: string;
@@ -305,8 +329,8 @@ export class MatrixDriver extends MockDriver {
       .map((room) => matrixRoomToLocalChat(room, currentUserId));
 
     return {
-      favourites: [],
-      all: localChats,
+      favourites: localChats.filter((chat) => chat.section === "favourites"),
+      all: localChats.filter((chat) => chat.section === "all"),
     };
   }
 
@@ -338,6 +362,52 @@ export class MatrixDriver extends MockDriver {
       throw new Error(`MatrixDriver.getChat: room "${chatId}" is not joined.`);
     }
     return matrixRoomToLocalChat(room, mx.getUserId() ?? undefined);
+  }
+
+  async getChatMembers(chatId: string): Promise<ChatMembers> {
+    const { mx, room } = this.requireRoom("getChatMembers", chatId);
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (!joinedRoomIds.has(chatId)) {
+      throw new Error(
+        `MatrixDriver.getChatMembers: room "${chatId}" is not joined.`,
+      );
+    }
+    await room.loadMembersIfNeeded();
+    const currentUserId = mx.getUserId() ?? undefined;
+    const members = room.getMembers();
+
+    return {
+      present: sortChatMembers(
+        members
+          .filter((member) => member.membership === KnownMembership.Join)
+          .map(toChatMember),
+        currentUserId,
+      ),
+      pendingInvites: sortChatMembers(
+        members
+          .filter((member) => member.membership === KnownMembership.Invite)
+          .map(toChatMember),
+        currentUserId,
+      ),
+    };
+  }
+
+  async setChatFavourite(chatId: string, favourite: boolean): Promise<void> {
+    const { mx, room } = this.requireRoom("setChatFavourite", chatId);
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (!joinedRoomIds.has(chatId)) {
+      throw new Error(
+        `MatrixDriver.setChatFavourite: room "${chatId}" is not joined.`,
+      );
+    }
+    if (isFavouriteRoom(room) === favourite) {
+      return;
+    }
+    if (favourite) {
+      await mx.setRoomTag(chatId, MATRIX_FAVOURITE_TAG, {});
+      return;
+    }
+    await mx.deleteRoomTag(chatId, MATRIX_FAVOURITE_TAG);
   }
 
   /**
@@ -1990,6 +2060,16 @@ export class MatrixDriver extends MockDriver {
       this.emit({ type: "chat:changed", chatId: member.roomId });
       this.emit({ type: "threads:changed", chatId: member.roomId });
     };
+    const onMembers = (
+      _event: MatrixEvent,
+      _state: unknown,
+      member: RoomMember,
+    ) => {
+      this.emit({ type: "members:changed", chatId: member.roomId });
+    };
+    const onTags = (_event: MatrixEvent, room: Room) => {
+      this.emit({ type: "tags:changed", chatId: room.roomId });
+    };
     const onThreadNew = (thread: Thread, toStartOfTimeline: boolean) => {
       const reply = thread.replyToEvent ?? undefined;
       if (toStartOfTimeline || !reply) {
@@ -2082,6 +2162,8 @@ export class MatrixDriver extends MockDriver {
     mx.on(MatrixEventEvent.Replaced, onReplaced);
     mx.on(RoomMemberEvent.Typing, onTyping);
     mx.on(RoomMemberEvent.PowerLevel, onPowerLevel);
+    mx.on(RoomStateEvent.Members, onMembers);
+    mx.on(RoomEvent.Tags, onTags);
     mx.on(ClientEvent.Room, onRoom);
     mx.on(ClientEvent.Sync, onSync);
     mx.on(RoomEvent.MyMembership, onMyMembership);
@@ -2099,6 +2181,8 @@ export class MatrixDriver extends MockDriver {
       mx.off(MatrixEventEvent.Replaced, onReplaced);
       mx.off(RoomMemberEvent.Typing, onTyping);
       mx.off(RoomMemberEvent.PowerLevel, onPowerLevel);
+      mx.off(RoomStateEvent.Members, onMembers);
+      mx.off(RoomEvent.Tags, onTags);
       mx.off(ClientEvent.Room, onRoom);
       mx.off(ClientEvent.Sync, onSync);
       mx.off(RoomEvent.MyMembership, onMyMembership);
