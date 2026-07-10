@@ -1,11 +1,24 @@
 import { Bell } from "@gouvfr-lasuite/ui-kit/icons";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ChatMessageAuthor, ChatRef } from "@/features/drivers/types";
 
+import {
+  ChatMessageEditProvider,
+  type EditingChatMessage,
+} from "../../ChatMessageEditContext";
 import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
+import { useEditChatMessage } from "../../hooks/useEditChatMessage";
 import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
@@ -31,7 +44,7 @@ export const ThreadDetail = ({
   autoFocusComposer = false,
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
-  const { thread, isInitialLoading, isError, refetch } = useChatThread(
+  const { thread, isInitialLoading, refetch } = useChatThread(
     chatRef,
     threadId,
   );
@@ -40,6 +53,9 @@ export const ThreadDetail = ({
     chatRef,
     threadId,
   );
+  const { editMessage, isEditing } = useEditChatMessage(chatRef, threadId);
+  const [editingMessage, setEditingMessage] =
+    useState<EditingChatMessage | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const previousMessagesRef = useRef<{
     threadId: string | null;
@@ -52,6 +68,21 @@ export const ThreadDetail = ({
   });
   const lastMarkedReadRef = useRef<string | null>(null);
   const lastMessage = thread?.messages[thread.messages.length - 1];
+
+  useEffect(() => setEditingMessage(null), [threadId]);
+
+  const handleSubmit = useCallback(
+    async (content: string) => {
+      if (editingMessage) {
+        const message = await editMessage(editingMessage.id, content);
+        setEditingMessage(null);
+        return message;
+      }
+      return sendReply(content);
+    },
+    [editMessage, editingMessage, sendReply],
+  );
+  const editContext = useMemo(() => ({ startEditing: setEditingMessage }), []);
 
   // On open, jump to the first unread reply — or to the latest message when the
   // thread is fully read — so the reader lands on what matters. Gated by
@@ -155,7 +186,7 @@ export const ThreadDetail = ({
       );
     }
 
-    if (isError || !thread) {
+    if (!thread) {
       return (
         <div className="hub__chat-tools-panel__content">
           <div className="hub__chat-tools-panel__state" role="alert">
@@ -198,6 +229,10 @@ export const ThreadDetail = ({
                     content={message.content}
                     timestamp={message.timestamp}
                     reactions={message.reactions}
+                    isDeleted={message.isDeleted}
+                    isEdited={message.isEdited}
+                    canEdit={message.canEdit}
+                    canDelete={message.canDelete}
                     threadId={threadId}
                     showTimestamp={isLastOfGroup}
                   />
@@ -211,6 +246,10 @@ export const ThreadDetail = ({
                       author={author}
                       timestamp={message.timestamp}
                       reactions={message.reactions}
+                      isDeleted={message.isDeleted}
+                      isEdited={message.isEdited}
+                      canEdit={message.canEdit}
+                      canDelete={message.canDelete}
                       threadId={threadId}
                       showHeader={isFirstOfGroup}
                       showAvatar={isLastOfGroup}
@@ -231,9 +270,16 @@ export const ThreadDetail = ({
             }
             inputLabel={t("Answer")}
             disabled={!isSupported}
-            isSubmitting={isSending}
+            isSubmitting={isSending || isEditing}
             autoFocus={autoFocusComposer}
-            onSubmit={sendReply}
+            errorMessage={
+              editingMessage
+                ? t("Your message could not be edited. Please try again.")
+                : undefined
+            }
+            editDraft={editingMessage}
+            onCancelEdit={() => setEditingMessage(null)}
+            onSubmit={handleSubmit}
           />
         </div>
       </div>
@@ -249,7 +295,9 @@ export const ThreadDetail = ({
         onBack={onBack}
         action={muteAction}
       />
-      {renderBody()}
+      <ChatMessageEditProvider value={editContext}>
+        {renderBody()}
+      </ChatMessageEditProvider>
     </>
   );
 };

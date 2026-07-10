@@ -298,7 +298,7 @@ test.describe("Chat threads", () => {
       .toBeLessThan(4);
   });
 
-  test("a thread message can be reacted to, with no Reply/More actions", async ({
+  test("a thread message can be reacted to, with More but no Reply action", async ({
     page,
   }) => {
     await getHeaderThreadsButton(page).click();
@@ -308,12 +308,12 @@ test.describe("Chat threads", () => {
     const bubble = getThreadDetail(page).locator(".hub__chat-bubble").last();
     await bubble.locator(".hub__chat-bubble__body").hover();
 
-    // The threads toolbar exposes reactions but not Reply / More.
+    // Nested threads are not supported, but message actions remain available.
     const toolbar = bubble.locator(".hub__message-toolbar");
     await expect(toolbar.getByText("Reply")).toHaveCount(0);
     await expect(
       toolbar.getByRole("button", { name: "More actions" }),
-    ).toHaveCount(0);
+    ).toBeVisible();
 
     await toolbar
       .getByRole("button", { name: "React with a thumbs up" })

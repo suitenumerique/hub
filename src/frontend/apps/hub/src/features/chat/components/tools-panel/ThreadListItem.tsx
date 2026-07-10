@@ -61,7 +61,9 @@ export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
             </span>
           </span>
           <span className="hub__chat-thread-item__preview">
-            {thread.lastReplyPreview}
+            {thread.lastReplyDeleted
+              ? t("Message deleted")
+              : thread.lastReplyPreview}
           </span>
           <span className="hub__chat-thread-item__replies">
             <span

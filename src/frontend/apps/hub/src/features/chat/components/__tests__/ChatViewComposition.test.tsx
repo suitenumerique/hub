@@ -56,6 +56,18 @@ vi.mock("../../hooks/useSendChatMessage", () => ({
   }),
 }));
 
+vi.mock("../../hooks/useEditChatMessage", () => ({
+  useEditChatMessage: () => ({ editMessage: vi.fn(), isEditing: false }),
+}));
+
+vi.mock("../../hooks/useChatTyping", () => ({
+  useChatTyping: () => ({
+    users: [],
+    onTypingActivity: vi.fn().mockResolvedValue(undefined),
+    stopTyping: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../ChatConversation", () => ({
   ChatConversation: () => <div data-testid="conversation" />,
 }));

@@ -29,6 +29,10 @@ vi.mock("../../../hooks/useChatCompositionSupport", () => ({
   useChatCompositionSupport: () => true,
 }));
 
+vi.mock("../../../hooks/useDeleteChatMessage", () => ({
+  useDeleteChatMessage: () => ({ deleteMessage: vi.fn(), isDeleting: false }),
+}));
+
 const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 const ROOT_MESSAGE: ChatMessage = {
   id: "m-root",

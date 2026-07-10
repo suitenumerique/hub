@@ -64,6 +64,10 @@ export const DraftThreadDetail = ({
                 content={message.content}
                 timestamp={message.timestamp}
                 reactions={message.reactions}
+                isDeleted={message.isDeleted}
+                isEdited={message.isEdited}
+                canEdit={false}
+                canDelete={false}
                 thread={message.thread}
                 compactToolbar
                 showTimestamp
@@ -78,6 +82,10 @@ export const DraftThreadDetail = ({
                   author={author}
                   timestamp={message.timestamp}
                   reactions={message.reactions}
+                  isDeleted={message.isDeleted}
+                  isEdited={message.isEdited}
+                  canEdit={false}
+                  canDelete={false}
                   thread={message.thread}
                   compactToolbar
                   showHeader

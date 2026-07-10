@@ -65,6 +65,14 @@ vi.mock("../../../hooks/useChatCompositionSupport", () => ({
   useChatCompositionSupport: () => true,
 }));
 
+vi.mock("../../../hooks/useEditChatMessage", () => ({
+  useEditChatMessage: () => ({ editMessage: vi.fn(), isEditing: false }),
+}));
+
+vi.mock("../../../hooks/useDeleteChatMessage", () => ({
+  useDeleteChatMessage: () => ({ deleteMessage: vi.fn(), isDeleting: false }),
+}));
+
 const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 
 describe("ThreadDetail composition", () => {
