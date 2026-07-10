@@ -117,13 +117,15 @@ export const LeftPanel = () => {
       </div>
 
       <div className="hub__left-panel__scroll">
-        <ChatSection
-          title={t("Favourites")}
-          chats={chats.favourites}
-          accountLabels={accountLabels}
-          showAccountLabels={showAccountLabels}
-          unreadLookup={unreadLookup}
-        />
+        {chats.favourites.length > 0 ? (
+          <ChatSection
+            title={t("Favourites")}
+            chats={chats.favourites}
+            accountLabels={accountLabels}
+            showAccountLabels={showAccountLabels}
+            unreadLookup={unreadLookup}
+          />
+        ) : null}
         <ChatSection
           title={t("All chats")}
           chats={chats.all}

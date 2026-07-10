@@ -217,6 +217,25 @@ const applyChatEvent = (
       });
       return;
 
+    case "members:changed":
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.members(ref),
+      });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.chatsOf(accountId),
+      });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      return;
+
+    case "tags:changed":
+      void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.chatsOf(accountId),
+      });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      return;
+
     case "chats:changed":
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(accountId),

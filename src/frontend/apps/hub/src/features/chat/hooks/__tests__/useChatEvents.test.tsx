@@ -168,6 +168,11 @@ describe("useChatEvents", () => {
       { type: "documents:changed", chatId: "c1" },
       ["chat-documents", "account-a", "c1"],
     ],
+    [
+      { type: "members:changed", chatId: "c1" },
+      ["chat-members", "account-a", "c1"],
+    ],
+    [{ type: "tags:changed", chatId: "c1" }, ["chat", "account-a", "c1"]],
     [{ type: "chats:changed" }, ["chats", "account-a"]],
   ])("INVALIDATES the right cache on %o", (event, queryKey) => {
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
