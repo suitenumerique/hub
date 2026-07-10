@@ -6,7 +6,8 @@ import {
 } from "matrix-js-sdk/lib/matrix";
 import { describe, expect, it, vi } from "vitest";
 
-import { MatrixDriver, timelineEventToChatEvent } from "../MatrixDriver";
+import { timelineEventToChatEvent } from "../matrixEventMapping";
+import { MatrixDriver } from "../MatrixDriver";
 
 // The full read/send/sync surface is exercised by the Matrix e2e suite; these
 // unit tests cover only the pure real-time mapping and the send/reaction paths
