@@ -75,6 +75,23 @@ const replaceMessage = (
   ),
 });
 
+/** Removes a thread reply which the SDK moved onto the room timeline after its
+ * redaction stripped the `m.thread` relation. */
+const removeMessage = (
+  data: ChatMessagesData,
+  messageId: string,
+): ChatMessagesData => ({
+  ...data,
+  pages: data.pages.map((page) =>
+    page.messages.some((message) => message.id === messageId)
+      ? {
+          ...page,
+          messages: page.messages.filter((message) => message.id !== messageId),
+        }
+      : page,
+  ),
+});
+
 /**
  * Translates a single backend event into a React Query cache operation. Events
  * that carry a payload are **patched** directly (no refetch); coarse events are
@@ -127,9 +144,25 @@ const applyChatEvent = (
         chatKeys.messages(ref),
         (data) =>
           data
-            ? replaceMessage(data, event.message.id, () => event.message)
+            ? event.threadId && event.message.id !== event.threadId
+              ? removeMessage(data, event.message.id)
+              : replaceMessage(data, event.message.id, () => event.message)
             : data,
       );
+      if (event.threadId) {
+        queryClient.setQueryData<ChatThreadDetail>(
+          chatKeys.thread(ref, event.threadId),
+          (detail) =>
+            detail
+              ? {
+                  ...detail,
+                  messages: detail.messages.map((message) =>
+                    message.id === event.message.id ? event.message : message,
+                  ),
+                }
+              : detail,
+        );
+      }
       return;
 
     case "reaction:updated":
@@ -171,9 +204,11 @@ const applyChatEvent = (
       void queryClient.invalidateQueries({
         queryKey: chatKeys.threads(ref),
       });
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.threadDetails(ref),
-      });
+      if (event.invalidateDetails !== false) {
+        void queryClient.invalidateQueries({
+          queryKey: chatKeys.threadDetails(ref),
+        });
+      }
       return;
 
     case "documents:changed":
