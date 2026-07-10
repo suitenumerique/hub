@@ -26,6 +26,8 @@ and this project adheres to
 - ✨(frontend) Send text messages from the Hub to Matrix conversations
 - ✨(frontend) Start a new Matrix conversation from the new chat search
 - ✨(frontend) Accept and refuse incoming Matrix invitations
+- ✨(frontend) Add Matrix unread indicators and read receipts
+- ✨(frontend) Add Matrix thread reading, replies, and creation
 
 ### Changed
 

@@ -21,6 +21,7 @@ import type {
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
+  ChatUnread,
   ChatUser,
   LocalChat,
   LocalChatSections,
@@ -37,6 +38,7 @@ export class LazyMatrixDriver extends BaseDriver {
   // before the SDK lazy-loads. It must mirror the real `MatrixDriver`; the actual
   // `sendChatMessage` still routes through `withTarget`, loading the driver on demand.
   override readonly supportsComposition = true;
+  override readonly supportsThreadComposition = true;
   // Static capability mirroring the real `MatrixDriver`, read synchronously by
   // the New Chat composer before the SDK lazy-loads.
   override readonly supportsConversationCreation = true;
@@ -147,6 +149,14 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async markAllChatThreadsRead(chatId: string): Promise<void> {
     return this.withTarget((driver) => driver.markAllChatThreadsRead(chatId));
+  }
+
+  async markChatRead(chatId: string): Promise<void> {
+    return this.withTarget((driver) => driver.markChatRead(chatId));
+  }
+
+  async getUnread(): Promise<Record<string, ChatUnread>> {
+    return this.withTarget((driver) => driver.getUnread());
   }
 
   async sendChatMessage(params: SendChatMessageParams): Promise<ChatMessage> {

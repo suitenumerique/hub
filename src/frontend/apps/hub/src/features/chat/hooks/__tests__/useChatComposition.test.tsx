@@ -31,6 +31,7 @@ const startChatThread = vi.fn();
 
 const driver = {
   supportsComposition: true,
+  supportsThreadComposition: true,
   sendChatMessage,
   sendChatThreadReply,
   startChatThread,
@@ -230,12 +231,14 @@ describe("chat composition hooks", () => {
       content: "A new reply",
     });
     const updatedThread = thread({
-      replyCount: 2,
+      // Matrix's aggregate may still be one event behind the local timeline
+      // when the send promise resolves.
+      replyCount: 1,
       lastReplyPreview: "A new reply",
     });
     const updatedRoot = {
       ...root,
-      thread: { id: THREAD_ID, replyCount: 2, unreadCount: 0 },
+      thread: { id: THREAD_ID, replyCount: 1, unreadCount: 0 },
     };
     const mutationResult: ChatThreadMutationResult = {
       message: reply,

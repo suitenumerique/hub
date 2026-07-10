@@ -132,6 +132,9 @@ export const startClient = async (mx: MatrixClient): Promise<void> => {
   await mx.startClient({
     initialSyncLimit: INITIAL_SYNC_LIMIT,
     lazyLoadMembers: true,
+    // Without this opt-in the SDK leaves m.thread replies in the main timeline
+    // and never builds Room/Thread models.
+    threadSupport: true,
   });
   await waitForInitialSync(mx);
 };

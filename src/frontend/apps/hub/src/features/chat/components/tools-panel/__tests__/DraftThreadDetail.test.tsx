@@ -88,7 +88,7 @@ describe("DraftThreadDetail", () => {
     );
   });
 
-  it("focuses the draft composer and opens the optimistic then created thread", async () => {
+  it("focuses the draft composer and opens only the confirmed thread", async () => {
     const onCreated = vi.fn();
     render(
       <DraftThreadDetail
@@ -116,12 +116,10 @@ describe("DraftThreadDetail", () => {
         "First reply",
         expect.any(Object),
       );
-      expect(onCreated).toHaveBeenCalledWith("thread-optimistic", {
-        focusComposer: true,
-      });
       expect(onCreated).toHaveBeenCalledWith("thread-real", {
         focusComposer: true,
       });
+      expect(onCreated).toHaveBeenCalledTimes(1);
     });
   });
 });

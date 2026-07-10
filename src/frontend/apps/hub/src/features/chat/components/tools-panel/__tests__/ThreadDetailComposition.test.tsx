@@ -8,6 +8,7 @@ import type { ChatRef, ChatThreadDetail } from "@/features/drivers/types";
 import { ThreadDetail } from "../ThreadDetail";
 
 const sendReply = vi.fn().mockResolvedValue(undefined);
+const markThreadRead = vi.fn();
 
 const detail: ChatThreadDetail = {
   id: "thread-1",
@@ -18,6 +19,13 @@ const detail: ChatThreadDetail = {
       authorId: "alice",
       content: "Root message",
       timestamp: "2026-05-12T10:00:00.000Z",
+      reactions: [],
+    },
+    {
+      id: "reply-1",
+      authorId: "alice",
+      content: "Already loaded reply",
+      timestamp: "2026-05-12T10:01:00.000Z",
       reactions: [],
     },
   ],
@@ -36,7 +44,7 @@ vi.mock("../../../hooks/useChatThread", () => ({
 
 vi.mock("../../../hooks/useChatThreadActions", () => ({
   useChatThreadActions: () => ({
-    markThreadRead: vi.fn(),
+    markThreadRead,
     markAllRead: vi.fn(),
   }),
 }));
@@ -62,6 +70,7 @@ const CHAT_REF: ChatRef = { accountId: "account-a", chatId: "chat-1" };
 describe("ThreadDetail composition", () => {
   beforeEach(() => {
     sendReply.mockClear();
+    markThreadRead.mockClear();
   });
 
   it("submits the answer composer through the thread reply hook", async () => {
@@ -83,5 +92,6 @@ describe("ThreadDetail composition", () => {
     await waitFor(() => {
       expect(sendReply).toHaveBeenCalledWith("I agree");
     });
+    expect(markThreadRead).toHaveBeenCalledWith("thread-1");
   });
 });

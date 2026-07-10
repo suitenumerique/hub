@@ -1,16 +1,21 @@
 import {
   ClientEvent,
+  EventTimeline,
   EventType,
+  type IRoomTimelineData,
   KnownMembership,
   MatrixError,
   type MatrixClient,
   type MatrixEvent,
+  NotificationCountType,
   Preset,
   RelationType,
   type Room,
   RoomEvent,
   SyncState,
   type SyncStateData,
+  type Thread,
+  ThreadEvent,
 } from "matrix-js-sdk/lib/matrix";
 import { HttpApiEvent } from "matrix-js-sdk/lib/http-api";
 
@@ -40,8 +45,12 @@ import {
   ChatEvent,
   ChatEventListener,
   ChatUserFilters,
+  GetChatThreadParams,
   GetChatMessagesParams,
+  MarkChatThreadReadParams,
   SendChatMessageParams,
+  SendChatThreadReplyParams,
+  StartChatThreadParams,
 } from "../Driver";
 import {
   AccountId,
@@ -50,7 +59,10 @@ import {
   ChatMessage,
   ChatMessageAuthor,
   ChatMessagesPage,
+  ChatThread,
+  ChatThreadDetail,
   ChatThreadMutationResult,
+  ChatUnread,
   ChatUser,
   LocalChat,
   LocalChatSections,
@@ -190,9 +202,7 @@ const matrixJoinedRoomToLocalChat = (
     section: "all",
     kind: isDirect ? "direct" : "group",
     participantIds,
-    visual: isDirect
-      ? { kind: "initials" }
-      : { kind: "icon", icon: "groups" },
+    visual: isDirect ? { kind: "initials" } : { kind: "icon", icon: "groups" },
     membership: "join",
   };
 };
@@ -348,19 +358,312 @@ const toAuthorId = (
 const isMessageEvent = (event: MatrixEvent): boolean =>
   event.getType() === EventType.RoomMessage && !event.isRedacted();
 
+/** A user-visible message on the room's main timeline (not a reply or edit). */
+const isMainTimelineMessage = (event: MatrixEvent): boolean =>
+  isMessageEvent(event) &&
+  (!event.threadRootId || event.isThreadRoot) &&
+  event.getRelation()?.rel_type !== RelationType.Replace;
+
+/**
+ * Receipt-backed unread state for the main timeline. Notification counts cover
+ * messages outside the limited sync window; loaded events make muted/default
+ * push-rule cases deterministic.
+ */
+const computeRoomUnread = (
+  room: Room,
+  selfUserId: string | undefined,
+): boolean => {
+  if (!selfUserId) {
+    return false;
+  }
+  if (room.getRoomUnreadNotificationCount(NotificationCountType.Total) > 0) {
+    return true;
+  }
+  return room
+    .getLiveTimeline()
+    .getEvents()
+    .filter(isMainTimelineMessage)
+    .some((event) => {
+      const eventId = event.getId();
+      return (
+        Boolean(eventId) &&
+        event.getSender() !== selfUserId &&
+        !room.hasUserReadEvent(selfUserId, eventId!)
+      );
+    });
+};
+
+/** Whether an ephemeral receipt event advances this connected user's marker. */
+const receiptMentionsUser = (
+  event: MatrixEvent,
+  userId: string | undefined,
+): boolean => {
+  if (!userId) {
+    return false;
+  }
+  const content = event.getContent() as Record<
+    string,
+    Record<string, Record<string, unknown>>
+  >;
+  return Object.values(content).some(
+    (byType) =>
+      byType?.["m.read"]?.[userId] !== undefined ||
+      byType?.["m.read.private"]?.[userId] !== undefined,
+  );
+};
+
+const isDirectThreadReply = (event: MatrixEvent, threadId: string): boolean =>
+  isMessageEvent(event) &&
+  event.getId() !== threadId &&
+  event.getRelation()?.rel_type === RelationType.Thread;
+
+/** Direct `m.thread` text replies, excluding roots, edits and annotations. */
+const threadReplyEvents = (thread: Thread): MatrixEvent[] =>
+  thread.events.filter((event) => isDirectThreadReply(event, thread.id));
+
+type ThreadReplyCounter = {
+  count: number;
+  observedEventKeys: Set<string>;
+};
+
+/**
+ * `Thread.length` is based on the root's server aggregation. During sync the
+ * SDK can briefly re-process an older root summary after already delivering a
+ * new reply. Keep the confirmed count monotonic for the lifetime of that SDK
+ * Thread object, and remember live event keys so `Thread.newReply` followed by
+ * `Thread.new` cannot count or emit the same reply twice.
+ */
+const threadReplyCounters = new WeakMap<Thread, ThreadReplyCounter>();
+
+const threadReplyEventKey = (event: MatrixEvent): string | undefined => {
+  const transactionId = event.getTxnId() ?? event.getUnsigned()?.transaction_id;
+  if (transactionId) {
+    return `txn:${transactionId}`;
+  }
+  const eventId = event.getId();
+  return eventId ? `event:${eventId}` : undefined;
+};
+
+const threadReplySnapshot = (thread: Thread): number =>
+  Math.max(thread.length, threadReplyEvents(thread).length);
+
+const getThreadReplyCounter = (thread: Thread): ThreadReplyCounter => {
+  const snapshot = threadReplySnapshot(thread);
+  const existing = threadReplyCounters.get(thread);
+  if (existing) {
+    existing.count = Math.max(existing.count, snapshot);
+    return existing;
+  }
+  const counter: ThreadReplyCounter = {
+    count: snapshot,
+    observedEventKeys: new Set(
+      [
+        ...threadReplyEvents(thread),
+        ...(thread.replyToEvent ? [thread.replyToEvent] : []),
+      ]
+        .map(threadReplyEventKey)
+        .filter((key): key is string => Boolean(key)),
+    ),
+  };
+  threadReplyCounters.set(thread, counter);
+  return counter;
+};
+
+/**
+ * The SDK aggregate can lag behind during `ThreadEvent.NewReply`. Loaded events
+ * cover the current window; the monotonic counter also protects older replies
+ * which are outside that window from a stale aggregate rollback.
+ */
+const threadReplyCount = (thread: Thread): number =>
+  getThreadReplyCounter(thread).count;
+
+/** Records one newly-delivered direct reply and returns false for duplicates. */
+const observeThreadReply = (
+  thread: Thread,
+  event: MatrixEvent,
+  liveEvent: boolean,
+): boolean => {
+  if (!isDirectThreadReply(event, thread.id)) {
+    return false;
+  }
+  const eventKey = threadReplyEventKey(event);
+  if (!eventKey) {
+    return false;
+  }
+  const existing = threadReplyCounters.get(thread);
+  if (!existing) {
+    // A brand-new Thread already contains its first reply. Seed from that
+    // snapshot; existing threads are seeded when listeners are attached.
+    getThreadReplyCounter(thread).observedEventKeys.add(eventKey);
+    return true;
+  }
+  if (existing.observedEventKeys.has(eventKey)) {
+    return false;
+  }
+  const previousCount = existing.count;
+  const snapshot = threadReplySnapshot(thread);
+  existing.observedEventKeys.add(eventKey);
+  existing.count = Math.max(
+    previousCount,
+    snapshot,
+    liveEvent && snapshot <= previousCount ? previousCount + 1 : snapshot,
+  );
+  return true;
+};
+
+const rememberThreadReplyCount = (thread: Thread, count: number): void => {
+  const counter = getThreadReplyCounter(thread);
+  counter.count = Math.max(counter.count, count);
+};
+
+const sortedThreadReplyEvents = (thread: Thread): MatrixEvent[] =>
+  [...threadReplyEvents(thread)].sort(
+    (left, right) => left.getTs() - right.getTs(),
+  );
+
+/**
+ * Loaded unread replies for threads relevant to the user. Matrix notification
+ * counts remain the authority when the list has not loaded every reply yet.
+ */
+const threadUnreadReplyEvents = (
+  room: Room,
+  thread: Thread,
+  selfUserId: string | undefined,
+): MatrixEvent[] => {
+  if (!selfUserId) {
+    return [];
+  }
+  const relevant =
+    room.getJoinedMemberCount() === 2 ||
+    thread.hasCurrentUserParticipated ||
+    thread.rootEvent?.getSender() === selfUserId;
+  if (!relevant) {
+    return [];
+  }
+  return sortedThreadReplyEvents(thread).filter((event) => {
+    const eventId = event.getId();
+    return (
+      Boolean(eventId) &&
+      event.getSender() !== selfUserId &&
+      !thread.hasUserReadEvent(selfUserId, eventId!)
+    );
+  });
+};
+
+const computeThreadUnread = (
+  room: Room,
+  thread: Thread,
+  selfUserId: string | undefined,
+): number =>
+  Math.max(
+    room.getThreadUnreadNotificationCount(
+      thread.id,
+      NotificationCountType.Total,
+    ),
+    threadUnreadReplyEvents(room, thread, selfUserId).length,
+  );
+
+const roomUnread = (
+  room: Room,
+  selfUserId: string | undefined,
+): ChatUnread => ({
+  unread:
+    room.getUnreadNotificationCount(NotificationCountType.Total) > 0 ||
+    computeRoomUnread(room, selfUserId) ||
+    room
+      .getThreads()
+      .some((thread) => computeThreadUnread(room, thread, selfUserId) > 0),
+  // Unlike getRoomUnreadNotificationCount, this includes thread mentions.
+  highlight:
+    room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0,
+});
+
+const authorForSender = (
+  room: Room,
+  userId: string,
+  selfUserId: string | undefined,
+): ChatMessageAuthor => {
+  const name = room.getMember(userId)?.name ?? userId;
+  return {
+    id: toAuthorId(userId, selfUserId),
+    name,
+    initials: initialsFor(name),
+    color: colorFor(userId),
+  };
+};
+
 const matrixEventToChatMessage = (
   event: MatrixEvent,
+  room: Room,
   selfUserId: string | undefined,
 ): ChatMessage => {
   const body = event.getContent<{ body?: string }>().body;
-  return {
-    id: event.getId() ?? "",
+  const eventId = event.getId() ?? "";
+  const message: ChatMessage = {
+    id: eventId,
     authorId: toAuthorId(event.getSender(), selfUserId),
     content: typeof body === "string" ? body : "",
     timestamp: new Date(event.getTs()).toISOString(),
-    // Reactions and thread summaries come from relation aggregation — wired in
-    // a later step, once the timeline mapping is in place.
+    // Reaction aggregation is owned by a later Matrix change. Thread metadata
+    // is attached below from the SDK's relation model.
     reactions: [],
+  };
+  const thread = room.getThread(eventId);
+  if (thread) {
+    message.thread = {
+      id: thread.id,
+      replyCount: threadReplyCount(thread),
+      unreadCount: computeThreadUnread(room, thread, selfUserId),
+    };
+  }
+  return message;
+};
+
+const threadToChatThread = (
+  room: Room,
+  thread: Thread,
+  selfUserId: string | undefined,
+): ChatThread => {
+  const lastReply = thread.replyToEvent ?? thread.rootEvent;
+  const sender = lastReply?.getSender() ?? "";
+  const body = lastReply?.getContent<{ body?: string }>().body;
+  return {
+    id: thread.id,
+    rootMessageId: thread.id,
+    author: authorForSender(room, sender, selfUserId),
+    lastReplyAt: new Date(lastReply?.getTs() ?? 0).toISOString(),
+    lastReplyPreview: typeof body === "string" ? body : "",
+    replyCount: threadReplyCount(thread),
+    unreadCount: computeThreadUnread(room, thread, selfUserId),
+  };
+};
+
+const threadToChatThreadDetail = (
+  room: Room,
+  thread: Thread,
+  selfUserId: string | undefined,
+): ChatThreadDetail => {
+  const replies = sortedThreadReplyEvents(thread);
+  const events = thread.rootEvent ? [thread.rootEvent, ...replies] : replies;
+  const unreadReplyIds = new Set(
+    threadUnreadReplyEvents(room, thread, selfUserId)
+      .map((event) => event.getId())
+      .filter((eventId): eventId is string => Boolean(eventId)),
+  );
+  const firstUnreadReply = replies.findIndex((event) =>
+    unreadReplyIds.has(event.getId() ?? ""),
+  );
+  return {
+    id: thread.id,
+    rootMessageId: thread.id,
+    messages: events.map((event) =>
+      matrixEventToChatMessage(event, room, selfUserId),
+    ),
+    authors: buildAuthors(room, events, selfUserId),
+    firstUnreadIndex:
+      firstUnreadReply < 0
+        ? null
+        : firstUnreadReply + (thread.rootEvent ? 1 : 0),
   };
 };
 
@@ -425,13 +728,11 @@ const isOwnEcho = (event: MatrixEvent): boolean =>
  * sync bridge should broadcast — an array, since "broadcast nothing" is a valid
  * outcome. Pure (no client, no driver state) so the mapping is unit-testable.
  *
- * Scope for this step is text messages only: a plain message becomes
- * `message:new` (with its `authors`) and an edit (`m.replace`) becomes
- * `message:updated`. Reactions are ignored (a later step owns them), and
- * everything else — redactions, thread replies, membership, other state — stays
- * coarse (`chat:changed`) so the affected caches refetch. This session's own
- * echo returns `[]`: the optimistic→replace flow already rendered it, so
- * re-broadcasting would duplicate the message.
+ * A plain message becomes `message:new`, an edit becomes `message:updated`, and
+ * a thread reply refreshes only the thread slices and its root summary.
+ * Reactions are ignored (a later step owns them); other non-text activity stays
+ * coarse (`chat:changed`). This session's own echo returns `[]` because the
+ * optimistic→replace flow already rendered it.
  */
 export const timelineEventToChatEvent = (
   event: MatrixEvent,
@@ -455,11 +756,24 @@ export const timelineEventToChatEvent = (
     return [];
   }
 
-  // A thread reply does not live in the main timeline. Threads are a later step,
-  // so refresh the conversation coarsely rather than mis-appending it as a
-  // top-level bubble.
-  if (event.threadRootId) {
-    return [{ type: "chat:changed", chatId: room.roomId }];
+  // A thread reply never becomes a top-level bubble. Refresh the thread slices
+  // and replace the root message so its summary count/unread badge moves live.
+  if (event.threadRootId && !event.isThreadRoot) {
+    const root =
+      room.getThread(event.threadRootId)?.rootEvent ??
+      room.findEventById(event.threadRootId);
+    return [
+      { type: "threads:changed", chatId: room.roomId },
+      ...(root
+        ? [
+            {
+              type: "message:updated" as const,
+              chatId: room.roomId,
+              message: matrixEventToChatMessage(root, room, selfUserId),
+            },
+          ]
+        : []),
+    ];
   }
 
   // An edit (`m.replace`) updates an existing bubble in place.
@@ -473,11 +787,15 @@ export const timelineEventToChatEvent = (
     // ts here would make the bubble's time jump live, then revert on the next
     // refetch. Fall back to the edit ts only when the original is not loaded.
     const original = room.findEventById(relation.event_id);
+    const originalMessage = original
+      ? matrixEventToChatMessage(original, room, selfUserId)
+      : null;
     return [
       {
         type: "message:updated",
         chatId: room.roomId,
         message: {
+          ...originalMessage,
           id: relation.event_id,
           authorId: toAuthorId(event.getSender(), selfUserId),
           content: typeof newBody === "string" ? newBody : "",
@@ -494,7 +812,7 @@ export const timelineEventToChatEvent = (
     {
       type: "message:new",
       chatId: room.roomId,
-      message: matrixEventToChatMessage(event, selfUserId),
+      message: matrixEventToChatMessage(event, room, selfUserId),
       authors: buildAuthors(room, [event], selfUserId),
     },
   ];
@@ -505,18 +823,20 @@ export const timelineEventToChatEvent = (
  * bootstrap and `/sync` long-polling — live here, behind the generic `Driver`
  * contract, so the UI never imports anything Matrix.
  *
- * Room and message reads are Matrix-backed, `/sync` is bridged onto the generic
- * real-time event stream, and text messages are sent through the live client.
- * Threads, reactions and documents remain intentionally unimplemented in this
- * step.
+ * Rooms, messages, unread state, and threads are Matrix-backed, while `/sync`
+ * is bridged onto the generic real-time event stream. Reactions and documents
+ * remain on their legacy implementation until their Matrix-specific changes.
  */
 export class MatrixDriver extends MockDriver {
   override readonly supportsComposition: boolean = true;
+  override readonly supportsThreadComposition: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
 
   private mx: MatrixClient | null = null;
   /** Subscribers to the single global event stream. */
   private eventListeners = new Set<ChatEventListener>();
+  /** Server ids sent by this driver, used to pair local and remote echoes. */
+  private sentThreadReplyEventIds = new Set<string>();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
   /** Parsed per-account config; source of truth for discovery and OIDC. */
@@ -599,6 +919,22 @@ export class MatrixDriver extends MockDriver {
       favourites: [],
       all: localChats,
     };
+  }
+
+  /** Initial read-state snapshot for server-confirmed joined rooms. */
+  async getUnread(): Promise<Record<string, ChatUnread>> {
+    const mx = this.mx;
+    if (!mx) {
+      return {};
+    }
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    const selfUserId = mx.getUserId() ?? undefined;
+    return Object.fromEntries(
+      mx
+        .getVisibleRooms()
+        .filter((room) => joinedRoomIds.has(room.roomId))
+        .map((room) => [room.roomId, roomUnread(room, selfUserId)]),
+    );
   }
 
   async getChat(chatId: string): Promise<LocalChat> {
@@ -893,12 +1229,151 @@ export class MatrixDriver extends MockDriver {
     // messages render as "sent" (see `toAuthorId`).
     const selfUserId = mx.getUserId() ?? undefined;
     const messages = pageEvents.map((event) =>
-      matrixEventToChatMessage(event, selfUserId),
+      matrixEventToChatMessage(event, room, selfUserId),
     );
     const authors = buildAuthors(room, pageEvents, selfUserId);
     const nextCursor =
       startIndex === 0 && reachedStart ? null : (messages[0]?.id ?? null);
     return { messages, authors, nextCursor };
+  }
+
+  /** Resolves a connected client and a known room for Matrix-only operations. */
+  private requireRoom(
+    method: string,
+    chatId: string,
+  ): { mx: MatrixClient; room: Room } {
+    const mx = this.mx;
+    if (!mx) {
+      throw new Error(`MatrixDriver.${method}: client is not connected.`);
+    }
+    const room = mx.getRoom(chatId);
+    if (!room) {
+      throw new Error(`MatrixDriver.${method}: room "${chatId}" not found.`);
+    }
+    return { mx, room };
+  }
+
+  /** Back-paginates a thread so detail and first-unread use its full history. */
+  private async loadAllThreadReplies(
+    mx: MatrixClient,
+    thread: Thread,
+  ): Promise<void> {
+    for (let page = 0; page < 20; page += 1) {
+      const hasMore = await mx.paginateEventTimeline(thread.liveTimeline, {
+        backwards: true,
+        limit: DEFAULT_CHAT_PAGE_SIZE,
+      });
+      if (!hasMore) {
+        return;
+      }
+    }
+    throw new Error(
+      `MatrixDriver.loadAllThreadReplies: thread "${thread.id}" exceeds the pagination safety limit.`,
+    );
+  }
+
+  /** Loads every page of the server-side room thread list. */
+  private async loadAllRoomThreads(
+    mx: MatrixClient,
+    room: Room,
+  ): Promise<void> {
+    await room.fetchRoomThreads();
+    const allThreadsTimeline = room.threadsTimelineSets[0]?.getLiveTimeline();
+    if (!allThreadsTimeline) {
+      return;
+    }
+    for (let page = 0; page < 20; page += 1) {
+      if (
+        allThreadsTimeline.getPaginationToken(EventTimeline.BACKWARDS) === null
+      ) {
+        return;
+      }
+      const hasMore = await mx.paginateEventTimeline(allThreadsTimeline, {
+        backwards: true,
+        limit: DEFAULT_CHAT_PAGE_SIZE,
+      });
+      if (!hasMore) {
+        return;
+      }
+    }
+    throw new Error(
+      `MatrixDriver.loadAllRoomThreads: room "${room.roomId}" exceeds the pagination safety limit.`,
+    );
+  }
+
+  /** All known room threads, ordered by their latest reply. */
+  async getChatThreads(chatId: string): Promise<ChatThread[]> {
+    const { mx, room } = this.requireRoom("getChatThreads", chatId);
+    // Idempotent in the SDK and required even when one thread arrived via sync:
+    // otherwise `getThreads()` can be a partial list.
+    await this.loadAllRoomThreads(mx, room);
+    const selfUserId = mx.getUserId() ?? undefined;
+    return room
+      .getThreads()
+      .map((thread) => threadToChatThread(room, thread, selfUserId))
+      .sort((left, right) => right.lastReplyAt.localeCompare(left.lastReplyAt));
+  }
+
+  /** Root + every reply, with a receipt-derived first-unread boundary. */
+  async getChatThread({
+    chatId,
+    threadId,
+  }: GetChatThreadParams): Promise<ChatThreadDetail> {
+    const { mx, room } = this.requireRoom("getChatThread", chatId);
+    await this.loadAllRoomThreads(mx, room);
+    const thread = room.getThread(threadId);
+    if (!thread) {
+      throw new Error(
+        `MatrixDriver.getChatThread: thread "${threadId}" not found in room "${chatId}".`,
+      );
+    }
+    await this.loadAllThreadReplies(mx, thread);
+    return threadToChatThreadDetail(room, thread, mx.getUserId() ?? undefined);
+  }
+
+  /** Advances only this thread's receipt to its latest reply. */
+  async markChatThreadRead({
+    chatId,
+    threadId,
+  }: MarkChatThreadReadParams): Promise<void> {
+    const { mx, room } = this.requireRoom("markChatThreadRead", chatId);
+    const thread = room.getThread(threadId);
+    const lastReply = thread?.replyToEvent;
+    if (lastReply) {
+      await mx.sendReadReceipt(lastReply);
+    }
+  }
+
+  /** Advances each known thread receipt independently. */
+  async markAllChatThreadsRead(chatId: string): Promise<void> {
+    const { mx, room } = this.requireRoom("markAllChatThreadsRead", chatId);
+    await this.loadAllRoomThreads(mx, room);
+    await Promise.all(
+      room.getThreads().map((thread) => {
+        const lastReply = thread.replyToEvent;
+        return lastReply ? mx.sendReadReceipt(lastReply) : Promise.resolve();
+      }),
+    );
+  }
+
+  /**
+   * Marks only the main timeline read. The default SDK receipt adds
+   * `thread_id: "main"`; deliberately do not pass `unthreaded=true`, which
+   * would also clear unread threads.
+   */
+  async markChatRead(chatId: string): Promise<void> {
+    const { mx, room } = this.requireRoom("markChatRead", chatId);
+    if (!computeRoomUnread(room, mx.getUserId() ?? undefined)) {
+      return;
+    }
+    const events = room
+      .getLiveTimeline()
+      .getEvents()
+      .filter(isMainTimelineMessage);
+    const latest = events[events.length - 1];
+    if (latest) {
+      await mx.sendReadReceipt(latest);
+    }
   }
 
   /**
@@ -926,16 +1401,126 @@ export class MatrixDriver extends MockDriver {
     return sendResponseToChatMessage(eventId, content);
   }
 
-  async sendChatThreadReply(): Promise<ChatThreadMutationResult> {
-    throw new Error(
-      "MatrixDriver.sendChatThreadReply: Matrix composition is not implemented yet.",
+  async sendChatThreadReply({
+    chatId,
+    threadId,
+    content,
+  }: SendChatThreadReplyParams): Promise<ChatThreadMutationResult> {
+    const { mx, room } = this.requireRoom("sendChatThreadReply", chatId);
+    if (!threadId.startsWith("$")) {
+      throw new Error(
+        `MatrixDriver.sendChatThreadReply: invalid Matrix thread id "${threadId}".`,
+      );
+    }
+    const { event_id: eventId } = await mx.sendTextMessage(
+      chatId,
+      threadId,
+      content,
+    );
+    this.sentThreadReplyEventIds.add(eventId);
+    return this.buildThreadMutationResult(mx, room, threadId, eventId, content);
+  }
+
+  async startChatThread({
+    chatId,
+    rootMessageId,
+    content,
+  }: StartChatThreadParams): Promise<ChatThreadMutationResult> {
+    const { mx, room } = this.requireRoom("startChatThread", chatId);
+    if (!rootMessageId.startsWith("$")) {
+      throw new Error(
+        `MatrixDriver.startChatThread: invalid Matrix root message id "${rootMessageId}".`,
+      );
+    }
+    if (!room.findEventById(rootMessageId)) {
+      throw new Error(
+        `MatrixDriver.startChatThread: root message "${rootMessageId}" not found in room "${chatId}".`,
+      );
+    }
+    const { event_id: eventId } = await mx.sendTextMessage(
+      chatId,
+      rootMessageId,
+      content,
+    );
+    this.sentThreadReplyEventIds.add(eventId);
+    return this.buildThreadMutationResult(
+      mx,
+      room,
+      rootMessageId,
+      eventId,
+      content,
     );
   }
 
-  async startChatThread(): Promise<ChatThreadMutationResult> {
-    throw new Error(
-      "MatrixDriver.startChatThread: Matrix composition is not implemented yet.",
+  /** Builds the exact cache payload expected by the optimistic thread hooks. */
+  private buildThreadMutationResult(
+    mx: MatrixClient,
+    room: Room,
+    rootMessageId: string,
+    replyEventId: string,
+    content: string,
+  ): ChatThreadMutationResult {
+    const selfUserId = mx.getUserId() ?? undefined;
+    const now = new Date().toISOString();
+    const message: ChatMessage = {
+      id: replyEventId,
+      authorId: SELF_AUTHOR_ID,
+      content,
+      timestamp: now,
+      reactions: [],
+    };
+    const liveThread = room.getThread(rootMessageId);
+    const rootEvent =
+      liveThread?.rootEvent ?? room.findEventById(rootMessageId);
+    if (!rootEvent) {
+      throw new Error(
+        `MatrixDriver.buildThreadMutationResult: root message "${rootMessageId}" not found.`,
+      );
+    }
+    const previousReplyEvents = liveThread
+      ? sortedThreadReplyEvents(liveThread).filter(
+          (event) => event.status === null && event.getId() !== replyEventId,
+        )
+      : [];
+    const replyCount = Math.max(
+      liveThread ? threadReplyCount(liveThread) : 0,
+      previousReplyEvents.length + 1,
     );
+    if (liveThread) {
+      rememberThreadReplyCount(liveThread, replyCount);
+    }
+    const rootMessage: ChatMessage = {
+      ...matrixEventToChatMessage(rootEvent, room, selfUserId),
+      thread: {
+        id: rootMessageId,
+        replyCount,
+        unreadCount: 0,
+      },
+    };
+    const previousReplies = previousReplyEvents.map((event) =>
+      matrixEventToChatMessage(event, room, selfUserId),
+    );
+    const threadDetail: ChatThreadDetail = {
+      id: rootMessageId,
+      rootMessageId,
+      messages: [rootMessage, ...previousReplies, message],
+      authors: buildAuthors(
+        room,
+        [rootEvent, ...previousReplyEvents],
+        selfUserId,
+      ),
+      firstUnreadIndex: null,
+    };
+    const thread: ChatThread = {
+      id: rootMessageId,
+      rootMessageId,
+      author: authorForSender(room, mx.getUserId() ?? "", selfUserId),
+      lastReplyAt: now,
+      lastReplyPreview: content,
+      replyCount,
+      unreadCount: 0,
+    };
+    return { message, thread, threadDetail, rootMessage };
   }
 
   /**
@@ -1077,14 +1662,100 @@ export class MatrixDriver extends MockDriver {
     // stay coarse (`chats:changed`, per-room `chat:changed`).
     this.detachSync();
     const selfUserId = mx.getUserId() ?? undefined;
+    const emitUnread = (room: Room) =>
+      this.emit({
+        type: "unread:changed",
+        chatId: room.roomId,
+        unread: roomUnread(room, selfUserId),
+      });
+    const emitThreadChanged = (thread: Thread, event?: MatrixEvent) => {
+      // The optimistic mutation owns this session's local/remote echo.
+      if (event && isOwnEcho(event)) {
+        return;
+      }
+      this.emit({ type: "threads:changed", chatId: thread.room.roomId });
+      if (thread.rootEvent) {
+        this.emit({
+          type: "message:updated",
+          chatId: thread.room.roomId,
+          message: matrixEventToChatMessage(
+            thread.rootEvent,
+            thread.room,
+            selfUserId,
+          ),
+        });
+      }
+      emitUnread(thread.room);
+    };
+    const emitThreadsRefresh = (room: Room) => {
+      const threads = room.getThreads();
+      if (threads.length === 0) {
+        return;
+      }
+      this.emit({ type: "threads:changed", chatId: room.roomId });
+      threads.forEach((thread) => {
+        if (thread.rootEvent) {
+          this.emit({
+            type: "message:updated",
+            chatId: room.roomId,
+            message: matrixEventToChatMessage(
+              thread.rootEvent,
+              room,
+              selfUserId,
+            ),
+          });
+        }
+      });
+    };
+    const pendingLiveThreadReplies = new Set<string>();
+    const scopedThreadReplyKey = (
+      thread: Thread,
+      event: MatrixEvent,
+    ): string | undefined => {
+      const eventKey = threadReplyEventKey(event);
+      return eventKey
+        ? `${thread.room.roomId}\u0000${thread.id}\u0000${eventKey}`
+        : undefined;
+    };
     const onTimeline = (
       event: MatrixEvent,
       room: Room | undefined,
       toStartOfTimeline: boolean | undefined,
+      removed: boolean,
+      data: IRoomTimelineData,
     ) => {
       // Backward-pagination history is served by `getChatMessages`, not the
       // live stream.
-      if (!room || toStartOfTimeline) {
+      if (!room || removed) {
+        return;
+      }
+      // The Room re-emits its thread timeline. Remember only real live events
+      // here (the SDK explicitly labels backfill in `data.liveEvent`), then
+      // publish after ThreadEvent.NewReply has refreshed thread metadata.
+      if (
+        !event.isThreadRoot &&
+        event.getRelation()?.rel_type === RelationType.Thread
+      ) {
+        if (
+          isOwnEcho(event) ||
+          (event.getId() !== undefined &&
+            this.sentThreadReplyEventIds.has(event.getId()!))
+        ) {
+          return;
+        }
+        const threadId = event.threadRootId;
+        const thread = threadId ? room.getThread(threadId) : null;
+        if (thread) {
+          const isLive = data.liveEvent === true;
+          const isNew = observeThreadReply(thread, event, isLive);
+          const replyKey = scopedThreadReplyKey(thread, event);
+          if (isLive && isNew && replyKey) {
+            pendingLiveThreadReplies.add(replyKey);
+          }
+        }
+        return;
+      }
+      if (toStartOfTimeline) {
         return;
       }
       for (const chatEvent of timelineEventToChatEvent(
@@ -1094,11 +1765,60 @@ export class MatrixDriver extends MockDriver {
       )) {
         this.emit(chatEvent);
       }
+      emitUnread(room);
+    };
+    const onReceipt = (event: MatrixEvent, room: Room | undefined) => {
+      if (!room || !receiptMentionsUser(event, selfUserId)) {
+        return;
+      }
+      emitUnread(room);
+      emitThreadsRefresh(room);
+    };
+    const onThreadNew = (thread: Thread, toStartOfTimeline: boolean) => {
+      const reply = thread.replyToEvent ?? undefined;
+      if (toStartOfTimeline || !reply) {
+        return;
+      }
+      if (
+        isOwnEcho(reply) ||
+        (reply.getId() !== undefined &&
+          this.sentThreadReplyEventIds.has(reply.getId()!))
+      ) {
+        return;
+      }
+      const replyKey = scopedThreadReplyKey(thread, reply);
+      const wasPendingLive = Boolean(
+        replyKey && pendingLiveThreadReplies.delete(replyKey),
+      );
+      if (wasPendingLive || observeThreadReply(thread, reply, true)) {
+        emitThreadChanged(thread, reply);
+      }
+    };
+    const onThreadReply = (thread: Thread, event: MatrixEvent) => {
+      const replyKey = scopedThreadReplyKey(thread, event);
+      if (replyKey && pendingLiveThreadReplies.delete(replyKey)) {
+        emitThreadChanged(thread, event);
+      }
+    };
+    const detachThreadListenersByRoomId = new Map<string, () => void>();
+    const attachThreadListeners = (room: Room) => {
+      if (detachThreadListenersByRoomId.has(room.roomId)) {
+        return;
+      }
+      room.getThreads().forEach(getThreadReplyCounter);
+      room.on(ThreadEvent.New, onThreadNew);
+      room.on(ThreadEvent.NewReply, onThreadReply);
+      detachThreadListenersByRoomId.set(room.roomId, () => {
+        room.off(ThreadEvent.New, onThreadNew);
+        room.off(ThreadEvent.NewReply, onThreadReply);
+      });
     };
     // A joined / left / created room changes what the list shows; drop the
     // cached joined-room set so `getChats` re-reads it.
-    const onRoom = () => {
+    const onRoom = (room: Room) => {
+      attachThreadListeners(room);
       this.joinedRoomIds = null;
+      emitUnread(room);
       this.emit({ type: "chats:changed" });
     };
     // Reconnect / first authentic network sync. A warm start resolves the
@@ -1122,6 +1842,8 @@ export class MatrixDriver extends MockDriver {
       this.joinedRoomIds = null;
       for (const room of mx.getVisibleRooms()) {
         this.emit({ type: "chat:changed", chatId: room.roomId });
+        emitUnread(room);
+        emitThreadsRefresh(room);
       }
       this.emit({ type: "chats:changed" });
     };
@@ -1130,19 +1852,26 @@ export class MatrixDriver extends MockDriver {
     // fires neither `ClientEvent.Room` (the room is not brand-new) nor `onSync`
     // (steady-state `Syncing`). Drop the cached joined set and refresh the list
     // here so a left room does not linger. `onRoom` handles brand-new joins.
-    const onMyMembership = () => {
+    const onMyMembership = (room: Room) => {
       this.joinedRoomIds = null;
+      emitUnread(room);
       this.emit({ type: "chats:changed" });
     };
+    mx.getRooms().forEach(attachThreadListeners);
     mx.on(RoomEvent.Timeline, onTimeline);
+    mx.on(RoomEvent.Receipt, onReceipt);
     mx.on(ClientEvent.Room, onRoom);
     mx.on(ClientEvent.Sync, onSync);
     mx.on(RoomEvent.MyMembership, onMyMembership);
     this.detachSync = () => {
       mx.off(RoomEvent.Timeline, onTimeline);
+      mx.off(RoomEvent.Receipt, onReceipt);
       mx.off(ClientEvent.Room, onRoom);
       mx.off(ClientEvent.Sync, onSync);
       mx.off(RoomEvent.MyMembership, onMyMembership);
+      detachThreadListenersByRoomId.forEach((detach) => detach());
+      detachThreadListenersByRoomId.clear();
+      pendingLiveThreadReplies.clear();
     };
   }
 
@@ -1206,6 +1935,7 @@ export class MatrixDriver extends MockDriver {
     this.mx?.stopClient();
     this.mx = null;
     this.joinedRoomIds = null;
+    this.sentThreadReplyEventIds.clear();
   }
 
   /**
@@ -1250,6 +1980,7 @@ export class MatrixDriver extends MockDriver {
     this.mx?.stopClient();
     this.mx = null;
     this.joinedRoomIds = null;
+    this.sentThreadReplyEventIds.clear();
 
     localStorage.removeItem(this.key(STORAGE.user));
     localStorage.removeItem(this.key(STORAGE.oidc));

@@ -8,6 +8,7 @@ import type { ChatThread } from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { formatChatTime } from "../../formatTimestamp";
+import { isOptimisticThreadId } from "../../hooks/chatCompositionCache";
 
 type ThreadListItemProps = {
   thread: ChatThread;
@@ -22,6 +23,7 @@ type ThreadListItemProps = {
 export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
   const { t } = useTranslation();
   const isUnread = thread.unreadCount > 0;
+  const isPending = isOptimisticThreadId(thread.id);
 
   const replies =
     thread.replyCount <= 1
@@ -37,6 +39,8 @@ export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
         type="button"
         className="hub__chat-thread-item__button"
         onClick={onOpen}
+        disabled={isPending}
+        aria-busy={isPending || undefined}
       >
         <span className="hub__chat-thread-item__indicator" aria-hidden="true" />
         <Avatar

@@ -1,4 +1,6 @@
 import {
+  ChatEvent,
+  ChatEventListener,
   Driver,
   GetChatMessagesParams,
   GetChatThreadParams,
@@ -10,7 +12,11 @@ import {
   ToggleChatThreadReactionParams,
   ChatUserFilters,
 } from "../Driver";
-import { MOCK_CHATS, type MockChat } from "../mocks/mockChats";
+import {
+  MOCK_CHATS,
+  MOCK_UNREAD_CHAT_IDS,
+  type MockChat,
+} from "../mocks/mockChats";
 import { MOCK_CHAT_USERS, getMockChatUsers } from "../mocks/mockChatUsers";
 import { getMockChatDocuments } from "../mocks/mockDocuments";
 import {
@@ -34,6 +40,7 @@ import {
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
+  ChatUnread,
   ChatUser,
   LocalChat,
   LocalChatSections,
@@ -71,9 +78,12 @@ const readNumberSetting = (
  */
 export class MockDriver extends Driver {
   override readonly supportsComposition: boolean = true;
+  override readonly supportsThreadComposition: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
 
   private readonly chats: LocalChat[];
+  private readonly unreadByChat: Record<string, ChatUnread>;
+  private readonly mockEventListeners = new Set<ChatEventListener>();
 
   constructor(
     accountId: AccountId = "default",
@@ -93,6 +103,36 @@ export class MockDriver extends Driver {
         BASE_LAST_ACTIVITY - (offsetMinutes + index * 7) * 60 * 1000,
       ).toISOString(),
     }));
+    this.unreadByChat = Object.fromEntries(
+      this.chats.map((chat) => [
+        chat.id,
+        {
+          unread: MOCK_UNREAD_CHAT_IDS.includes(
+            chat.id as (typeof MOCK_UNREAD_CHAT_IDS)[number],
+          ),
+          highlight: false,
+        },
+      ]),
+    );
+  }
+
+  override subscribeToEvents(listener: ChatEventListener): () => void {
+    this.mockEventListeners.add(listener);
+    return () => this.mockEventListeners.delete(listener);
+  }
+
+  private emitMockEvent(event: ChatEvent): void {
+    this.mockEventListeners.forEach((listener) => listener(event));
+  }
+
+  private clearUnread(chatId: string): void {
+    const current = this.unreadByChat[chatId];
+    if (!current || (!current.unread && !current.highlight)) {
+      return;
+    }
+    const unread = { unread: false, highlight: false };
+    this.unreadByChat[chatId] = unread;
+    this.emitMockEvent({ type: "unread:changed", chatId, unread });
   }
 
   async getChats(): Promise<LocalChatSections> {
@@ -164,6 +204,8 @@ export class MockDriver extends Driver {
           : { kind: "icon", icon: "groups" },
     };
     this.chats.unshift(chat);
+    this.unreadByChat[chat.id] = { unread: false, highlight: false };
+    this.emitMockEvent({ type: "chats:changed" });
     return chat;
   }
 
@@ -401,6 +443,15 @@ export class MockDriver extends Driver {
     markAllMockThreadsRead(chatId, this.getSeedChat(chatId));
   }
 
+  async markChatRead(chatId: string): Promise<void> {
+    this.clearUnread(chatId);
+    await delay(MOCK_CHAT_LATENCY_MS);
+  }
+
+  async getUnread(): Promise<Record<string, ChatUnread>> {
+    return { ...this.unreadByChat };
+  }
+
   private getLocalChat(chatId: string): LocalChat | undefined {
     return this.chats.find((chat) => chat.id === chatId);
   }
@@ -435,7 +486,7 @@ export class MockDriver extends Driver {
     const chat = this.getLocalChat(chatId);
     if (chat) {
       chat.lastActivityAt = timestamp;
-      chat.unread = false;
     }
+    this.clearUnread(chatId);
   }
 }

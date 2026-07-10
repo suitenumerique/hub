@@ -6,6 +6,7 @@ export const chatKeys = {
     ["chat-accounts", scopeId ?? "active"] as const,
   chatsAll: () => ["chats"] as const,
   chatsOf: (accountId: AccountId) => ["chats", accountId] as const,
+  unreadOf: (accountId: AccountId) => ["chat-unread", accountId] as const,
   noChat: () => ["chat", "none"] as const,
 
   /** Existing conversation resolved from a participant set (New Chat search). */
@@ -24,6 +25,8 @@ export const chatKeys = {
     ["chat-threads", ref.accountId, ref.chatId] as const,
   thread: (ref: ChatRef, threadId: string) =>
     ["chat-thread", ref.accountId, ref.chatId, threadId] as const,
+  threadDetails: (ref: ChatRef) =>
+    ["chat-thread", ref.accountId, ref.chatId] as const,
   documents: (ref: ChatRef) =>
     ["chat-documents", ref.accountId, ref.chatId] as const,
   connection: (accountId: AccountId, userId: string | null) =>

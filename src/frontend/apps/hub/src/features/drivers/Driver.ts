@@ -9,6 +9,7 @@ import {
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
+  ChatUnread,
   ChatUser,
   LocalChat,
   LocalChatSections,
@@ -124,6 +125,7 @@ export type ChatEvent =
       /** Set when the message lives inside a thread rather than the timeline. */
       threadId?: string;
     }
+  | { type: "unread:changed"; chatId: string; unread: ChatUnread }
   // --- Coarse: only name what changed; the bridge invalidates & refetches -
   | { type: "chat:changed"; chatId: string }
   | { type: "threads:changed"; chatId: string }
@@ -135,6 +137,7 @@ export type ChatEventListener = (event: ChatEvent) => void;
 export abstract class Driver {
   readonly accountId: AccountId;
   readonly supportsComposition: boolean = false;
+  readonly supportsThreadComposition: boolean = false;
   /**
    * Whether the driver can start a brand-new conversation from a participant set
    * (see `createChatForUsers`). Off by default so drivers opt in; gates the
@@ -179,11 +182,14 @@ export abstract class Driver {
   abstract markChatThreadRead(params: MarkChatThreadReadParams): Promise<void>;
   /** Marks every thread of a conversation as read for the current user. */
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
+  /** Marks the main timeline read once it is genuinely visible to the user. */
+  abstract markChatRead(chatId: string): Promise<void>;
+  /** Initial per-conversation read state; live changes use `unread:changed`. */
+  abstract getUnread(): Promise<Record<string, ChatUnread>>;
 
   // --- Composition --------------------------------------------------------
   // Unsupported by default so drivers can opt into composition incrementally.
-  // MockDriver enables these methods; MatrixDriver intentionally does not in
-  // the `chat-message-composition` change.
+  // Implementations advertise each supported surface through capability flags.
 
   async sendChatMessage(_params: SendChatMessageParams): Promise<ChatMessage> {
     void _params;

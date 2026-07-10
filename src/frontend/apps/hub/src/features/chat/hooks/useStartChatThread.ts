@@ -22,11 +22,16 @@ import {
   type ChatMessagesData,
   createCurrentUserThreadAuthor,
   createOptimisticMessage,
+  getRootThreadSummary,
+  markOptimisticRootThreadSummary,
+  mergeRootThreadSummary,
+  OPTIMISTIC_THREAD_ID_PREFIX,
   removeThread,
   replaceRootMessageInPages,
+  rollbackOptimisticRootThreadSummary,
   upsertThread,
 } from "./chatCompositionCache";
-import { useChatCompositionSupport } from "./useChatCompositionSupport";
+import { useChatThreadCompositionSupport } from "./useChatThreadCompositionSupport";
 
 type StartThreadVariables = {
   rootMessage: ChatMessage;
@@ -39,8 +44,11 @@ type StartThreadContext = {
   threadsKey: QueryKey;
   tempThreadKey: QueryKey;
   tempThreadId: string;
-  previousMessages: ChatMessagesData | undefined;
   previousThreads: ChatThread[] | undefined;
+  optimisticThreads: ChatThread[] | undefined;
+  rootMessageId: string;
+  previousRootThreadSummary: ChatMessage["thread"];
+  optimisticRootThreadMarker: string;
 };
 
 export type StartThreadCallbacks = {
@@ -65,7 +73,7 @@ export type UseStartChatThreadResult = {
 export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const isSupported = useChatCompositionSupport(ref);
+  const isSupported = useChatThreadCompositionSupport(ref);
   const currentUserAuthor = useMemo(
     () => createCurrentUserThreadAuthor(t),
     [t],
@@ -91,7 +99,7 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       const messagesKey: QueryKey = chatKeys.messages(ref);
       const threadsKey: QueryKey = chatKeys.threads(ref);
       const reply = createOptimisticMessage(content, "optimistic-thread-start");
-      const tempThreadId = `optimistic-thread-${reply.id}`;
+      const tempThreadId = `${OPTIMISTIC_THREAD_ID_PREFIX}${reply.id}`;
       const tempThreadKey: QueryKey = chatKeys.thread(ref, tempThreadId);
       await Promise.all([
         queryClient.cancelQueries({ queryKey: messagesKey }),
@@ -102,9 +110,16 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         queryClient.getQueryData<ChatMessagesData>(messagesKey);
       const previousThreads =
         queryClient.getQueryData<ChatThread[]>(threadsKey);
+      const previousRootThreadSummary = getRootThreadSummary(
+        previousMessages,
+        rootMessage.id,
+      );
       const rootWithThread: ChatMessage = {
         ...rootMessage,
-        thread: { id: tempThreadId, replyCount: 1, unreadCount: 0 },
+        thread: markOptimisticRootThreadSummary(
+          { id: tempThreadId, replyCount: 1, unreadCount: 0 },
+          tempThreadId,
+        ),
       };
       const thread: ChatThread = {
         id: tempThreadId,
@@ -135,13 +150,19 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       queryClient.setQueryData(tempThreadKey, detail);
       options?.onOptimisticThread?.(tempThreadId);
 
+      const optimisticThreads =
+        queryClient.getQueryData<ChatThread[]>(threadsKey);
+
       return {
         messagesKey,
         threadsKey,
         tempThreadKey,
         tempThreadId,
-        previousMessages,
         previousThreads,
+        optimisticThreads,
+        rootMessageId: rootMessage.id,
+        previousRootThreadSummary,
+        optimisticRootThreadMarker: tempThreadId,
       };
     },
     onSuccess: (result, variables, context) => {
@@ -149,12 +170,14 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         return;
       }
       queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) =>
-        old ? replaceRootMessageInPages(old, result.rootMessage) : old,
+        old
+          ? mergeRootThreadSummary(old, result.rootMessage.id, result.thread)
+          : old,
       );
       queryClient.setQueryData<ChatThread[]>(context.threadsKey, (old) =>
         old
           ? upsertThread(removeThread(old, context.tempThreadId), result.thread)
-          : old,
+          : [result.thread],
       );
       queryClient.setQueryData(
         chatKeys.thread(ref, result.thread.id),
@@ -174,12 +197,31 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       if (!context) {
         return;
       }
-      queryClient.setQueryData(context.messagesKey, context.previousMessages);
-      queryClient.setQueryData(context.threadsKey, context.previousThreads);
+      queryClient.setQueryData<ChatMessagesData>(
+        context.messagesKey,
+        (current) =>
+          current
+            ? rollbackOptimisticRootThreadSummary(
+                current,
+                context.rootMessageId,
+                context.optimisticRootThreadMarker,
+                context.previousRootThreadSummary,
+              )
+            : current,
+      );
+      queryClient.setQueryData<ChatThread[]>(context.threadsKey, (current) =>
+        current === context.optimisticThreads
+          ? context.previousThreads
+          : current
+            ? removeThread(current, context.tempThreadId)
+            : current,
+      );
       queryClient.removeQueries({
         queryKey: context.tempThreadKey,
         exact: true,
       });
+      void queryClient.invalidateQueries({ queryKey: context.messagesKey });
+      void queryClient.invalidateQueries({ queryKey: context.threadsKey });
     },
     meta: { noGlobalError: true },
   });

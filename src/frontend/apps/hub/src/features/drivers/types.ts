@@ -48,6 +48,16 @@ export type ChatVisual =
   | { kind: "icon"; icon: string };
 
 /**
+ * Read state lives outside the conversation and message payloads so a receipt
+ * can move the unread dot without invalidating either cache. `highlight` is a
+ * stronger Matrix notification (for example a mention).
+ */
+export type ChatUnread = {
+  unread: boolean;
+  highlight: boolean;
+};
+
+/**
  * The current user's relationship to a conversation. `join` is a normal,
  * sendable conversation; `invite` is a pending incoming invitation that must be
  * accepted before its timeline becomes available. Driver-neutral: the Matrix
@@ -79,7 +89,6 @@ export type LocalChat = {
   id: string;
   lastActivityAt?: string;
   name: string;
-  unread?: boolean;
   section: "favourites" | "all";
   /**
    * Determines whether the conversation has a single counterpart or several.

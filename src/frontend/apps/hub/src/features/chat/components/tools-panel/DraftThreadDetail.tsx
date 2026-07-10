@@ -37,9 +37,9 @@ export const DraftThreadDetail = ({
   const handleSubmit = (content: string) =>
     startThread(message, content, {
       rootAuthor: author,
-      onOptimisticThread: (threadId) => {
-        onCreated(threadId, { focusComposer: true });
-      },
+      // Stay on the draft until Matrix confirms the real root id. Opening the
+      // optimistic id would enable a second composer that could send a reply to
+      // a relation target which does not exist on the homeserver.
       onCreated: (threadId) => {
         onCreated(threadId, { focusComposer: true });
       },

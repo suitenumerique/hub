@@ -16,6 +16,8 @@ import type {
 } from "@/features/drivers/types";
 
 import { useChatMessages } from "../hooks/useChatMessages";
+import { useChatUnread } from "../hooks/useChatUnread";
+import { useMarkChatRead } from "../hooks/useMarkChatRead";
 
 import { ChatBubble } from "./ChatBubble";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
@@ -28,6 +30,10 @@ type ChatVirtualListProps = {
 // first measurement pass — eliminates the visible "flash" before the list
 // snaps to the bottom on chat open / switch.
 const DEFAULT_ITEM_HEIGHT = 72;
+
+// Avoid clearing a room merely because it flashed on screen during navigation.
+const MARK_READ_DEBOUNCE_MS = 500;
+const MARK_READ_RETRY_MAX_MS = 8000;
 
 // State machine for the skeleton overlay: it stays mounted (and fully
 // opaque) while messages are loading, then transitions to `leaving` once
@@ -48,6 +54,9 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
   } = useChatMessages(chatRef);
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
   const lastMessage = messages[messages.length - 1];
+  const unreadLookup = useChatUnread();
+  const isUnread = unreadLookup(chatRef).unread;
+  const markChatRead = useMarkChatRead(chatRef);
 
   // Keep one Virtuoso instance alive across chat switches — remounting it on
   // every chat change costs ~500ms of measurement + layout, which is what
@@ -66,6 +75,81 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
   // is known. Cleared as soon as the viewport actually reaches the bottom.
   const shouldStickToBottomRef = useRef(false);
   const pendingScrollRaf = useRef<number | null>(null);
+  const lastMarkedKeyRef = useRef<string | null>(null);
+  const markReadTimerRef = useRef<number | null>(null);
+  const markReadRetryCountRef = useRef(0);
+  const [markReadRetryTick, setMarkReadRetryTick] = useState(0);
+
+  /**
+   * A room is read only when its latest message is actually visible: the window
+   * is focused, the list is at the bottom, and the initial load has completed.
+   */
+  const maybeMarkRead = useCallback(() => {
+    const latestId = lastMessage?.id;
+    const markerKey = latestId ? `${chatKey}:${latestId}` : null;
+    if (!isUnread) {
+      markReadRetryCountRef.current = 0;
+      return;
+    }
+    if (
+      isInitialLoading ||
+      !atBottomRef.current ||
+      !markerKey ||
+      lastMarkedKeyRef.current === markerKey ||
+      (typeof document !== "undefined" && !document.hasFocus())
+    ) {
+      return;
+    }
+    if (markReadTimerRef.current !== null) {
+      window.clearTimeout(markReadTimerRef.current);
+    }
+    markReadTimerRef.current = window.setTimeout(() => {
+      markReadTimerRef.current = null;
+      if (!atBottomRef.current || !document.hasFocus()) {
+        return;
+      }
+      lastMarkedKeyRef.current = markerKey;
+      void markChatRead()
+        .then(() => {
+          markReadRetryCountRef.current = 0;
+        })
+        .catch(() => {
+          if (lastMarkedKeyRef.current !== markerKey) {
+            return;
+          }
+          lastMarkedKeyRef.current = null;
+          const retryDelay = Math.min(
+            1000 * 2 ** markReadRetryCountRef.current,
+            MARK_READ_RETRY_MAX_MS,
+          );
+          markReadRetryCountRef.current += 1;
+          markReadTimerRef.current = window.setTimeout(() => {
+            markReadTimerRef.current = null;
+            setMarkReadRetryTick((current) => current + 1);
+          }, retryDelay);
+        });
+    }, MARK_READ_DEBOUNCE_MS);
+  }, [chatKey, isInitialLoading, isUnread, lastMessage?.id, markChatRead]);
+
+  useEffect(() => {
+    lastMarkedKeyRef.current = null;
+    markReadRetryCountRef.current = 0;
+    return () => {
+      lastMarkedKeyRef.current = null;
+    };
+  }, [chatKey]);
+
+  useEffect(() => {
+    maybeMarkRead();
+    window.addEventListener("focus", maybeMarkRead);
+    return () => {
+      window.removeEventListener("focus", maybeMarkRead);
+      if (markReadTimerRef.current !== null) {
+        window.clearTimeout(markReadTimerRef.current);
+        markReadTimerRef.current = null;
+      }
+    };
+  }, [markReadRetryTick, maybeMarkRead]);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
     isInitialLoading ? "visible" : "hidden",
@@ -179,6 +263,7 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
             atBottomRef.current = atBottom;
             if (atBottom) {
               shouldStickToBottomRef.current = false;
+              maybeMarkRead();
             }
           }}
           totalListHeightChanged={() => {

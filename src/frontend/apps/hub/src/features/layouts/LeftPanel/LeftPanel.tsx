@@ -15,9 +15,18 @@ import { useTranslation } from "react-i18next";
 
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
 import { useChatScopes } from "@/features/chat/hooks/useChatAccounts";
+import {
+  type ChatUnreadLookup,
+  useChatUnread,
+} from "@/features/chat/hooks/useChatUnread";
 import { useChats } from "@/features/chat/hooks/useChats";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
-import type { Chat, ChatRef, ChatScope } from "@/features/drivers/types";
+import type {
+  Chat,
+  ChatRef,
+  ChatScope,
+  ChatUnread,
+} from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 type ActionItem =
@@ -28,6 +37,7 @@ export const LeftPanel = () => {
   const { t } = useTranslation();
   const router = useRouter();
   const chats = useChats();
+  const unreadLookup = useChatUnread();
   const { activeScopeId, scopes, setActiveScopeId } = useChatScopes();
   const entries = useDriverEntries();
   const accountLabels = new Map(
@@ -112,12 +122,14 @@ export const LeftPanel = () => {
           chats={chats.favourites}
           accountLabels={accountLabels}
           showAccountLabels={showAccountLabels}
+          unreadLookup={unreadLookup}
         />
         <ChatSection
           title={t("All chats")}
           chats={chats.all}
           accountLabels={accountLabels}
           showAccountLabels={showAccountLabels}
+          unreadLookup={unreadLookup}
         />
       </div>
 
@@ -217,6 +229,7 @@ type ChatSectionProps = {
   chats: Chat[];
   accountLabels: Map<string, string>;
   showAccountLabels: boolean;
+  unreadLookup: ChatUnreadLookup;
 };
 
 const ChatSection = ({
@@ -224,6 +237,7 @@ const ChatSection = ({
   chats,
   accountLabels,
   showAccountLabels,
+  unreadLookup,
 }: ChatSectionProps) => {
   const [isOpen, setIsOpen] = useState(true);
   const reactId = useId();
@@ -258,6 +272,7 @@ const ChatSection = ({
                 chat={chat}
                 accountLabel={accountLabels.get(chat.accountId)}
                 showAccountLabel={showAccountLabels}
+                unread={unreadLookup(chat.ref)}
               />
             </li>
           ))}
@@ -271,10 +286,12 @@ const ChatRow = ({
   chat,
   accountLabel,
   showAccountLabel,
+  unread,
 }: {
   chat: Chat;
   accountLabel?: string;
   showAccountLabel: boolean;
+  unread: ChatUnread;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -298,7 +315,8 @@ const ChatRow = ({
       <span
         className={clsx(
           "hub__left-panel__chat__dot",
-          chat.unread && "hub__left-panel__chat__dot--visible",
+          unread.unread && "hub__left-panel__chat__dot--visible",
+          unread.highlight && "hub__left-panel__chat__dot--highlight",
         )}
         aria-hidden="true"
       />
@@ -319,7 +337,8 @@ const ChatRow = ({
         <span
           className={clsx(
             "hub__left-panel__chat__name",
-            (chat.unread || isActive) && "hub__left-panel__chat__name--strong",
+            (unread.unread || isActive) &&
+              "hub__left-panel__chat__name--strong",
           )}
         >
           {chat.name}
@@ -328,7 +347,7 @@ const ChatRow = ({
           <span className="hub__left-panel__chat__account">{accountLabel}</span>
         )}
       </span>
-      {chat.unread && (
+      {unread.unread && (
         <span className="hub__visually-hidden">{t("Unread message")}</span>
       )}
     </Link>

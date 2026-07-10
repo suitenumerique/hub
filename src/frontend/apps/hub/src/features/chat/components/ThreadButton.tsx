@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 
 import type { ChatThreadSummary } from "@/features/drivers/types";
 
+import { isOptimisticThreadId } from "../hooks/chatCompositionCache";
+
 type ThreadButtonProps = {
   summary: ChatThreadSummary;
   /** Opens the thread's detail view in the tools panel. */
@@ -18,6 +20,7 @@ type ThreadButtonProps = {
 export const ThreadButton = ({ summary, onOpen }: ThreadButtonProps) => {
   const { t } = useTranslation();
   const isUnread = summary.unreadCount > 0;
+  const isPending = isOptimisticThreadId(summary.id);
 
   const replies =
     summary.replyCount <= 1
@@ -34,6 +37,8 @@ export const ThreadButton = ({ summary, onOpen }: ThreadButtonProps) => {
         "hub__chat-thread-button--unread": isUnread,
       })}
       onClick={onOpen}
+      disabled={isPending}
+      aria-busy={isPending || undefined}
     >
       <span className="hub__chat-thread-button__icon" aria-hidden="true">
         <ArrowCornerDownRight />

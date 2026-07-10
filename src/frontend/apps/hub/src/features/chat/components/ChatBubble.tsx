@@ -10,6 +10,7 @@ import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { useChatPanel } from "../ChatPanelContext";
 import { formatChatTime } from "../formatTimestamp";
+import { isOptimisticThreadId } from "../hooks/chatCompositionCache";
 import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
 import { useToggleReaction } from "../hooks/useToggleReaction";
 
@@ -104,10 +105,16 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     threadId !== undefined || props.compactToolbar === true;
   const rootAuthor = props.variant === "received" ? props.author : undefined;
   const rootAuthorId = props.variant === "sent" ? "me" : props.author.id;
-  const canReply = Boolean(thread) || isCompositionSupported;
+  const isPendingThread = Boolean(thread && isOptimisticThreadId(thread.id));
+  const canReply =
+    (Boolean(thread) && !isPendingThread) ||
+    (!thread && isCompositionSupported);
   const onReply = useCallback(() => {
-    if (thread) {
+    if (thread && !isOptimisticThreadId(thread.id)) {
       openThread(thread.id);
+      return;
+    }
+    if (thread) {
       return;
     }
     openDraftThread({

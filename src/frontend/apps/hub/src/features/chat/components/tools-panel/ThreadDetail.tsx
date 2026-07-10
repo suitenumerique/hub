@@ -50,6 +50,7 @@ export const ThreadDetail = ({
     messageCount: 0,
     lastMessageId: null,
   });
+  const lastMarkedReadRef = useRef<string | null>(null);
   const lastMessage = thread?.messages[thread.messages.length - 1];
 
   // On open, jump to the first unread reply — or to the latest message when the
@@ -102,15 +103,26 @@ export const ThreadDetail = ({
     threadId,
   ]);
 
-  // Opening a thread marks its replies read. `markThreadRead` updates the list
-  // and the bubble badge but not this thread's cache entry, so the "Unread"
-  // separator stays put while the reader is still in the thread. Gated by
-  // `isOpen` so we don't clear unread state while the panel is closed.
+  // A server notification count can say "unread" even when the SDK cannot
+  // locate the first unread reply in the loaded timeline. Mark the latest
+  // visible reply instead of using `firstUnreadIndex` as a receipt gate. The
+  // event id keeps cache refetches from resending the same receipt, while a new
+  // reply received in an open thread advances it again.
   useEffect(() => {
-    if (isOpen && thread && thread.firstUnreadIndex !== null) {
-      markThreadRead(threadId);
+    if (!isOpen) {
+      lastMarkedReadRef.current = null;
+      return;
     }
-  }, [isOpen, thread, threadId, markThreadRead]);
+    if (!thread || !lastMessage || lastMessage.id === thread.rootMessageId) {
+      return;
+    }
+    const receiptKey = `${threadId}:${lastMessage.id}`;
+    if (lastMarkedReadRef.current === receiptKey) {
+      return;
+    }
+    lastMarkedReadRef.current = receiptKey;
+    markThreadRead(threadId);
+  }, [isOpen, lastMessage, markThreadRead, thread, threadId]);
 
   const authorsById = useMemo(() => {
     const map = new Map<string, ChatMessageAuthor>();
