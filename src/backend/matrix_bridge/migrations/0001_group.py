@@ -43,17 +43,15 @@ class Migration(migrations.Migration):
                         verbose_name="updated on",
                     ),
                 ),
+                ("name", models.CharField(max_length=255)),
                 (
                     "status",
                     models.CharField(
                         choices=[
                             ("provisioning", "Provisioning"),
-                            ("awaiting_requester_join", "Awaiting requester join"),
+                            ("awaiting_join", "Awaiting join"),
                             ("active", "Active"),
-                            ("archived", "Archived"),
                             ("migration_pending", "Migration pending"),
-                            ("deletion_pending", "Deletion pending"),
-                            ("deleted", "Deleted"),
                             ("failed", "Failed"),
                         ],
                         default="provisioning",
@@ -61,17 +59,13 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("created_by_matrix_id", models.CharField(max_length=255)),
-                ("created_via_account_id", models.CharField(max_length=128)),
-                ("control_homeserver", models.CharField(max_length=128)),
+                ("matrix_account_id", models.CharField(max_length=128)),
                 ("idempotency_key", models.CharField(max_length=255)),
-                ("provisioning_nonce", models.CharField(max_length=255, unique=True)),
                 ("ministry", models.CharField(blank=True, max_length=255)),
                 ("tags", models.JSONField(blank=True, default=list)),
                 ("visibility", models.CharField(default="private", max_length=32)),
                 ("emoji", models.CharField(default="🌲", max_length=16)),
-                ("announcements_only", models.BooleanField(default=False)),
                 ("allow_external_guests", models.BooleanField(default=False)),
-                ("last_reconciled_at", models.DateTimeField(blank=True, null=True)),
                 (
                     "created_by",
                     models.ForeignKey(

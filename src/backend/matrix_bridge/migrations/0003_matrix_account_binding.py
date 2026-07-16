@@ -9,7 +9,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("matrix_bridge", "0002_group_matrix_room"),
+        ("matrix_bridge", "0002_group_room"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

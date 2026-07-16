@@ -13,32 +13,30 @@ export type ChatRef = {
 
 export type HubGroupRoom = {
   room_id: string;
-  role: "active" | "predecessor" | "successor_pending" | "abandoned";
+  role: "active" | "predecessor" | "successor_pending";
   sequence: number;
-  predecessor_room_id?: string | null;
-  successor_room_id?: string | null;
-  tombstone_event_id?: string | null;
-  name: string;
-  topic: string;
-  is_encrypted: boolean;
 };
 
 export type HubGroup = {
   id: string;
   status: string;
+  name: string;
   emoji: string;
-  announcements_only: boolean;
   allow_external_guests: boolean;
+  member_count: number;
+  ministry: string;
+  tags: string[];
+  visibility: string;
   matrix: {
     room_id: string;
     account_id: AccountId;
     via: string[];
   } | null;
-  memberships: Array<{
+  members: Array<{
     mxid: string;
-    membership: "invite" | "join" | "leave" | "ban" | "knock";
+    hub_user_id: string | null;
+    display_name: string;
     role: "bot" | "owner" | "moderator" | "member";
-    power_level: number | null;
   }>;
   rooms: HubGroupRoom[];
 };

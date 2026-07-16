@@ -11,7 +11,6 @@ import { chatKeys } from "../chatKeys";
 export type HubGroupFormValues = {
   name: string;
   emoji: string;
-  announcementsOnly: boolean;
   allowExternalGuests: boolean;
 };
 
@@ -32,7 +31,6 @@ export const useCreateHubGroup = (accountId: AccountId | null) => {
     mutationFn: async ({
       name,
       emoji,
-      announcementsOnly,
       allowExternalGuests,
       invitees,
       sourceRoomId,
@@ -47,10 +45,8 @@ export const useCreateHubGroup = (accountId: AccountId | null) => {
         matrix_account_id: accountId,
         matrix_access_token: proof.accessToken,
         name,
-        topic: "",
         emoji,
         invitees,
-        announcements_only: announcementsOnly,
         allow_external_guests: allowExternalGuests,
       };
       const group = sourceRoomId

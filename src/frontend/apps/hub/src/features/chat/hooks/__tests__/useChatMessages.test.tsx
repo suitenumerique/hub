@@ -31,6 +31,20 @@ const buildPage = (
   };
 };
 
+const buildRoomPage = (roomId: string): ChatMessagesPage => ({
+  messages: [
+    {
+      id: `message-${roomId}`,
+      authorId: "alice",
+      content: roomId,
+      timestamp: "2026-01-01T08:00:00Z",
+      reactions: [],
+    },
+  ],
+  authors: [{ id: "alice", name: "Alice", initials: "A", color: "blue-1" }],
+  nextCursor: null,
+});
+
 const getChatMessages =
   vi.fn<
     (params: {
@@ -240,6 +254,82 @@ describe("useChatMessages", () => {
 
     expect(result.current.authorsById.get("alice")?.name).toBe("Alice");
     expect(result.current.authorsById.get("bob")?.name).toBe("Bob");
+  });
+
+  it("walks an ordered room chain from the active room to the oldest", async () => {
+    getChatMessages
+      .mockResolvedValueOnce(buildRoomPage("chat-1"))
+      .mockResolvedValueOnce(buildRoomPage("previous"))
+      .mockResolvedValueOnce(buildRoomPage("oldest"));
+
+    const { result } = renderHook(
+      () => useChatMessages(CHAT_REF, ["oldest", "previous", "chat-1"]),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    act(() => result.current.fetchOlder());
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+    act(() => result.current.fetchOlder());
+    await waitFor(() => expect(result.current.messages).toHaveLength(3));
+
+    expect(getChatMessages.mock.calls.map(([params]) => params.chatId)).toEqual(
+      ["chat-1", "previous", "oldest"],
+    );
+    expect(
+      result.current.messages.map((message) => ({
+        sourceChatId: message.sourceChatId,
+        isHistorical: message.isHistorical,
+      })),
+    ).toEqual([
+      { sourceChatId: "oldest", isHistorical: true },
+      { sourceChatId: "previous", isHistorical: true },
+      { sourceChatId: "chat-1", isHistorical: false },
+    ]);
+  });
+
+  it("skips an inaccessible predecessor and keeps walking the room chain", async () => {
+    getChatMessages
+      .mockResolvedValueOnce(buildRoomPage("chat-1"))
+      .mockRejectedValueOnce(new Error("room is not joined"))
+      .mockResolvedValueOnce(buildRoomPage("oldest"));
+
+    const { result } = renderHook(
+      () => useChatMessages(CHAT_REF, ["oldest", "inaccessible", "chat-1"]),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    act(() => result.current.fetchOlder());
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+    expect(result.current.isError).toBe(false);
+
+    expect(getChatMessages.mock.calls.map(([params]) => params.chatId)).toEqual(
+      ["chat-1", "inaccessible", "oldest"],
+    );
+    expect(
+      result.current.messages.map((message) => message.sourceChatId),
+    ).toEqual(["oldest", "chat-1"]);
+  });
+
+  it("automatically skips an empty predecessor", async () => {
+    getChatMessages
+      .mockResolvedValueOnce(buildRoomPage("chat-1"))
+      .mockResolvedValueOnce({ messages: [], authors: [], nextCursor: null })
+      .mockResolvedValueOnce(buildRoomPage("oldest"));
+
+    const { result } = renderHook(
+      () => useChatMessages(CHAT_REF, ["oldest", "empty", "chat-1"]),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    act(() => result.current.fetchOlder());
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+
+    expect(getChatMessages.mock.calls.map(([params]) => params.chatId)).toEqual(
+      ["chat-1", "empty", "oldest"],
+    );
   });
 
   it("surfaces query errors without throwing", async () => {

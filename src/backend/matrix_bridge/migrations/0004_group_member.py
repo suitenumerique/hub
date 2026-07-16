@@ -1,4 +1,4 @@
-"""Create the current Matrix membership projection for group rooms."""
+"""Create the current joined-member projection for Hub groups."""
 
 import uuid
 
@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name="GroupMembership",
+            name="GroupMember",
             fields=[
                 (
                     "id",
@@ -45,21 +45,8 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("mxid", models.CharField(max_length=255)),
-                (
-                    "membership",
-                    models.CharField(
-                        choices=[
-                            ("invite", "Invite"),
-                            ("join", "Join"),
-                            ("leave", "Leave"),
-                            ("ban", "Ban"),
-                            ("knock", "Knock"),
-                        ],
-                        max_length=16,
-                    ),
-                ),
                 ("display_name", models.CharField(blank=True, max_length=255)),
-                ("power_level", models.IntegerField(blank=True, null=True)),
+                ("power_level", models.IntegerField(default=0)),
                 (
                     "role",
                     models.CharField(
@@ -73,54 +60,40 @@ class Migration(migrations.Migration):
                         max_length=16,
                     ),
                 ),
-                ("invited_at", models.DateTimeField(blank=True, null=True)),
-                ("joined_at", models.DateTimeField(blank=True, null=True)),
-                ("left_at", models.DateTimeField(blank=True, null=True)),
-                ("last_event_id", models.CharField(blank=True, max_length=255)),
-                ("last_event_ts", models.BigIntegerField(blank=True, null=True)),
-                ("projection_updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "group",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="members",
+                        to="matrix_bridge.group",
+                    ),
+                ),
                 (
                     "hub_user",
                     models.ForeignKey(
                         blank=True,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="matrix_group_memberships",
+                        related_name="matrix_group_members",
                         to=settings.AUTH_USER_MODEL,
-                    ),
-                ),
-                (
-                    "room",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="memberships",
-                        to="matrix_bridge.groupmatrixroom",
                     ),
                 ),
             ],
             options={
+                "ordering": ("display_name", "mxid"),
                 "indexes": [
+                    models.Index(fields=["mxid"], name="matrix_brid_mxid_5d6a96_idx"),
                     models.Index(
-                        fields=["room", "membership"],
-                        name="matrix_brid_room_id_552903_idx",
+                        fields=["group", "role"],
+                        name="matrix_brid_group_i_bdd05c_idx",
                     ),
                     models.Index(
-                        fields=["mxid", "membership"],
-                        name="matrix_brid_mxid_656c0a_idx",
-                    ),
-                    models.Index(
-                        fields=["hub_user", "membership"],
-                        name="matrix_brid_hub_use_15a599_idx",
-                    ),
-                    models.Index(
-                        fields=["room", "role", "membership"],
-                        name="matrix_brid_room_id_572202_idx",
+                        fields=["hub_user"], name="matrix_brid_hub_use_b1cbd1_idx"
                     ),
                 ],
                 "constraints": [
                     models.UniqueConstraint(
-                        fields=("room", "mxid"),
-                        name="matrix_group_membership_unique",
+                        fields=("group", "mxid"), name="matrix_group_member_unique"
                     )
                 ],
             },

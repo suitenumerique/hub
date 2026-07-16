@@ -33,6 +33,8 @@ and this project adheres to
 
 ### Changed
 
+- ♻️(hub) Keep Matrix groups as a minimal member projection with ordered room
+  upgrade history
 - ♻️(backend) Process Matrix group Application Service transactions synchronously
   and atomically without Celery
 - ♻️(frontend) Simplify the conversation auto-scroll onto the Virtuoso API

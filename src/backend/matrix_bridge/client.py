@@ -12,19 +12,26 @@ import requests
 class MatrixBridgeError(Exception):
     """A classified Matrix response safe to expose through the group API."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         message: str,
         *,
         status_code: int = 503,
         errcode: str = "MATRIX_UNAVAILABLE",
         retry_after_ms: int | None = None,
+        upstream_status_code: int | None = None,
     ):
         """Store the public HTTP classification of one Matrix failure."""
         super().__init__(message)
         self.status_code = status_code
         self.errcode = errcode
         self.retry_after_ms = retry_after_ms
+        self.upstream_status_code = upstream_status_code
+
+    @property
+    def is_temporary(self) -> bool:
+        """Return whether retrying the same Matrix operation can succeed later."""
+        return self.status_code in {429, 503}
 
 
 @dataclass(frozen=True)
@@ -114,6 +121,7 @@ class MatrixClient:
             status_code=status_code,
             errcode=matrix_code,
             retry_after_ms=retry_after_ms,
+            upstream_status_code=response.status_code,
         )
 
     def whoami(self, access_token: str) -> str:
@@ -132,6 +140,27 @@ class MatrixClient:
         )
         return result["room_id"]
 
+    def resolve_room_alias(self, room_alias: str) -> str:
+        """Resolve a local room alias to its opaque Matrix room id."""
+        encoded = quote(room_alias, safe="")
+        return self.request("GET", f"/_matrix/client/v3/directory/room/{encoded}")[
+            "room_id"
+        ]
+
+    def join(self, room_id_or_alias: str, *, via: list[str] | None = None) -> str:
+        """Join the control bot to a room using its Application Service token."""
+        encoded = quote(room_id_or_alias, safe="")
+        result = self.request(
+            "POST",
+            f"/_matrix/client/v3/join/{encoded}",
+            json={},
+            params={
+                "user_id": self.homeserver.bot_mxid,
+                **({"via": via} if via else {}),
+            },
+        )
+        return result.get("room_id", room_id_or_alias)
+
     def invite(self, room_id: str, mxid: str) -> None:
         """Invite a single target separately from room creation."""
         encoded = quote(room_id, safe="")
@@ -149,6 +178,7 @@ class MatrixClient:
             "GET",
             f"/_matrix/client/v3/rooms/{encoded}/state",
             access_token=access_token,
+            params=(None if access_token else {"user_id": self.homeserver.bot_mxid}),
         )
 
     def joined_members(
@@ -160,6 +190,7 @@ class MatrixClient:
             "GET",
             f"/_matrix/client/v3/rooms/{encoded}/joined_members",
             access_token=access_token,
+            params=(None if access_token else {"user_id": self.homeserver.bot_mxid}),
         ).get("joined", {})
 
     def send_state(
@@ -178,5 +209,6 @@ class MatrixClient:
             f"/_matrix/client/v3/rooms/{encoded_room}/state/{encoded_type}/",
             access_token=access_token,
             json=content,
+            params=(None if access_token else {"user_id": self.homeserver.bot_mxid}),
         )
         return result.get("event_id", "")

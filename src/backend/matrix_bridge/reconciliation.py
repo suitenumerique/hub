@@ -1,18 +1,22 @@
-"""Synchronous Matrix-to-PostgreSQL reconciliation helpers."""
+"""Synchronous reconciliation of the minimal Matrix group projection."""
 
 import logging
 
 from django.db import transaction
-from django.utils import timezone
 
 from matrix_bridge.client import MatrixClient, MatrixHomeserver
-from matrix_bridge.models import Group, GroupMatrixRoom, GroupStatus
-from matrix_bridge.reducers import reduce_event, sanitize_events
+from matrix_bridge.models import Group, GroupRoom, GroupRoomRole, GroupStatus
+from matrix_bridge.services import (
+    PendingUpgradeRejected,
+    complete_pending_upgrade,
+    register_pending_upgrade,
+    sync_group_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
 RECONCILIABLE_GROUP_STATUSES = (
-    GroupStatus.AWAITING_REQUESTER_JOIN,
+    GroupStatus.AWAITING_JOIN,
     GroupStatus.ACTIVE,
     GroupStatus.MIGRATION_PENDING,
 )
@@ -27,55 +31,82 @@ def reconciliable_group_ids():
     )
 
 
+def _empty_state_event(state: list[dict], event_type: str) -> dict:
+    """Return one empty-state-key event without retaining it."""
+    return next(
+        (
+            event
+            for event in state
+            if event.get("type") == event_type and event.get("state_key", "") == ""
+        ),
+        {},
+    )
+
+
 def reconcile_matrix_group(group_id) -> bool:
-    """Pull and apply fresh room state unless a newer AS event won the race."""
-    group = Group.objects.select_related("active_room").get(id=group_id)
-    room = group.active_room
-    if room is None:
-        logger.info(
-            "Skipping Matrix group reconciliation without an active room",
-            extra={"matrix_group_id": str(group.id)},
-        )
-        return False
-
-    snapshot_started_at = timezone.now()
-    homeserver = MatrixHomeserver.for_account(group.control_homeserver)
-    state = MatrixClient(homeserver).room_state(room.room_id)
-    events = sanitize_events(state, default_room_id=room.room_id)
-
-    with transaction.atomic():
-        locked_group = Group.objects.select_for_update().get(id=group.id)
-        if locked_group.active_room_id != room.id:
-            logger.info(
-                "Skipping stale Matrix reconciliation after an active-room change",
-                extra={"matrix_group_id": str(group.id)},
-            )
-            return False
-        locked_room = (
-            GroupMatrixRoom.objects.select_for_update()
-            .select_related("group")
-            .get(id=room.id)
-        )
-        if locked_room.updated_at > snapshot_started_at:
-            logger.info(
-                "Skipping stale Matrix reconciliation after a newer AS event",
+    """Retry a pending upgrade or refresh only selected active-room data."""
+    group = Group.objects.get(id=group_id)
+    pending = group.rooms.filter(role=GroupRoomRole.SUCCESSOR_PENDING).first()
+    if pending:
+        try:
+            return complete_pending_upgrade(pending.id)
+        except PendingUpgradeRejected as error:
+            logger.warning(
+                "Matrix group successor is still invalid",
                 extra={
                     "matrix_group_id": str(group.id),
-                    "matrix_room_id": room.room_id,
+                    "matrix_upgrade_rejection": error.reason,
                 },
             )
             return False
-        for event in events:
-            reduce_event(locked_room, event, homeserver.bot_mxid)
-        locked_group.last_reconciled_at = timezone.now()
-        locked_group.save(update_fields=("last_reconciled_at", "updated_at"))
+
+    homeserver = MatrixHomeserver.for_account(group.matrix_account_id)
+    client = MatrixClient(homeserver)
+    discovered_pending_id = None
+    with transaction.atomic():
+        locked_group = Group.objects.select_for_update().get(id=group.id)
+        active = (
+            GroupRoom.objects.select_for_update()
+            .filter(group=locked_group, role=GroupRoomRole.ACTIVE)
+            .first()
+        )
+        if active is None:
+            logger.info(
+                "Skipping Matrix group reconciliation without an active room",
+                extra={"matrix_group_id": str(group.id)},
+            )
+            return False
+
+        # Holding the active-room lock ensures any AppService event received
+        # after this snapshot is applied after it, avoiding stale overwrite
+        # without storing reconciliation timestamps.
+        state = client.room_state(active.room_id)
+        joined = client.joined_members(active.room_id)
+        sync_group_snapshot(locked_group, state, joined, homeserver.bot_mxid)
+
+        tombstone = _empty_state_event(state, "m.room.tombstone")
+        replacement = tombstone.get("content", {}).get("replacement_room")
+        if isinstance(replacement, str):
+            active.group = locked_group
+            pending = register_pending_upgrade(active, replacement)
+            discovered_pending_id = pending.id if pending else None
+
+    if discovered_pending_id:
+        sender = tombstone.get("sender", "")
+        via = [sender.rsplit(":", 1)[-1]] if ":" in sender else None
+        try:
+            complete_pending_upgrade(discovered_pending_id, via=via)
+        except PendingUpgradeRejected as error:
+            logger.warning(
+                "Discovered Matrix successor remains pending",
+                extra={
+                    "matrix_group_id": str(group.id),
+                    "matrix_upgrade_rejection": error.reason,
+                },
+            )
 
     logger.info(
         "Matrix group reconciliation completed",
-        extra={
-            "matrix_group_id": str(group.id),
-            "matrix_room_id": room.room_id,
-            "matrix_event_count": len(events),
-        },
+        extra={"matrix_group_id": str(group.id)},
     )
     return True

@@ -73,17 +73,20 @@ const matrixSections = (): LocalChatSections => ({
 const resolvedGroup = (roomId: string): HubGroup => ({
   id: `group-${roomId}`,
   status: "active",
+  name: "Official group",
+  ministry: "",
+  tags: [],
+  visibility: "private",
   emoji: "🌲",
-  announcements_only: false,
   allow_external_guests: false,
+  member_count: 0,
   matrix: null,
-  invitations: [],
-  memberships: [
+  members: [
     {
       mxid: "@hub-bot:localhost",
-      membership: "join",
+      hub_user_id: null,
+      display_name: "Hub bot",
       role: "bot",
-      power_level: null,
     },
   ],
   rooms: [
@@ -91,9 +94,6 @@ const resolvedGroup = (roomId: string): HubGroup => ({
       room_id: roomId,
       role: "active",
       sequence: 0,
-      name: "Official group",
-      topic: "",
-      is_encrypted: false,
     },
   ],
 });
@@ -179,13 +179,11 @@ describe("useChats", () => {
       },
     ];
     const group = resolvedGroup("!room-4:localhost");
+    group.rooms[0].sequence = 1;
     group.rooms.unshift({
       room_id: "!room-3:localhost",
       role: "predecessor",
       sequence: 0,
-      name: "Old room",
-      topic: "",
-      is_encrypted: false,
     });
     resolveHubGroups.mockResolvedValue([group]);
 

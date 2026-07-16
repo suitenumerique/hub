@@ -371,9 +371,16 @@ shell: ## connect to database shell
 
 db-reset: ## reset Hub and Matrix data, then provision users without rooms
 	@$(MAKE) down-matrix
+	@$(MAKE) stop
 	@mkdir -p data/matrix/synapse
 	@find data/matrix/synapse -mindepth 1 -delete
-	@$(MAKE) resetdb FLUSH_ARGS=--no-input
+	@$(COMPOSE) up -d --wait postgresql
+	@$(COMPOSE_EXEC) -T postgresql sh -ec \
+		'dropdb --if-exists --force --username="$$POSTGRES_USER" "$$POSTGRES_DB"'
+	@$(COMPOSE_EXEC) -T postgresql sh -ec \
+		'createdb --username="$$POSTGRES_USER" --owner="$$POSTGRES_USER" "$$POSTGRES_DB"'
+	@$(MAKE) migrate
+	@$(MAKE) superuser
 	@$(MAKE) run-matrix
 	@$(MAKE) seed-matrix-users
 .PHONY: db-reset

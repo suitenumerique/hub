@@ -13,9 +13,7 @@ const withName = (chat: Chat, name: string): Chat => ({
     ? {
         hubGroup: {
           ...chat.hubGroup,
-          rooms: chat.hubGroup.rooms.map((room) =>
-            room.role === "active" ? { ...room, name } : room,
-          ),
+          name,
         },
       }
     : {}),

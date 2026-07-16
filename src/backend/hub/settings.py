@@ -82,11 +82,6 @@ class Base(Configuration):
 
     # Matrix group control plane. Room IDs are deliberately never used to infer
     # a server: the account manifest selects this registry entry explicitly.
-    MATRIX_GROUP_MARKER_MODE = values.Value(
-        "type_and_state",
-        environ_name="MATRIX_GROUP_MARKER_MODE",
-        environ_prefix=None,
-    )
     MATRIX_HOMESERVERS = {
         "matrix-local": {
             "registration_id": values.Value(

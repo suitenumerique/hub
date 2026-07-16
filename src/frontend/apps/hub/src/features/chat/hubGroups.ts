@@ -15,6 +15,15 @@ export type HubGroupResolutionSnapshot = {
   groups: HubGroup[];
 };
 
+/** Oldest predecessor first, active room last, ready for history pagination. */
+export const getHubGroupHistoryRoomIds = (
+  group: Pick<HubGroup, "rooms">,
+): string[] =>
+  [...group.rooms]
+    .sort((left, right) => left.sequence - right.sequence)
+    .filter((room) => room.role === "predecessor" || room.role === "active")
+    .map((room) => room.room_id);
+
 /** Sorted candidate ids keep the POST small and the React Query key stable. */
 export const getHubGroupCandidateRoomIds = (chats: LocalChat[]): string[] =>
   [
@@ -76,9 +85,9 @@ const buildHubGroupRoomIndex = (
   const index = new Map<string, HubGroupRoomIndexEntry>();
   groups.forEach((group) => {
     const botIds = new Set(
-      group.memberships
-        .filter((membership) => membership.role === "bot")
-        .map((membership) => membership.mxid),
+      group.members
+        .filter((member) => member.role === "bot")
+        .map((member) => member.mxid),
     );
     group.rooms.forEach((room) => {
       index.set(room.room_id, { group, role: room.role, botIds });
@@ -96,15 +105,12 @@ const applyHubGroupToChat = <T extends LocalChat>(
     return chat;
   }
   const { group, botIds } = resolution;
-  const activeRoom = group.rooms.find((room) => room.role === "active");
   return {
     ...chat,
     // Matrix is authoritative for effective room state. Prefer its current
     // name so an eventually-consistent registry projection cannot overwrite it.
     name:
-      chat.name && chat.name !== chat.id
-        ? chat.name
-        : activeRoom?.name || chat.name,
+      chat.name && chat.name !== chat.id ? chat.name : group.name || chat.name,
     kind: "hub_group",
     participantIds: chat.participantIds.filter((id) => !botIds.has(id)),
     visual: { kind: "emoji", emoji: group.emoji || "🌲" },

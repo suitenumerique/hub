@@ -8,5 +8,7 @@ namespaces:
   users:
     - exclusive: true
       regex: '^@hub-bot:localhost$'
-  aliases: []
+  aliases:
+    - exclusive: true
+      regex: '^#_hub_control:localhost$'
   rooms: []

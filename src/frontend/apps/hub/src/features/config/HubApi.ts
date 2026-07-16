@@ -32,10 +32,8 @@ export type CreateHubGroupPayload = {
   matrix_account_id: string;
   matrix_access_token: string;
   name: string;
-  topic: string;
   emoji: string;
   invitees: string[];
-  announcements_only: boolean;
   allow_external_guests: boolean;
 };
 

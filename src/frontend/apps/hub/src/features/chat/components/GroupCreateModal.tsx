@@ -23,7 +23,6 @@ type GroupCreateModalProps = {
 const INITIAL_VALUES: HubGroupFormValues = {
   name: "",
   emoji: "🌲",
-  announcementsOnly: false,
   allowExternalGuests: false,
 };
 
@@ -120,26 +119,6 @@ export const GroupCreateModal = ({
               }))
             }
           />
-        </div>
-
-        <div className="hub__group-modal__setting">
-          <Switch
-            id="group-announcements-only"
-            checked={values.announcementsOnly}
-            aria-label={t("Announcements only")}
-            onChange={(event) =>
-              setValues((current) => ({
-                ...current,
-                announcementsOnly: event.target.checked,
-              }))
-            }
-          />
-          <label htmlFor="group-announcements-only">
-            <strong>{t("Announcements only")}</strong>
-            <span>
-              {t("Only admins can post. Members can read and react.")}
-            </span>
-          </label>
         </div>
 
         <div className="hub__group-modal__setting">

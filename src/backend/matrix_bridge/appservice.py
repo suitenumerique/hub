@@ -11,12 +11,13 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
-from matrix_bridge.client import MatrixHomeserver
+from matrix_bridge.client import MatrixBridgeError, MatrixHomeserver
 from matrix_bridge.reducers import (
     ALLOWED_EVENT_TYPES,
     process_transaction,
     sanitize_events,
 )
+from matrix_bridge.services import complete_pending_upgrades_for_events
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,28 @@ class AppServiceTransactionView(View):
                 transaction_id=txn_id,
                 events=sanitized,
             )
+            # Tombstones are registered transactionally first. Matrix network
+            # calls happen only after that commit; a retry re-attempts the same
+            # pending successor even when the transaction marker already exists.
+            completed_upgrades = complete_pending_upgrades_for_events(
+                sanitized,
+                account_id=homeserver.account_id,
+            )
+        except MatrixBridgeError as error:
+            if error.is_temporary:
+                logger.warning(
+                    "Temporary Matrix error while activating a successor",
+                    extra={
+                        "matrix_transaction_id": txn_id,
+                        "matrix_error_code": error.errcode,
+                    },
+                )
+                return JsonResponse({"errcode": "M_UNAVAILABLE"}, status=503)
+            logger.exception(
+                "Matrix rejected successor activation",
+                extra={"matrix_transaction_id": txn_id},
+            )
+            return JsonResponse({"errcode": "M_UNKNOWN"}, status=500)
         except OperationalError:
             # A non-2xx response lets Synapse retry a temporary database failure.
             logger.exception(
@@ -120,6 +143,7 @@ class AppServiceTransactionView(View):
                 "matrix_event_count_invalid": invalid_count,
                 "matrix_event_types": sorted({event["type"] for event in sanitized}),
                 "matrix_duplicate": not processed,
+                "matrix_upgrades_completed": completed_upgrades,
                 "matrix_duration_ms": round((time.monotonic() - started_at) * 1000, 2),
             },
         )

@@ -7,7 +7,7 @@
 from rest_framework import serializers
 
 from matrix_bridge.client import MatrixHomeserver
-from matrix_bridge.models import Group, GroupMatrixRoom, GroupMembership
+from matrix_bridge.models import Group, GroupMember, GroupMemberRole, GroupRoom
 
 
 class GroupCreateSerializer(serializers.Serializer):
@@ -16,13 +16,20 @@ class GroupCreateSerializer(serializers.Serializer):
     matrix_account_id = serializers.CharField(max_length=128)
     matrix_access_token = serializers.CharField(write_only=True, trim_whitespace=False)
     name = serializers.CharField(max_length=255)
-    topic = serializers.CharField(required=False, allow_blank=True, default="")
     invitees = serializers.ListField(
         child=serializers.RegexField(r"^@[^:]+:.+$"), required=False, default=list
     )
     emoji = serializers.CharField(max_length=16, required=False, default="🌲")
-    announcements_only = serializers.BooleanField(required=False, default=False)
     allow_external_guests = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        """Reject fields removed from the public creation contract."""
+        removed_fields = {"topic", "announcements_only"} & self.initial_data.keys()
+        if removed_fields:
+            raise serializers.ValidationError(
+                dict.fromkeys(removed_fields, "This field is no longer supported.")
+            )
+        return attrs
 
     def validate_invitees(self, value):
         """Keep stable order while removing duplicates."""
@@ -57,20 +64,18 @@ class GroupPromotionSerializer(GroupCreateSerializer):
     )
 
 
-class GroupMembershipSerializer(serializers.ModelSerializer):
-    """Explicit Matrix membership projection."""
+class GroupMemberSerializer(serializers.ModelSerializer):
+    """One currently joined Matrix member projected for the group."""
+
+    hub_user_id = serializers.UUIDField(read_only=True, allow_null=True)
 
     class Meta:
-        model = GroupMembership
+        model = GroupMember
         fields = (
             "mxid",
-            "membership",
+            "hub_user_id",
             "display_name",
-            "power_level",
             "role",
-            "invited_at",
-            "joined_at",
-            "left_at",
         )
 
 
@@ -78,50 +83,33 @@ class GroupRoomSerializer(serializers.ModelSerializer):
     """One active or historical Matrix room in the chain."""
 
     class Meta:
-        model = GroupMatrixRoom
-        fields = (
-            "room_id",
-            "role",
-            "sequence",
-            "predecessor_room_id",
-            "successor_room_id",
-            "tombstone_event_id",
-            "is_hardened",
-            "room_version",
-            "name",
-            "topic",
-            "avatar_mxc",
-            "is_encrypted",
-            "join_rule",
-            "history_visibility",
-        )
+        model = GroupRoom
+        fields = ("room_id", "role", "sequence")
 
 
 class GroupSerializer(serializers.ModelSerializer):
     """Stable group registry response contextualized to the creator account."""
 
-    created_by = serializers.UUIDField(source="created_by_id", allow_null=True)
     matrix = serializers.SerializerMethodField()
     rooms = GroupRoomSerializer(many=True, read_only=True)
-    memberships = serializers.SerializerMethodField()
+    members = GroupMemberSerializer(many=True, read_only=True)
+    member_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Group
         fields = (
             "id",
             "status",
-            "created_by",
-            "created_at",
+            "name",
             "ministry",
             "tags",
             "visibility",
             "emoji",
-            "announcements_only",
             "allow_external_guests",
+            "member_count",
             "matrix",
             "rooms",
-            "memberships",
-            "last_reconciled_at",
+            "members",
         )
 
     def get_matrix(self, group):
@@ -129,19 +117,13 @@ class GroupSerializer(serializers.ModelSerializer):
         room = group.active_room
         if not room:
             return None
-        homeserver = MatrixHomeserver.for_account(group.control_homeserver)
+        homeserver = MatrixHomeserver.for_account(group.matrix_account_id)
         return {
             "room_id": room.room_id,
-            "account_id": group.created_via_account_id,
+            "account_id": group.matrix_account_id,
             "via": [homeserver.server_name],
         }
 
-    def get_memberships(self, group):
-        """Serialize the projected memberships of the active room."""
-        if not group.active_room:
-            return []
-        memberships = sorted(
-            group.active_room.memberships.all(),
-            key=lambda membership: (membership.display_name, membership.mxid),
-        )
-        return GroupMembershipSerializer(memberships, many=True).data
+    def get_member_count(self, group):
+        """Count joined humans; the AppService bot is an implementation detail."""
+        return sum(member.role != GroupMemberRole.BOT for member in group.members.all())

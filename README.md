@@ -183,6 +183,14 @@ $ make seed-matrix
 multi-user room, and posts a few text messages. It is idempotent: running it
 again finds the existing room aliases and does not duplicate the transcript.
 
+#### Matrix group POC data reset
+
+The Matrix group POC uses one consolidated initial migration and deliberately
+does not migrate data from its earlier room-mirror schema. Existing local POC
+data must be reset once with `make db-reset` before using the new registry. The
+command rebuilds the local Hub database, reapplies every migration, and resets
+the local Matrix stack.
+
 ## License 📝
 
 This work is released under the MIT License (see [LICENSE](https://github.com/suitenumerique/docs/blob/main/LICENSE)).

@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [("matrix_bridge", "0004_group_membership")]
+    dependencies = [("matrix_bridge", "0004_group_member")]
 
     operations = [
         migrations.CreateModel(

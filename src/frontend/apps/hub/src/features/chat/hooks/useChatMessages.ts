@@ -157,18 +157,19 @@ export const useChatMessages = (
     return map;
   }, [query.data]);
 
+  const lastFetchedPage = query.data?.pages[query.data.pages.length - 1];
   useEffect(() => {
     if (
-      query.data &&
-      messages.length === 0 &&
+      lastFetchedPage?.messages.length === 0 &&
       query.hasNextPage &&
       !query.isFetchingNextPage
     ) {
+      // An empty Matrix page, an inaccessible predecessor, or a room with no
+      // readable events must not strand pagination before the next ancestor.
       void query.fetchNextPage();
     }
   }, [
-    messages.length,
-    query.data,
+    lastFetchedPage,
     query.fetchNextPage,
     query.hasNextPage,
     query.isFetchingNextPage,

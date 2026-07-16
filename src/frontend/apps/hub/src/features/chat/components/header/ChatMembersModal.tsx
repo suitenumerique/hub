@@ -43,51 +43,47 @@ export const ChatMembersModal = ({
     ],
     [t],
   );
-  const membershipByMxid = useMemo(
-    () =>
-      new Map(
-        group?.memberships.map((membership) => [membership.mxid, membership]) ??
-          [],
-      ),
-    [group?.memberships],
+  const memberByMxid = useMemo(
+    () => new Map(group?.members.map((member) => [member.mxid, member]) ?? []),
+    [group?.members],
   );
   const humanPresent = useMemo(
     () =>
       group
         ? present.filter(
-            (member) => membershipByMxid.get(member.id)?.role !== "bot",
+            (member) => memberByMxid.get(member.id)?.role !== "bot",
           )
         : present,
-    [group, membershipByMxid, present],
+    [group, memberByMxid, present],
   );
   const accesses = useMemo(
     () =>
       humanPresent.map((member) => ({
         id: member.id,
         role: group
-          ? membershipByMxid.get(member.id)?.role || READ_ONLY_ROLE
+          ? memberByMxid.get(member.id)?.role || READ_ONLY_ROLE
           : READ_ONLY_ROLE,
         user: toShareUser(member),
         is_explicit: false,
         can_delete: false,
       })),
-    [group, humanPresent, membershipByMxid],
+    [group, humanPresent, memberByMxid],
   );
   const invitations = useMemo(
     () =>
       pendingInvites
         .filter(
-          (member) => !group || membershipByMxid.get(member.id)?.role !== "bot",
+          (member) => !group || memberByMxid.get(member.id)?.role !== "bot",
         )
         .map((member) => ({
           id: member.id,
           role: group
-            ? membershipByMxid.get(member.id)?.role || READ_ONLY_ROLE
+            ? memberByMxid.get(member.id)?.role || READ_ONLY_ROLE
             : READ_ONLY_ROLE,
           email: member.secondaryText,
           user: toShareUser(member),
         })),
-    [group, membershipByMxid, pendingInvites],
+    [group, memberByMxid, pendingInvites],
   );
 
   return (

@@ -16,6 +16,7 @@ import type {
   ChatMessageAuthor,
 } from "@/features/drivers/types";
 
+import { getHubGroupHistoryRoomIds } from "../hubGroups";
 import { useChatMessages } from "../hooks/useChatMessages";
 import { useChatUnread } from "../hooks/useChatUnread";
 import { useMarkChatRead } from "../hooks/useMarkChatRead";
@@ -46,10 +47,7 @@ type SkeletonState = "visible" | "leaving" | "hidden";
 export const ChatVirtualList = ({ chatRef, chat }: ChatVirtualListProps) => {
   const { t } = useTranslation();
   const orderedRoomIds = chat?.hubGroup
-    ? [...chat.hubGroup.rooms]
-        .sort((left, right) => left.sequence - right.sequence)
-        .filter((room) => ["predecessor", "active"].includes(room.role))
-        .map((room) => room.room_id)
+    ? getHubGroupHistoryRoomIds(chat.hubGroup)
     : [chatRef.chatId];
   const {
     messages,

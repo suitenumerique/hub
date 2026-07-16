@@ -126,21 +126,24 @@ const GROUP_CHAT: Chat = {
   hubGroup: {
     id: "group-1",
     status: "active",
+    name: "Project group",
+    ministry: "",
+    tags: [],
+    visibility: "private",
     emoji: "🌲",
-    announcements_only: false,
     allow_external_guests: false,
+    member_count: 1,
     matrix: {
       room_id: "chat-1",
       account_id: "account-a",
       via: ["example.test"],
     },
-    invitations: [],
-    memberships: [
+    members: [
       {
         mxid: "alice",
-        membership: "join",
+        hub_user_id: null,
+        display_name: "Alice",
         role: "member",
-        power_level: 0,
       },
     ],
     rooms: [
@@ -148,9 +151,6 @@ const GROUP_CHAT: Chat = {
         room_id: "chat-1",
         role: "active",
         sequence: 0,
-        name: "Project group",
-        topic: "",
-        is_encrypted: false,
       },
     ],
   },

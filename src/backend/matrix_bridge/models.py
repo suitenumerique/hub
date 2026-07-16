@@ -1,7 +1,6 @@
-"""Durable Hub group registry and reconstructable Matrix projections."""
+"""Minimal Hub group registry backed by Matrix rooms."""
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
@@ -13,27 +12,33 @@ class GroupStatus(models.TextChoices):
     """Lifecycle states controlled by Hub."""
 
     PROVISIONING = "provisioning", _("Provisioning")
-    AWAITING_REQUESTER_JOIN = "awaiting_requester_join", _("Awaiting requester join")
+    AWAITING_JOIN = "awaiting_join", _("Awaiting join")
     ACTIVE = "active", _("Active")
-    ARCHIVED = "archived", _("Archived")
     MIGRATION_PENDING = "migration_pending", _("Migration pending")
-    DELETION_PENDING = "deletion_pending", _("Deletion pending")
-    DELETED = "deleted", _("Deleted")
     FAILED = "failed", _("Failed")
 
 
 class GroupRoomRole(models.TextChoices):
-    """A room's role in the stable group history chain."""
+    """A room's role in the ordered Matrix history of a group."""
 
-    ACTIVE = "active", _("Active")
     PREDECESSOR = "predecessor", _("Predecessor")
+    ACTIVE = "active", _("Active")
     SUCCESSOR_PENDING = "successor_pending", _("Successor pending")
-    ABANDONED = "abandoned", _("Abandoned")
+
+
+class GroupMemberRole(models.TextChoices):
+    """Convenience role derived from current Matrix power levels."""
+
+    BOT = "bot", _("Bot")
+    OWNER = "owner", _("Owner")
+    MODERATOR = "moderator", _("Moderator")
+    MEMBER = "member", _("Member")
 
 
 class Group(BaseModel):
-    """Stable business identity for a Hub group."""
+    """Stable business identity for a group, independent of room upgrades."""
 
+    name = models.CharField(max_length=255)
     status = models.CharField(
         max_length=32, choices=GroupStatus.choices, default=GroupStatus.PROVISIONING
     )
@@ -45,26 +50,14 @@ class Group(BaseModel):
         related_name="created_matrix_groups",
     )
     created_by_matrix_id = models.CharField(max_length=255)
-    created_via_account_id = models.CharField(max_length=128)
-    control_homeserver = models.CharField(max_length=128)
-    active_room = models.ForeignKey(
-        "GroupMatrixRoom",
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="active_for_groups",
-    )
-    # Reuse the same group when a client retries one creation request.
+    matrix_account_id = models.CharField(max_length=128)
+    # Internal retry key: it is deliberately never exposed by the API.
     idempotency_key = models.CharField(max_length=255)
-    # Match Matrix metadata with the exact provisioning performed by Hub.
-    provisioning_nonce = models.CharField(max_length=255, unique=True)
     ministry = models.CharField(max_length=255, blank=True)
     tags = models.JSONField(default=list, blank=True)
     visibility = models.CharField(max_length=32, default="private")
     emoji = models.CharField(max_length=16, default="🌲")
-    announcements_only = models.BooleanField(default=False)
     allow_external_guests = models.BooleanField(default=False)
-    last_reconciled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -75,53 +68,79 @@ class Group(BaseModel):
         ]
         indexes = [models.Index(fields=("status", "created_at"))]
 
-    def clean(self):
-        """Keep the active room pointer inside this group."""
-        super().clean()
-        if self.active_room_id and self.active_room.group_id != self.id:
-            raise ValidationError({"active_room": _("Room belongs to another group.")})
+    @property
+    def active_room(self):
+        """Return the room currently carrying this group, if any.
+
+        The relation is derived from ``GroupRoom.role`` so the database has a
+        single source of truth. When rooms were prefetched, this does not issue
+        another query.
+        """
+        return next(
+            (room for room in self.rooms.all() if room.role == GroupRoomRole.ACTIVE),
+            None,
+        )
 
 
-class GroupMatrixRoom(BaseModel):
-    """One Matrix room in a stable group's ordered history chain."""
+class GroupRoom(BaseModel):
+    """One Matrix room identifier in a group's ordered history."""
 
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="rooms")
     room_id = models.CharField(max_length=255, unique=True)
-    control_homeserver = models.CharField(max_length=128)
-    room_version = models.CharField(max_length=32, blank=True)
     role = models.CharField(max_length=32, choices=GroupRoomRole.choices)
     sequence = models.PositiveIntegerField(default=0)
-    predecessor_room_id = models.CharField(max_length=255, null=True, blank=True)
-    successor_room_id = models.CharField(max_length=255, null=True, blank=True)
-    tombstone_event_id = models.CharField(max_length=255, null=True, blank=True)
-    create_event_id = models.CharField(max_length=255, null=True, blank=True)
-    is_hardened = models.BooleanField(default=False)
-    marker_mode = models.CharField(max_length=32, default="type_and_state")
-    metadata_schema_version = models.PositiveIntegerField(null=True, blank=True)
-    metadata_group_id = models.UUIDField(null=True, blank=True)
-    name = models.CharField(max_length=255, blank=True)
-    topic = models.TextField(blank=True)
-    avatar_mxc = models.CharField(max_length=255, blank=True)
-    is_encrypted = models.BooleanField(default=False)
-    join_rule = models.CharField(max_length=32, blank=True)
-    history_visibility = models.CharField(max_length=32, blank=True)
-    activated_at = models.DateTimeField(null=True, blank=True)
-    retired_at = models.DateTimeField(null=True, blank=True)
-    last_state_event_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ("sequence", "created_at")
         constraints = [
             models.UniqueConstraint(
-                fields=("group", "role"),
+                fields=("group",),
                 condition=Q(role=GroupRoomRole.ACTIVE),
                 name="matrix_group_one_active_room",
+            ),
+            models.UniqueConstraint(
+                fields=("group",),
+                condition=Q(role=GroupRoomRole.SUCCESSOR_PENDING),
+                name="matrix_group_one_pending_room",
             ),
             models.UniqueConstraint(
                 fields=("group", "sequence"), name="matrix_group_room_sequence_unique"
             ),
         ]
         indexes = [models.Index(fields=("group", "role"))]
+
+
+class GroupMember(BaseModel):
+    """Projection of one currently joined member of a group's active room."""
+
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="members")
+    mxid = models.CharField(max_length=255)
+    # Matrix members do not necessarily have a verified Hub account binding.
+    hub_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="matrix_group_members",
+    )
+    display_name = models.CharField(max_length=255, blank=True)
+    power_level = models.IntegerField(default=0)
+    role = models.CharField(
+        max_length=16, choices=GroupMemberRole.choices, default=GroupMemberRole.MEMBER
+    )
+
+    class Meta:
+        ordering = ("display_name", "mxid")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("group", "mxid"), name="matrix_group_member_unique"
+            )
+        ]
+        indexes = [
+            models.Index(fields=("mxid",)),
+            models.Index(fields=("group", "role")),
+            models.Index(fields=("hub_user",)),
+        ]
 
 
 class MatrixAccountBindingStatus(models.TextChoices):
@@ -159,67 +178,6 @@ class MatrixAccountBinding(BaseModel):
             models.UniqueConstraint(
                 fields=("account_id", "mxid"), name="matrix_binding_account_mxid_unique"
             ),
-        ]
-
-
-class MembershipState(models.TextChoices):
-    """Matrix membership states retained in the projection."""
-
-    INVITE = "invite", _("Invite")
-    JOIN = "join", _("Join")
-    LEAVE = "leave", _("Leave")
-    BAN = "ban", _("Ban")
-    KNOCK = "knock", _("Knock")
-
-
-class GroupMemberRole(models.TextChoices):
-    """Convenience role derived from current Matrix power levels."""
-
-    BOT = "bot", _("Bot")
-    OWNER = "owner", _("Owner")
-    MODERATOR = "moderator", _("Moderator")
-    MEMBER = "member", _("Member")
-
-
-class GroupMembership(BaseModel):
-    """Current projected membership and power level for one room/MXID."""
-
-    room = models.ForeignKey(
-        GroupMatrixRoom, on_delete=models.CASCADE, related_name="memberships"
-    )
-    mxid = models.CharField(max_length=255)
-    # Matrix members do not necessarily have a verified Hub account binding.
-    hub_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="matrix_group_memberships",
-    )
-    membership = models.CharField(max_length=16, choices=MembershipState.choices)
-    display_name = models.CharField(max_length=255, blank=True)
-    power_level = models.IntegerField(null=True, blank=True)
-    role = models.CharField(
-        max_length=16, choices=GroupMemberRole.choices, default=GroupMemberRole.MEMBER
-    )
-    invited_at = models.DateTimeField(null=True, blank=True)
-    joined_at = models.DateTimeField(null=True, blank=True)
-    left_at = models.DateTimeField(null=True, blank=True)
-    last_event_id = models.CharField(max_length=255, blank=True)
-    last_event_ts = models.BigIntegerField(null=True, blank=True)
-    projection_updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=("room", "mxid"), name="matrix_group_membership_unique"
-            )
-        ]
-        indexes = [
-            models.Index(fields=("room", "membership")),
-            models.Index(fields=("mxid", "membership")),
-            models.Index(fields=("hub_user", "membership")),
-            models.Index(fields=("room", "role", "membership")),
         ]
 
 

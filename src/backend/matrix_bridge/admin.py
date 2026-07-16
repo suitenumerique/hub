@@ -6,9 +6,9 @@ from matrix_bridge import models
 
 for model in (
     models.Group,
-    models.GroupMatrixRoom,
+    models.GroupRoom,
     models.MatrixAccountBinding,
-    models.GroupMembership,
+    models.GroupMember,
     models.AppServiceTransaction,
 ):
     admin.site.register(model)

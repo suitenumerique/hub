@@ -85,20 +85,20 @@ describe("useChat", () => {
     const group: HubGroup = {
       id: "group-1",
       status: "active",
+      name: "Official group",
+      ministry: "",
+      tags: [],
+      visibility: "private",
       emoji: "🌲",
-      announcements_only: false,
       allow_external_guests: false,
+      member_count: 0,
       matrix: null,
-      invitations: [],
-      memberships: [],
+      members: [],
       rooms: [
         {
           room_id: "chat-1",
           role: "active",
           sequence: 0,
-          name: "Official group",
-          topic: "",
-          is_encrypted: false,
         },
       ],
     };
