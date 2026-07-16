@@ -218,7 +218,7 @@ export class MockDriver extends Driver {
     }
 
     const kind: LocalChat["kind"] =
-      participantIds.length === 1 ? "direct" : "group";
+      participantIds.length === 1 ? "direct" : "multi_party";
     const chat: LocalChat = {
       id: `mock-chat-${participantIds.join("__")}`,
       name: this.composeChatName(participantIds),

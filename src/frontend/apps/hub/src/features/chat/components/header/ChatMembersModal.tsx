@@ -34,31 +34,65 @@ export const ChatMembersModal = ({
   const { t } = useTranslation();
   const { present, pendingInvites, isInitialLoading, isError, refetch } =
     useChatMembers(chat.ref, isOpen);
+  const group = chat.kind === "hub_group" ? chat.hubGroup : undefined;
+  const groupRoles = useMemo<DropdownMenuOption[]>(
+    () => [
+      { label: t("Owner"), value: "owner" },
+      { label: t("Moderator"), value: "moderator" },
+      { label: t("Member"), value: "member" },
+    ],
+    [t],
+  );
+  const membershipByMxid = useMemo(
+    () =>
+      new Map(
+        group?.memberships.map((membership) => [membership.mxid, membership]) ??
+          [],
+      ),
+    [group?.memberships],
+  );
+  const humanPresent = useMemo(
+    () =>
+      group
+        ? present.filter(
+            (member) => membershipByMxid.get(member.id)?.role !== "bot",
+          )
+        : present,
+    [group, membershipByMxid, present],
+  );
   const accesses = useMemo(
     () =>
-      present.map((member) => ({
+      humanPresent.map((member) => ({
         id: member.id,
-        role: READ_ONLY_ROLE,
+        role: group
+          ? membershipByMxid.get(member.id)?.role || READ_ONLY_ROLE
+          : READ_ONLY_ROLE,
         user: toShareUser(member),
         is_explicit: false,
         can_delete: false,
       })),
-    [present],
+    [group, humanPresent, membershipByMxid],
   );
   const invitations = useMemo(
     () =>
-      pendingInvites.map((member) => ({
-        id: member.id,
-        role: READ_ONLY_ROLE,
-        email: member.secondaryText,
-        user: toShareUser(member),
-      })),
-    [pendingInvites],
+      pendingInvites
+        .filter(
+          (member) => !group || membershipByMxid.get(member.id)?.role !== "bot",
+        )
+        .map((member) => ({
+          id: member.id,
+          role: group
+            ? membershipByMxid.get(member.id)?.role || READ_ONLY_ROLE
+            : READ_ONLY_ROLE,
+          email: member.secondaryText,
+          user: toShareUser(member),
+        })),
+    [group, membershipByMxid, pendingInvites],
   );
 
   return (
     <ShareModal<unknown, unknown, unknown>
-      modalTitle={t("Chat members")}
+      modalTitle={group ? t("Group members") : t("Chat members")}
       isOpen={isOpen}
       onClose={onClose}
       canUpdate={false}
@@ -75,7 +109,7 @@ export const ChatMembersModal = ({
       searchUsersResult={[]}
       onSearchUsers={ignoreSearch}
       onInviteUser={ignoreInvite}
-      invitationRoles={READ_ONLY_ROLES}
+      invitationRoles={group ? groupRoles : READ_ONLY_ROLES}
       accesses={accesses}
       invitations={invitations}
     />

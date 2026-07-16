@@ -33,6 +33,8 @@ and this project adheres to
 
 ### Changed
 
+- ♻️(backend) Process Matrix group Application Service transactions synchronously
+  and atomically without Celery
 - ♻️(frontend) Simplify the conversation auto-scroll onto the Virtuoso API
 - 💄(frontend) Use the brand color for the current user's message bubbles
 

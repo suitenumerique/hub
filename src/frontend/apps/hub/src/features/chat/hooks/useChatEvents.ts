@@ -200,6 +200,14 @@ const applyChatEvent = (
       void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
       return;
 
+    case "chat:name-changed":
+      void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.chatsOf(accountId),
+      });
+      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      return;
+
     case "threads:changed":
       void queryClient.invalidateQueries({
         queryKey: chatKeys.threads(ref),
@@ -226,6 +234,9 @@ const applyChatEvent = (
         queryKey: chatKeys.chatsOf(accountId),
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.hubGroupsOf(accountId),
+      });
       return;
 
     case "tags:changed":
@@ -241,6 +252,9 @@ const applyChatEvent = (
         queryKey: chatKeys.chatsOf(accountId),
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.hubGroupsOf(accountId),
+      });
       // The room list changed, so a New Chat participant-set resolution may now
       // hit (or stop hitting) an existing conversation. Its cache is a separate
       // staleTime:Infinity slice, so it only re-runs when explicitly invalidated.

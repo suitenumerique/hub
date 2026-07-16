@@ -1,0 +1,12 @@
+id: hub-groups-local
+url: http://app-dev:8000/matrix/appservice
+as_token: hub-groups-as-token-dev-only
+hs_token: hub-groups-hs-token-dev-only
+sender_localpart: hub-bot
+rate_limited: false
+namespaces:
+  users:
+    - exclusive: true
+      regex: '^@hub-bot:localhost$'
+  aliases: []
+  rooms: []

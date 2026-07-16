@@ -11,6 +11,43 @@ export type ChatRef = {
   chatId: string;
 };
 
+export type HubGroupRoom = {
+  room_id: string;
+  role: "active" | "predecessor" | "successor_pending" | "abandoned";
+  sequence: number;
+  predecessor_room_id?: string | null;
+  successor_room_id?: string | null;
+  tombstone_event_id?: string | null;
+  name: string;
+  topic: string;
+  is_encrypted: boolean;
+};
+
+export type HubGroup = {
+  id: string;
+  status: string;
+  emoji: string;
+  announcements_only: boolean;
+  allow_external_guests: boolean;
+  matrix: {
+    room_id: string;
+    account_id: AccountId;
+    via: string[];
+  } | null;
+  memberships: Array<{
+    mxid: string;
+    membership: "invite" | "join" | "leave" | "ban" | "knock";
+    role: "bot" | "owner" | "moderator" | "member";
+    power_level: number | null;
+  }>;
+  rooms: HubGroupRoom[];
+};
+
+export type MatrixIdentityProof = {
+  mxid: string;
+  accessToken: string;
+};
+
 export type ChatAccountConfig = {
   accountId: AccountId;
   kind: DriverKind;
@@ -95,7 +132,7 @@ export type LocalChat = {
    * Explicit (rather than inferred from the name) so the data shape stays
    * stable when the real backend ships.
    */
-  kind: "direct" | "group";
+  kind: "direct" | "multi_party" | "hub_group";
   /**
    * User ids that make up the conversation. The current user is implicit, so a
    * direct chat carries one participant and a group chat carries two or more.
@@ -110,6 +147,13 @@ export type LocalChat = {
   membership?: ChatMembership;
   /** Invitation metadata; present only when `membership === "invite"`. */
   invitation?: ChatInvitation;
+  /** Present only after the Django registry confirms this Matrix room. */
+  hubGroup?: HubGroup;
+  /**
+   * Untrusted Matrix-side hint used only to shortlist rooms for Django. A room
+   * never becomes an official Hub group from this marker alone.
+   */
+  hubGroupCandidate?: boolean;
 };
 
 export type Chat = LocalChat & {
@@ -133,6 +177,8 @@ export type MergedChatsResult = ChatSections & {
   isLoadingRequiredAccounts: boolean;
   isLoading: boolean;
   isError: boolean;
+  /** Matrix chats are usable while this optional Django enrichment is pending. */
+  isResolvingHubGroups: boolean;
 };
 
 export type LocalizedThemeCustomization<T> = {
@@ -239,6 +285,10 @@ export type ChatMessage = {
   canDelete?: boolean;
   /** Set when this message opened a thread; omitted otherwise. */
   thread?: ChatThreadSummary;
+  /** Matrix room that owns the event when a group composes several timelines. */
+  sourceChatId?: string;
+  /** Historical predecessor events are rendered without mutation affordances. */
+  isHistorical?: boolean;
 };
 
 /** Volatile room member identity used only by the typing indicator. */

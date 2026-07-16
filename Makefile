@@ -252,12 +252,16 @@ run-matrix: \
 	data/matrix/synapse \
 	data/matrix/mas
 	@$(MAKE) run-backend
-	@$(COMPOSE_MATRIX) up -d $(MATRIX_SERVICES)
+	@$(COMPOSE_MATRIX) up -d --wait $(MATRIX_SERVICES)
 .PHONY: run-matrix
 
 seed-matrix: ## seed the local Matrix stack with a DM and a group room (needs run-matrix)
 	@python3 bin/seed-matrix
 .PHONY: seed-matrix
+
+seed-matrix-users: ## provision local Matrix users without creating rooms
+	@python3 bin/seed-matrix --users-only
+.PHONY: seed-matrix-users
 
 clear-db-e2e: ## quickly clears the e2e database, used by Playwright between tests
 	$(PSQL_E2E) -c "$$(cat bin/clear_db_e2e.sql)"
@@ -364,6 +368,15 @@ shell: ## connect to database shell
 .PHONY: dbshell
 
 # -- Database
+
+db-reset: ## reset Hub and Matrix data, then provision users without rooms
+	@$(MAKE) down-matrix
+	@mkdir -p data/matrix/synapse
+	@find data/matrix/synapse -mindepth 1 -delete
+	@$(MAKE) resetdb FLUSH_ARGS=--no-input
+	@$(MAKE) run-matrix
+	@$(MAKE) seed-matrix-users
+.PHONY: db-reset
 
 dbshell: ## connect to database shell
 	docker compose exec app-dev python manage.py dbshell

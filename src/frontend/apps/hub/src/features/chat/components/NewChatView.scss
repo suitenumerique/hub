@@ -250,6 +250,14 @@
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
   overflow: clip;
 
+  &--selection-action {
+    position: absolute;
+    top: calc(100% - var(--c--globals--spacings--sm, 12px));
+    left: calc(var(--c--globals--spacings--sm, 12px) + 32px);
+    z-index: 1;
+    margin-left: 0;
+  }
+
   &__list {
     margin: 0;
     padding: 0;
@@ -363,6 +371,21 @@
     font-weight: 500;
     line-height: 18px;
     text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: -2px;
+    }
 
     &:disabled {
       cursor: not-allowed;

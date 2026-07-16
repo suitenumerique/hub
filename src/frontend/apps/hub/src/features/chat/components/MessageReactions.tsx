@@ -15,6 +15,7 @@ type MessageReactionsProps = {
   reactions: ChatReaction[];
   /** Toggles the current user's reaction with the given emoji. */
   onReact: (emoji: string) => void;
+  readOnly?: boolean;
 };
 
 /**
@@ -26,6 +27,7 @@ type MessageReactionsProps = {
 export const MessageReactions = ({
   reactions,
   onReact,
+  readOnly = false,
 }: MessageReactionsProps) => {
   const { t } = useTranslation();
   const addButtonRef = useRef<ButtonElement>(null);
@@ -60,6 +62,7 @@ export const MessageReactions = ({
               "hub__message-reactions__chip--mine": reaction.reactedByMe,
             })}
             aria-pressed={reaction.reactedByMe}
+            disabled={readOnly}
             aria-label={
               reaction.reactedByMe
                 ? t("Remove your {{emoji}} reaction ({{total}})", {
@@ -80,19 +83,21 @@ export const MessageReactions = ({
           </Button>
         ))}
 
-        <Button
-          ref={addButtonRef}
-          size="nano"
-          color="neutral"
-          variant="bordered"
-          className="hub__message-reactions__chip "
-          aria-label={t("Add a reaction")}
-          aria-haspopup="dialog"
-          aria-expanded={isPickerOpen}
-          onClick={() => setIsPickerOpen((open) => !open)}
-        >
-          <EmojiAdd size={16} /> <Plus size={16} />
-        </Button>
+        {!readOnly && (
+          <Button
+            ref={addButtonRef}
+            size="nano"
+            color="neutral"
+            variant="bordered"
+            className="hub__message-reactions__chip "
+            aria-label={t("Add a reaction")}
+            aria-haspopup="dialog"
+            aria-expanded={isPickerOpen}
+            onClick={() => setIsPickerOpen((open) => !open)}
+          >
+            <EmojiAdd size={16} /> <Plus size={16} />
+          </Button>
+        )}
       </div>
 
       {isPickerOpen && anchor && (

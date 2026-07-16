@@ -1,4 +1,5 @@
 import {
+  EventType,
   KnownMembership,
   type MatrixClient,
   type MatrixEvent,
@@ -10,7 +11,10 @@ import { describe, expect, it, vi } from "vitest";
 import { timelineEventToChatEvent } from "../matrixEventMapping";
 import { MatrixDriver } from "../MatrixDriver";
 import {
+  HUB_GROUP_METADATA_EVENT,
+  HUB_GROUP_ROOM_TYPE,
   matrixJoinedRoomToLocalChat,
+  matrixRoomToLocalChat,
   MATRIX_FAVOURITE_TAG,
 } from "../matrixRoomMapping";
 
@@ -335,6 +339,73 @@ describe("MatrixDriver.sendChatMessage", () => {
 });
 
 describe("MatrixDriver room metadata", () => {
+  const mappedRoom = (
+    state: Partial<Record<string, Record<string, unknown>>> = {},
+    membership = KnownMembership.Join,
+  ) =>
+    ({
+      roomId: ROOM_ID,
+      name: "Room",
+      tags: {},
+      getMyMembership: () => membership,
+      getMembers: () => [],
+      getMember: () => undefined,
+      getLastActiveTimestamp: () => 0,
+      currentState: {
+        getStateEvents: (type: string) => {
+          const content = state[type];
+          return content ? { getContent: () => content } : undefined;
+        },
+      },
+    }) as unknown as Room;
+
+  it.each([
+    ["room type", { [EventType.RoomCreate]: { type: HUB_GROUP_ROOM_TYPE } }],
+    ["custom state", { [HUB_GROUP_METADATA_EVENT]: { schema_version: 1 } }],
+  ])("marks a Matrix %s as an untrusted Hub candidate", (_label, state) => {
+    expect(
+      matrixJoinedRoomToLocalChat(mappedRoom(state), SELF_ID),
+    ).toMatchObject({
+      hubGroupCandidate: true,
+      kind: "multi_party",
+    });
+  });
+
+  it("keeps an ordinary joined room out of the candidate shortlist", () => {
+    expect(
+      matrixJoinedRoomToLocalChat(mappedRoom(), SELF_ID).hubGroupCandidate,
+    ).toBeUndefined();
+  });
+
+  it("shortlists sparse invitations even when their custom state is absent", () => {
+    expect(
+      matrixRoomToLocalChat(mappedRoom({}, KnownMembership.Invite), SELF_ID)
+        .hubGroupCandidate,
+    ).toBe(true);
+  });
+
+  it("keeps an accepted room joined while local sync still reports invite", async () => {
+    const room = mappedRoom({}, KnownMembership.Invite);
+    const joinRoom = vi.fn(async () => room);
+    const mx = {
+      getRoom: () => room,
+      getVisibleRooms: () => [room],
+      getUserId: () => SELF_ID,
+      getJoinedRooms: async () => ({ joined_rooms: [ROOM_ID] }),
+      joinRoom,
+    } as unknown as MatrixClient;
+    const driver = driverWithClient(mx);
+
+    const accepted = await driver.acceptChatInvitation(ROOM_ID);
+    const detail = await driver.getChat(ROOM_ID);
+    const list = await driver.getChats();
+
+    expect(joinRoom).toHaveBeenCalledWith(ROOM_ID);
+    expect(accepted.membership).toBe("join");
+    expect(detail.membership).toBe("join");
+    expect(list.all[0].membership).toBe("join");
+  });
+
   it("maps m.favourite to the favourites section", () => {
     const room = {
       roomId: ROOM_ID,

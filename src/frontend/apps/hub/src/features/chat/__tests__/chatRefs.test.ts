@@ -14,7 +14,7 @@ describe("chatRefs", () => {
       id: "!room:server",
       name: "General",
       section: "all",
-      kind: "group",
+      kind: "hub_group",
       participantIds: ["user-a", "user-b"],
       visual: { kind: "initials" },
     });
@@ -43,7 +43,7 @@ describe("chatRefs", () => {
           id: "all",
           name: "All",
           section: "all",
-          kind: "group",
+          kind: "hub_group",
           participantIds: ["user-a", "user-b"],
           visual: { kind: "initials" },
         },

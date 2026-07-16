@@ -10,8 +10,11 @@ import { useComposerAccountId } from "../hooks/useChatAccounts";
 import { useChatCreationSupport } from "../hooks/useChatCreationSupport";
 import { useChatForUsers } from "../hooks/useChatForUsers";
 import { useCreateChatForUsers } from "../hooks/useCreateChatForUsers";
+import { useCreateHubGroup } from "../hooks/useCreateHubGroup";
+import { useHubGroupCreationSupport } from "../hooks/useHubGroupCreationSupport";
 
 import { ChatView } from "./ChatView";
+import { GroupCreateModal } from "./GroupCreateModal";
 import { NewChatPlaceholder } from "./NewChatPlaceholder";
 import { NewChatSearchBar } from "./NewChatSearchBar";
 import type { ChatTool } from "./tools-panel/ChatToolsPanel";
@@ -39,6 +42,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
   const [selectedUsers, setSelectedUsers] = useState<ChatUser[]>([]);
   const [query, setQuery] = useState("");
   const [createdChatRef, setCreatedChatRef] = useState<ChatRef | null>(null);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   // Bumped on Enter (empty search) to move focus into the composer.
   const [composerFocusSignal, setComposerFocusSignal] = useState(0);
   // Participant-set keys whose createChatForUsers is currently in flight. Unlike
@@ -56,9 +60,18 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     [selectedUsers],
   );
   // Only resolve from the search while on the new-chat route.
-  const { chat } = useChatForUsers(isNew ? selectedUserIds : []);
+  const { chat, isInitialLoading: isResolvingChat } = useChatForUsers(
+    isNew ? selectedUserIds : [],
+  );
   const isCreationSupported = useChatCreationSupport(composerAccountId);
+  const isHubGroupCreationSupported =
+    useHubGroupCreationSupport(composerAccountId);
   const { createChatForUsers } = useCreateChatForUsers(composerAccountId);
+  const {
+    createGroup,
+    isCreating: isCreatingGroup,
+    reset: resetGroupCreation,
+  } = useCreateHubGroup(composerAccountId);
 
   // The host stays mounted across routes, so wipe the search state whenever we
   // (re-)enter new mode to start a fresh `/chat/new` instead of an old draft.
@@ -67,6 +80,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
       setSelectedUsers([]);
       setQuery("");
       setCreatedChatRef(null);
+      setIsGroupModalOpen(false);
       creationTargetRef.current = null;
       inFlightCreationsRef.current.clear();
     }
@@ -80,6 +94,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     setSelectedUsers([]);
     setQuery("");
     setCreatedChatRef(null);
+    setIsGroupModalOpen(false);
     creationTargetRef.current = null;
     inFlightCreationsRef.current.clear();
   }, [composerAccountId]);
@@ -194,6 +209,16 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
         onRemoveUser={removeUser}
         onConfirm={confirmSelection}
         onToggleTool={onToggleTool}
+        canCreateHubGroup={
+          isHubGroupCreationSupported &&
+          selectedUsers.length > 1 &&
+          !isResolvingChat &&
+          chat?.kind !== "hub_group"
+        }
+        onCreateHubGroup={() => {
+          resetGroupCreation();
+          setIsGroupModalOpen(true);
+        }}
       />
     ),
     [
@@ -203,7 +228,10 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
       createdChatRef,
       query,
       removeUser,
+      resetGroupCreation,
       selectedUsers,
+      isHubGroupCreationSupported,
+      isResolvingChat,
     ],
   );
 
@@ -219,25 +247,45 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
   );
 
   return (
-    <ChatView
-      chatRef={chatRef}
-      onSent={isNew ? handleSent : undefined}
-      composerFocusSignal={composerFocusSignal}
-      renderHeader={
-        isNew
-          ? ({ activeTool, onToggleTool }) =>
-              searchBar({ activeTool, onToggleTool })
-          : undefined
-      }
-      renderEmpty={
-        isNew
-          ? () => (
-              <div className="hub__new-chat-empty">
-                <NewChatPlaceholder />
-              </div>
-            )
-          : undefined
-      }
-    />
+    <>
+      <ChatView
+        chatRef={chatRef}
+        onSent={isNew ? handleSent : undefined}
+        composerFocusSignal={composerFocusSignal}
+        renderHeader={
+          isNew
+            ? ({ activeTool, onToggleTool }) =>
+                searchBar({ activeTool, onToggleTool })
+            : undefined
+        }
+        renderEmpty={
+          isNew
+            ? () => (
+                <div className="hub__new-chat-empty">
+                  <NewChatPlaceholder />
+                </div>
+              )
+            : undefined
+        }
+      />
+      <GroupCreateModal
+        isOpen={isGroupModalOpen}
+        isSubmitting={isCreatingGroup}
+        onClose={() => setIsGroupModalOpen(false)}
+        onSubmit={(values) => {
+          void createGroup(values, selectedUserIds)
+            .then(({ ref }) => {
+              setCreatedChatRef(ref);
+              setIsGroupModalOpen(false);
+              void router.replace(chatHref(ref));
+            })
+            .catch(() => {
+              notify.error(
+                t("The group could not be created. Please try again."),
+              );
+            });
+        }}
+      />
+    </>
   );
 };

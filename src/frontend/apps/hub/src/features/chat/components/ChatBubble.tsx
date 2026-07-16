@@ -37,6 +37,7 @@ type ChatBubbleReceivedProps = {
   isEdited?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  readOnly?: boolean;
   /** Thread opened from this message, if any. */
   thread?: ChatThreadSummary;
   /** Set when this bubble is rendered inside a thread's detail view. */
@@ -58,6 +59,7 @@ type ChatBubbleSentProps = {
   isEdited?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  readOnly?: boolean;
   /** Thread opened from this message, if any. */
   thread?: ChatThreadSummary;
   /** Set when this bubble is rendered inside a thread's detail view. */
@@ -78,25 +80,31 @@ type ChatBubbleFooterProps = {
   thread: ChatThreadSummary | undefined;
   reactions: ChatReaction[];
   onReact: (emoji: string) => void;
+  readOnly?: boolean;
 };
 
 const ChatBubbleFooter = ({
   thread,
   reactions,
   onReact,
+  readOnly = false,
 }: ChatBubbleFooterProps) => {
   const { openThread } = useChatPanel();
 
-  if (!thread && reactions.length === 0) {
+  if ((!thread || readOnly) && reactions.length === 0) {
     return null;
   }
 
   return (
     <div className="hub__chat-bubble__footer">
-      {thread && (
+      {thread && !readOnly && (
         <ThreadButton summary={thread} onOpen={() => openThread(thread.id)} />
       )}
-      <MessageReactions reactions={reactions} onReact={onReact} />
+      <MessageReactions
+        reactions={reactions}
+        onReact={onReact}
+        readOnly={readOnly}
+      />
     </div>
   );
 };
@@ -167,8 +175,9 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   );
   const isPendingThread = Boolean(thread && isOptimisticThreadId(thread.id));
   const canReply =
-    (Boolean(thread) && !isPendingThread) ||
-    (!thread && isCompositionSupported);
+    !props.readOnly &&
+    ((Boolean(thread) && !isPendingThread) ||
+      (!thread && isCompositionSupported));
   const onReply = useCallback(() => {
     if (thread && !isOptimisticThreadId(thread.id)) {
       openThread(thread.id);
@@ -221,14 +230,16 @@ export const ChatBubble = (props: ChatBubbleProps) => {
               {props.isEdited && (
                 <span className="hub__chat-bubble__edited">{t("edited")}</span>
               )}
-              <MessageHoverToolbar
-                onReact={onReact}
-                onReply={canReply ? onReply : undefined}
-                onCopy={onCopy}
-                onEdit={props.canEdit ? onEdit : undefined}
-                onDelete={props.canDelete ? onDelete : undefined}
-                compact={compactToolbar}
-              />
+              {!props.readOnly && (
+                <MessageHoverToolbar
+                  onReact={onReact}
+                  onReply={canReply ? onReply : undefined}
+                  onCopy={onCopy}
+                  onEdit={props.canEdit ? onEdit : undefined}
+                  onDelete={props.canDelete ? onDelete : undefined}
+                  compact={compactToolbar}
+                />
+              )}
             </>
           )}
         </div>
@@ -236,6 +247,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           thread={thread}
           reactions={reactions}
           onReact={onReact}
+          readOnly={props.readOnly}
         />
         {props.showTimestamp && (
           <div className="hub__chat-bubble__timestamp">
@@ -290,14 +302,16 @@ export const ChatBubble = (props: ChatBubbleProps) => {
               {props.isEdited && (
                 <span className="hub__chat-bubble__edited">{t("edited")}</span>
               )}
-              <MessageHoverToolbar
-                onReact={onReact}
-                onReply={canReply ? onReply : undefined}
-                onCopy={onCopy}
-                onEdit={props.canEdit ? onEdit : undefined}
-                onDelete={props.canDelete ? onDelete : undefined}
-                compact={compactToolbar}
-              />
+              {!props.readOnly && (
+                <MessageHoverToolbar
+                  onReact={onReact}
+                  onReply={canReply ? onReply : undefined}
+                  onCopy={onCopy}
+                  onEdit={props.canEdit ? onEdit : undefined}
+                  onDelete={props.canDelete ? onDelete : undefined}
+                  compact={compactToolbar}
+                />
+              )}
             </>
           )}
         </div>
@@ -306,6 +320,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         thread={thread}
         reactions={reactions}
         onReact={onReact}
+        readOnly={props.readOnly}
       />
     </div>
   );

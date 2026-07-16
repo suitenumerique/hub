@@ -17,16 +17,24 @@ import {
   Thread,
 } from "@gouvfr-lasuite/ui-kit/icons";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 import { useTranslation } from "react-i18next";
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
+import { chatHref } from "@/features/chat/chatRefs";
+import { GroupCreateModal } from "@/features/chat/components/GroupCreateModal";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
+import { useCreateHubGroup } from "@/features/chat/hooks/useCreateHubGroup";
 import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
+import { useHubGroupCreationSupport } from "@/features/chat/hooks/useHubGroupCreationSupport";
+import { useRenameChat } from "@/features/chat/hooks/useRenameChat";
 import type { Chat } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
+import { notify } from "@/features/ui/components/toast";
 
 import { ChatMembersModal } from "./ChatMembersModal";
+import { RenameGroupModal } from "./RenameGroupModal";
 
 type ChatHeaderProps = {
   /** `null` while the conversation is being fetched — renders a skeleton. */
@@ -126,15 +134,27 @@ export const ChatHeader = ({
 
 const ChatMenu = ({ chat }: { chat: Chat }) => {
   const { t } = useTranslation();
+  const router = useRouter();
   const menu = useDropdownMenu();
   const [isMembersOpen, setIsMembersOpen] = useState(false);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const { setFavourite, isPending } = useChatFavourite(chat.ref);
+  const { createGroup, isCreating, reset } = useCreateHubGroup(chat.accountId);
+  const supportsHubGroups = useHubGroupCreationSupport(chat.accountId);
   const isFavourite = chat.section === "favourites";
   const isInvitation = isInvitationChat(chat);
+  const isHubGroup = chat.kind === "hub_group" && Boolean(chat.hubGroup);
+  const { canRename, isChecking, renameChat, isRenaming } = useRenameChat(
+    chat.ref,
+    isHubGroup,
+  );
 
   useEffect(() => {
     menu.setIsOpen(false);
     setIsMembersOpen(false);
+    setIsGroupModalOpen(false);
+    setIsRenameModalOpen(false);
   }, [chat.ref.accountId, chat.ref.chatId, menu.setIsOpen]);
 
   const options = useMemo<DropdownMenuItem[]>(
@@ -145,6 +165,19 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         icon: <Identity />,
         callback: () => setIsMembersOpen(true),
       },
+      ...(chat.kind === "multi_party" && !isHubGroup && supportsHubGroups
+        ? [
+            {
+              id: "create-group",
+              label: t("Create a group"),
+              icon: <Identity />,
+              callback: () => {
+                reset();
+                setIsGroupModalOpen(true);
+              },
+            } satisfies DropdownMenuItem,
+          ]
+        : []),
       {
         id: "favourite",
         label: isFavourite
@@ -157,9 +190,10 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       { type: "separator" },
       {
         id: "rename",
-        label: t("Rename conversation"),
+        label: isHubGroup ? t("Rename group") : t("Rename conversation"),
         icon: <Edit />,
-        isDisabled: true,
+        isDisabled: !isHubGroup || isChecking || !canRename || isRenaming,
+        callback: isHubGroup ? () => setIsRenameModalOpen(true) : undefined,
       },
       {
         id: "notifications",
@@ -175,7 +209,19 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         isDisabled: true,
       },
     ],
-    [isFavourite, isPending, setFavourite, t],
+    [
+      chat.kind,
+      canRename,
+      isFavourite,
+      isChecking,
+      isHubGroup,
+      isPending,
+      isRenaming,
+      reset,
+      setFavourite,
+      supportsHubGroups,
+      t,
+    ],
   );
 
   const trigger = (
@@ -210,6 +256,36 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         chat={chat}
         isOpen={isMembersOpen}
         onClose={() => setIsMembersOpen(false)}
+      />
+      <GroupCreateModal
+        isOpen={isGroupModalOpen}
+        isSubmitting={isCreating}
+        onClose={() => setIsGroupModalOpen(false)}
+        onSubmit={(values) => {
+          void createGroup(values, chat.participantIds, chat.id)
+            .then(({ ref }) => {
+              setIsGroupModalOpen(false);
+              void router.replace(chatHref(ref));
+            })
+            .catch(() => {
+              notify.error(
+                t("The conversation could not be transformed into a group."),
+              );
+            });
+        }}
+      />
+      <RenameGroupModal
+        initialName={chat.name}
+        isOpen={isRenameModalOpen}
+        isSubmitting={isRenaming}
+        onClose={() => setIsRenameModalOpen(false)}
+        onSubmit={(name) => {
+          void renameChat(name)
+            .then(() => setIsRenameModalOpen(false))
+            .catch(() => {
+              notify.error(t("The group could not be renamed."));
+            });
+        }}
       />
     </>
   );

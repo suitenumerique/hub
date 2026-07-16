@@ -207,7 +207,7 @@ export const ChatView = ({
               {invitationChat && chatRef ? (
                 <ChatInvitationView chatRef={chatRef} chat={invitationChat} />
               ) : chatRef ? (
-                <ChatConversation chatRef={chatRef} />
+                <ChatConversation chatRef={chatRef} chat={chat} />
               ) : (
                 renderEmpty?.()
               )}

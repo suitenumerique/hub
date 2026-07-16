@@ -9,7 +9,10 @@ import type { Chat } from "@/features/drivers/types";
 
 import { ChatHeader } from "../header/ChatHeader";
 
-const { setFavourite } = vi.hoisted(() => ({ setFavourite: vi.fn() }));
+const { renameChat, setFavourite } = vi.hoisted(() => ({
+  renameChat: vi.fn(async () => undefined),
+  setFavourite: vi.fn(),
+}));
 
 vi.mock("@gouvfr-lasuite/ui-kit", async (importOriginal) => {
   const actual =
@@ -64,6 +67,27 @@ vi.mock("@gouvfr-lasuite/ui-kit", async (importOriginal) => {
 vi.mock("@/features/chat/hooks/useChatFavourite", () => ({
   useChatFavourite: () => ({ setFavourite, isPending: false }),
 }));
+vi.mock("@/features/chat/hooks/useCreateHubGroup", () => ({
+  useCreateHubGroup: () => ({
+    createGroup: vi.fn(),
+    isCreating: false,
+    reset: vi.fn(),
+  }),
+}));
+vi.mock("@/features/chat/hooks/useHubGroupCreationSupport", () => ({
+  useHubGroupCreationSupport: () => true,
+}));
+vi.mock("@/features/chat/hooks/useRenameChat", () => ({
+  useRenameChat: () => ({
+    canRename: true,
+    isChecking: false,
+    renameChat,
+    isRenaming: false,
+  }),
+}));
+vi.mock("next/router", () => ({
+  useRouter: () => ({ replace: vi.fn() }),
+}));
 vi.mock(
   "@/features/layouts/components/AccountSelector/AccountSelector",
   () => ({
@@ -73,6 +97,13 @@ vi.mock(
 vi.mock("../header/ChatMembersModal", () => ({
   ChatMembersModal: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div role="dialog">Members modal</div> : null,
+}));
+vi.mock("../GroupCreateModal", () => ({
+  GroupCreateModal: () => null,
+}));
+vi.mock("../header/RenameGroupModal", () => ({
+  RenameGroupModal: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div role="dialog">Rename group modal</div> : null,
 }));
 
 const CHAT: Chat = {
@@ -84,6 +115,45 @@ const CHAT: Chat = {
   kind: "direct",
   participantIds: ["alice"],
   visual: { kind: "initials" },
+};
+
+const GROUP_CHAT: Chat = {
+  ...CHAT,
+  name: "Project group",
+  kind: "hub_group",
+  participantIds: ["alice", "bob"],
+  visual: { kind: "emoji", emoji: "🌲" },
+  hubGroup: {
+    id: "group-1",
+    status: "active",
+    emoji: "🌲",
+    announcements_only: false,
+    allow_external_guests: false,
+    matrix: {
+      room_id: "chat-1",
+      account_id: "account-a",
+      via: ["example.test"],
+    },
+    invitations: [],
+    memberships: [
+      {
+        mxid: "alice",
+        membership: "join",
+        role: "member",
+        power_level: 0,
+      },
+    ],
+    rooms: [
+      {
+        room_id: "chat-1",
+        role: "active",
+        sequence: 0,
+        name: "Project group",
+        topic: "",
+        is_encrypted: false,
+      },
+    ],
+  },
 };
 
 describe("ChatHeader menu", () => {
@@ -128,5 +198,20 @@ describe("ChatHeader menu", () => {
       await screen.findByRole("menuitem", { name: "Add to favourites" }),
     );
     expect(setFavourite).toHaveBeenCalledWith(true);
+  });
+
+  it("offers rename but never create-group for an official Hub group", async () => {
+    render(
+      <ChatHeader chat={GROUP_CHAT} activeTool={null} onToggleTool={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Project group" }));
+
+    expect(
+      screen.queryByRole("menuitem", { name: "Create a group" }),
+    ).toBeNull();
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename group" }),
+    ).toHaveProperty("disabled", false);
   });
 });

@@ -13,9 +13,17 @@ from drf_spectacular.views import (
 )
 from lasuite.oidc_login.urls import urlpatterns as oidc_urls
 
+from matrix_bridge.appservice import AppServiceTransactionView
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path(
+        "matrix/appservice/_matrix/app/v1/transactions/<str:txn_id>",
+        AppServiceTransactionView.as_view(),
+        name="matrix-appservice-transaction",
+    ),
     path(f"api/{settings.API_VERSION}/", include("core.urls")),
+    path(f"api/{settings.API_VERSION}/", include("matrix_bridge.urls")),
     path(f"api/{settings.API_VERSION}/", include(oidc_urls)),
 ]
 

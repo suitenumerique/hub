@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import type {
+  Chat,
   ChatRef,
   ChatMessage,
   ChatMessageAuthor,
@@ -24,6 +25,7 @@ import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
 
 type ChatVirtualListProps = {
   chatRef: ChatRef;
+  chat: Chat | null;
 };
 
 // Average bubble height. Lets Virtuoso lay out rows without waiting on the
@@ -41,8 +43,14 @@ const MARK_READ_RETRY_MAX_MS = 8000;
 // transition-end handler flips it to `hidden`, at which point we unmount it.
 type SkeletonState = "visible" | "leaving" | "hidden";
 
-export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
+export const ChatVirtualList = ({ chatRef, chat }: ChatVirtualListProps) => {
   const { t } = useTranslation();
+  const orderedRoomIds = chat?.hubGroup
+    ? [...chat.hubGroup.rooms]
+        .sort((left, right) => left.sequence - right.sequence)
+        .filter((room) => ["predecessor", "active"].includes(room.role))
+        .map((room) => room.room_id)
+    : [chatRef.chatId];
   const {
     messages,
     authorsById,
@@ -51,9 +59,13 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
     isInitialLoading,
     firstItemIndex,
     fetchOlder,
-  } = useChatMessages(chatRef);
+  } = useChatMessages(chatRef, orderedRoomIds);
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
   const lastMessage = messages[messages.length - 1];
+  const hasTrailingGroupSeparator =
+    Boolean(chat?.hubGroup) &&
+    Boolean(lastMessage?.isHistorical) &&
+    lastMessage?.sourceChatId !== chatRef.chatId;
   const unreadLookup = useChatUnread();
   const isUnread = unreadLookup(chatRef).unread;
   const markChatRead = useMarkChatRead(chatRef);
@@ -295,6 +307,8 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
                 )}
               </div>
             ),
+            Footer: () =>
+              hasTrailingGroupSeparator ? <GroupHistorySeparator /> : null,
           }}
           itemContent={(virtualIndex, message) => {
             const arrayIndex = virtualIndex - firstItemIndex;
@@ -305,6 +319,7 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
                 prev={messages[arrayIndex - 1]}
                 next={messages[arrayIndex + 1]}
                 authorsById={authorsById}
+                activeChatId={chatRef.chatId}
               />
             );
           }}
@@ -334,6 +349,7 @@ type RowProps = {
   prev: ChatMessage | undefined;
   next: ChatMessage | undefined;
   authorsById: Map<string, ChatMessageAuthor>;
+  activeChatId: string;
 };
 
 const Row = memo(function Row({
@@ -342,29 +358,54 @@ const Row = memo(function Row({
   prev,
   next,
   authorsById,
+  activeChatId,
 }: RowProps) {
   const isSent = message.authorId === "me";
-  const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
-  const isLastOfGroup = !next || next.authorId !== message.authorId;
+  const sourceChatId =
+    message.sourceChatId ?? (message.isHistorical ? undefined : activeChatId);
+  const previousSourceChatId =
+    prev?.sourceChatId ?? (prev?.isHistorical ? undefined : activeChatId);
+  const nextSourceChatId =
+    next?.sourceChatId ?? (next?.isHistorical ? undefined : activeChatId);
+  const isFirstOfGroup =
+    !prev ||
+    prev.authorId !== message.authorId ||
+    previousSourceChatId !== sourceChatId;
+  const isLastOfGroup =
+    !next ||
+    next.authorId !== message.authorId ||
+    nextSourceChatId !== sourceChatId;
+  const showGroupSeparator =
+    sourceChatId === activeChatId &&
+    previousSourceChatId !== undefined &&
+    previousSourceChatId !== activeChatId;
 
-  if (isSent) {
+  const bubble = isSent ? (
+    <RowShell>
+      <ChatBubble
+        variant="sent"
+        chatRef={chatRef}
+        messageId={message.id}
+        content={message.content}
+        timestamp={message.timestamp}
+        reactions={message.reactions}
+        isDeleted={message.isDeleted}
+        isEdited={message.isEdited}
+        canEdit={message.canEdit}
+        canDelete={message.canDelete}
+        thread={message.thread}
+        readOnly={message.isHistorical}
+        showTimestamp={isLastOfGroup}
+      />
+    </RowShell>
+  ) : null;
+
+  if (bubble) {
     return (
-      <RowShell>
-        <ChatBubble
-          variant="sent"
-          chatRef={chatRef}
-          messageId={message.id}
-          content={message.content}
-          timestamp={message.timestamp}
-          reactions={message.reactions}
-          isDeleted={message.isDeleted}
-          isEdited={message.isEdited}
-          canEdit={message.canEdit}
-          canDelete={message.canDelete}
-          thread={message.thread}
-          showTimestamp={isLastOfGroup}
-        />
-      </RowShell>
+      <>
+        {showGroupSeparator && <GroupHistorySeparator />}
+        {bubble}
+      </>
     );
   }
 
@@ -373,26 +414,39 @@ const Row = memo(function Row({
     return null;
   }
   return (
-    <RowShell>
-      <ChatBubble
-        variant="received"
-        chatRef={chatRef}
-        messageId={message.id}
-        content={message.content}
-        author={author}
-        timestamp={message.timestamp}
-        reactions={message.reactions}
-        isDeleted={message.isDeleted}
-        isEdited={message.isEdited}
-        canEdit={message.canEdit}
-        canDelete={message.canDelete}
-        thread={message.thread}
-        showHeader={isFirstOfGroup}
-        showAvatar={isLastOfGroup}
-      />
-    </RowShell>
+    <>
+      {showGroupSeparator && <GroupHistorySeparator />}
+      <RowShell>
+        <ChatBubble
+          variant="received"
+          chatRef={chatRef}
+          messageId={message.id}
+          content={message.content}
+          author={author}
+          timestamp={message.timestamp}
+          reactions={message.reactions}
+          isDeleted={message.isDeleted}
+          isEdited={message.isEdited}
+          canEdit={message.canEdit}
+          canDelete={message.canDelete}
+          thread={message.thread}
+          readOnly={message.isHistorical}
+          showHeader={isFirstOfGroup}
+          showAvatar={isLastOfGroup}
+        />
+      </RowShell>
+    </>
   );
 });
+
+const GroupHistorySeparator = () => {
+  const { t } = useTranslation();
+  return (
+    <div className="hub__chat-conversation__group-separator" role="separator">
+      <span>{t("This conversation became a group")}</span>
+    </div>
+  );
+};
 
 const RowShell = ({ children }: { children: React.ReactNode }) => (
   <div className="hub__chat-conversation__row">

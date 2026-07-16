@@ -47,6 +47,8 @@ export class LazyMatrixDriver extends BaseDriver {
   // Static capability mirroring the real `MatrixDriver`, read synchronously by
   // the New Chat composer before the SDK lazy-loads.
   override readonly supportsConversationCreation = true;
+  override readonly supportsHubGroupCreation = true;
+  override readonly supportsChatRename = true;
 
   private target: Driver | null = null;
   private targetPromise: Promise<Driver> | null = null;
@@ -113,12 +115,30 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.getChatMembers(chatId));
   }
 
+  async canRenameChat(chatId: string): Promise<boolean> {
+    return this.withTarget((driver) => driver.canRenameChat(chatId));
+  }
+
+  async renameChat(chatId: string, name: string): Promise<void> {
+    return this.withTarget((driver) => driver.renameChat(chatId, name));
+  }
+
   async getChatForUsers(userIds: string[]): Promise<LocalChat | null> {
     return this.withTarget((driver) => driver.getChatForUsers(userIds));
   }
 
   async createChatForUsers(userIds: string[]): Promise<LocalChat> {
     return this.withTarget((driver) => driver.createChatForUsers(userIds));
+  }
+
+  async getMatrixIdentityProof() {
+    return this.withTarget((driver) => driver.getMatrixIdentityProof());
+  }
+
+  async joinHubGroupRoom(chatId: string, viaServers: string[]) {
+    return this.withTarget((driver) =>
+      driver.joinHubGroupRoom(chatId, viaServers),
+    );
   }
 
   async acceptChatInvitation(chatId: string): Promise<LocalChat> {

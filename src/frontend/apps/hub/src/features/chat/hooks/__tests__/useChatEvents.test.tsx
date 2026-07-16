@@ -182,4 +182,18 @@ describe("useChatEvents", () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
   });
+
+  it("refreshes the detail and sidebar when the room name changes", () => {
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    mount();
+
+    emit({ type: "chat:name-changed", chatId: "c1" });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["chat", "account-a", "c1"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["chats", "account-a"],
+    });
+  });
 });

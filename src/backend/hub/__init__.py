@@ -1,1 +1,1 @@
-"""Hub package"""
+"""Hub package."""

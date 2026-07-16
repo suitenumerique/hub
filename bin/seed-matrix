@@ -10,10 +10,14 @@ The seed is intentionally small for this PR:
 
 Idempotency is alias-based: each room has a fixed alias, so a later run finds
 the room and does not post the transcript again.
+
+Pass ``--users-only`` to provision the Keycloak-linked Matrix identities
+without creating any room. This is the final step of ``make db-reset``.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -36,6 +40,7 @@ LINKED_USERS = [
     ("hub", "Hub"),
     ("user-e2e-chromium", "E2E Chromium"),
     ("user-e2e-webkit", "E2E WebKit"),
+    ("user-e2e-firefox", "E2E Firefox"),
 ]
 
 DIRECT_ALIAS_LOCALPART = "hub-seed-webkit"
@@ -361,13 +366,17 @@ def ensure_room(
     return room_id
 
 
-def main() -> None:
+def main(*, users_only: bool = False) -> None:
     print("seed-matrix: provisioning identities...")
     admin_token = keycloak_admin_token()
     tokens = {
         localpart: provision_linked_user(admin_token, localpart, display)
         for localpart, display in LINKED_USERS
     }
+
+    if users_only:
+        print("seed-matrix: users provisioned; no rooms created.")
+        return
 
     ensure_room(
         tokens,
@@ -398,4 +407,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--users-only",
+        action="store_true",
+        help="provision linked Matrix users without creating rooms",
+    )
+    main(users_only=parser.parse_args().users_only)

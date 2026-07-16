@@ -1,11 +1,12 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef } from "react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
   ChatRef,
   ChatMessage,
   ChatMessageAuthor,
+  ChatMessagesPage,
 } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
@@ -35,25 +36,108 @@ export type UseChatMessagesResult = {
   fetchOlder: () => void;
 };
 
-export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
+type GroupPageParam = { roomIndex: number; cursor: string | null };
+type GroupMessagesPage = ChatMessagesPage & {
+  roomIndex: number;
+  roomId: string;
+};
+
+export const useChatMessages = (
+  ref: ChatRef,
+  orderedRoomIds: string[] = [ref.chatId],
+): UseChatMessagesResult => {
+  const queryClient = useQueryClient();
   const firstItemIndexState = useRef<FirstItemIndexState>({
     chatKey: null,
     newestPageSizeBaseline: null,
   });
 
+  const roomIds = orderedRoomIds.length > 0 ? orderedRoomIds : [ref.chatId];
+  const roomChainKey = roomIds.join("\u0000");
+  const observedChain = useRef({
+    chatKey: `${ref.accountId}:${ref.chatId}`,
+    roomChainKey,
+  });
   const query = useInfiniteQuery({
     queryKey: chatKeys.messages(ref),
-    queryFn: ({ pageParam }) =>
-      getRegistry().get(ref.accountId).getChatMessages({
-        chatId: ref.chatId,
-        cursor: pageParam,
-        limit: CHAT_PAGE_SIZE,
-      }),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    queryFn: async ({ pageParam }): Promise<GroupMessagesPage> => {
+      const target = pageParam ?? {
+        roomIndex: roomIds.length - 1,
+        cursor: null,
+      };
+      const roomId = roomIds[target.roomIndex];
+      const isHistorical = roomId !== ref.chatId;
+      try {
+        const page = await getRegistry().get(ref.accountId).getChatMessages({
+          chatId: roomId,
+          cursor: target.cursor,
+          limit: CHAT_PAGE_SIZE,
+        });
+        return {
+          ...page,
+          roomIndex: target.roomIndex,
+          roomId,
+          messages: page.messages.map((message) => ({
+            ...message,
+            sourceChatId: roomId,
+            isHistorical,
+            ...(isHistorical
+              ? { canEdit: false, canDelete: false, thread: undefined }
+              : {}),
+          })),
+        };
+      } catch (error) {
+        if (!isHistorical) {
+          throw error;
+        }
+        // Matrix permissions and E2EE keys remain authoritative. An inaccessible
+        // predecessor is skipped without breaking the active group timeline.
+        return {
+          messages: [],
+          authors: [],
+          nextCursor: null,
+          roomIndex: target.roomIndex,
+          roomId,
+        };
+      }
+    },
+    initialPageParam: null as GroupPageParam | null,
+    getNextPageParam: (lastPage): GroupPageParam | undefined => {
+      const currentRoomIndex = roomIds.indexOf(lastPage.roomId);
+      if (lastPage.nextCursor) {
+        return {
+          roomIndex:
+            currentRoomIndex >= 0 ? currentRoomIndex : lastPage.roomIndex,
+          cursor: lastPage.nextCursor,
+        };
+      }
+      if (currentRoomIndex > 0) {
+        return { roomIndex: currentRoomIndex - 1, cursor: null };
+      }
+      return undefined;
+    },
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });
+
+  useEffect(() => {
+    const chatKey = `${ref.accountId}:${ref.chatId}`;
+    if (observedChain.current.chatKey !== chatKey) {
+      observedChain.current = { chatKey, roomChainKey };
+      return;
+    }
+    if (observedChain.current.roomChainKey === roomChainKey) {
+      return;
+    }
+    observedChain.current.roomChainKey = roomChainKey;
+    void queryClient.resetQueries({
+      queryKey: chatKeys.messages({
+        accountId: ref.accountId,
+        chatId: ref.chatId,
+      }),
+      exact: true,
+    });
+  }, [queryClient, ref.accountId, ref.chatId, roomChainKey]);
 
   const messages = useMemo(() => {
     if (!query.data) {
@@ -72,6 +156,23 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     });
     return map;
   }, [query.data]);
+
+  useEffect(() => {
+    if (
+      query.data &&
+      messages.length === 0 &&
+      query.hasNextPage &&
+      !query.isFetchingNextPage
+    ) {
+      void query.fetchNextPage();
+    }
+  }, [
+    messages.length,
+    query.data,
+    query.fetchNextPage,
+    query.hasNextPage,
+    query.isFetchingNextPage,
+  ]);
 
   const fetchOlder = useCallback(() => {
     if (query.hasNextPage && !query.isFetchingNextPage) {
@@ -93,7 +194,7 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
   // shift every virtual index — causing a visible scroll jump. Deletion would
   // need an explicit re-baseline; today nothing removes messages.
   const firstItemIndex = useMemo(() => {
-    const chatKey = `${ref.accountId}:${ref.chatId}`;
+    const chatKey = `${ref.accountId}:${ref.chatId}:${roomChainKey}`;
     const state = firstItemIndexState.current;
     if (state.chatKey !== chatKey) {
       state.chatKey = chatKey;
@@ -120,7 +221,7 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     return (
       VIRTUOSO_INDEX_ANCHOR - state.newestPageSizeBaseline - olderMessagesCount
     );
-  }, [query.data?.pages, ref.accountId, ref.chatId]);
+  }, [query.data?.pages, ref.accountId, ref.chatId, roomChainKey]);
 
   return {
     messages,

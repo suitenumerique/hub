@@ -158,6 +158,7 @@ export type ChatEvent =
   | { type: "unread:changed"; chatId: string; unread: ChatUnread }
   // --- Coarse: only name what changed; the bridge invalidates & refetches -
   | { type: "chat:changed"; chatId: string }
+  | { type: "chat:name-changed"; chatId: string }
   | {
       type: "threads:changed";
       chatId: string;
@@ -182,6 +183,10 @@ export abstract class Driver {
    * New Chat composer for a not-yet-existing conversation.
    */
   readonly supportsConversationCreation: boolean = false;
+  /** Whether this account can prove a Matrix identity and join Hub group rooms. */
+  readonly supportsHubGroupCreation: boolean = false;
+  /** Whether this account can rename rooms after checking Matrix state rights. */
+  readonly supportsChatRename: boolean = false;
 
   constructor(accountId: AccountId = "default") {
     this.accountId = accountId;
@@ -192,6 +197,17 @@ export abstract class Driver {
   abstract getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]>;
   /** Joined members and pending invitees of one conversation. */
   abstract getChatMembers(chatId: string): Promise<ChatMembers>;
+  /** Whether the current joined user may send an `m.room.name` state event. */
+  async canRenameChat(chatId: string): Promise<boolean> {
+    void chatId;
+    return false;
+  }
+  /** Rename a room as the current user; Matrix remains authoritative. */
+  async renameChat(chatId: string, name: string): Promise<void> {
+    void chatId;
+    void name;
+    throw new Error(`Driver "${this.accountId}" does not support chat rename.`);
+  }
   /** Existing conversation for exactly these participants, or `null`. */
   abstract getChatForUsers(userIds: string[]): Promise<LocalChat | null>;
   /** Single conversation, fetched by id. */
@@ -306,6 +322,25 @@ export abstract class Driver {
     void _userIds;
     throw new Error(
       `${this.constructor.name}.createChatForUsers: creating a conversation is not supported by this driver.`,
+    );
+  }
+
+  async getMatrixIdentityProof(): Promise<
+    import("./types").MatrixIdentityProof
+  > {
+    throw new Error(
+      `${this.constructor.name}.getMatrixIdentityProof: Hub groups are not supported by this driver.`,
+    );
+  }
+
+  async joinHubGroupRoom(
+    _chatId: string,
+    _viaServers: string[] = [],
+  ): Promise<LocalChat> {
+    void _chatId;
+    void _viaServers;
+    throw new Error(
+      `${this.constructor.name}.joinHubGroupRoom: Hub groups are not supported by this driver.`,
     );
   }
 

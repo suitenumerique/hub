@@ -18,6 +18,7 @@ from django.utils.translation import gettext_lazy as _
 
 import sentry_sdk
 from configurations import Configuration, values
+from corsheaders.defaults import default_headers
 from csp.constants import NONE
 from lasuite.configuration.values import SecretFileValue
 from sentry_sdk.integrations.django import DjangoIntegration
@@ -78,6 +79,53 @@ class Base(Configuration):
     ALLOWED_HOSTS = values.ListValue([])
     SECRET_KEY = SecretFileValue(None)
     SERVER_TO_SERVER_API_TOKENS = values.ListValue([])
+
+    # Matrix group control plane. Room IDs are deliberately never used to infer
+    # a server: the account manifest selects this registry entry explicitly.
+    MATRIX_GROUP_MARKER_MODE = values.Value(
+        "type_and_state",
+        environ_name="MATRIX_GROUP_MARKER_MODE",
+        environ_prefix=None,
+    )
+    MATRIX_HOMESERVERS = {
+        "matrix-local": {
+            "registration_id": values.Value(
+                "hub-groups-local",
+                environ_name="MATRIX_LOCAL_REGISTRATION_ID",
+                environ_prefix=None,
+            ),
+            "base_url": values.Value(
+                "http://synapse:8008",
+                environ_name="MATRIX_LOCAL_BASE_URL",
+                environ_prefix=None,
+            ),
+            "public_base_url": values.Value(
+                "http://localhost:9808",
+                environ_name="MATRIX_LOCAL_PUBLIC_BASE_URL",
+                environ_prefix=None,
+            ),
+            "server_name": values.Value(
+                "localhost",
+                environ_name="MATRIX_LOCAL_SERVER_NAME",
+                environ_prefix=None,
+            ),
+            "bot_mxid": values.Value(
+                "@hub-bot:localhost",
+                environ_name="MATRIX_LOCAL_BOT_MXID",
+                environ_prefix=None,
+            ),
+            "as_token": SecretFileValue(
+                "hub-groups-as-token-dev-only",
+                environ_name="MATRIX_LOCAL_AS_TOKEN",
+                environ_prefix=None,
+            ),
+            "hs_token": SecretFileValue(
+                "hub-groups-hs-token-dev-only",
+                environ_name="MATRIX_LOCAL_HS_TOKEN",
+                environ_prefix=None,
+            ),
+        }
+    }
 
     # Application definition
     ROOT_URLCONF = "hub.urls"
@@ -231,6 +279,7 @@ class Base(Configuration):
     INSTALLED_APPS = [
         # hub
         "core",
+        "matrix_bridge",
         "demo",
         "e2e",
         "drf_spectacular",
@@ -340,6 +389,7 @@ class Base(Configuration):
     CORS_ALLOW_ALL_ORIGINS = values.BooleanValue(False)
     CORS_ALLOWED_ORIGINS = values.ListValue([])
     CORS_ALLOWED_ORIGIN_REGEXES = values.ListValue([])
+    CORS_ALLOW_HEADERS = (*default_headers, "idempotency-key")
 
     # Sentry
     SENTRY_DSN = values.Value(None, environ_name="SENTRY_DSN", environ_prefix=None)
@@ -732,8 +782,6 @@ class Test(Base):
     # Static files are not used in the test environment
     # Tests are raising warnings because the /data/static directory does not exist
     STATIC_ROOT = None
-
-    CELERY_TASK_ALWAYS_EAGER = values.BooleanValue(True)
 
     def __init__(self):
         # pylint: disable=invalid-name

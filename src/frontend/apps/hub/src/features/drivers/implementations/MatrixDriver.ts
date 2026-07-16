@@ -110,6 +110,7 @@ import {
 } from "./matrixEventMapping";
 import { matrixDirectoryUserToChatUser } from "./matrixIdentity";
 import {
+  HUB_GROUP_METADATA_EVENT,
   isFavouriteRoom,
   MATRIX_FAVOURITE_TAG,
   matrixJoinedRoomToLocalChat,
@@ -205,6 +206,16 @@ const sortChatMembers = (
     return left.name.localeCompare(right.name);
   });
 
+/** Prefer the server-confirmed join while the local `/sync` state catches up. */
+const matrixAddressableRoomToLocalChat = (
+  room: Room,
+  currentUserId: string | undefined,
+  isServerJoined: boolean,
+): LocalChat =>
+  isServerJoined
+    ? matrixJoinedRoomToLocalChat(room, currentUserId)
+    : matrixRoomToLocalChat(room, currentUserId);
+
 type RedactedThreadReply = {
   chatId: string;
   threadId: string;
@@ -233,6 +244,8 @@ export class MatrixDriver extends MockDriver {
   override readonly supportsComposition: boolean = true;
   override readonly supportsThreadComposition: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
+  override readonly supportsHubGroupCreation: boolean = true;
+  override readonly supportsChatRename: boolean = true;
 
   private mx: MatrixClient | null = null;
   /** Subscribers to the single global event stream. */
@@ -283,7 +296,11 @@ export class MatrixDriver extends MockDriver {
       return this.settings.loginHint;
     }
     const devHint = process.env.NEXT_PUBLIC_MATRIX_DEV_LOGIN_HINT;
-    if (process.env.NODE_ENV === "development" && devHint) {
+    if (
+      process.env.NODE_ENV === "development" &&
+      this.settings.discovery !== "fixed" &&
+      devHint
+    ) {
       return devHint;
     }
     return user?.email ?? "";
@@ -326,7 +343,13 @@ export class MatrixDriver extends MockDriver {
           joinedRoomIds.has(room.roomId) ||
           room.getMyMembership() === KnownMembership.Invite,
       )
-      .map((room) => matrixRoomToLocalChat(room, currentUserId));
+      .map((room) =>
+        matrixAddressableRoomToLocalChat(
+          room,
+          currentUserId,
+          joinedRoomIds.has(room.roomId),
+        ),
+      );
 
     return {
       favourites: localChats.filter((chat) => chat.section === "favourites"),
@@ -355,13 +378,15 @@ export class MatrixDriver extends MockDriver {
     // A joined room (server-confirmed) or a pending invitation is addressable;
     // anything else (left/banned) is not.
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
-    if (
-      !joinedRoomIds.has(chatId) &&
-      room.getMyMembership() !== KnownMembership.Invite
-    ) {
+    const isServerJoined = joinedRoomIds.has(chatId);
+    if (!isServerJoined && room.getMyMembership() !== KnownMembership.Invite) {
       throw new Error(`MatrixDriver.getChat: room "${chatId}" is not joined.`);
     }
-    return matrixRoomToLocalChat(room, mx.getUserId() ?? undefined);
+    return matrixAddressableRoomToLocalChat(
+      room,
+      mx.getUserId() ?? undefined,
+      isServerJoined,
+    );
   }
 
   async getChatMembers(chatId: string): Promise<ChatMembers> {
@@ -390,6 +415,33 @@ export class MatrixDriver extends MockDriver {
         currentUserId,
       ),
     };
+  }
+
+  async canRenameChat(chatId: string): Promise<boolean> {
+    const { mx, room } = this.requireRoom("canRenameChat", chatId);
+    const userId = mx.getUserId();
+    if (!userId) {
+      return false;
+    }
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    return (
+      joinedRoomIds.has(chatId) &&
+      room.currentState.maySendStateEvent(EventType.RoomName, userId)
+    );
+  }
+
+  async renameChat(chatId: string, name: string): Promise<void> {
+    const mx = this.requireClient("renameChat");
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      throw new Error("MatrixDriver.renameChat: name is required.");
+    }
+    if (!(await this.canRenameChat(chatId))) {
+      throw new Error(
+        `MatrixDriver.renameChat: current user cannot rename room "${chatId}".`,
+      );
+    }
+    await mx.setRoomName(chatId, normalizedName);
   }
 
   async setChatFavourite(chatId: string, favourite: boolean): Promise<void> {
@@ -509,12 +561,37 @@ export class MatrixDriver extends MockDriver {
       id: roomId,
       name: participantIds[0],
       section: "all",
-      kind: isDirect ? "direct" : "group",
+      kind: isDirect ? "direct" : "multi_party",
       participantIds,
       visual: isDirect
         ? { kind: "initials" }
         : { kind: "icon", icon: "groups" },
     };
+  }
+
+  async getMatrixIdentityProof() {
+    const mx = this.requireClient("getMatrixIdentityProof");
+    const mxid = mx.getUserId();
+    const accessToken = mx.getAccessToken();
+    if (!mxid || !accessToken) {
+      throw new Error("The connected Matrix session is incomplete.");
+    }
+    return { mxid, accessToken };
+  }
+
+  async joinHubGroupRoom(
+    chatId: string,
+    viaServers: string[] = [],
+  ): Promise<LocalChat> {
+    const mx = this.requireClient("joinHubGroupRoom");
+    await mx.joinRoom(chatId, { viaServers });
+    this.joinedRoomIds = null;
+    const room = await this.waitForRoom(mx, chatId);
+    if (!room) {
+      throw new Error(`Matrix room "${chatId}" was not available after join.`);
+    }
+    this.emit({ type: "chats:changed" });
+    return matrixJoinedRoomToLocalChat(room, mx.getUserId() ?? undefined);
   }
 
   /**
@@ -2067,6 +2144,27 @@ export class MatrixDriver extends MockDriver {
     ) => {
       this.emit({ type: "members:changed", chatId: member.roomId });
     };
+    const onRoomStateEvent = (event: MatrixEvent) => {
+      const eventType = event.getType();
+      if (
+        eventType !== EventType.RoomName &&
+        eventType !== HUB_GROUP_METADATA_EVENT
+      ) {
+        return;
+      }
+      const roomId = event.getRoomId();
+      if (!roomId) {
+        return;
+      }
+      if (eventType === EventType.RoomName) {
+        this.emit({ type: "chat:name-changed", chatId: roomId });
+        return;
+      }
+      // A marker appearing/disappearing changes the untrusted candidate set;
+      // refresh both the open room and the account-level resolution query.
+      this.emit({ type: "chat:changed", chatId: roomId });
+      this.emit({ type: "chats:changed" });
+    };
     const onTags = (_event: MatrixEvent, room: Room) => {
       this.emit({ type: "tags:changed", chatId: room.roomId });
     };
@@ -2163,6 +2261,7 @@ export class MatrixDriver extends MockDriver {
     mx.on(RoomMemberEvent.Typing, onTyping);
     mx.on(RoomMemberEvent.PowerLevel, onPowerLevel);
     mx.on(RoomStateEvent.Members, onMembers);
+    mx.on(RoomStateEvent.Events, onRoomStateEvent);
     mx.on(RoomEvent.Tags, onTags);
     mx.on(ClientEvent.Room, onRoom);
     mx.on(ClientEvent.Sync, onSync);
@@ -2182,6 +2281,7 @@ export class MatrixDriver extends MockDriver {
       mx.off(RoomMemberEvent.Typing, onTyping);
       mx.off(RoomMemberEvent.PowerLevel, onPowerLevel);
       mx.off(RoomStateEvent.Members, onMembers);
+      mx.off(RoomStateEvent.Events, onRoomStateEvent);
       mx.off(RoomEvent.Tags, onTags);
       mx.off(ClientEvent.Room, onRoom);
       mx.off(ClientEvent.Sync, onSync);

@@ -14,6 +14,20 @@ import {
 import { ChatInvitation, LocalChat } from "../types";
 
 export const MATRIX_FAVOURITE_TAG = "m.favourite";
+export const HUB_GROUP_ROOM_TYPE = "fr.gouv.lasuite.hub.group";
+export const HUB_GROUP_METADATA_EVENT = "fr.gouv.lasuite.hub.group.metadata";
+
+/** Matrix markers are an untrusted shortlist; Django remains authoritative. */
+export const hasHubGroupMarker = (room: Room): boolean => {
+  const createType = room.currentState
+    ?.getStateEvents(EventType.RoomCreate, "")
+    ?.getContent<{ type?: string }>()?.type;
+  const metadata = room.currentState?.getStateEvents(
+    HUB_GROUP_METADATA_EVENT,
+    "",
+  );
+  return createType === HUB_GROUP_ROOM_TYPE || Boolean(metadata);
+};
 
 /** Whether the current user tagged this joined room as a favourite. */
 export const isFavouriteRoom = (room: Room): boolean =>
@@ -81,10 +95,11 @@ export const matrixJoinedRoomToLocalChat = (
       ? { lastActivityAt: new Date(timestamp).toISOString() }
       : {}),
     section: isFavouriteRoom(room) ? "favourites" : "all",
-    kind: isDirect ? "direct" : "group",
+    kind: isDirect ? "direct" : "multi_party",
     participantIds,
     visual: isDirect ? { kind: "initials" } : { kind: "icon", icon: "groups" },
     membership: "join",
+    ...(hasHubGroupMarker(room) ? { hubGroupCandidate: true } : {}),
   };
 };
 
@@ -146,22 +161,26 @@ const matrixInviteRoomToLocalChat = (
       ? { lastActivityAt: new Date(invitedAtTs).toISOString() }
       : {}),
     section: "all",
-    // The invite event's direct marker when set; group otherwise (safe default).
-    kind: invitation.isDirect ? "direct" : "group",
+    // The invite event's direct marker when set; multi-party otherwise.
+    kind: invitation.isDirect ? "direct" : "multi_party",
     // The inviter is the only participant an invite reliably exposes; invite
     // rooms are excluded from `getChatForUsers` resolution until accepted.
     participantIds: invitation.inviterId ? [invitation.inviterId] : [],
     visual: { kind: "icon", icon: "mail" },
     membership: "invite",
     invitation,
+    // Invite rooms expose sparse stripped state. Treat every invite as a
+    // candidate so a missing custom marker cannot hide an official group; the
+    // registry still rejects ordinary or forged rooms.
+    hubGroupCandidate: true,
   };
 };
 
 /**
  * Maps a room to a `LocalChat`, branching on the current user's membership: an
  * invited room becomes an invitation row, every other room a joined
- * conversation. Both reads (`getChats`, `getChat`) go through here so the two
- * mappings can never drift.
+ * conversation. Server-confirmed joins bypass this branch while `/sync` catches
+ * up, so a stale local invite cannot replace an accepted conversation.
  */
 export const matrixRoomToLocalChat = (
   room: Room,

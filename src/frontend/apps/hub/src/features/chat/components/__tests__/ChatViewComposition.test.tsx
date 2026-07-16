@@ -20,7 +20,7 @@ const CHAT: Chat = {
   ref: CHAT_REF,
   name: "Existing chat",
   section: "all",
-  kind: "group",
+  kind: "hub_group",
   participantIds: ["alice"],
   visual: { kind: "initials" },
 };

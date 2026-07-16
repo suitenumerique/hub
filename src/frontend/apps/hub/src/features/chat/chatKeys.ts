@@ -6,6 +6,11 @@ export const chatKeys = {
     ["chat-accounts", scopeId ?? "active"] as const,
   chatsAll: () => ["chats"] as const,
   chatsOf: (accountId: AccountId) => ["chats", accountId] as const,
+  hubGroupsOf: (accountId: AccountId) => ["hub-groups", accountId] as const,
+  hubGroups: (accountId: AccountId, roomIds: readonly string[]) =>
+    ["hub-groups", accountId, roomIds] as const,
+  lastResolvedHubGroupsOf: (accountId: AccountId) =>
+    ["hub-groups-last-success", accountId] as const,
   unreadOf: (accountId: AccountId) => ["chat-unread", accountId] as const,
   noChat: () => ["chat", "none"] as const,
 
@@ -31,6 +36,8 @@ export const chatKeys = {
     ["chat-documents", ref.accountId, ref.chatId] as const,
   members: (ref: ChatRef) =>
     ["chat-members", ref.accountId, ref.chatId] as const,
+  renameCapability: (ref: ChatRef) =>
+    ["chat-capability", ref.accountId, ref.chatId, "rename"] as const,
   connection: (accountId: AccountId, userId: string | null) =>
     ["chat-connection", accountId, userId] as const,
 };

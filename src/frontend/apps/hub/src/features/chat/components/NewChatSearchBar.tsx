@@ -1,4 +1,10 @@
-import { File, Meet, Thread, UserSearch } from "@gouvfr-lasuite/ui-kit/icons";
+import {
+  File,
+  Identity,
+  Meet,
+  Thread,
+  UserSearch,
+} from "@gouvfr-lasuite/ui-kit/icons";
 import { KeyboardEvent, RefObject, useEffect, useMemo, useState } from "react";
 import { ComboBox, Input, Popover } from "react-aria-components";
 import type { Key } from "react-aria-components";
@@ -25,6 +31,8 @@ export type NewChatSearchBarProps = {
   /** Called on Enter with an empty search and at least one selected participant. */
   onConfirm?: () => void;
   onToggleTool?: (tool: ChatTool) => void;
+  canCreateHubGroup?: boolean;
+  onCreateHubGroup?: () => void;
 };
 
 export const NewChatSearchBar = ({
@@ -38,6 +46,8 @@ export const NewChatSearchBar = ({
   onRemoveUser,
   onConfirm,
   onToggleTool,
+  canCreateHubGroup = false,
+  onCreateHubGroup,
 }: NewChatSearchBarProps) => {
   const { t } = useTranslation();
   const [armedUserId, setArmedUserId] = useState<string | null>(null);
@@ -175,6 +185,23 @@ export const NewChatSearchBar = ({
           </Popover>
         )}
       </ComboBox>
+
+      {canCreateHubGroup && onCreateHubGroup && query.trim().length === 0 && (
+        <div
+          className="hub__new-chat-dropdown hub__new-chat-dropdown--selection-action"
+          role="menu"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="hub__new-chat-dropdown__create-group"
+            onClick={onCreateHubGroup}
+          >
+            <Identity aria-hidden="true" />
+            {t("Create a group")}
+          </button>
+        </div>
+      )}
 
       <div className="hub__new-chat-search__actions">
         {canUseChatTools && onToggleTool && (

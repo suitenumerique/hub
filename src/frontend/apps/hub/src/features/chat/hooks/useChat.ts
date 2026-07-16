@@ -2,6 +2,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { decorateChat } from "@/features/chat/chatRefs";
+import {
+  applyHubGroupsToChat,
+  getHubGroupCandidateRoomIds,
+  hubGroupResolutionQueryOptions,
+  type HubGroupResolutionSnapshot,
+} from "@/features/chat/hubGroups";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatRef, ChatSections } from "@/features/drivers/types";
 
@@ -20,16 +26,14 @@ export type UseChatResult = {
  */
 export const useChat = (ref: ChatRef | null): UseChatResult => {
   const queryClient = useQueryClient();
+  const driver = ref ? getRegistry().get(ref.accountId) : null;
   const query = useQuery({
     queryKey: ref ? chatKeys.chat(ref) : chatKeys.noChat(),
     queryFn: async () => {
       if (!ref) {
         throw new Error("useChat requires a ChatRef.");
       }
-      const localChat = await getRegistry()
-        .get(ref.accountId)
-        .getChat(ref.chatId);
-      return decorateChat(ref.accountId, localChat);
+      return decorateChat(ref.accountId, await driver!.getChat(ref.chatId));
     },
     enabled: ref !== null,
     staleTime: Infinity,
@@ -53,12 +57,54 @@ export const useChat = (ref: ChatRef | null): UseChatResult => {
     meta: { noGlobalError: true },
   });
 
+  const candidateRoomIds = query.data
+    ? getHubGroupCandidateRoomIds([query.data])
+    : [];
+  const lastResolutionQuery = useQuery({
+    queryKey: chatKeys.lastResolvedHubGroupsOf(ref?.accountId ?? "none"),
+    queryFn: async (): Promise<HubGroupResolutionSnapshot> => ({
+      candidateRoomIds: [],
+      groups: [],
+    }),
+    enabled: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const isResolvedBySidebar = candidateRoomIds.every(
+    (roomId) =>
+      lastResolutionQuery.data?.candidateRoomIds.includes(roomId) ||
+      lastResolutionQuery.data?.groups.some((group) =>
+        group.rooms.some((room) => room.room_id === roomId),
+      ),
+  );
+  const groupQuery = useQuery({
+    ...hubGroupResolutionQueryOptions(
+      driver,
+      ref?.accountId ?? "none",
+      candidateRoomIds,
+    ),
+    enabled:
+      Boolean(ref && driver?.supportsHubGroupCreation && query.data) &&
+      candidateRoomIds.length > 0 &&
+      !isResolvedBySidebar,
+  });
+
   const refetch = useCallback(() => {
     void query.refetch();
-  }, [query]);
+    if (candidateRoomIds.length > 0 && !isResolvedBySidebar) {
+      void groupQuery.refetch();
+    }
+  }, [candidateRoomIds.length, groupQuery, isResolvedBySidebar, query]);
+
+  const chat = query.data
+    ? applyHubGroupsToChat(
+        query.data,
+        groupQuery.data ?? lastResolutionQuery.data?.groups ?? [],
+      )
+    : null;
 
   return {
-    chat: query.data ?? null,
+    chat,
     isInitialLoading: query.isPending,
     isError: query.isError,
     refetch,

@@ -1,7 +1,18 @@
-import { useQueries, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 
 import { decorateChatSections } from "@/features/chat/chatRefs";
 import { compareChats } from "@/features/chat/chatSorting";
+import {
+  applyHubGroupsToSections,
+  getHubGroupCandidateRoomIdsFromSections,
+  hubGroupResolutionQueryOptions,
+  type HubGroupResolutionSnapshot,
+} from "@/features/chat/hubGroups";
 import {
   useDriverEntries,
   type DriverEntry,
@@ -9,7 +20,7 @@ import {
 import type {
   AccountId,
   ChatSections,
-  LocalChatSections,
+  HubGroup,
   MergedChatsResult,
 } from "@/features/drivers/types";
 
@@ -30,6 +41,9 @@ const mergeSorted = (sections: ChatSections[]): ChatSections => ({
 export const mergeChatSections = (
   entries: DriverEntry[],
   results: UseQueryResult<ChatSections, Error>[],
+  groupResults: UseQueryResult<HubGroup[], Error>[],
+  candidateIds: string[][],
+  lastSuccessfulResolutions: (HubGroupResolutionSnapshot | undefined)[],
 ): MergedChatsResult => {
   const byAccount = new Map<AccountId, ChatSections>();
   const accountErrors = new Map<AccountId, unknown>();
@@ -37,7 +51,15 @@ export const mergeChatSections = (
   entries.forEach((entry, index) => {
     const result = results[index];
     if (result?.data) {
-      byAccount.set(entry.accountId, result.data);
+      byAccount.set(
+        entry.accountId,
+        applyHubGroupsToSections(
+          result.data,
+          groupResults[index]?.data ??
+            lastSuccessfulResolutions[index]?.groups ??
+            [],
+        ),
+      );
     }
     if (result?.error) {
       accountErrors.set(entry.accountId, result.error);
@@ -59,26 +81,90 @@ export const mergeChatSections = (
     }),
     isLoading: results.some((result) => result.isPending),
     isError: results.some((result) => result.isError),
+    isResolvingHubGroups: entries.some(
+      (entry, index) =>
+        entry.driver.supportsHubGroupCreation &&
+        candidateIds[index].length > 0 &&
+        groupResults[index]?.isPending,
+    ),
   };
 };
 
 export const useChats = (): MergedChatsResult => {
   const entries = useDriverEntries();
+  const queryClient = useQueryClient();
+  const lastStoredGroups = useRef(
+    new Map<AccountId, { candidateKey: string; groups: HubGroup[] }>(),
+  );
 
-  return useQueries({
+  const results = useQueries({
     queries: entries.map((entry) => ({
       queryKey: chatKeys.chatsOf(entry.accountId),
-      queryFn: async () => {
-        const localSections: LocalChatSections = await entry.driver.getChats();
-        return decorateChatSections(entry.accountId, localSections);
-      },
+      queryFn: async () =>
+        decorateChatSections(entry.accountId, await entry.driver.getChats()),
       staleTime: Infinity,
       meta: { noGlobalError: true },
     })),
-    combine: (results) =>
-      mergeChatSections(
-        entries,
-        results as UseQueryResult<ChatSections, Error>[],
-      ),
+  }) as UseQueryResult<ChatSections, Error>[];
+
+  const candidateIds = entries.map((_entry, index) => {
+    const sections = results[index]?.data;
+    return sections ? getHubGroupCandidateRoomIdsFromSections(sections) : [];
   });
+  const groupResults = useQueries({
+    queries: entries.map((entry, index) => ({
+      ...hubGroupResolutionQueryOptions(
+        entry.driver,
+        entry.accountId,
+        candidateIds[index],
+      ),
+      enabled:
+        Boolean(results[index]?.data) &&
+        entry.driver.supportsHubGroupCreation &&
+        candidateIds[index].length > 0,
+    })),
+  }) as UseQueryResult<HubGroup[], Error>[];
+  const lastSuccessfulGroupResults = useQueries({
+    queries: entries.map((entry) => ({
+      queryKey: chatKeys.lastResolvedHubGroupsOf(entry.accountId),
+      queryFn: async (): Promise<HubGroupResolutionSnapshot> => ({
+        candidateRoomIds: [],
+        groups: [],
+      }),
+      enabled: false,
+      staleTime: Infinity,
+      gcTime: Infinity,
+    })),
+  }) as UseQueryResult<HubGroupResolutionSnapshot, Error>[];
+
+  useEffect(() => {
+    entries.forEach((entry, index) => {
+      const groups = groupResults[index]?.data;
+      const cacheKey = chatKeys.lastResolvedHubGroupsOf(entry.accountId);
+      const candidateKey = candidateIds[index].join("\0");
+      const stored = lastStoredGroups.current.get(entry.accountId);
+      if (
+        groups &&
+        (stored?.groups !== groups || stored.candidateKey !== candidateKey)
+      ) {
+        lastStoredGroups.current.set(entry.accountId, { candidateKey, groups });
+        queryClient.setQueryData<HubGroupResolutionSnapshot>(cacheKey, {
+          candidateRoomIds: candidateIds[index],
+          groups,
+        });
+      }
+    });
+  }, [candidateIds, entries, groupResults, queryClient]);
+
+  const lastSuccessfulResolutions = entries.map(
+    (_entry, index) => lastSuccessfulGroupResults[index]?.data,
+  );
+
+  return mergeChatSections(
+    entries,
+    results,
+    groupResults,
+    candidateIds,
+    lastSuccessfulResolutions,
+  );
 };

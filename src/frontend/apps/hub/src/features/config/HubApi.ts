@@ -3,6 +3,7 @@ import type {
   ApiConfig,
   ChatAccountConfig,
   ChatScope,
+  HubGroup,
   User,
 } from "@/features/drivers/types";
 
@@ -16,7 +17,40 @@ export interface HubApi {
   updateUser(payload: Partial<User> & { id: string }): Promise<User>;
   getChatScopes(): Promise<ChatScope[]>;
   getChatAccounts(scopeId?: string): Promise<ChatAccountConfig[]>;
+  resolveHubGroups(payload: ResolveHubGroupsPayload): Promise<HubGroup[]>;
+  createGroup(
+    payload: CreateHubGroupPayload,
+    idempotencyKey: string,
+  ): Promise<HubGroup>;
+  promoteConversation(
+    payload: PromoteConversationPayload,
+    idempotencyKey: string,
+  ): Promise<HubGroup>;
 }
+
+export type CreateHubGroupPayload = {
+  matrix_account_id: string;
+  matrix_access_token: string;
+  name: string;
+  topic: string;
+  emoji: string;
+  invitees: string[];
+  announcements_only: boolean;
+  allow_external_guests: boolean;
+};
+
+export type MatrixBindingPayload = {
+  matrix_account_id: string;
+  matrix_access_token: string;
+};
+
+export type ResolveHubGroupsPayload = MatrixBindingPayload & {
+  room_ids: string[];
+};
+
+export type PromoteConversationPayload = CreateHubGroupPayload & {
+  source_room_id: string;
+};
 
 export const DEFAULT_CHAT_SCOPE_ID = "mock-aggregate";
 
@@ -146,6 +180,44 @@ export class StandardHubApi implements HubApi {
       DEFAULT_CHAT_SCOPES[0];
 
     return scope?.accounts ?? [];
+  }
+
+  async resolveHubGroups(
+    payload: ResolveHubGroupsPayload,
+  ): Promise<HubGroup[]> {
+    if (payload.room_ids.length === 0) {
+      return [];
+    }
+    const response = await fetchAPI("groups/resolve/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const data = (await response.json()) as { groups: HubGroup[] };
+    return data.groups;
+  }
+
+  async createGroup(
+    payload: CreateHubGroupPayload,
+    idempotencyKey: string,
+  ): Promise<HubGroup> {
+    const response = await fetchAPI("groups/", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  }
+
+  async promoteConversation(
+    payload: PromoteConversationPayload,
+    idempotencyKey: string,
+  ): Promise<HubGroup> {
+    const response = await fetchAPI("groups/promote/", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(payload),
+    });
+    return response.json();
   }
 }
 

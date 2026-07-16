@@ -62,6 +62,9 @@ export const useChatInvitation = (
         queryKey: chatKeys.chatsOf(chatRef.accountId),
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.hubGroupsOf(chatRef.accountId),
+      });
     },
     onError: () => {
       notify.error(
@@ -90,6 +93,9 @@ export const useChatInvitation = (
         queryKey: chatKeys.chatsOf(chatRef.accountId),
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.hubGroupsOf(chatRef.accountId),
+      });
     },
     onError: () => {
       notify.error(t("The invitation could not be refused. Please try again."));

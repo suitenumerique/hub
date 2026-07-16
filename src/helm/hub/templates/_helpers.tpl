@@ -101,16 +101,6 @@ hub backend django env vars - combines common backend.envVars with backend.djang
 {{- end }}
 
 {{/*
-hub celery env vars - combines common backend.envVars with backend.celery.envVars
-*/}}
-{{- define "hub.backend.celery.env" -}}
-{{- $topLevelScope := index . 0 -}}
-{{- $workerScope := index . 1 -}}
-{{- include "hub.env.transformDict" $workerScope.envVars -}}
-{{- include "hub.env.transformDict" ($workerScope.celery.envVars | default dict) -}}
-{{- end }}
-
-{{/*
 Common labels
 
 Requires array with top level scope and component name
@@ -177,17 +167,6 @@ Requires top level scope
 {{ include "hub.fullname" . }}-posthog
 {{- end }}
 
-
-{{/*
-Full name for the Celery Worker
-
-Requires top level scope
-*/}}
-
-
-{{- define "hub.celery.worker.fullname" -}}
-{{ include "hub.fullname" . }}-celery-worker
-{{- end }}
 
 {{/*
 Usage : {{ include "hub.secret.dockerconfigjson.name" (dict "fullname" (include "hub.fullname" .) "imageCredentials" .Values.path.to.the.image1) }}
