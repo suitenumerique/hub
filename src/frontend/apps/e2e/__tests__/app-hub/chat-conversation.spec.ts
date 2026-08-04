@@ -71,7 +71,7 @@ test.describe("Chat conversation view", () => {
     await expect(getHeaderChatMenuItem(page, "Notifications")).toBeDisabled();
     await expect(
       getHeaderChatMenuItem(page, "Leave conversation"),
-    ).toBeDisabled();
+    ).toBeEnabled();
 
     await getHeaderChatMenuItem(page, "Members").click();
 

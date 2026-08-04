@@ -16,17 +16,20 @@ import {
   StarFilled,
   Thread,
 } from "@gouvfr-lasuite/ui-kit/icons";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
 import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
+import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
 import type { Chat } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { ChatMembersModal } from "./ChatMembersModal";
+import { LeaveConversationModal } from "./LeaveConversationModal";
 
 type ChatHeaderProps = {
   /** `null` while the conversation is being fetched — renders a skeleton. */
@@ -125,17 +128,39 @@ export const ChatHeader = ({
 };
 
 const ChatMenu = ({ chat }: { chat: Chat }) => {
+  const router = useRouter();
   const { t } = useTranslation();
   const menu = useDropdownMenu();
   const [isMembersOpen, setIsMembersOpen] = useState(false);
+  const [isLeaveOpen, setIsLeaveOpen] = useState(false);
   const { setFavourite, isPending } = useChatFavourite(chat.ref);
+  const {
+    removeFromHistory,
+    isPending: isLeaving,
+    isSupported: canLeave,
+  } = useRemoveChatFromHistory(chat.ref);
   const isFavourite = chat.section === "favourites";
   const isInvitation = isInvitationChat(chat);
 
   useEffect(() => {
     menu.setIsOpen(false);
     setIsMembersOpen(false);
+    setIsLeaveOpen(false);
   }, [chat.ref.accountId, chat.ref.chatId, menu.setIsOpen]);
+
+  const leaveConversation = useCallback(() => {
+    if (isLeaving) {
+      return;
+    }
+    void removeFromHistory()
+      .then(() => {
+        setIsLeaveOpen(false);
+        void router.replace("/chat/new");
+      })
+      .catch(() => {
+        // The hook surfaces the error; keep the modal open for another attempt.
+      });
+  }, [isLeaving, removeFromHistory, router]);
 
   const options = useMemo<DropdownMenuItem[]>(
     () => [
@@ -172,10 +197,11 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         label: t("Leave conversation"),
         icon: <Leave />,
         variant: "danger",
-        isDisabled: true,
+        isDisabled: !canLeave || isLeaving,
+        callback: () => setIsLeaveOpen(true),
       },
     ],
-    [isFavourite, isPending, setFavourite, t],
+    [canLeave, isFavourite, isLeaving, isPending, setFavourite, t],
   );
 
   const trigger = (
@@ -210,6 +236,12 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         chat={chat}
         isOpen={isMembersOpen}
         onClose={() => setIsMembersOpen(false)}
+      />
+      <LeaveConversationModal
+        isOpen={isLeaveOpen}
+        isPending={isLeaving}
+        onClose={() => setIsLeaveOpen(false)}
+        onConfirm={leaveConversation}
       />
     </>
   );

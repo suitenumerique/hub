@@ -80,6 +80,15 @@ export type DeleteChatMessageParams = {
   threadId?: string;
 };
 
+/**
+ * Removing a conversation is not atomic on every backend: Matrix must first
+ * leave the room, then forget it. A failed second step is retryable even though
+ * the user is already no longer a member.
+ */
+export type RemoveChatFromHistoryResult =
+  | { status: "forgotten" }
+  | { status: "left_only"; cause: unknown };
+
 export type SendChatTypingParams = {
   chatId: string;
   isTyping: boolean;
@@ -176,6 +185,8 @@ export abstract class Driver {
   readonly accountId: AccountId;
   readonly supportsComposition: boolean = false;
   readonly supportsThreadComposition: boolean = false;
+  /** Whether the driver can leave and forget a conversation for this account. */
+  readonly supportsConversationHistoryRemoval: boolean = false;
   /**
    * Whether the driver can start a brand-new conversation from a participant set
    * (see `createChatForUsers`). Off by default so drivers opt in; gates the
@@ -229,6 +240,19 @@ export abstract class Driver {
 
   /** Sets the current user's favourite tag for one conversation. */
   abstract setChatFavourite(chatId: string, favourite: boolean): Promise<void>;
+
+  /**
+   * Leaves a conversation and removes its history from the current account.
+   * Unsupported by default so account drivers opt into the destructive flow.
+   */
+  async removeChatFromHistory(
+    _chatId: string,
+  ): Promise<RemoveChatFromHistoryResult> {
+    void _chatId;
+    throw new Error(
+      `${this.constructor.name}.removeChatFromHistory: conversation history removal is not supported by this driver.`,
+    );
+  }
 
   // --- Composition --------------------------------------------------------
   // Unsupported by default so drivers can opt into composition incrementally.

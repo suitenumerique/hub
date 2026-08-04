@@ -57,6 +57,7 @@ import {
   GetChatThreadParams,
   GetChatMessagesParams,
   MarkChatThreadReadParams,
+  RemoveChatFromHistoryResult,
   SendChatMessageParams,
   SendChatTypingParams,
   SendChatThreadReplyParams,
@@ -232,6 +233,7 @@ type PersistedRedactedThreadReply = Pick<
 export class MatrixDriver extends MockDriver {
   override readonly supportsComposition: boolean = true;
   override readonly supportsThreadComposition: boolean = true;
+  override readonly supportsConversationHistoryRemoval: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
 
   private mx: MatrixClient | null = null;
@@ -594,6 +596,37 @@ export class MatrixDriver extends MockDriver {
     await mx.leave(chatId);
     this.joinedRoomIds = null;
     this.emit({ type: "chats:changed" });
+  }
+
+  /**
+   * Leaves a joined room, then forgets it for the connected account. Retrying
+   * after a partial failure skips the already-completed leave and only calls
+   * `/forget` again.
+   */
+  async removeChatFromHistory(
+    chatId: string,
+  ): Promise<RemoveChatFromHistoryResult> {
+    const mx = this.requireClient("removeChatFromHistory");
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (joinedRoomIds.has(chatId)) {
+      await mx.leave(chatId);
+      this.joinedRoomIds = null;
+      this.emit({ type: "chats:changed" });
+    }
+
+    const automaticallyForgotten =
+      mx.getCachedCapabilities()?.["m.forget_forced_upon_leave"]?.enabled ===
+      true;
+    if (automaticallyForgotten) {
+      return { status: "forgotten" };
+    }
+
+    try {
+      await mx.forget(chatId);
+      return { status: "forgotten" };
+    } catch (cause) {
+      return { status: "left_only", cause };
+    }
   }
 
   private redactedThreadReplyKey(chatId: string, eventId: string): string {
