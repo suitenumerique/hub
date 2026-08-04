@@ -9,6 +9,7 @@ import {
   KnownMembership,
   type MatrixEvent,
   type Room,
+  type RoomMember,
 } from "matrix-js-sdk/lib/matrix";
 
 import { ChatInvitation, LocalChat } from "../types";
@@ -20,12 +21,11 @@ export const isFavouriteRoom = (room: Room): boolean =>
   Object.hasOwn(room.tags, MATRIX_FAVOURITE_TAG);
 
 /**
- * The members that make up a conversation: everyone except the connected user
- * whose membership is `join` or `invite`. Left/banned members are excluded so
- * they neither inflate a group nor linger in its name; invited members are kept
- * so a just-created conversation already shows its counterpart(s) before they
- * accept. Single source for `kind`/`name` in `matrixRoomToLocalChat` and the set
- * `getChatForUsers` matches against, so the two can never disagree.
+ * The active members of a conversation: everyone except the connected user
+ * whose membership is `join` or `invite`. This is deliberately stricter than
+ * the display mapping below: a departed DM counterpart may still identify the
+ * room, but must not make `getChatForUsers` resolve that inactive room as an
+ * existing conversation.
  */
 export const roomOtherMembers = (
   room: Room,
@@ -38,6 +38,28 @@ export const roomOtherMembers = (
         member.userId !== currentUserId &&
         (member.membership === KnownMembership.Join ||
           member.membership === KnownMembership.Invite),
+    );
+
+const hasConversationMembership = (member: RoomMember): boolean =>
+  member.membership === KnownMembership.Join ||
+  member.membership === KnownMembership.Invite ||
+  member.membership === KnownMembership.Leave ||
+  member.membership === KnownMembership.Ban;
+
+/**
+ * Every current or former counterpart known in the room state. Matrix retains
+ * the latest `m.room.member` event after somebody leaves, which lets a joined
+ * user keep a stable DM label instead of exposing the technical room id.
+ */
+const roomConversationMembers = (
+  room: Room,
+  currentUserId: string | undefined,
+): RoomMember[] =>
+  room
+    .getMembers()
+    .filter(
+      (member) =>
+        member.userId !== currentUserId && hasConversationMembership(member),
     );
 
 /** Order- and duplicate-independent key for comparing two participant sets. */
@@ -57,21 +79,30 @@ export const matrixJoinedRoomToLocalChat = (
   room: Room,
   currentUserId: string | undefined,
 ): LocalChat => {
-  const others = roomOtherMembers(room, currentUserId);
-  const participantIds = others.map((member) => member.userId);
-  // Direct = exactly one counterpart (join or invite). Based on the participant
-  // set rather than the joined-member count, so a just-created DM stays direct
-  // before its invitee accepts.
-  const isDirect = participantIds.length === 1;
-  const otherNames = others.map((member) => member.name || member.userId);
+  const activeOthers = roomOtherMembers(room, currentUserId);
+  const conversationMembers = roomConversationMembers(room, currentUserId);
+  // A DM keeps its sole counterpart after they leave. A group remains a group
+  // when its active member count drops to one because former members remain in
+  // current room state. Only active members participate in an unnamed group's
+  // generated label.
+  const isDirect = conversationMembers.length === 1;
+  const displayedOthers = isDirect ? conversationMembers : activeOthers;
+  const participantIds = displayedOthers.map((member) => member.userId);
+  const otherNames = displayedOthers.map(
+    (member) => member.name || member.userId,
+  );
+  const isEmptyDirect = isDirect && activeOthers.length === 0;
   const timestamp = room.getLastActiveTimestamp();
 
   // A 1:1 is identified by the other person and ignores any room name (DMs
-  // aren't renameable). A group uses its explicit name when set, otherwise the
-  // members' display names so the header/list show everyone — not just the
-  // first participant.
+  // aren't renameable). Once its counterpart leaves, reuse the client's
+  // localized empty-room label so the historical identity stays visible
+  // without suggesting the person is still present. A group uses its explicit
+  // name when set, otherwise the active members' display names.
   const name = isDirect
-    ? otherNames[0] || participantIds[0] || room.roomId
+    ? isEmptyDirect && currentUserId
+      ? room.getDefaultRoomName(currentUserId)
+      : otherNames[0] || participantIds[0] || room.roomId
     : explicitRoomName(room) || otherNames.join(", ") || room.roomId;
 
   return {
