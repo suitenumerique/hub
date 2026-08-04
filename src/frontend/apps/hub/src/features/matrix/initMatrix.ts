@@ -4,9 +4,13 @@ import {
   IndexedDBCryptoStore,
   IndexedDBStore,
   MatrixClient,
+  RoomNameType,
   SyncState,
+  type RoomNameState,
   type TokenRefreshFunction,
 } from "matrix-js-sdk/lib/matrix";
+
+import i18n from "@/i18n/initI18n";
 
 import { MatrixUserInterface } from "./types";
 
@@ -28,6 +32,18 @@ type MatrixClientStores = {
 
 const DEFAULT_SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const DEFAULT_CRYPTO_STORE_DB_NAME = "crypto-store";
+
+const localizedRoomNameGenerator = (
+  _roomId: string,
+  state: RoomNameState,
+): string | null => {
+  if (state.type !== RoomNameType.EmptyRoom) {
+    return null;
+  }
+  return state.oldName
+    ? i18n.t("{{name}} left the conversation", { name: state.oldName })
+    : i18n.t("Empty conversation");
+};
 
 const buildClient = (
   user: MatrixUserInterface,
@@ -56,6 +72,7 @@ const buildClient = (
     cryptoStore: legacyCryptoStore,
     deviceId: user.deviceId,
     timelineSupport: true,
+    roomNameGenerator: localizedRoomNameGenerator,
     // Hub does not expose Matrix calls yet. Keeping VoIP off avoids the SDK's
     // startup TURN polling (`/voip/turnServer`), which is noisy in local MAS.
     disableVoip: true,

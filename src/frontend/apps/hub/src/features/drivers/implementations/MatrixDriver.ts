@@ -326,7 +326,11 @@ export class MatrixDriver extends MockDriver {
           joinedRoomIds.has(room.roomId) ||
           room.getMyMembership() === KnownMembership.Invite,
       )
-      .map((room) => matrixRoomToLocalChat(room, currentUserId));
+      .map((room) =>
+        joinedRoomIds.has(room.roomId)
+          ? matrixJoinedRoomToLocalChat(room, currentUserId)
+          : matrixRoomToLocalChat(room, currentUserId),
+      );
 
     return {
       favourites: localChats.filter((chat) => chat.section === "favourites"),
@@ -361,7 +365,10 @@ export class MatrixDriver extends MockDriver {
     ) {
       throw new Error(`MatrixDriver.getChat: room "${chatId}" is not joined.`);
     }
-    return matrixRoomToLocalChat(room, mx.getUserId() ?? undefined);
+    const currentUserId = mx.getUserId() ?? undefined;
+    return joinedRoomIds.has(chatId)
+      ? matrixJoinedRoomToLocalChat(room, currentUserId)
+      : matrixRoomToLocalChat(room, currentUserId);
   }
 
   async getChatMembers(chatId: string): Promise<ChatMembers> {
@@ -2067,6 +2074,14 @@ export class MatrixDriver extends MockDriver {
     ) => {
       this.emit({ type: "members:changed", chatId: member.roomId });
     };
+    // Membership events are applied before the SDK recalculates `room.name`.
+    // Wait for this final signal before refreshing the conversation metadata,
+    // otherwise a remote leave can leave the header/sidebar on the old DM name
+    // until an unrelated event triggers another read.
+    const onName = (room: Room) => {
+      this.emit({ type: "chat:changed", chatId: room.roomId });
+      this.emit({ type: "chats:changed" });
+    };
     const onTags = (_event: MatrixEvent, room: Room) => {
       this.emit({ type: "tags:changed", chatId: room.roomId });
     };
@@ -2163,6 +2178,7 @@ export class MatrixDriver extends MockDriver {
     mx.on(RoomMemberEvent.Typing, onTyping);
     mx.on(RoomMemberEvent.PowerLevel, onPowerLevel);
     mx.on(RoomStateEvent.Members, onMembers);
+    mx.on(RoomEvent.Name, onName);
     mx.on(RoomEvent.Tags, onTags);
     mx.on(ClientEvent.Room, onRoom);
     mx.on(ClientEvent.Sync, onSync);
@@ -2182,6 +2198,7 @@ export class MatrixDriver extends MockDriver {
       mx.off(RoomMemberEvent.Typing, onTyping);
       mx.off(RoomMemberEvent.PowerLevel, onPowerLevel);
       mx.off(RoomStateEvent.Members, onMembers);
+      mx.off(RoomEvent.Name, onName);
       mx.off(RoomEvent.Tags, onTags);
       mx.off(ClientEvent.Room, onRoom);
       mx.off(ClientEvent.Sync, onSync);
