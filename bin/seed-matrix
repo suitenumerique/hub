@@ -4,7 +4,7 @@
 Run with `make seed-matrix` after `make run-matrix`.
 
 The seed is intentionally small for this PR:
-  - provision three Matrix users linked to existing Keycloak users;
+  - provision Matrix users linked to existing Keycloak users;
   - create one direct conversation and one multi-user conversation;
   - add a few plaintext messages and one thread in the group.
 
@@ -14,6 +14,7 @@ the room and does not post the transcript again.
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -35,6 +36,7 @@ PROVIDER_ID = "0XZP24DYZ8BJXR093M5TH4PKB9"
 LINKED_USERS = [
     ("hub", "Hub"),
     ("user-e2e-chromium", "E2E Chromium"),
+    ("user-e2e-firefox", "E2E Firefox"),
     ("user-e2e-webkit", "E2E WebKit"),
 ]
 
@@ -361,13 +363,28 @@ def ensure_room(
     return room_id
 
 
-def main() -> None:
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--users-only",
+        action="store_true",
+        help="provision linked Matrix users without creating rooms or messages",
+    )
+    return parser.parse_args()
+
+
+def main(*, users_only: bool = False) -> None:
     print("seed-matrix: provisioning identities...")
     admin_token = keycloak_admin_token()
     tokens = {
         localpart: provision_linked_user(admin_token, localpart, display)
         for localpart, display in LINKED_USERS
     }
+
+    if users_only:
+        print("seed-matrix: Done (users only; no rooms created).")
+        return
 
     ensure_room(
         tokens,
@@ -398,4 +415,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    arguments = parse_args()
+    main(users_only=arguments.users_only)

@@ -20,6 +20,7 @@ and this project adheres to
 - ✨(frontend) Add mocked chat message composition and thread replies
 - ✨(frontend) Open conversation when sending to it from the new chat search
 - ✨(docker) Add a local dev-only Matrix stack with Keycloak auth and seed
+- ✨(docker) Add a Matrix reset command with users-only provisioning
 - ✨(frontend) Add the local Matrix frontend scope with lazy MAS/OIDC client
   setup
 - ✨(frontend) Bridge Matrix `/sync` onto the real-time chat event stream
