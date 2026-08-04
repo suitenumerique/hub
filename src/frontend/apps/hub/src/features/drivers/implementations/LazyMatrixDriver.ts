@@ -10,6 +10,7 @@ import {
   type GetChatMessagesParams,
   type GetChatThreadParams,
   type MarkChatThreadReadParams,
+  type RemoveChatFromHistoryResult,
   type SendChatMessageParams,
   type SendChatTypingParams,
   type SendChatThreadReplyParams,
@@ -44,6 +45,7 @@ export class LazyMatrixDriver extends BaseDriver {
   // `sendChatMessage` still routes through `withTarget`, loading the driver on demand.
   override readonly supportsComposition = true;
   override readonly supportsThreadComposition = true;
+  override readonly supportsConversationHistoryRemoval = true;
   // Static capability mirroring the real `MatrixDriver`, read synchronously by
   // the New Chat composer before the SDK lazy-loads.
   override readonly supportsConversationCreation = true;
@@ -183,6 +185,12 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) =>
       driver.setChatFavourite(chatId, favourite),
     );
+  }
+
+  async removeChatFromHistory(
+    chatId: string,
+  ): Promise<RemoveChatFromHistoryResult> {
+    return this.withTarget((driver) => driver.removeChatFromHistory(chatId));
   }
 
   async sendChatMessage(params: SendChatMessageParams): Promise<ChatMessage> {

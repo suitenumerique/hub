@@ -5,6 +5,7 @@ import {
   GetChatMessagesParams,
   GetChatThreadParams,
   MarkChatThreadReadParams,
+  RemoveChatFromHistoryResult,
   SendChatMessageParams,
   SendChatThreadReplyParams,
   StartChatThreadParams,
@@ -86,6 +87,7 @@ const readNumberSetting = (
 export class MockDriver extends Driver {
   override readonly supportsComposition: boolean = true;
   override readonly supportsThreadComposition: boolean = true;
+  override readonly supportsConversationHistoryRemoval: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
 
   private readonly chats: LocalChat[];
@@ -265,6 +267,21 @@ export class MockDriver extends Driver {
     }
     chat.section = section;
     this.emitMockEvent({ type: "tags:changed", chatId });
+  }
+
+  async removeChatFromHistory(
+    chatId: string,
+  ): Promise<RemoveChatFromHistoryResult> {
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const chatIndex = this.chats.findIndex((chat) => chat.id === chatId);
+    if (chatIndex === -1) {
+      return { status: "forgotten" };
+    }
+    this.chats.splice(chatIndex, 1);
+    delete this.unreadByChat[chatId];
+    this.emitMockEvent({ type: "chats:changed" });
+    return { status: "forgotten" };
   }
 
   async getChatMessages({
