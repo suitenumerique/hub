@@ -179,9 +179,20 @@ $ make seed-matrix
 ```
 
 `seed-matrix` provisions Matrix accounts linked to existing Keycloak users
-(`hub`, `user-e2e-chromium`, `user-e2e-webkit`), creates one direct room and one
+(`hub` and the three `user-e2e-*` accounts), creates one direct room and one
 multi-user room, and posts a few text messages. It is idempotent: running it
 again finds the existing room aliases and does not duplicate the transcript.
+
+To start again with no Matrix rooms or messages while keeping the local
+Keycloak users available for login and new conversations:
+
+```shellscript
+$ make reset-matrix
+```
+
+This removes the local Synapse and MAS databases, restarts the Matrix stack,
+and provisions only the four Matrix accounts. It leaves the Hub and Keycloak
+databases untouched.
 
 ## License 📝
 

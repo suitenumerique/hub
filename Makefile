@@ -252,7 +252,7 @@ run-matrix: \
 	data/matrix/synapse \
 	data/matrix/mas
 	@$(MAKE) run-backend
-	@$(COMPOSE_MATRIX) up -d $(MATRIX_SERVICES)
+	@$(COMPOSE_MATRIX) up -d --wait --wait-timeout 180 $(MATRIX_SERVICES)
 .PHONY: run-matrix
 
 seed-matrix: ## seed the local Matrix stack with a DM and a group room (needs run-matrix)
@@ -379,6 +379,13 @@ resetdb: ## flush database and create a superuser "admin"
 reset-keycloak: ## drop the Keycloak DB so realm.json re-imports on next start
 	@$(COMPOSE) rm -sfv kc_postgresql
 .PHONY: reset-keycloak
+
+reset-matrix: ## reset local Matrix data and provision users without rooms
+	@$(MAKE) down-matrix
+	@rm -rf data/matrix/synapse
+	@$(MAKE) run-matrix
+	@python3 bin/seed-matrix --users-only
+.PHONY: reset-matrix
 
 crowdin-download: ## Download translated message from crowdin
 	@$(COMPOSE_RUN_CROWDIN) download -c crowdin/config.yml
