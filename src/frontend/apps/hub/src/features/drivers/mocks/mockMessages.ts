@@ -255,6 +255,7 @@ const syncThreadMetadata = (
   thread.lastReplyPreview = message.content;
   thread.replyCount = replyCount;
   thread.unreadCount = 0;
+  thread.highlightCount = 0;
   detail.firstUnreadIndex = null;
 
   const root = generated.messages.find(
@@ -265,6 +266,7 @@ const syncThreadMetadata = (
       id: thread.id,
       replyCount,
       unreadCount: 0,
+      highlightCount: 0,
     };
   }
   sortThreadsByLastReply(generated.threads);
@@ -350,6 +352,7 @@ export const startMockThread = (
     lastReplyPreview: message.content,
     replyCount: 1,
     unreadCount: 0,
+    highlightCount: 0,
   };
   const detail: ChatThreadDetail = {
     id: threadId,
@@ -361,7 +364,12 @@ export const startMockThread = (
 
   generated.threads.unshift(thread);
   generated.threadDetails.set(threadId, detail);
-  root.thread = { id: threadId, replyCount: 1, unreadCount: 0 };
+  root.thread = {
+    id: threadId,
+    replyCount: 1,
+    unreadCount: 0,
+    highlightCount: 0,
+  };
   sortThreadsByLastReply(generated.threads);
 
   return buildThreadMutationResult(generated, thread, detail, message);
@@ -440,12 +448,13 @@ export const markMockThreadRead = (
     return false;
   }
   thread.unreadCount = 0;
+  thread.highlightCount = 0;
   detail.firstUnreadIndex = null;
   const root = generated.messages.find(
     (message) => message.id === thread.rootMessageId,
   );
   if (root?.thread) {
-    root.thread = { ...root.thread, unreadCount: 0 };
+    root.thread = { ...root.thread, unreadCount: 0, highlightCount: 0 };
   }
   return true;
 };

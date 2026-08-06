@@ -7,6 +7,8 @@ export const chatKeys = {
   chatsAll: () => ["chats"] as const,
   chatsOf: (accountId: AccountId) => ["chats", accountId] as const,
   unreadOf: (accountId: AccountId) => ["chat-unread", accountId] as const,
+  notificationPreferencesOf: (accountId: AccountId) =>
+    ["chat-notification-preferences", accountId] as const,
   noChat: () => ["chat", "none"] as const,
 
   /** Existing conversation resolved from a participant set (New Chat search). */

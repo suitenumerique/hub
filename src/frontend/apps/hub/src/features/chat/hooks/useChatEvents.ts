@@ -12,6 +12,7 @@ import type {
   AccountId,
   ChatRef,
   ChatMessagesPage,
+  ChatNotificationPreferencesByChat,
   ChatThreadDetail,
   ChatUnread,
 } from "@/features/drivers/types";
@@ -136,6 +137,16 @@ const applyChatEvent = (
           }
           return { ...(current ?? {}), [event.chatId]: event.unread };
         },
+      );
+      return;
+
+    case "notification-preferences:changed":
+      queryClient.setQueryData<ChatNotificationPreferencesByChat>(
+        chatKeys.notificationPreferencesOf(accountId),
+        (current) => ({
+          ...(current ?? {}),
+          [event.chatId]: event.preferences,
+        }),
       );
       return;
 

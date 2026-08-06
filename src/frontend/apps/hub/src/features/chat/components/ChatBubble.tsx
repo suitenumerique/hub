@@ -75,12 +75,14 @@ export type ChatBubbleProps = ChatBubbleReceivedProps | ChatBubbleSentProps;
  * longer fit side by side.
  */
 type ChatBubbleFooterProps = {
+  chatRef: ChatRef;
   thread: ChatThreadSummary | undefined;
   reactions: ChatReaction[];
   onReact: (emoji: string) => void;
 };
 
 const ChatBubbleFooter = ({
+  chatRef,
   thread,
   reactions,
   onReact,
@@ -94,7 +96,11 @@ const ChatBubbleFooter = ({
   return (
     <div className="hub__chat-bubble__footer">
       {thread && (
-        <ThreadButton summary={thread} onOpen={() => openThread(thread.id)} />
+        <ThreadButton
+          chatRef={chatRef}
+          summary={thread}
+          onOpen={() => openThread(thread.id)}
+        />
       )}
       <MessageReactions reactions={reactions} onReact={onReact} />
     </div>
@@ -233,6 +239,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           )}
         </div>
         <ChatBubbleFooter
+          chatRef={chatRef}
           thread={thread}
           reactions={reactions}
           onReact={onReact}
@@ -303,6 +310,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         </div>
       </div>
       <ChatBubbleFooter
+        chatRef={chatRef}
         thread={thread}
         reactions={reactions}
         onReact={onReact}

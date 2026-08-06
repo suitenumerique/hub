@@ -7,6 +7,7 @@ import {
 import {
   ArrowDropDown,
   Bell,
+  BellOff,
   Edit,
   File,
   Identity,
@@ -23,6 +24,11 @@ import { useTranslation } from "react-i18next";
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
 import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
+import {
+  isChatMuted,
+  useChatNotificationPreferences,
+} from "@/features/chat/hooks/useChatNotificationPreferences";
+import { useChatMute } from "@/features/chat/hooks/useChatNotificationMutations";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
 import type { Chat } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
@@ -134,6 +140,10 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isLeaveOpen, setIsLeaveOpen] = useState(false);
   const { setFavourite, isPending } = useChatFavourite(chat.ref);
+  const getNotificationPreferences = useChatNotificationPreferences();
+  const notificationPreferences = getNotificationPreferences(chat.ref);
+  const isMuted = isChatMuted(notificationPreferences);
+  const { setMuted, isPending: isMutePending } = useChatMute(chat.ref);
   const {
     removeFromHistory,
     isPending: isLeaving,
@@ -188,9 +198,10 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       },
       {
         id: "notifications",
-        label: t("Notifications"),
-        icon: <Bell />,
-        isDisabled: true,
+        label: isMuted ? t("Unmute notifications") : t("Mute notifications"),
+        icon: isMuted ? <BellOff /> : <Bell />,
+        isDisabled: isMutePending,
+        callback: () => setMuted(!isMuted),
       },
       {
         id: "leave",
@@ -201,7 +212,17 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         callback: () => setIsLeaveOpen(true),
       },
     ],
-    [canLeave, isFavourite, isLeaving, isPending, setFavourite, t],
+    [
+      canLeave,
+      isFavourite,
+      isLeaving,
+      isMuted,
+      isMutePending,
+      isPending,
+      setFavourite,
+      setMuted,
+      t,
+    ],
   );
 
   const trigger = (

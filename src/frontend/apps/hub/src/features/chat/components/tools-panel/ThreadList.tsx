@@ -3,6 +3,10 @@ import { useTranslation } from "react-i18next";
 
 import type { ChatRef } from "@/features/drivers/types";
 
+import {
+  isChatThreadMuted,
+  useChatNotificationPreferences,
+} from "../../hooks/useChatNotificationPreferences";
 import { useChatThreads } from "../../hooks/useChatThreads";
 
 import { ThreadListItem } from "./ThreadListItem";
@@ -23,6 +27,8 @@ export const ThreadList = ({
   onOpenThread,
 }: ThreadListProps) => {
   const { t } = useTranslation();
+  const getNotificationPreferences = useChatNotificationPreferences();
+  const notificationPreferences = getNotificationPreferences(chatRef);
   const { threads, isInitialLoading, isError, refetch } =
     useChatThreads(chatRef);
 
@@ -76,6 +82,7 @@ export const ThreadList = ({
               )}
               <ThreadListItem
                 thread={thread}
+                isMuted={isChatThreadMuted(notificationPreferences, thread.id)}
                 onOpen={() => onOpenThread(thread.id)}
               />
             </Fragment>

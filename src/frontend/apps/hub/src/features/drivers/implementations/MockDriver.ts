@@ -45,6 +45,8 @@ import {
   ChatMessage,
   ChatMessagesPage,
   ChatMembers,
+  ChatNotificationPreferences,
+  ChatNotificationPreferencesByChat,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -52,6 +54,7 @@ import {
   ChatUser,
   LocalChat,
   LocalChatSections,
+  SetChatThreadMutedParams,
 } from "../types";
 
 const DEFAULT_CHAT_PAGE_SIZE = 50;
@@ -92,6 +95,8 @@ export class MockDriver extends Driver {
 
   private readonly chats: LocalChat[];
   private readonly unreadByChat: Record<string, ChatUnread>;
+  private readonly notificationPreferencesByChat: ChatNotificationPreferencesByChat =
+    {};
   private readonly mockEventListeners = new Set<ChatEventListener>();
 
   constructor(
@@ -142,6 +147,34 @@ export class MockDriver extends Driver {
     const unread = { unread: false, highlight: false };
     this.unreadByChat[chatId] = unread;
     this.emitMockEvent({ type: "unread:changed", chatId, unread });
+  }
+
+  private notificationPreferencesFor(
+    chatId: string,
+  ): ChatNotificationPreferences {
+    return (
+      this.notificationPreferencesByChat[chatId] ?? {
+        room: { muted: false },
+        threads: {},
+      }
+    );
+  }
+
+  private emitNotificationPreferences(chatId: string): void {
+    const current = this.notificationPreferencesFor(chatId);
+    this.emitMockEvent({
+      type: "notification-preferences:changed",
+      chatId,
+      preferences: {
+        room: { ...current.room },
+        threads: Object.fromEntries(
+          Object.entries(current.threads).map(([threadId, preference]) => [
+            threadId,
+            { ...preference },
+          ]),
+        ),
+      },
+    });
   }
 
   async getChats(): Promise<LocalChatSections> {
@@ -280,6 +313,7 @@ export class MockDriver extends Driver {
     }
     this.chats.splice(chatIndex, 1);
     delete this.unreadByChat[chatId];
+    delete this.notificationPreferencesByChat[chatId];
     this.emitMockEvent({ type: "chats:changed" });
     return { status: "forgotten" };
   }
@@ -514,6 +548,85 @@ export class MockDriver extends Driver {
     return { ...this.unreadByChat };
   }
 
+  async getNotificationPreferences(): Promise<ChatNotificationPreferencesByChat> {
+    return Object.fromEntries(
+      Object.entries(this.notificationPreferencesByChat).map(
+        ([chatId, preferences]) => [
+          chatId,
+          {
+            room: { ...preferences.room },
+            threads: Object.fromEntries(
+              Object.entries(preferences.threads).map(
+                ([threadId, preference]) => [threadId, { ...preference }],
+              ),
+            ),
+          },
+        ],
+      ),
+    );
+  }
+
+  async setChatMuted(chatId: string, muted: boolean): Promise<void> {
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    const chat = this.getLocalChat(chatId);
+    if (!chat) {
+      throw new Error(`MockDriver.setChatMuted: chat "${chatId}" not found.`);
+    }
+    const current = this.notificationPreferencesFor(chatId);
+    if (current.room.muted === muted) {
+      return;
+    }
+    // Keep the frozen cursor after unmute so existing activity is not replayed;
+    // `touchChat` clears it on the first subsequent activity.
+    this.notificationPreferencesByChat[chatId] = {
+      room: muted
+        ? {
+            muted: true,
+            rankingActivityAt:
+              current.room.rankingActivityAt ?? chat.lastActivityAt,
+          }
+        : { ...current.room, muted: false },
+      threads: { ...current.threads },
+    };
+    this.emitNotificationPreferences(chatId);
+  }
+
+  async setChatThreadMuted({
+    chatId,
+    threadId,
+    muted,
+  }: SetChatThreadMutedParams): Promise<void> {
+    await delay(MOCK_CHAT_LATENCY_MS);
+
+    if (!this.getLocalChat(chatId)) {
+      throw new Error(
+        `MockDriver.setChatThreadMuted: chat "${chatId}" not found.`,
+      );
+    }
+    if (
+      !getMockThreads(chatId, this.getSeedChat(chatId)).some(
+        (thread) => thread.id === threadId,
+      )
+    ) {
+      throw new Error(
+        `MockDriver.setChatThreadMuted: thread "${threadId}" not found in chat "${chatId}".`,
+      );
+    }
+    const current = this.notificationPreferencesFor(chatId);
+    if (current.threads[threadId]?.muted === muted) {
+      return;
+    }
+    this.notificationPreferencesByChat[chatId] = {
+      room: { ...current.room },
+      threads: {
+        ...current.threads,
+        [threadId]: { muted },
+      },
+    };
+    this.emitNotificationPreferences(chatId);
+  }
+
   private getLocalChat(chatId: string): LocalChat | undefined {
     return this.chats.find((chat) => chat.id === chatId);
   }
@@ -548,6 +661,18 @@ export class MockDriver extends Driver {
     const chat = this.getLocalChat(chatId);
     if (chat) {
       chat.lastActivityAt = timestamp;
+    }
+    const preferences = this.notificationPreferencesByChat[chatId];
+    if (
+      preferences &&
+      !preferences.room.muted &&
+      preferences.room.rankingActivityAt
+    ) {
+      this.notificationPreferencesByChat[chatId] = {
+        room: { muted: false },
+        threads: { ...preferences.threads },
+      };
+      this.emitNotificationPreferences(chatId);
     }
     this.clearUnread(chatId);
   }

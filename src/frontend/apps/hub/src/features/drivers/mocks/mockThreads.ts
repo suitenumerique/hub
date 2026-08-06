@@ -85,6 +85,7 @@ export const buildChatThreads = (
       lastReplyPreview: lastReply.content,
       replyCount,
       unreadCount: 0,
+      highlightCount: 0,
     });
     details.set(threadId, {
       id: threadId,
@@ -123,6 +124,7 @@ export const buildChatThreads = (
         id: thread.id,
         replyCount: thread.replyCount,
         unreadCount: thread.unreadCount,
+        highlightCount: thread.highlightCount,
       };
     }
   });

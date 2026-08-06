@@ -32,6 +32,7 @@ and this project adheres to
 - ✨(frontend) Add Matrix reactions on conversation and thread timelines
 - ✨(frontend) Add read-only chat members and conversation favourites
 - ✨(frontend) Leave and forget conversations from the chat header
+- ✨(frontend) Add persistent room and thread notification preferences
 
 ### Changed
 

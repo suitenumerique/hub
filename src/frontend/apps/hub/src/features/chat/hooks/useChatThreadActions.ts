@@ -24,7 +24,9 @@ type ReadContext = {
   messagesKey: QueryKey;
   affectedThreadIds: string[];
   previousThreadUnread: Record<string, number>;
+  previousThreadHighlights: Record<string, number>;
   previousRootUnread: Record<string, number>;
+  previousRootHighlights: Record<string, number>;
 };
 
 /**
@@ -41,7 +43,8 @@ const clearThreadBadges = (
     const touched = page.messages.some(
       (message) =>
         message.thread !== undefined &&
-        message.thread.unreadCount !== 0 &&
+        (message.thread.unreadCount !== 0 ||
+          message.thread.highlightCount !== 0) &&
         matches(message.thread.id),
     );
     if (!touched) {
@@ -51,9 +54,17 @@ const clearThreadBadges = (
       ...page,
       messages: page.messages.map((message) =>
         message.thread !== undefined &&
-        message.thread.unreadCount !== 0 &&
+        (message.thread.unreadCount !== 0 ||
+          message.thread.highlightCount !== 0) &&
         matches(message.thread.id)
-          ? { ...message, thread: { ...message.thread, unreadCount: 0 } }
+          ? {
+              ...message,
+              thread: {
+                ...message.thread,
+                unreadCount: 0,
+                highlightCount: 0,
+              },
+            }
           : message,
       ),
     };
@@ -72,11 +83,24 @@ const rootUnreadByThreadId = (
       .map((thread) => [thread.id, thread.unreadCount]),
   );
 
+const rootHighlightsByThreadId = (
+  data: ChatMessagesData | undefined,
+  matches: ThreadMatcher,
+): Record<string, number> =>
+  Object.fromEntries(
+    (data?.pages ?? [])
+      .flatMap((page) => page.messages)
+      .flatMap((message) => (message.thread ? [message.thread] : []))
+      .filter((thread) => matches(thread.id))
+      .map((thread) => [thread.id, thread.highlightCount]),
+  );
+
 /** Restore only badges still carrying our optimistic zero. */
 const restoreThreadBadges = (
   data: ChatMessagesData,
   affectedThreadIds: Set<string>,
   previousUnread: Record<string, number>,
+  previousHighlights: Record<string, number>,
 ): ChatMessagesData => ({
   ...data,
   pages: data.pages.map((page) => ({
@@ -87,13 +111,18 @@ const restoreThreadBadges = (
         !thread ||
         !affectedThreadIds.has(thread.id) ||
         thread.unreadCount !== 0 ||
+        thread.highlightCount !== 0 ||
         previousUnread[thread.id] === undefined
       ) {
         return message;
       }
       return {
         ...message,
-        thread: { ...thread, unreadCount: previousUnread[thread.id] },
+        thread: {
+          ...thread,
+          unreadCount: previousUnread[thread.id],
+          highlightCount: previousHighlights[thread.id] ?? 0,
+        },
       };
     }),
   })),
@@ -134,7 +163,16 @@ export const useChatThreadActions = (
         .filter((thread) => matches(thread.id))
         .map((thread) => [thread.id, thread.unreadCount]),
     );
+    const previousThreadHighlights = Object.fromEntries(
+      (previousThreads ?? [])
+        .filter((thread) => matches(thread.id))
+        .map((thread) => [thread.id, thread.highlightCount]),
+    );
     const previousRootUnread = rootUnreadByThreadId(previousMessages, matches);
+    const previousRootHighlights = rootHighlightsByThreadId(
+      previousMessages,
+      matches,
+    );
     const affectedThreadIds = [
       ...new Set([
         ...Object.keys(previousThreadUnread),
@@ -143,7 +181,9 @@ export const useChatThreadActions = (
     ];
     queryClient.setQueryData<ChatThread[]>(threadsKey, (old) =>
       old?.map((thread) =>
-        matches(thread.id) ? { ...thread, unreadCount: 0 } : thread,
+        matches(thread.id)
+          ? { ...thread, unreadCount: 0, highlightCount: 0 }
+          : thread,
       ),
     );
     queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
@@ -154,7 +194,9 @@ export const useChatThreadActions = (
       messagesKey,
       affectedThreadIds,
       previousThreadUnread,
+      previousThreadHighlights,
       previousRootUnread,
+      previousRootHighlights,
     };
   };
 
@@ -167,10 +209,12 @@ export const useChatThreadActions = (
       current?.map((thread) =>
         affectedThreadIds.has(thread.id) &&
         thread.unreadCount === 0 &&
+        thread.highlightCount === 0 &&
         context.previousThreadUnread[thread.id] !== undefined
           ? {
               ...thread,
               unreadCount: context.previousThreadUnread[thread.id],
+              highlightCount: context.previousThreadHighlights[thread.id] ?? 0,
             }
           : thread,
       ),
@@ -183,6 +227,7 @@ export const useChatThreadActions = (
               current,
               affectedThreadIds,
               context.previousRootUnread,
+              context.previousRootHighlights,
             )
           : current,
     );

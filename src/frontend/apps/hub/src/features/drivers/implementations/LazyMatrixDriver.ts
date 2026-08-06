@@ -24,6 +24,7 @@ import type {
   ChatMessage,
   ChatMessagesPage,
   ChatMembers,
+  ChatNotificationPreferencesByChat,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -31,6 +32,7 @@ import type {
   ChatUser,
   LocalChat,
   LocalChatSections,
+  SetChatThreadMutedParams,
   User,
 } from "../types";
 
@@ -179,6 +181,18 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async getUnread(): Promise<Record<string, ChatUnread>> {
     return this.withTarget((driver) => driver.getUnread());
+  }
+
+  async getNotificationPreferences(): Promise<ChatNotificationPreferencesByChat> {
+    return this.withTarget((driver) => driver.getNotificationPreferences());
+  }
+
+  async setChatMuted(chatId: string, muted: boolean): Promise<void> {
+    return this.withTarget((driver) => driver.setChatMuted(chatId, muted));
+  }
+
+  async setChatThreadMuted(params: SetChatThreadMutedParams): Promise<void> {
+    return this.withTarget((driver) => driver.setChatThreadMuted(params));
   }
 
   async setChatFavourite(chatId: string, favourite: boolean): Promise<void> {

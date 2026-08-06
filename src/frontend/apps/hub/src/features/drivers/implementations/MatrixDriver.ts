@@ -72,6 +72,7 @@ import {
   ChatMember,
   ChatMembers,
   ChatMessagesPage,
+  ChatNotificationPreferencesByChat,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -80,6 +81,7 @@ import {
   ChatUser,
   LocalChat,
   LocalChatSections,
+  SetChatThreadMutedParams,
   User,
 } from "../types";
 import {
@@ -118,6 +120,10 @@ import {
   participantSetKey,
   roomOtherMembers,
 } from "./matrixRoomMapping";
+import {
+  MatrixNotificationPreferencesService,
+  type MatrixNotificationPreferencesChange,
+} from "./matrixNotificationPreferences";
 import { MockDriver } from "./MockDriver";
 
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
@@ -254,6 +260,9 @@ export class MatrixDriver extends MockDriver {
   private redactedThreadReplies = new Map<string, RedactedThreadReply>();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
+  /** Canonical Matrix account-data preferences for this connected account. */
+  private notificationPreferences: MatrixNotificationPreferencesService | null =
+    null;
   /** Parsed per-account config; source of truth for discovery and OIDC. */
   private readonly settings: MatrixDriverSettings;
   /**
@@ -352,8 +361,36 @@ export class MatrixDriver extends MockDriver {
       mx
         .getVisibleRooms()
         .filter((room) => joinedRoomIds.has(room.roomId))
-        .map((room) => [room.roomId, roomUnread(room, selfUserId)]),
+        .map((room) => [
+          room.roomId,
+          roomUnread(
+            room,
+            selfUserId,
+            this.notificationPreferences?.getForRoom(room.roomId),
+          ),
+        ]),
     );
+  }
+
+  override async getNotificationPreferences(): Promise<ChatNotificationPreferencesByChat> {
+    return this.notificationPreferences?.getAll() ?? {};
+  }
+
+  override async setChatMuted(chatId: string, muted: boolean): Promise<void> {
+    this.requireRoom("setChatMuted", chatId);
+    const preferences = this.requireNotificationPreferences("setChatMuted");
+    await preferences.setRoomMuted(chatId, muted);
+  }
+
+  override async setChatThreadMuted({
+    chatId,
+    threadId,
+    muted,
+  }: SetChatThreadMutedParams): Promise<void> {
+    this.requireRoom("setChatThreadMuted", chatId);
+    const preferences =
+      this.requireNotificationPreferences("setChatThreadMuted");
+    await preferences.setThreadMuted({ roomId: chatId, threadId, muted });
   }
 
   async getChat(chatId: string): Promise<LocalChat> {
@@ -762,6 +799,7 @@ export class MatrixDriver extends MockDriver {
           (activeThread ? threadReplyCount(activeThread) : 0) +
           missingTombstones,
         unreadCount: message.thread?.unreadCount ?? 0,
+        highlightCount: message.thread?.highlightCount ?? 0,
       },
     };
   }
@@ -897,6 +935,18 @@ export class MatrixDriver extends MockDriver {
       throw new Error(`MatrixDriver.${method}: client is not connected.`);
     }
     return mx;
+  }
+
+  private requireNotificationPreferences(
+    method: string,
+  ): MatrixNotificationPreferencesService {
+    const preferences = this.notificationPreferences;
+    if (!preferences) {
+      throw new Error(
+        `MatrixDriver.${method}: notification preferences are not connected.`,
+      );
+    }
+    return preferences;
   }
 
   /** Resolves a connected client and a known room for Matrix-only operations. */
@@ -1197,6 +1247,7 @@ export class MatrixDriver extends MockDriver {
         lastReplyDeleted: true,
         replyCount: replies.length,
         unreadCount: 0,
+        highlightCount: 0,
       });
     }
 
@@ -1542,6 +1593,7 @@ export class MatrixDriver extends MockDriver {
         id: rootMessageId,
         replyCount,
         unreadCount: 0,
+        highlightCount: 0,
       },
     };
     const previousReplies = previousReplyEvents.map((event) =>
@@ -1566,6 +1618,7 @@ export class MatrixDriver extends MockDriver {
       lastReplyPreview: content,
       replyCount,
       unreadCount: 0,
+      highlightCount: 0,
     };
     return { message, thread, threadDetail, rootMessage };
   }
@@ -1710,13 +1763,43 @@ export class MatrixDriver extends MockDriver {
     // server before their targeted patch; list membership changes and
     // reconnects stay coarse (`chats:changed`, per-room `chat:changed`).
     this.detachSync();
+    this.notificationPreferences?.clear();
+    this.notificationPreferences = null;
     const selfUserId = mx.getUserId() ?? undefined;
     const emitUnread = (room: Room) =>
       this.emit({
         type: "unread:changed",
         chatId: room.roomId,
-        unread: roomUnread(room, selfUserId),
+        unread: roomUnread(
+          room,
+          selfUserId,
+          this.notificationPreferences?.getForRoom(room.roomId),
+        ),
       });
+    const onNotificationPreferencesChange = ({
+      roomId,
+      preferences,
+    }: MatrixNotificationPreferencesChange) => {
+      if (this.mx !== mx) {
+        return;
+      }
+      this.emit({
+        type: "notification-preferences:changed",
+        chatId: roomId,
+        preferences,
+      });
+      const room = mx.getRoom(roomId);
+      if (room) {
+        emitUnread(room);
+      }
+    };
+    const notificationPreferences = new MatrixNotificationPreferencesService(
+      mx,
+      onNotificationPreferencesChange,
+    );
+    this.notificationPreferences = notificationPreferences;
+    notificationPreferences.hydrate();
+    notificationPreferences.attach();
     /** Replaces the root bubble so its summary count / unread badge moves live. */
     const emitThreadRootUpdate = (thread: Thread) => {
       if (!thread.rootEvent) {
@@ -1740,6 +1823,7 @@ export class MatrixDriver extends MockDriver {
       this.emit({ type: "threads:changed", chatId: thread.room.roomId });
       emitThreadRootUpdate(thread);
       emitUnread(thread.room);
+      this.emit({ type: "chats:changed" });
     };
     const emitThreadsRefresh = (room: Room) => {
       const threads = room.getThreads();
@@ -1818,6 +1902,13 @@ export class MatrixDriver extends MockDriver {
         event.getType() === EventType.RoomMessage
       ) {
         stopTypingForMessageAuthor(room, event);
+        if (isMessageEvent(event)) {
+          // This only advances the post-unmute ranking state machine; it never
+          // changes receipts or unread truth.
+          void notificationPreferences
+            .handleRoomActivity(room.roomId)
+            .catch(() => undefined);
+        }
       }
       // The Room re-emits its thread timeline. Remember only real live events
       // here (the SDK explicitly labels backfill in `data.liveEvent`), then
@@ -2159,6 +2250,7 @@ export class MatrixDriver extends MockDriver {
     // cached joined-room set so `getChats` re-reads it.
     const onRoom = (room: Room) => {
       attachThreadListeners(room);
+      notificationPreferences.handleRoom(room);
       if (this.typingListeners.has(room.roomId)) {
         this.prepareTypingRoom(room);
       }
@@ -2185,6 +2277,7 @@ export class MatrixDriver extends MockDriver {
         return;
       }
       this.joinedRoomIds = null;
+      void notificationPreferences.reconcile().catch(() => undefined);
       for (const room of mx.getVisibleRooms()) {
         this.emit({ type: "chat:changed", chatId: room.roomId });
         emitUnread(room);
@@ -2241,6 +2334,18 @@ export class MatrixDriver extends MockDriver {
       pendingLiveThreadReplies.clear();
       pendingTypingRoomIds.clear();
     };
+
+    // `startClient` may already have completed the first authentic network sync
+    // before this bridge existed. Reconcile once after every listener is wired,
+    // then publish the resulting (possibly cleaned) snapshot. This also repairs
+    // persisted account-data / push-rule divergence on a cold start. Optional
+    // accounts may have seeded `{}` in React Query before connecting, so the
+    // publication plus subscribe-time replay makes hydration lossless.
+    await notificationPreferences.reconcile().catch(() => undefined);
+    Object.entries(notificationPreferences.getAll()).forEach(
+      ([roomId, preferences]) =>
+        onNotificationPreferencesChange({ roomId, preferences }),
+    );
   }
 
   private async startClientOrFailOnLogout(mx: MatrixClient): Promise<void> {
@@ -2304,6 +2409,8 @@ export class MatrixDriver extends MockDriver {
   private teardownClient(): void {
     this.detachSync();
     this.detachSync = () => {};
+    this.notificationPreferences?.clear();
+    this.notificationPreferences = null;
     this.typingListeners.forEach((listeners) => {
       listeners.forEach((listener) => listener([]));
     });
@@ -2326,10 +2433,31 @@ export class MatrixDriver extends MockDriver {
    * Single global real-time stream. Subscribers just join/leave the set; the
    * Matrix `/sync` bridge that feeds them is attached for the client's lifetime
    * in {@link bootstrapClient} (it may not exist yet when the UI subscribes).
-   * Events for ALL conversations flow through here, so the UI mounts this once.
+   * The current preference snapshot is replayed so a late subscriber cannot
+   * miss optional-account hydration. Events for ALL conversations flow through
+   * here, so the UI mounts this once.
    */
   subscribeToEvents(listener: ChatEventListener): () => void {
     this.eventListeners.add(listener);
+    const mx = this.mx;
+    const selfUserId = mx?.getUserId() ?? undefined;
+    Object.entries(this.notificationPreferences?.getAll() ?? {}).forEach(
+      ([chatId, preferences]) => {
+        listener({
+          type: "notification-preferences:changed",
+          chatId,
+          preferences,
+        });
+        const room = mx?.getRoom(chatId);
+        if (room) {
+          listener({
+            type: "unread:changed",
+            chatId,
+            unread: roomUnread(room, selfUserId, preferences),
+          });
+        }
+      },
+    );
     return () => {
       this.eventListeners.delete(listener);
     };

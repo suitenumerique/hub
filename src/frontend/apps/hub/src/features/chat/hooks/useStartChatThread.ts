@@ -117,7 +117,12 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       const rootWithThread: ChatMessage = {
         ...rootMessage,
         thread: markOptimisticRootThreadSummary(
-          { id: tempThreadId, replyCount: 1, unreadCount: 0 },
+          {
+            id: tempThreadId,
+            replyCount: 1,
+            unreadCount: 0,
+            highlightCount: 0,
+          },
           tempThreadId,
         ),
       };
@@ -129,6 +134,7 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         lastReplyPreview: reply.content,
         replyCount: 1,
         unreadCount: 0,
+        highlightCount: 0,
       };
       const detail: ChatThreadDetail = {
         id: tempThreadId,

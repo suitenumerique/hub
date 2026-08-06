@@ -6,6 +6,8 @@ import {
   ChatMessageAuthor,
   ChatMessagesPage,
   ChatMembers,
+  ChatNotificationPreferences,
+  ChatNotificationPreferencesByChat,
   ChatReaction,
   ChatThread,
   ChatThreadDetail,
@@ -15,6 +17,7 @@ import {
   ChatUser,
   LocalChat,
   LocalChatSections,
+  SetChatThreadMutedParams,
   User,
 } from "./types";
 
@@ -165,6 +168,11 @@ export type ChatEvent =
       threadId?: string;
     }
   | { type: "unread:changed"; chatId: string; unread: ChatUnread }
+  | {
+      type: "notification-preferences:changed";
+      chatId: string;
+      preferences: ChatNotificationPreferences;
+    }
   // --- Coarse: only name what changed; the bridge invalidates & refetches -
   | { type: "chat:changed"; chatId: string }
   | {
@@ -237,6 +245,13 @@ export abstract class Driver {
   abstract markChatRead(chatId: string): Promise<void>;
   /** Initial per-conversation read state; live changes use `unread:changed`. */
   abstract getUnread(): Promise<Record<string, ChatUnread>>;
+
+  /** Initial notification preferences; live changes use the matching event. */
+  abstract getNotificationPreferences(): Promise<ChatNotificationPreferencesByChat>;
+  /** Mutes or unmutes one conversation without changing its read receipts. */
+  abstract setChatMuted(chatId: string, muted: boolean): Promise<void>;
+  /** Mutes or unmutes one thread without changing its read receipts. */
+  abstract setChatThreadMuted(params: SetChatThreadMutedParams): Promise<void>;
 
   /** Sets the current user's favourite tag for one conversation. */
   abstract setChatFavourite(chatId: string, favourite: boolean): Promise<void>;

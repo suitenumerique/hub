@@ -2,11 +2,17 @@ import { ArrowCornerDownRight } from "@gouvfr-lasuite/ui-kit/icons";
 import clsx from "clsx";
 import { useTranslation } from "react-i18next";
 
-import type { ChatThreadSummary } from "@/features/drivers/types";
+import { getThreadAttentionUnreadCount } from "@/features/chat/chatNotificationPolicy";
+import {
+  isChatThreadMuted,
+  useChatNotificationPreferences,
+} from "@/features/chat/hooks/useChatNotificationPreferences";
+import type { ChatRef, ChatThreadSummary } from "@/features/drivers/types";
 
 import { isOptimisticThreadId } from "../hooks/chatCompositionCache";
 
 type ThreadButtonProps = {
+  chatRef: ChatRef;
   summary: ChatThreadSummary;
   /** Opens the thread's detail view in the tools panel. */
   onOpen: () => void;
@@ -14,12 +20,24 @@ type ThreadButtonProps = {
 
 /**
  * The thread affordance shown under a message bubble that opened a thread
- * (Figma "Thread Button"). The unread variant is brand-tinted and appends the
- * unread count; clicking it opens the thread in the tools panel.
+ * (Figma "Thread Button"). The attention variant is brand-tinted and appends
+ * surfaced unread replies; a muted thread surfaces mentions only.
  */
-export const ThreadButton = ({ summary, onOpen }: ThreadButtonProps) => {
+export const ThreadButton = ({
+  chatRef,
+  summary,
+  onOpen,
+}: ThreadButtonProps) => {
   const { t } = useTranslation();
-  const isUnread = summary.unreadCount > 0;
+  const getNotificationPreferences = useChatNotificationPreferences();
+  const notificationPreferences = getNotificationPreferences(chatRef);
+  const threadMuted = isChatThreadMuted(notificationPreferences, summary.id);
+  const attentionUnreadCount = getThreadAttentionUnreadCount({
+    threadMuted,
+    unreadCount: summary.unreadCount,
+    highlightCount: summary.highlightCount,
+  });
+  const isUnread = attentionUnreadCount > 0;
   const isPending = isOptimisticThreadId(summary.id);
 
   const replies =
@@ -27,7 +45,7 @@ export const ThreadButton = ({ summary, onOpen }: ThreadButtonProps) => {
       ? t("1 reply")
       : t("{{count}} replies", { count: summary.replyCount });
   const label = isUnread
-    ? `${replies} • ${t("{{count}} unread", { count: summary.unreadCount })}`
+    ? `${replies} • ${t("{{count}} unread", { count: attentionUnreadCount })}`
     : replies;
 
   return (

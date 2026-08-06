@@ -4,6 +4,7 @@ import {
 } from "@gouvfr-lasuite/ui-kit/icons";
 import { useTranslation } from "react-i18next";
 
+import { getThreadAttentionUnreadCount } from "@/features/chat/chatNotificationPolicy";
 import type { ChatThread } from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
@@ -12,17 +13,26 @@ import { isOptimisticThreadId } from "../../hooks/chatCompositionCache";
 
 type ThreadListItemProps = {
   thread: ChatThread;
+  isMuted: boolean;
   onOpen: () => void;
 };
 
 /**
- * One row of the threads panel list (Figma "List Thread"). Read and unread are
- * the same markup — the `data-unread` flag drives the bold author, the brand
- * reply count and the leading dot through CSS.
+ * One row of the threads panel list (Figma "List Thread"). Neutral and attention
+ * states share the same markup: `data-unread` drives the emphasized styling.
  */
-export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
+export const ThreadListItem = ({
+  thread,
+  isMuted,
+  onOpen,
+}: ThreadListItemProps) => {
   const { t } = useTranslation();
-  const isUnread = thread.unreadCount > 0;
+  const attentionUnreadCount = getThreadAttentionUnreadCount({
+    threadMuted: isMuted,
+    unreadCount: thread.unreadCount,
+    highlightCount: thread.highlightCount,
+  });
+  const isUnread = attentionUnreadCount > 0;
   const isPending = isOptimisticThreadId(thread.id);
 
   const replies =
@@ -30,7 +40,7 @@ export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
       ? t("1 reply")
       : t("{{count}} replies", { count: thread.replyCount });
   const repliesLabel = isUnread
-    ? `${replies} • ${t("{{count}} unread", { count: thread.unreadCount })}`
+    ? `${replies} • ${t("{{count}} unread", { count: attentionUnreadCount })}`
     : replies;
 
   return (

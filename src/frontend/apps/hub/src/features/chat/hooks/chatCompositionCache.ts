@@ -147,7 +147,10 @@ export const replaceRootMessageInPages = (
 export const patchRootThreadSummary = (
   data: ChatMessagesData,
   rootMessageId: string,
-  thread: Pick<ChatThread, "id" | "replyCount" | "unreadCount">,
+  thread: Pick<
+    ChatThread,
+    "id" | "replyCount" | "unreadCount" | "highlightCount"
+  >,
   optimisticMarker?: string,
 ): ChatMessagesData => ({
   ...data,
@@ -165,6 +168,7 @@ export const patchRootThreadSummary = (
                           id: thread.id,
                           replyCount: thread.replyCount,
                           unreadCount: thread.unreadCount,
+                          highlightCount: thread.highlightCount,
                         },
                         optimisticMarker,
                       )
@@ -172,6 +176,7 @@ export const patchRootThreadSummary = (
                         id: thread.id,
                         replyCount: thread.replyCount,
                         unreadCount: thread.unreadCount,
+                        highlightCount: thread.highlightCount,
                       },
                 }
               : message,
@@ -229,7 +234,10 @@ export const rollbackOptimisticRootThreadSummary = (
 export const mergeRootThreadSummary = (
   data: ChatMessagesData,
   rootMessageId: string,
-  thread: Pick<ChatThread, "id" | "replyCount" | "unreadCount">,
+  thread: Pick<
+    ChatThread,
+    "id" | "replyCount" | "unreadCount" | "highlightCount"
+  >,
 ): ChatMessagesData => ({
   ...data,
   pages: data.pages.map((page) =>
@@ -249,6 +257,10 @@ export const mergeRootThreadSummary = (
                     unreadCount: Math.max(
                       message.thread?.unreadCount ?? 0,
                       thread.unreadCount,
+                    ),
+                    highlightCount: Math.max(
+                      message.thread?.highlightCount ?? 0,
+                      thread.highlightCount,
                     ),
                   },
                 }

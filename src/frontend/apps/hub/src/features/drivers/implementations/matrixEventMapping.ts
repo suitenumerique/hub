@@ -19,6 +19,7 @@ import {
   type MatrixEvent,
   NotificationCountType,
   RelationType,
+  RuleId,
   type Room,
   type Thread,
 } from "matrix-js-sdk/lib/matrix";
@@ -30,6 +31,7 @@ import { ChatEvent } from "../Driver";
 import {
   ChatMessage,
   ChatMessageAuthor,
+  ChatNotificationPreferences,
   ChatReaction,
   ChatThread,
   ChatThreadDetail,
@@ -40,6 +42,9 @@ import { initialsFor } from "./matrixIdentity";
 type ReactionRelations = NonNullable<
   ReturnType<Room["relations"]["getChildEventsForEvent"]>
 >;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
  * The chat UI marks a message as "sent by me" when its `authorId` is the
@@ -97,6 +102,81 @@ export const computeRoomUnread = (
         !room.hasUserReadEvent(selfUserId, eventId!)
       );
     });
+};
+
+/** Loaded unread main-timeline messages, used for mention-aware projection. */
+const roomUnreadMessageEvents = (
+  room: Room,
+  selfUserId: string | undefined,
+): MatrixEvent[] => {
+  if (!selfUserId) {
+    return [];
+  }
+  return room
+    .getLiveTimeline()
+    .getEvents()
+    .filter(isMainTimelineMessage)
+    .filter((event) => {
+      if (event.isRedacted()) {
+        return false;
+      }
+      const eventId = event.getId();
+      return (
+        Boolean(eventId) &&
+        event.getSender() !== selfUserId &&
+        !room.hasUserReadEvent(selfUserId, eventId!)
+      );
+    });
+};
+
+/**
+ * Matrix intentional mentions are authoritative when present. A room mention
+ * additionally needs an applicable SDK highlight, which incorporates the
+ * sender's room-notification permission. Older events fall back entirely to
+ * the SDK's push calculation.
+ */
+const eventHasSdkHighlight = (room: Room, event: MatrixEvent): boolean =>
+  Boolean(room.client.getPushActionsForEvent(event)?.tweaks?.highlight);
+
+export const eventHighlightsUser = (
+  room: Room,
+  event: MatrixEvent,
+  selfUserId: string | undefined,
+): boolean => {
+  if (!selfUserId || event.isRedacted() || event.getSender() === selfUserId) {
+    return false;
+  }
+  const content = event.getContent<Record<string, unknown>>();
+  const mentions = content["m.mentions"];
+  const sdkHighlights = () => eventHasSdkHighlight(room, event);
+
+  if (mentions !== undefined) {
+    if (!isRecord(mentions)) {
+      return false;
+    }
+    const userIds = mentions.user_ids;
+    const roomMention = mentions.room;
+    if (
+      (userIds !== undefined &&
+        (!Array.isArray(userIds) ||
+          !userIds.every((userId) => typeof userId === "string"))) ||
+      (roomMention !== undefined && typeof roomMention !== "boolean")
+    ) {
+      return false;
+    }
+    if (Array.isArray(userIds) && userIds.includes(selfUserId)) {
+      return true;
+    }
+    if (roomMention !== true) {
+      return false;
+    }
+    const details = room.client.getPushDetailsForEvent(event);
+    return (
+      details?.rule?.rule_id === RuleId.IsRoomMention &&
+      Boolean(details.actions?.tweaks?.highlight)
+    );
+  }
+  return sdkHighlights();
 };
 
 /** Whether an ephemeral receipt event advances this connected user's marker. */
@@ -255,6 +335,23 @@ export const sortedThreadReplyEvents = (thread: Thread): MatrixEvent[] =>
  * Loaded unread replies for threads relevant to the user. Matrix notification
  * counts remain the authority when the list has not loaded every reply yet.
  */
+const unreadThreadReplyEvents = (
+  thread: Thread,
+  selfUserId: string | undefined,
+): MatrixEvent[] => {
+  if (!selfUserId) {
+    return [];
+  }
+  return sortedThreadReplyEvents(thread).filter((event) => {
+    const eventId = event.getId();
+    return (
+      Boolean(eventId) &&
+      event.getSender() !== selfUserId &&
+      !thread.hasUserReadEvent(selfUserId, eventId!)
+    );
+  });
+};
+
 const threadUnreadReplyEvents = (
   room: Room,
   thread: Thread,
@@ -270,17 +367,10 @@ const threadUnreadReplyEvents = (
   if (!relevant) {
     return [];
   }
-  return sortedThreadReplyEvents(thread).filter((event) => {
-    const eventId = event.getId();
-    return (
-      Boolean(eventId) &&
-      event.getSender() !== selfUserId &&
-      !thread.hasUserReadEvent(selfUserId, eventId!)
-    );
-  });
+  return unreadThreadReplyEvents(thread, selfUserId);
 };
 
-const computeThreadUnread = (
+export const computeThreadUnread = (
   room: Room,
   thread: Thread,
   selfUserId: string | undefined,
@@ -293,20 +383,106 @@ const computeThreadUnread = (
     threadUnreadReplyEvents(room, thread, selfUserId).length,
   );
 
+export const computeThreadHighlight = (
+  room: Room,
+  thread: Thread,
+  selfUserId: string | undefined,
+): number => {
+  const loadedUnread = unreadThreadReplyEvents(thread, selfUserId);
+  const loadedHighlights = loadedUnread.filter((event) =>
+    eventHighlightsUser(room, event, selfUserId),
+  ).length;
+  const loadedSdkHighlights = loadedUnread.filter((event) =>
+    eventHasSdkHighlight(room, event),
+  ).length;
+  // The SDK counter is only a compatibility fallback for unread replies which
+  // are not materialized yet. Remove raw SDK highlights attributable to loaded
+  // events, then replace them with the stricter intentional-mention result.
+  // The Total counter cannot delimit loaded events: muted ordinary replies may
+  // be receipt-unread without being counted as push notifications at all.
+  const unresolvedServerHighlights = Math.max(
+    0,
+    room.getThreadUnreadNotificationCount(
+      thread.id,
+      NotificationCountType.Highlight,
+    ) - loadedSdkHighlights,
+  );
+  return loadedHighlights + unresolvedServerHighlights;
+};
+
+const computeRoomHighlight = (
+  room: Room,
+  selfUserId: string | undefined,
+): number => {
+  const loadedUnread = roomUnreadMessageEvents(room, selfUserId);
+  const loadedHighlights = loadedUnread.filter((event) =>
+    eventHighlightsUser(room, event, selfUserId),
+  ).length;
+  const loadedSdkHighlights = loadedUnread.filter((event) =>
+    eventHasSdkHighlight(room, event),
+  ).length;
+  const unresolvedServerHighlights = Math.max(
+    0,
+    room.getRoomUnreadNotificationCount(NotificationCountType.Highlight) -
+      loadedSdkHighlights,
+  );
+  return loadedHighlights + unresolvedServerHighlights;
+};
+
+/**
+ * Room mute keeps main-timeline unread truth visible. A muted thread contributes
+ * to room attention only when one of its unread replies is a mention.
+ */
 export const roomUnread = (
   room: Room,
   selfUserId: string | undefined,
-): ChatUnread => ({
-  unread:
-    room.getUnreadNotificationCount(NotificationCountType.Total) > 0 ||
-    computeRoomUnread(room, selfUserId) ||
-    room
-      .getThreads()
-      .some((thread) => computeThreadUnread(room, thread, selfUserId) > 0),
-  // Unlike getRoomUnreadNotificationCount, this includes thread mentions.
-  highlight:
-    room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0,
-});
+  preferences?: ChatNotificationPreferences,
+): ChatUnread => {
+  const threads = room.getThreads();
+  const threadProjections = threads.map((thread) => ({
+    thread,
+    unreadCount: computeThreadUnread(room, thread, selfUserId),
+    highlightCount: computeThreadHighlight(room, thread, selfUserId),
+  }));
+  const roomHighlightCount = computeRoomHighlight(room, selfUserId);
+  const aggregateHighlightCount = room.getUnreadNotificationCount(
+    NotificationCountType.Highlight,
+  );
+  const materializedServerHighlightCount =
+    room.getRoomUnreadNotificationCount(NotificationCountType.Highlight) +
+    threads.reduce(
+      (total, thread) =>
+        total +
+        room.getThreadUnreadNotificationCount(
+          thread.id,
+          NotificationCountType.Highlight,
+        ),
+      0,
+    );
+  // Preserve mention attention for a thread which the SDK has not materialized
+  // at all. Highlights already attributed to loaded room/thread timelines are
+  // not trusted here: their events were inspected above, so modern mention data
+  // can reject arbitrary custom push-rule highlights.
+  const unmaterializedHighlight =
+    aggregateHighlightCount > materializedServerHighlightCount;
+  const threadAttention = threadProjections.some(
+    ({ thread, unreadCount, highlightCount }) =>
+      preferences?.threads[thread.id]?.muted
+        ? highlightCount > 0
+        : unreadCount > 0 || highlightCount > 0,
+  );
+  const threadHighlight = threadProjections.some(
+    ({ highlightCount }) => highlightCount > 0,
+  );
+  return {
+    unread:
+      computeRoomUnread(room, selfUserId) ||
+      unmaterializedHighlight ||
+      threadAttention,
+    highlight:
+      unmaterializedHighlight || roomHighlightCount > 0 || threadHighlight,
+  };
+};
 
 export const authorForSender = (
   room: Room,
@@ -604,6 +780,7 @@ export const matrixEventToChatMessage = (
       id: thread.id,
       replyCount: threadReplyCount(thread),
       unreadCount: computeThreadUnread(room, thread, selfUserId),
+      highlightCount: computeThreadHighlight(room, thread, selfUserId),
     };
   }
   return message;
@@ -627,6 +804,7 @@ export const threadToChatThread = (
     lastReplyDeleted,
     replyCount: threadReplyCount(thread),
     unreadCount: computeThreadUnread(room, thread, selfUserId),
+    highlightCount: computeThreadHighlight(room, thread, selfUserId),
   };
 };
 

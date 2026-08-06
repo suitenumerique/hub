@@ -58,6 +58,37 @@ export type ChatUnread = {
 };
 
 /**
+ * Private notification preferences for one conversation. They deliberately
+ * live outside read state: muting changes attention, never receipt truth.
+ */
+export type ChatNotificationPreferences = {
+  room: {
+    muted: boolean;
+    /**
+     * Activity cursor frozen at mute time and kept through the no-replay phase
+     * until a later activity resumes normal ranking.
+     */
+    rankingActivityAt?: string;
+  };
+  threads: Record<string, { muted: boolean }>;
+};
+
+/** Per-conversation notification preferences returned by one account driver. */
+export type ChatNotificationPreferencesByChat = Record<
+  string,
+  ChatNotificationPreferences
+>;
+
+export type SetChatMutedParams = {
+  chatId: string;
+  muted: boolean;
+};
+
+export type SetChatThreadMutedParams = SetChatMutedParams & {
+  threadId: string;
+};
+
+/**
  * The current user's relationship to a conversation. `join` is a normal,
  * sendable conversation; `invite` is a pending incoming invitation that must be
  * accepted before its timeline becomes available. Driver-neutral: the Matrix
@@ -220,6 +251,8 @@ export type ChatThreadSummary = {
   replyCount: number;
   /** Replies the current user has not read yet. `0` when fully read. */
   unreadCount: number;
+  /** Still-unread replies that contain an applicable Matrix mention. */
+  highlightCount: number;
 };
 
 export type ChatMessage = {
@@ -305,6 +338,8 @@ export type ChatThread = {
   replyCount: number;
   /** Replies the current user has not read yet. `0` when fully read. */
   unreadCount: number;
+  /** Still-unread replies that contain an applicable Matrix mention. */
+  highlightCount: number;
 };
 
 /**

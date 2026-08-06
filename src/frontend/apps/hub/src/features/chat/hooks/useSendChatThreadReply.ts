@@ -139,6 +139,7 @@ export const useSendChatThreadReply = (
           lastReplyPreview: optimistic.content,
           replyCount: Math.max(current.replyCount + 1, expectedReplyCount),
           unreadCount: 0,
+          highlightCount: 0,
         });
       });
       if (rootMessageId) {
@@ -151,6 +152,7 @@ export const useSendChatThreadReply = (
                   id: threadId,
                   replyCount: expectedReplyCount,
                   unreadCount: 0,
+                  highlightCount: 0,
                 },
                 optimistic.id,
               )
@@ -218,6 +220,10 @@ export const useSendChatThreadReply = (
             current?.unreadCount ?? 0,
             normalizedThread.unreadCount,
           ),
+          highlightCount: Math.max(
+            current?.highlightCount ?? 0,
+            normalizedThread.highlightCount,
+          ),
         });
       });
       queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) =>
@@ -270,6 +276,10 @@ export const useSendChatThreadReply = (
                 optimisticEntry.unreadCount === 0
                   ? context.previousThreadListEntry.unreadCount
                   : optimisticEntry.unreadCount,
+              highlightCount:
+                optimisticEntry.highlightCount === 0
+                  ? context.previousThreadListEntry.highlightCount
+                  : optimisticEntry.highlightCount,
             })
           : removeThread(current, threadId);
       });

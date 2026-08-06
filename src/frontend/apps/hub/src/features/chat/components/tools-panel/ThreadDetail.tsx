@@ -1,4 +1,4 @@
-import { Bell } from "@gouvfr-lasuite/ui-kit/icons";
+import { Bell, BellOff } from "@gouvfr-lasuite/ui-kit/icons";
 import {
   Fragment,
   useCallback,
@@ -18,6 +18,11 @@ import {
 } from "../../ChatMessageEditContext";
 import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
+import {
+  isChatThreadMuted,
+  useChatNotificationPreferences,
+} from "../../hooks/useChatNotificationPreferences";
+import { useChatThreadMute } from "../../hooks/useChatNotificationMutations";
 import { useEditChatMessage } from "../../hooks/useEditChatMessage";
 import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
 import { ChatBubble } from "../ChatBubble";
@@ -49,6 +54,13 @@ export const ThreadDetail = ({
     threadId,
   );
   const { markThreadRead } = useChatThreadActions(chatRef);
+  const getNotificationPreferences = useChatNotificationPreferences();
+  const notificationPreferences = getNotificationPreferences(chatRef);
+  const isMuted = isChatThreadMuted(notificationPreferences, threadId);
+  const { setMuted, isPending: isMutePending } = useChatThreadMute(
+    chatRef,
+    threadId,
+  );
   const { sendReply, isSending, isSupported } = useSendChatThreadReply(
     chatRef,
     threadId,
@@ -161,17 +173,22 @@ export const ThreadDetail = ({
     return map;
   }, [thread]);
 
-  // Inert — thread mute is wired through the driver in a later change.
   const muteAction = (
     <button
       type="button"
       className="hub__chat-tools-panel__header-button"
-      aria-label={t("Mute thread")}
+      aria-label={
+        isMuted
+          ? t("Unmute thread notifications")
+          : t("Mute thread notifications")
+      }
+      aria-pressed={isMuted}
+      aria-busy={isMutePending || undefined}
       tabIndex={isOpen ? 0 : -1}
-      disabled
-      aria-disabled="true"
+      disabled={isMutePending}
+      onClick={() => setMuted(!isMuted)}
     >
-      <Bell />
+      {isMuted ? <BellOff /> : <Bell />}
     </button>
   );
 
