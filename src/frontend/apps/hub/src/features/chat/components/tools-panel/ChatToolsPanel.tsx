@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-import type { ChatDocument, ChatRef } from "@/features/drivers/types";
+import type { ChatRef } from "@/features/drivers/types";
 import type {
   DraftThreadRoot,
   OpenThreadOptions,
@@ -25,7 +25,6 @@ type ChatToolsPanelProps = {
   onClose: () => void;
   onOpenThread: (threadId: string, options?: OpenThreadOptions) => void;
   onCloseThread: () => void;
-  onOpenFile?: (doc: ChatDocument) => void;
 };
 
 export const ChatToolsPanel = ({
@@ -38,7 +37,6 @@ export const ChatToolsPanel = ({
   onClose,
   onOpenThread,
   onCloseThread,
-  onOpenFile,
 }: ChatToolsPanelProps) => {
   const { t } = useTranslation();
 
@@ -55,7 +53,7 @@ export const ChatToolsPanel = ({
             isOpen={isOpen}
             onClose={onClose}
           />
-          <DocumentsTool chatRef={chatRef} onOpenFile={onOpenFile} />
+          <DocumentsTool />
         </>
       )}
       {tool === "threads" && (

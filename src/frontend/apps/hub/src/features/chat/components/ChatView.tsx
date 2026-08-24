@@ -1,8 +1,7 @@
-import { FilePreview } from "@gouvfr-lasuite/ui-kit";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { Chat, ChatDocument, ChatRef } from "@/features/drivers/types";
+import type { Chat, ChatRef } from "@/features/drivers/types";
 
 import { isInvitationChat } from "../chatMembership";
 import {
@@ -26,7 +25,6 @@ import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
-import { documentToPreviewFile } from "./tools-panel/documentToPreviewFile";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 import { TypingIndicator } from "./TypingIndicator";
 
@@ -51,7 +49,7 @@ type ChatViewProps = {
 
 /**
  * Top-level chat surface. Keeps its shell mounted across conversation
- * switches (so `<AccountSelector>` and the panel state survive) by taking
+ * switches (so the shell and panel state survive) by taking
  * `chatRef` directly and loading the conversation through `useChat` —
  * `<ChatHeader>` renders a skeleton while the chat is being fetched.
  */
@@ -104,10 +102,6 @@ export const ChatView = ({
   const [focusThreadComposer, setFocusThreadComposer] = useState(false);
   const [draftThreadRoot, setDraftThreadRoot] =
     useState<DraftThreadRoot | null>(null);
-  const [openedDocument, setOpenedDocument] = useState<ChatDocument | null>(
-    null,
-  );
-
   useEffect(() => {
     if (activeTool !== null) {
       setDisplayedTool(activeTool);
@@ -116,7 +110,6 @@ export const ChatView = ({
 
   // A thread id belongs to a single conversation — reset panel state on switch.
   useEffect(() => {
-    setOpenedDocument(null);
     setActiveThreadId(null);
     setFocusThreadComposer(false);
     setDraftThreadRoot(null);
@@ -136,8 +129,6 @@ export const ChatView = ({
   };
 
   const closePanel = () => setActiveTool(null);
-
-  const closePreview = () => setOpenedDocument(null);
 
   const openThread = useCallback(
     (threadId: string, options?: OpenThreadOptions) => {
@@ -267,18 +258,9 @@ export const ChatView = ({
                 onClose={closePanel}
                 onOpenThread={openThread}
                 onCloseThread={closeThread}
-                onOpenFile={setOpenedDocument}
               />
             )}
           </div>
-          <FilePreview
-            isOpen={openedDocument !== null}
-            onClose={closePreview}
-            files={
-              openedDocument ? [documentToPreviewFile(openedDocument)] : []
-            }
-            openedFileId={openedDocument?.id}
-          />
         </div>
       </ChatPanelProvider>
     </ChatMessageEditProvider>
