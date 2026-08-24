@@ -7,14 +7,12 @@ const destroy = vi.fn();
 const initialize = vi.fn();
 
 vi.mock("@/features/config/Config", () => ({
-  createDriver: (kind: string, accountId: string) =>
+  createDriver: (accountId: string) =>
     ({
       accountId,
-      kind,
       destroy,
       initialize,
     }) as unknown as Driver,
-  resolveDriverKind: () => "mock",
 }));
 
 describe("DriverRegistry", () => {
@@ -30,14 +28,12 @@ describe("DriverRegistry", () => {
       registry.reconcile([
         {
           accountId: "same",
-          kind: "mock",
           label: "A",
           criticality: "required",
           enabled: true,
         },
         {
           accountId: "same",
-          kind: "mock",
           label: "B",
           criticality: "optional",
           enabled: true,
@@ -52,14 +48,12 @@ describe("DriverRegistry", () => {
     registry.reconcile([
       {
         accountId: "account-a",
-        kind: "mock",
         label: "A",
         criticality: "required",
         enabled: true,
       },
       {
         accountId: "account-b",
-        kind: "mock",
         label: "B",
         criticality: "optional",
         enabled: true,
@@ -79,7 +73,6 @@ describe("DriverRegistry", () => {
     registry.reconcile([
       {
         accountId: "account-a",
-        kind: "mock",
         label: "A",
         criticality: "required",
         enabled: true,
@@ -88,7 +81,6 @@ describe("DriverRegistry", () => {
     registry.reconcile([
       {
         accountId: "account-a",
-        kind: "mock",
         label: "A",
         criticality: "required",
         enabled: false,
@@ -103,7 +95,6 @@ describe("DriverRegistry", () => {
     const registry = new DriverRegistry();
     const config = {
       accountId: "matrix-local",
-      kind: "matrix" as const,
       label: "Matrix",
       criticality: "required" as const,
       enabled: true,

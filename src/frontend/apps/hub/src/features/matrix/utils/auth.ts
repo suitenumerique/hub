@@ -7,34 +7,25 @@ import {
   MatrixError,
   OidcClientConfig,
   OidcTokenRefresher,
-  registerOidcClient,
   type TokenRefreshFunction,
 } from "matrix-js-sdk/lib/matrix";
 import { secureRandomString } from "matrix-js-sdk/lib/randomstring";
 import { type IdTokenClaims } from "oidc-client-ts";
 
-import { type MatrixBranding } from "../config";
 import { CompleteOidcLoginResponse } from "../types";
 
 // OIDC response mode used for the authorization request.
 const RESPONSE_MODE = "query";
 // Nonce length, in characters. OIDC recommends a high-entropy value.
 const NONCE_LENGTH = 32;
-// localStorage prefix for the dynamically-registered client id. The cache is
-// scoped by homeserver and redirect URI because a dynamic client is registered
-// with the exact redirect URI it is allowed to use.
-const REGISTERED_CLIENT_PREFIX = "oidc_dyn_client:";
-
 /**
- * Builds the OIDC authorization URL to redirect the user to. Registers a
- * dynamic client with the homeserver's issuer (cached per homeserver) and
- * returns the URL that starts the authorization-code flow.
+ * Builds the OIDC authorization URL for a client already registered on the
+ * configured Matrix account's delegated-auth issuer.
  */
 export const getOIDCAuthUrl = async (
   homeserverUrl: string,
   email: string,
-  branding: MatrixBranding,
-  oidcClientId?: string,
+  oidcClientId: string,
 ): Promise<string> => {
   const delegatedAuthConfig = await fetchDelegatedAuthMetadata(homeserverUrl);
   if (!delegatedAuthConfig) {
@@ -43,30 +34,10 @@ export const getOIDCAuthUrl = async (
 
   const redirectUri = new URL(window.location.origin + window.location.pathname)
     .href;
-  const clientUri = window.location.origin;
-
-  const clientId =
-    oidcClientId ??
-    (await getOrRegisterClientId(
-      homeserverUrl,
-      redirectUri,
-      delegatedAuthConfig,
-      {
-        clientName: branding.clientName,
-        clientUri,
-        redirectUris: [redirectUri],
-        logoUri: branding.logoUri,
-        applicationType: "web",
-        contacts: [],
-        tosUri: "",
-        policyUri: "",
-      },
-    ));
-
   return generateOidcAuthorizationUrl({
     metadata: delegatedAuthConfig,
     redirectUri,
-    clientId,
+    clientId: oidcClientId,
     homeserverUrl,
     identityServerUrl: homeserverUrl,
     nonce: secureRandomString(NONCE_LENGTH),
@@ -74,22 +45,6 @@ export const getOIDCAuthUrl = async (
     loginHint: email,
     responseMode: RESPONSE_MODE,
   });
-};
-
-const getOrRegisterClientId = async (
-  homeserverUrl: string,
-  redirectUri: string,
-  metadata: OidcClientConfig,
-  registration: Parameters<typeof registerOidcClient>[1],
-): Promise<string> => {
-  const cacheKey = `${REGISTERED_CLIENT_PREFIX}${homeserverUrl}:${redirectUri}`;
-  const cached = localStorage.getItem(cacheKey);
-  if (cached) {
-    return cached;
-  }
-  const clientId = await registerOidcClient(metadata, registration);
-  localStorage.setItem(cacheKey, clientId);
-  return clientId;
 };
 
 const fetchDelegatedAuthMetadata = async (
@@ -123,17 +78,10 @@ export const completeOidcLogin = async (params: {
   state: string;
 }): Promise<CompleteOidcLoginResponse> => {
   const { code, state } = params;
-  const {
-    homeserverUrl,
-    tokenResponse,
-    idTokenClaims,
-    identityServerUrl,
-    oidcClientSettings,
-  } = await completeAuthorizationCodeGrant(code, state, RESPONSE_MODE);
+  const { tokenResponse, idTokenClaims, oidcClientSettings } =
+    await completeAuthorizationCodeGrant(code, state, RESPONSE_MODE);
 
   return {
-    homeserverUrl,
-    identityServerUrl,
     accessToken: tokenResponse.access_token,
     refreshToken: tokenResponse.refresh_token,
     idToken: tokenResponse.id_token,
@@ -169,8 +117,8 @@ class HubOidcTokenRefresher extends OidcTokenRefresher {
 
 /**
  * Builds the `tokenRefreshFunction` the Matrix client calls when it hits an
- * expired access token. Tchap issues short-lived OIDC tokens, so without this
- * the SDK 401s on every request after the token lapses and self-logs-out.
+ * expired access token. Without this, the SDK treats a 401 after token expiry
+ * as a hard logout.
  * `onTokensRefreshed` lets the caller persist the rotated tokens for the next
  * page load.
  */
@@ -200,13 +148,11 @@ export const buildOidcTokenRefreshFunction = (params: {
 export const getUserIdFromAccessToken = async (
   accessToken: string,
   homeserverUrl: string,
-  identityServerUrl?: string,
 ): Promise<ReturnType<MatrixClient["whoami"]>> => {
   try {
     const client = createClient({
       baseUrl: homeserverUrl,
       accessToken,
-      idBaseUrl: identityServerUrl,
     });
     return await client.whoami();
   } catch (error) {

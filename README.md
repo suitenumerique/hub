@@ -134,13 +134,12 @@ The **dev-only Matrix stack** is started separately with `make run-matrix` and a
 
 A self-contained, dev-only Matrix stack - Synapse, Matrix Authentication Service
 (MAS) and Element Web - lets developers work against a real local homeserver
-without depending on Tchap. MAS delegates authentication to the project Keycloak
-realm (`hub`).
+through the project Keycloak realm (`hub`).
 
 Dev-only warning: the stack ships obviously-fake committed secrets, generates
 its private signing keys locally under the git-ignored `data/matrix/`, and
-allows OIDC client registration over `http://localhost`; it must never be
-deployed.
+uses pre-registered development OIDC clients over `http://localhost`; it must
+never be deployed.
 
 It is an isolated Compose overlay (`compose.matrix.yml`). The normal stack
 (`make run`, `make run-backend`, `make stop`) never starts or stops Matrix
@@ -154,6 +153,18 @@ $ make run-matrix
 $ make stop-matrix
 $ make down-matrix
 ```
+
+For the Hub chat frontend, start the local runtime explicitly in this order:
+
+```shellscript
+$ make run-matrix
+$ make seed-matrix # optional
+$ make run-frontend-development
+```
+
+`make run` does not start Matrix implicitly. See
+[`docs/frontend/matrix-local-runtime.md`](docs/frontend/matrix-local-runtime.md)
+for the frontend runtime and extension seams.
 
 Then open <http://localhost:9807>, click **Sign in** then SSO, and log in with
 a Keycloak realm user such as `hub` / `hub`. Element returns connected as

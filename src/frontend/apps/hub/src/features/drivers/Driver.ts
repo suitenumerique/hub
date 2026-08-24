@@ -1,6 +1,5 @@
 import {
   AccountId,
-  ChatDocumentsPage,
   ChatLocalUser,
   ChatMessage,
   ChatMessageAuthor,
@@ -111,7 +110,7 @@ export type StartChatThreadParams = {
 /**
  * Backend-agnostic connection lifecycle. The UI only ever observes this status;
  * *how* a connection is established (Matrix OIDC handshake, a backend session
- * cookie, nothing at all for mocks) is entirely the driver's concern.
+ * cookie, or another protocol) is entirely the driver's concern.
  */
 export type ChatConnectionStatus =
   | "idle"
@@ -174,7 +173,6 @@ export type ChatEvent =
        * detail and only the thread list metadata needs a refresh. */
       invalidateDetails?: boolean;
     }
-  | { type: "documents:changed"; chatId: string }
   | { type: "members:changed"; chatId: string }
   | { type: "tags:changed"; chatId: string }
   | { type: "chats:changed" };
@@ -210,7 +208,6 @@ export abstract class Driver {
   abstract getChatMessages(
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;
-  abstract getChatDocuments(chatId: string): Promise<ChatDocumentsPage>;
   /**
    * Toggles the current user's reaction with `emoji` on a message and resolves
    * with the updated message. Adding when absent, removing when already
@@ -362,8 +359,8 @@ export abstract class Driver {
 
   // --- Connection lifecycle (generic) -------------------------------------
   // Default implementations make a driver "connected" with no handshake, so
-  // mock / cookie-based backends need not override them. Stateful backends
-  // (Matrix…) override `connect` to drive an auth flow. Connection state is
+  // backends that need no handshake need not override them. Stateful backends
+  // override `connect` to drive an auth flow. Connection state is
   // owned by React Query (see `useChatConnection`), not a bespoke store.
 
   /** Run once when the driver becomes the active driver. Default: no-op. */

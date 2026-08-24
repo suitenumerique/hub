@@ -12,16 +12,13 @@ and this project adheres to
 - 🏗️(frontend) Initialize unit tests setup
 - 🏗️(frontend) Initialize end-to-end (e2e) tests setup
 - ✨(frontend) Add chat layout with LeftPanel and virtualized chat view
-- ✨(frontend) Add tool panel with document list
-- ✨(frontend) Add file preview (PDF, image, video, audio) in the tools panel
 - ✨(frontend) Add message reactions bar with reaction toggle and emoji picker
 - ✨(frontend) Add conversation threads with tools panel and unread banner
 - ✨(frontend) Add new conversation page logic
-- ✨(frontend) Add mocked chat message composition and thread replies
 - ✨(frontend) Open conversation when sending to it from the new chat search
 - ✨(docker) Add a local dev-only Matrix stack with Keycloak auth and seed
 - ✨(docker) Add a Matrix reset command with users-only provisioning
-- ✨(frontend) Add the local Matrix frontend scope with lazy MAS/OIDC client
+- ✨(frontend) Add the local Matrix frontend runtime with lazy MAS/OIDC client
   setup
 - ✨(frontend) Bridge Matrix `/sync` onto the real-time chat event stream
 - ✨(frontend) Send text messages from the Hub to Matrix conversations
@@ -35,6 +32,8 @@ and this project adheres to
 
 ### Changed
 
+- ♻️(frontend) Use the local Matrix account as the sole chat runtime
+- ♻️(frontend) Show Documents as unavailable until Matrix media support lands
 - ♻️(frontend) Simplify the conversation auto-scroll onto the Virtuoso API
 - 💄(frontend) Use the brand color for the current user's message bubbles
 

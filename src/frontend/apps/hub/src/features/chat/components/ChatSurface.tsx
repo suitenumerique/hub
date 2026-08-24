@@ -72,10 +72,9 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     }
   }, [isNew]);
 
-  // The composer account can change while /chat/new stays mounted (scope switch
-  // from the left panel). Reset the whole draft — including the selection, whose
-  // participant ids belong to the previous account's directory — so a confirm
-  // never creates a conversation with foreign ids under the new account.
+  // Keep this reset account-scoped: if another configured Matrix account is
+  // introduced later, participant ids from one directory must never leak into
+  // a conversation created on another server.
   useEffect(() => {
     setSelectedUsers([]);
     setQuery("");

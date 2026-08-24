@@ -1,6 +1,8 @@
 import { useRouter } from "next/router";
+import { useEffect } from "react";
 
 import { readChatRef } from "@/features/chat/chatRefs";
+import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import { HubLayout } from "@/features/layouts/HubLayout";
 import type { NextPageWithLayout } from "@/features/layouts/NextPageWithLayout";
 
@@ -16,8 +18,24 @@ import { ChatSurface } from "./ChatSurface";
  */
 const ChatRoute: NextPageWithLayout = () => {
   const router = useRouter();
+  const entries = useDriverEntries();
   const isNew = router.pathname === "/chat/new";
   const urlChatRef = router.isReady ? readChatRef(router.query) : null;
+  const hasKnownAccount = Boolean(
+    urlChatRef &&
+    entries.some((entry) => entry.accountId === urlChatRef.accountId),
+  );
+  const mustRedirect = router.isReady && !isNew && !hasKnownAccount;
+
+  useEffect(() => {
+    if (mustRedirect) {
+      void router.replace("/chat/new");
+    }
+  }, [mustRedirect, router]);
+
+  if (mustRedirect) {
+    return null;
+  }
 
   return <ChatSurface isNew={isNew} urlChatRef={urlChatRef} />;
 };

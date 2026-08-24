@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { createDriver, resolveDriverKind } from "@/features/config/Config";
+import { createDriver } from "@/features/config/Config";
 
 import type { Driver } from "./Driver";
 import type { AccountId, ChatAccountConfig } from "./types";
@@ -10,14 +10,6 @@ export type DriverEntry = ChatAccountConfig & {
   settingsFingerprint: string;
 };
 
-const fallbackConfig = (): ChatAccountConfig => ({
-  accountId: "default",
-  kind: resolveDriverKind(),
-  label: "default",
-  criticality: "required",
-  enabled: true,
-});
-
 const snapshotEquals = (a: DriverEntry[], b: DriverEntry[]): boolean =>
   a.length === b.length &&
   a.every((entry, index) => {
@@ -25,7 +17,6 @@ const snapshotEquals = (a: DriverEntry[], b: DriverEntry[]): boolean =>
     return (
       other !== undefined &&
       entry.accountId === other.accountId &&
-      entry.kind === other.kind &&
       entry.label === other.label &&
       entry.criticality === other.criticality &&
       entry.enabled === other.enabled &&
@@ -74,12 +65,10 @@ export class DriverRegistry {
       const existing = this.entries.get(config.accountId);
       const settingsFingerprint = fingerprintSettings(config.settings);
       const canReuseDriver =
-        existing &&
-        existing.kind === config.kind &&
-        existing.settingsFingerprint === settingsFingerprint;
+        existing && existing.settingsFingerprint === settingsFingerprint;
       const driver = canReuseDriver
         ? existing.driver
-        : createDriver(config.kind, config.accountId, config.settings);
+        : createDriver(config.accountId, config.settings ?? {});
 
       if (existing && existing.driver !== driver) {
         existing.driver.destroy();
@@ -122,17 +111,16 @@ export class DriverRegistry {
   }
 
   private prepareConfigs(configs: ChatAccountConfig[]): ChatAccountConfig[] {
-    const prepared = configs.length > 0 ? configs : [fallbackConfig()];
     const seen = new Set<AccountId>();
 
-    prepared.forEach((config) => {
+    configs.forEach((config) => {
       if (seen.has(config.accountId)) {
         throw new Error(`Duplicate chat account id: ${config.accountId}`);
       }
       seen.add(config.accountId);
     });
 
-    return prepared.filter((config) => config.enabled);
+    return configs.filter((config) => config.enabled);
   }
 
   private emit(): void {

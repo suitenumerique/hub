@@ -13,8 +13,7 @@ const DISCONNECTED: ChatConnectionState = {
 /**
  * Backend-agnostic chat connection. Delegates the handshake to the active
  * driver and lets React Query own the resulting state — no bespoke store. The
- * query is keyed by the Hub user so logging in/out re-runs the handshake; mock
- * (and any no-handshake) drivers resolve immediately as `connected`.
+ * query is keyed by the Hub user so logging in/out re-runs the handshake.
  */
 export const useChatConnections = (
   user: User | null | undefined,

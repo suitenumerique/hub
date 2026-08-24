@@ -31,10 +31,10 @@ vi.mock("@/features/drivers/DriverRegistry", () => ({
   useDriverEntries: () => [
     {
       accountId: "account-a",
-      kind: "mock",
       label: "Account A",
       criticality: "required",
       enabled: true,
+      settingsFingerprint: "",
       driver: { subscribeToEvents },
     },
   ],
@@ -163,10 +163,6 @@ describe("useChatEvents", () => {
     [
       { type: "threads:changed", chatId: "c1" },
       ["chat-threads", "account-a", "c1"],
-    ],
-    [
-      { type: "documents:changed", chatId: "c1" },
-      ["chat-documents", "account-a", "c1"],
     ],
     [
       { type: "members:changed", chatId: "c1" },

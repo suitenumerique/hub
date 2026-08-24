@@ -4,8 +4,8 @@ import { emojiToCodepoints } from "./fluentEmoji";
 
 /**
  * Pure toggle of the current user's reaction with `emoji` against an aggregated
- * reaction list. Shared by the mock driver (store mutation) and the
- * `useToggleReaction` optimistic update so the two can never drift.
+ * reaction list. Shared by the Matrix mapping and the `useToggleReaction`
+ * optimistic update so the two can never drift.
  *
  * Reactions are matched by normalized emoji identity (`emojiToCodepoints`,
  * which drops the `fe0f` variation selector) so variant encodings of the same

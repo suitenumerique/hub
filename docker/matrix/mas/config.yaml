@@ -53,7 +53,7 @@ matrix:
 passwords:
   enabled: false
 
-# Dev-only static OAuth client reserved for the future Hub Matrix driver.
+# Dev-only static OAuth client used by the Hub Matrix driver.
 # Element Web still uses dynamic registration below.
 clients:
   - client_id: 01J00000000000000000000000

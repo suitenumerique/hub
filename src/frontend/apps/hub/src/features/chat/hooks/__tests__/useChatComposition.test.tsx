@@ -46,10 +46,10 @@ vi.mock("@/features/drivers/DriverRegistry", () => ({
   useDriverEntries: () => [
     {
       accountId: "account-a",
-      kind: "mock",
       label: "Account A",
       criticality: "required",
       enabled: true,
+      settingsFingerprint: "",
       driver,
     },
   ],

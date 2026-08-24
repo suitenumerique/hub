@@ -211,12 +211,6 @@ const applyChatEvent = (
       }
       return;
 
-    case "documents:changed":
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.documents(ref),
-      });
-      return;
-
     case "members:changed":
       void queryClient.invalidateQueries({
         queryKey: chatKeys.members(ref),

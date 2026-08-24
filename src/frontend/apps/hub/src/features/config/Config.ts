@@ -1,30 +1,27 @@
 import { Driver } from "../drivers/Driver";
 import { LazyMatrixDriver } from "../drivers/implementations/LazyMatrixDriver";
-import { MockDriver } from "../drivers/implementations/MockDriver";
-import type { AccountId, DriverKind } from "../drivers/types";
+import type { AccountId, ChatAccountConfig } from "../drivers/types";
+import { MATRIX_LOCAL_SETTINGS } from "../matrix/config";
+
+export const MATRIX_LOCAL_ACCOUNT_ID = "matrix-local";
+
+export const MATRIX_LOCAL_ACCOUNT: ChatAccountConfig = {
+  accountId: MATRIX_LOCAL_ACCOUNT_ID,
+  label: "Matrix local",
+  criticality: "required",
+  enabled: true,
+  settings: MATRIX_LOCAL_SETTINGS,
+};
 
 /**
- * Selects the default chat driver. Precedence: a `?driver=` query param (handy
- * for QA/demos) → the `NEXT_PUBLIC_CHAT_DRIVER` build env → mock by default.
- * Account manifests can override this per account.
+ * Runtime manifest. It intentionally remains an array: the registry, routes,
+ * and caches stay ready for several explicitly configured Matrix accounts.
  */
-export const resolveDriverKind = (): DriverKind => {
-  if (typeof window !== "undefined") {
-    const param = new URLSearchParams(window.location.search).get("driver");
-    if (param === "matrix" || param === "mock") {
-      return param;
-    }
-  }
-  return process.env.NEXT_PUBLIC_CHAT_DRIVER === "matrix" ? "matrix" : "mock";
-};
+export const MATRIX_LOCAL_ACCOUNTS: ChatAccountConfig[] = [
+  MATRIX_LOCAL_ACCOUNT,
+];
 
 export const createDriver = (
-  kind: DriverKind,
   accountId: AccountId,
-  settings: Record<string, unknown> = {},
-): Driver => {
-  if (kind === "matrix") {
-    return new LazyMatrixDriver(accountId, settings);
-  }
-  return new MockDriver(accountId, settings);
-};
+  settings: Record<string, unknown>,
+): Driver => new LazyMatrixDriver(accountId, settings);
