@@ -454,6 +454,10 @@ help:
 .PHONY: help
 
 # Front
+frontend-build: ## build and export the static frontend
+	@$(FRONT_HUB_YARN) build
+.PHONY: frontend-build
+
 frontend-development-install: ## install the frontend locally
 	@$(FRONT_HUB_YARN) install
 .PHONY: frontend-development-install

@@ -9,6 +9,7 @@ dotenv.config({
 
 const PORT = process.env.PORT || 9800;
 const baseURL = process.env.BASE_URL || `http://localhost:${PORT}`;
+const webServerPort = new URL(baseURL).port || PORT;
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -39,7 +40,7 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: `cd ../.. && yarn app:dev --port ${PORT}`,
+          command: `cd ../.. && yarn app:dev --port ${webServerPort}`,
           url: baseURL,
           timeout: 120 * 1000,
           reuseExistingServer: true,
