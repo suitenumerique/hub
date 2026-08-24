@@ -4,6 +4,7 @@ import {
   IndexedDBCryptoStore,
   IndexedDBStore,
   MatrixClient,
+  MatrixError,
   RoomNameType,
   SyncState,
   type RoomNameState,
@@ -88,9 +89,51 @@ const startupClient = async ({
   indexedDBStore,
   cryptoStoreDbName,
 }: MatrixClientStores): Promise<MatrixClient> => {
+  // Validate (and refresh when possible) the persisted OIDC session before
+  // opening either IndexedDB store. A local MAS/Synapse reset invalidates both
+  // tokens; letting Rust Crypto discover that first produces several failing
+  // key requests before the driver can start a fresh login.
+  await mx.whoami();
   await indexedDBStore.startup();
+  await discardStaleJoinedRooms(mx, indexedDBStore);
   await mx.initRustCrypto({ cryptoDatabasePrefix: cryptoStoreDbName });
   return mx;
+};
+
+/**
+ * The sync store is independent from Synapse. After `make reset-matrix`, it
+ * can therefore contain joined rooms which no longer exist on the server.
+ * matrix-js-sdk replays that cached sync before its first network `/sync`; a
+ * cached thread then tries to fetch its deleted root event and raises an
+ * unhandled 403/404.
+ *
+ * `/joined_rooms` is authoritative for current joined membership. Clear only
+ * the sync cache when it contradicts the server, preserving the OIDC session
+ * and the separate Rust Crypto store.
+ */
+const discardStaleJoinedRooms = async (
+  mx: MatrixClient,
+  indexedDBStore: IndexedDBStore,
+): Promise<void> => {
+  const savedSync = await indexedDBStore.getSavedSync();
+  const cachedJoinedRoomIds = Object.keys(savedSync?.roomsData.join ?? {});
+  if (cachedJoinedRoomIds.length === 0) {
+    return;
+  }
+
+  const { joined_rooms: serverJoinedRooms } = await mx.getJoinedRooms();
+  const serverJoinedRoomIds = new Set(serverJoinedRooms);
+  const hasStaleJoinedRoom = cachedJoinedRoomIds.some(
+    (roomId) => !serverJoinedRoomIds.has(roomId),
+  );
+  if (!hasStaleJoinedRoom) {
+    return;
+  }
+
+  console.info(
+    "initClient: stale joined rooms found in the sync cache, clearing it",
+  );
+  await indexedDBStore.deleteAllData();
 };
 
 /**
@@ -106,6 +149,12 @@ export const initClient = async (
   try {
     return await startupClient(client);
   } catch (error) {
+    // A homeserver response cannot be repaired by deleting IndexedDB. In
+    // particular, let M_UNKNOWN_TOKEN/401 reach MatrixDriver so it can clear
+    // the stored session and restart OIDC after `make reset-matrix`.
+    if (error instanceof MatrixError) {
+      throw error;
+    }
     // A corrupt local store is the usual cause; reset it and retry once so the
     // user is not stuck behind a broken cache.
     console.error(
