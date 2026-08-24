@@ -25,10 +25,6 @@ const CHAT: Chat = {
   visual: { kind: "initials" },
 };
 
-vi.mock("@gouvfr-lasuite/ui-kit", () => ({
-  FilePreview: () => null,
-}));
-
 vi.mock("../../hooks/useChat", () => ({
   useChat: () => ({
     chat: CHAT,
