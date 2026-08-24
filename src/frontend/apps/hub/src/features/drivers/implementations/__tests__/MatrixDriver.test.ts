@@ -14,9 +14,8 @@ import {
   MATRIX_FAVOURITE_TAG,
 } from "../matrixRoomMapping";
 
-// The full read/send/sync surface is exercised by the Matrix e2e suite; these
-// unit tests cover only the pure real-time mapping and the send/reaction paths
-// that are cheap to assert without a live server.
+// These unit tests cover only the pure real-time mapping and the send/reaction
+// paths that are cheap to assert without a live server.
 
 const initClientMock = vi.hoisted(() => vi.fn());
 const startClientMock = vi.hoisted(() => vi.fn());

@@ -6,10 +6,7 @@ import { fetchAPI } from "@/features/api/fetchApi";
 import { User } from "@/features/auth/types";
 import { APIError } from "../api/APIError";
 import { baseApiUrl } from "../api/utils";
-import {
-  ChatScopesProvider,
-  useChatAccountsBootstrap,
-} from "../chat/hooks/useChatAccounts";
+import { useChatAccountsBootstrap } from "../chat/hooks/useChatAccounts";
 import { useChatConnections } from "../chat/hooks/useChatConnection";
 import { useConfig } from "../config/ConfigProvider";
 import { getRegistry } from "../drivers/DriverRegistry";
@@ -98,7 +95,6 @@ export const Auth = ({ children }: PropsWithChildren) => {
 
   if (
     user === undefined ||
-    chatAccounts.isPending ||
     chatAccounts.isReconciling ||
     chatStatus === "connecting"
   ) {
@@ -110,17 +106,15 @@ export const Auth = ({ children }: PropsWithChildren) => {
   }
 
   return (
-    <ChatScopesProvider value={chatAccounts}>
-      <AuthContext.Provider
-        value={{
-          user,
-          init,
-          refreshUser,
-          chatUser,
-        }}
-      >
-        {children}
-      </AuthContext.Provider>
-    </ChatScopesProvider>
+    <AuthContext.Provider
+      value={{
+        user,
+        init,
+        refreshUser,
+        chatUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
 };

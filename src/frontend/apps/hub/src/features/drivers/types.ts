@@ -4,8 +4,6 @@ import { AvatarColor } from "@/features/ui/components/avatar/palette";
 
 export type AccountId = string;
 
-export type DriverKind = "mock" | "matrix";
-
 export type ChatRef = {
   accountId: AccountId;
   chatId: string;
@@ -13,19 +11,10 @@ export type ChatRef = {
 
 export type ChatAccountConfig = {
   accountId: AccountId;
-  kind: DriverKind;
   label: string;
   criticality: "required" | "optional";
   enabled: boolean;
   settings?: Record<string, unknown>;
-};
-
-export type ChatScope = {
-  scopeId: string;
-  label: string;
-  kind: "aggregate" | "server";
-  isDefault?: boolean;
-  accounts: ChatAccountConfig[];
 };
 
 export type User = {
@@ -179,8 +168,7 @@ export type ChatUser = ChatMessageAuthor & {
 /**
  * A member of one conversation. Kept separate from `ChatUser`: room membership
  * comes from the room state and may expose less profile data than directory
- * search. `secondaryText` is an email/organization in mocks and the Matrix id
- * when Matrix has no richer profile field.
+ * search. `secondaryText` can be an email, organization, or Matrix id.
  */
 export type ChatMember = {
   id: string;
@@ -251,37 +239,6 @@ export type ChatMessagesPage = {
   messages: ChatMessage[];
   authors: ChatMessageAuthor[];
   nextCursor: string | null;
-};
-
-export type ChatDocumentKind = "file" | "folder" | "link";
-
-export type ChatDocument = {
-  id: string;
-  title: string;
-  /**
-   * Mimetype consumed by the UI Kit `FileIcon`. Ignored for `folder` and
-   * `link` kinds (rendered with dedicated icons instead).
-   */
-  mimetype: string;
-  kind: ChatDocumentKind;
-  isShared?: boolean;
-  /** File size in bytes — required by the UI Kit `FilePreviewType`. */
-  size?: number;
-  /** Source URL for the file or external link. */
-  url?: string;
-  /** Optional preview URL; falls back to `url` when omitted. */
-  urlPreview?: string;
-};
-
-/**
- * Documents grouped exactly as the tools panel renders them. The driver is the
- * swap point: a real backend may return this shape directly, or return a flat
- * list that the driver groups.
- */
-export type ChatDocumentsPage = {
-  pinned: ChatDocument[];
-  shared: ChatDocument[];
-  multimedia: ChatDocument[];
 };
 
 /**

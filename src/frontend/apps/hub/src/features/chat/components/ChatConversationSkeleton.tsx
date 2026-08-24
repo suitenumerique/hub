@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 type BubbleVariant = "sent" | "received";
 type BubbleWidth = "sm" | "md" | "lg" | "xl";
-// Number of fake text lines — drives the bubble's height.
+// Number of placeholder text lines — drives the bubble's height.
 type BubbleHeight = "h1" | "h2" | "h3";
 
 type SkeletonRow = {

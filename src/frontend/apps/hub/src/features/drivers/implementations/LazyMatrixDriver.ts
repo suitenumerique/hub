@@ -20,7 +20,6 @@ import {
 } from "../Driver";
 import type {
   AccountId,
-  ChatDocumentsPage,
   ChatMessage,
   ChatMessagesPage,
   ChatMembers,
@@ -139,10 +138,6 @@ export class LazyMatrixDriver extends BaseDriver {
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage> {
     return this.withTarget((driver) => driver.getChatMessages(params));
-  }
-
-  async getChatDocuments(chatId: string): Promise<ChatDocumentsPage> {
-    return this.withTarget((driver) => driver.getChatDocuments(chatId));
   }
 
   async toggleChatReaction(

@@ -2,9 +2,9 @@ import type { ChatMembership, LocalChat } from "@/features/drivers/types";
 
 /**
  * The current user's membership in a conversation, defaulting to `join` when a
- * chat omits it. Keeping the default in one place lets existing mock data and
- * any pre-membership cache entry stay valid: a chat with no explicit membership
- * is a normal, joined conversation, never an invitation.
+ * chat omits it. Keeping the default in one place lets any pre-membership cache
+ * entry stay valid: a chat with no explicit membership is a normal, joined
+ * conversation, never an invitation.
  */
 export const chatMembership = (
   chat: Pick<LocalChat, "membership"> | null | undefined,

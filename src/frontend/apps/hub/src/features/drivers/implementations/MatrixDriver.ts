@@ -32,9 +32,9 @@ import { type IdTokenClaims } from "oidc-client-ts";
 import { emojiToCodepoints } from "@/features/chat/fluentEmoji";
 import { toggleReaction } from "@/features/chat/reactions";
 import {
+  MATRIX_LOCAL_SETTINGS,
   type MatrixDriverSettings,
   parseMatrixDriverSettings,
-  TCHAP_HOMESERVER_LIST,
 } from "@/features/matrix/config";
 import { initClient, startClient } from "@/features/matrix/initMatrix";
 import { MatrixUserInterface } from "@/features/matrix/types";
@@ -44,8 +44,6 @@ import {
   getOIDCAuthUrl,
   getUserIdFromAccessToken,
 } from "@/features/matrix/utils/auth";
-import { fetchHomeserverForEmail } from "@/features/matrix/utils/autodiscovery";
-
 import {
   ChatConnectionState,
   ChatEvent,
@@ -53,6 +51,7 @@ import {
   ChatTypingListener,
   ChatUserFilters,
   DeleteChatMessageParams,
+  Driver,
   EditChatMessageParams,
   GetChatThreadParams,
   GetChatMessagesParams,
@@ -118,8 +117,6 @@ import {
   participantSetKey,
   roomOtherMembers,
 } from "./matrixRoomMapping";
-import { MockDriver } from "./MockDriver";
-
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 const MATRIX_TYPING_TIMEOUT_MS = 30_000;
@@ -149,7 +146,6 @@ type StoredOidc = {
   idTokenClaims: IdTokenClaims;
   redirectUri: string;
 };
-const OIDC_HS_KEY = "oidc_hs";
 const SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const CRYPTO_STORE_DB_NAME = "crypto-store";
 
@@ -227,10 +223,9 @@ type PersistedRedactedThreadReply = Pick<
  * contract, so the UI never imports anything Matrix.
  *
  * Rooms, messages, unread state, threads, and reactions are Matrix-backed,
- * while `/sync` is bridged onto the generic real-time event stream. Documents
- * remain on their legacy implementation until their Matrix-specific change.
+ * while `/sync` is bridged onto the generic real-time event stream.
  */
-export class MatrixDriver extends MockDriver {
+export class MatrixDriver extends Driver {
   override readonly supportsComposition: boolean = true;
   override readonly supportsThreadComposition: boolean = true;
   override readonly supportsConversationHistoryRemoval: boolean = true;
@@ -254,7 +249,7 @@ export class MatrixDriver extends MockDriver {
   private redactedThreadReplies = new Map<string, RedactedThreadReply>();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
-  /** Parsed per-account config; source of truth for discovery and OIDC. */
+  /** Parsed per-account config; source of truth for the fixed server and OIDC. */
   private readonly settings: MatrixDriverSettings;
   /**
    * Server-confirmed joined rooms. `getVisibleRooms()` can include stale rooms
@@ -269,42 +264,22 @@ export class MatrixDriver extends MockDriver {
   private storageOwner: string | null = null;
 
   constructor(
-    accountId: AccountId = "default",
-    settings: Record<string, unknown> = {},
+    accountId: AccountId = "matrix-local",
+    settings: Record<string, unknown> = MATRIX_LOCAL_SETTINGS,
   ) {
-    super(accountId, settings);
+    super(accountId);
     this.settings = parseMatrixDriverSettings(settings);
   }
 
   /**
-   * Resolves the OIDC `login_hint`. Preference order: account config, dev
-   * override, then the authenticated Hub user's email.
+   * Resolves the OIDC `login_hint` from account config, then the authenticated
+   * Hub user's email.
    */
   private resolveLoginHint(user: User | null | undefined): string {
     if (this.settings.loginHint) {
       return this.settings.loginHint;
     }
-    const devHint = process.env.NEXT_PUBLIC_MATRIX_DEV_LOGIN_HINT;
-    if (process.env.NODE_ENV === "development" && devHint) {
-      return devHint;
-    }
     return user?.email ?? "";
-  }
-
-  /**
-   * Resolves the homeserver per account strategy. `fixed` uses the configured
-   * base URL directly; `tchap-email` keeps the original identity-server lookup.
-   */
-  private async discoverHomeserver(
-    loginHint: string,
-  ): Promise<{ base_url: string; server_name: string }> {
-    if (this.settings.discovery === "fixed") {
-      return {
-        base_url: this.settings.baseUrl,
-        server_name: this.settings.serverName,
-      };
-    }
-    return fetchHomeserverForEmail(loginHint, TCHAP_HOMESERVER_LIST);
   }
 
   async getChats(): Promise<LocalChatSections> {
@@ -448,10 +423,9 @@ export class MatrixDriver extends MockDriver {
   /**
    * The existing conversation for exactly this participant set, or `null`. A
    * joined room matches when its members (excluding the connected user) equal
-   * the requested Matrix ids — order- and duplicate-independent, the same
-   * set-equality the mock honours. One rule serves both direct (one other
-   * member) and group (several) conversations. `null` lets the UI keep the
-   * placeholder for a genuinely new conversation.
+   * the requested Matrix ids — order- and duplicate-independent. One rule
+   * serves both direct (one other member) and group (several) conversations.
+   * `null` lets the UI keep the placeholder for a genuinely new conversation.
    */
   async getChatForUsers(userIds: string[]): Promise<LocalChat | null> {
     const mx = this.mx;
@@ -1628,16 +1602,9 @@ export class MatrixDriver extends MockDriver {
 
   private async startOidcFlow(user: User | null | undefined): Promise<string> {
     const loginHint = this.resolveLoginHint(user);
-    let homeserver = sessionStorage.getItem(this.key(OIDC_HS_KEY));
-    if (!homeserver) {
-      const discovered = await this.discoverHomeserver(loginHint);
-      homeserver = discovered.base_url;
-      sessionStorage.setItem(this.key(OIDC_HS_KEY), homeserver);
-    }
     const authUrl = await getOIDCAuthUrl(
-      homeserver,
+      this.settings.baseUrl,
       loginHint,
-      this.settings.branding,
       this.settings.oidcClientId,
     );
     const state = new URL(authUrl).searchParams.get("state");
@@ -1651,26 +1618,16 @@ export class MatrixDriver extends MockDriver {
     code: string,
     state: string,
   ): Promise<MatrixUserInterface> {
-    const homeserver = sessionStorage.getItem(this.key(OIDC_HS_KEY));
-    if (!homeserver) {
-      throw new Error(
-        "MatrixDriver: missing homeserver while completing the OIDC callback.",
-      );
-    }
     const oidc = await completeOidcLogin({ code, state });
-    const {
-      user_id: mxId,
-      device_id: deviceId,
-      is_guest: guest,
-    } = await getUserIdFromAccessToken(oidc.accessToken, homeserver);
+    const { user_id: mxId, device_id: deviceId } =
+      await getUserIdFromAccessToken(oidc.accessToken, this.settings.baseUrl);
 
     const matrixUser: MatrixUserInterface = {
-      homeserverUrl: homeserver,
+      homeserverUrl: this.settings.baseUrl,
       mxId,
       deviceId,
       accessToken: oidc.accessToken,
       refreshToken: oidc.refreshToken,
-      guest,
     };
     this.writeStoredJson(STORAGE.user, matrixUser);
     this.writeStoredJson(STORAGE.oidc, {
@@ -1684,7 +1641,6 @@ export class MatrixDriver extends MockDriver {
         .href,
     } satisfies StoredOidc);
     sessionStorage.removeItem(this.key(STORAGE.oidcState));
-    sessionStorage.removeItem(this.key(OIDC_HS_KEY));
     return matrixUser;
   }
 
@@ -2445,7 +2401,6 @@ export class MatrixDriver extends MockDriver {
     localStorage.removeItem(this.key(STORAGE.oidc));
     localStorage.removeItem(this.key(STORAGE.redactedThreads));
     sessionStorage.removeItem(this.key(STORAGE.oidcState));
-    sessionStorage.removeItem(this.key(OIDC_HS_KEY));
 
     await Promise.all([
       this.deleteIndexedDb(this.key(SYNC_STORE_DB_NAME)),

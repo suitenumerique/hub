@@ -773,11 +773,6 @@
     "@eslint/core" "^0.13.0"
     levn "^0.4.1"
 
-"@faker-js/faker@9.9.0":
-  version "9.9.0"
-  resolved "https://registry.yarnpkg.com/@faker-js/faker/-/faker-9.9.0.tgz#3ad015fbbaaae7af3149555e0f22b4b30134c69d"
-  integrity sha512-OEl393iCOoo/z8bMezRlJu+GlRGlsKbUAN7jKB6LhnKoqKve5DXRpalbItIIcwnCjs1k/FOPjFzcA6Qn+H+YbA==
-
 "@fontsource-variable/roboto-flex@5.2.5":
   version "5.2.5"
   resolved "https://registry.yarnpkg.com/@fontsource-variable/roboto-flex/-/roboto-flex-5.2.5.tgz#38368ea754697c2fdf08df11b06e8b6d391ff4c1"

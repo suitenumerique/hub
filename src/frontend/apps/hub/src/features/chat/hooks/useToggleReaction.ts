@@ -74,9 +74,8 @@ export type UseToggleReactionResult = {
  * Toggles a reaction through the driver with an optimistic cache update. When
  * `threadId` is set the update targets the `["chat-thread", chatId, threadId]`
  * cache (a thread bubble); otherwise the `["chat-messages", chatId]` cache (a
- * conversation bubble). The optimistic write and the mock driver reuse the same
- * `toggleReaction` helper, so the two never drift; a failed call rolls the
- * cache back to its pre-toggle snapshot.
+ * conversation bubble). A failed call rolls the cache back to its pre-toggle
+ * snapshot.
  */
 export const useToggleReaction = (
   ref: ChatRef,
@@ -123,8 +122,8 @@ export const useToggleReaction = (
         queryClient.setQueryData(context.queryKey, context.previous);
       }
     },
-    // Chat is fully mocked; a toggle failure is not user-actionable, so it is
-    // handled by the rollback above rather than the global error surface.
+    // A toggle failure is handled by the rollback above rather than the global
+    // error surface.
     meta: { noGlobalError: true },
   });
 

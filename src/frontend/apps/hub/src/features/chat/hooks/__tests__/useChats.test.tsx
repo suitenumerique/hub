@@ -29,18 +29,18 @@ const getChatsB = vi.fn(() => Promise.resolve(localSections("Account B room")));
 const entries: DriverEntry[] = [
   {
     accountId: "account-a",
-    kind: "mock",
     label: "A",
     criticality: "required",
     enabled: true,
+    settingsFingerprint: "",
     driver: { getChats: getChatsA } as unknown as DriverEntry["driver"],
   },
   {
     accountId: "account-b",
-    kind: "mock",
     label: "B",
     criticality: "optional",
     enabled: true,
+    settingsFingerprint: "",
     driver: { getChats: getChatsB } as unknown as DriverEntry["driver"],
   },
 ];

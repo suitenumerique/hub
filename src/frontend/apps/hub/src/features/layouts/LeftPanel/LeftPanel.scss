@@ -46,61 +46,6 @@
     }
   }
 
-  &__scope {
-    position: relative;
-    padding: 0 12px;
-    height: var(--hub-lp-row-height);
-    display: flex;
-    align-items: center;
-
-    &__select {
-      appearance: none;
-      width: 100%;
-      height: var(--hub-lp-row-height);
-      padding: 0 32px 0 8px;
-      border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
-      border-radius: var(--hub-lp-radius);
-      background: var(--c--contextuals--background--surface--primary, #ffffff);
-      color: var(
-        --c--contextuals--content--semantic--neutral--primary,
-        #222631
-      );
-      cursor: pointer;
-      font: inherit;
-      font-size: 14px;
-      font-weight: 600;
-      line-height: 18px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-
-      &:hover {
-        background: var(
-          --c--contextuals--background--semantic--overlay--primary,
-          rgba(24, 27, 36, 0.05)
-        );
-      }
-
-      &:focus-visible {
-        outline: 2px solid
-          var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
-        outline-offset: 2px;
-      }
-    }
-
-    &__icon {
-      pointer-events: none;
-      position: absolute;
-      right: 16px;
-      width: 24px;
-      height: 24px;
-      color: var(
-        --c--contextuals--content--semantic--neutral--secondary,
-        #555e74
-      );
-    }
-  }
-
   &__actions {
     display: flex;
     flex-direction: column;

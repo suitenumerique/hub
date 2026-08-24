@@ -1,145 +1,35 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+
+import { MATRIX_LOCAL_ACCOUNTS } from "@/features/config/Config";
 import {
-  createContext,
-  createElement,
-  PropsWithChildren,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+  getRegistry,
+  useDriverEntries,
+} from "@/features/drivers/DriverRegistry";
+import type { AccountId } from "@/features/drivers/types";
 
-import { getHubApi } from "@/features/config/HubApi";
-import { getRegistry } from "@/features/drivers/DriverRegistry";
-import type { AccountId, ChatScope } from "@/features/drivers/types";
-
-import { chatKeys } from "../chatKeys";
-
-const CHAT_SCOPE_STORAGE_KEY = "hub:chat:scope";
-
-export type ChatScopesContextValue = {
-  scopes: ChatScope[];
-  activeScope: ChatScope | null;
-  activeScopeId: string | null;
-  setActiveScopeId: (scopeId: string) => void;
-};
-
-const ChatScopesContext = createContext<ChatScopesContextValue>({
-  scopes: [],
-  activeScope: null,
-  activeScopeId: null,
-  setActiveScopeId: () => {},
-});
-
-const readStoredScopeId = (): string | null => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return window.localStorage.getItem(CHAT_SCOPE_STORAGE_KEY);
-};
-
-const persistScopeId = (scopeId: string): void => {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(CHAT_SCOPE_STORAGE_KEY, scopeId);
-  }
-};
-
-const resolveActiveScope = (
-  scopes: ChatScope[],
-  requestedScopeId: string | null,
-): ChatScope | null => {
-  if (scopes.length === 0) {
-    return null;
-  }
-  return (
-    scopes.find((scope) => scope.scopeId === requestedScopeId) ??
-    scopes.find((scope) => scope.isDefault) ??
-    scopes[0]
-  );
-};
-
+/**
+ * Reconciles the single runtime manifest. The manifest remains an array and the
+ * registry remains account-scoped so another fixed Matrix server can be added
+ * later without changing routes, hooks, or query keys.
+ */
 export const useChatAccountsBootstrap = () => {
-  const hubApi = getHubApi();
-  const [requestedScopeId, setRequestedScopeId] = useState<string | null>(
-    readStoredScopeId,
-  );
-  const [reconciledScopeId, setReconciledScopeId] = useState<string | null>(
-    null,
-  );
-
-  const query = useQuery({
-    queryKey: chatKeys.scopes(),
-    queryFn: () => hubApi.getChatScopes(),
-    staleTime: Infinity,
-    meta: { noGlobalError: true },
-  });
-
-  const scopes = query.data ?? [];
-  const activeScope = useMemo(
-    () => resolveActiveScope(scopes, requestedScopeId),
-    [requestedScopeId, scopes],
-  );
-  const activeScopeId = activeScope?.scopeId ?? null;
-
-  const setActiveScopeId = useCallback((scopeId: string) => {
-    persistScopeId(scopeId);
-    setRequestedScopeId(scopeId);
-  }, []);
+  const entries = useDriverEntries();
 
   useEffect(() => {
-    if (activeScope) {
-      getRegistry().reconcile(activeScope.accounts);
-      setReconciledScopeId(activeScope.scopeId);
-    }
-  }, [activeScope]);
-
-  useEffect(
-    () => () => {
-      getRegistry().destroyAll();
-    },
-    [],
-  );
-
-  const isReconciling =
-    activeScope !== null && reconciledScopeId !== activeScope.scopeId;
+    getRegistry().reconcile(MATRIX_LOCAL_ACCOUNTS);
+    return () => getRegistry().destroyAll();
+  }, []);
 
   return {
-    ...query,
-    scopes,
-    activeScope,
-    activeScopeId,
-    setActiveScopeId,
-    isReconciling,
+    isReconciling: entries.length !== MATRIX_LOCAL_ACCOUNTS.length,
   };
 };
 
-export const ChatScopesProvider = ({
-  children,
-  value,
-}: PropsWithChildren<{ value: ChatScopesContextValue }>) =>
-  createElement(ChatScopesContext.Provider, { value }, children);
-
-export const useChatScopes = (): ChatScopesContextValue =>
-  useContext(ChatScopesContext);
-
-/**
- * The account a new conversation should be composed under: within the active
- * scope, the required account if there is one, otherwise the first enabled one.
- * `null` until the scope manifest has loaded. Drives the new-chat people search
- * and existing-conversation resolution (see `useChatUserSearch` /
- * `useChatForUsers`).
- */
+/** The required account used by the new-conversation composer. */
 export const useComposerAccountId = (): AccountId | null => {
-  const { activeScope } = useChatScopes();
-  if (!activeScope) {
-    return null;
-  }
+  const entries = useDriverEntries();
   const account =
-    activeScope.accounts.find(
-      (candidate) => candidate.enabled && candidate.criticality === "required",
-    ) ??
-    activeScope.accounts.find((candidate) => candidate.enabled) ??
-    activeScope.accounts[0];
+    entries.find((candidate) => candidate.criticality === "required") ??
+    entries[0];
   return account?.accountId ?? null;
 };

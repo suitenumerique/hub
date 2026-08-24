@@ -14,19 +14,13 @@ import { ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
-import { useChatScopes } from "@/features/chat/hooks/useChatAccounts";
 import {
   type ChatUnreadLookup,
   useChatUnread,
 } from "@/features/chat/hooks/useChatUnread";
 import { useChats } from "@/features/chat/hooks/useChats";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
-import type {
-  Chat,
-  ChatRef,
-  ChatScope,
-  ChatUnread,
-} from "@/features/drivers/types";
+import type { Chat, ChatUnread } from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 type ActionItem =
@@ -35,10 +29,8 @@ type ActionItem =
 
 export const LeftPanel = () => {
   const { t } = useTranslation();
-  const router = useRouter();
   const chats = useChats();
   const unreadLookup = useChatUnread();
-  const { activeScopeId, scopes, setActiveScopeId } = useChatScopes();
   const entries = useDriverEntries();
   const accountLabels = new Map(
     entries.map((entry) => [entry.accountId, entry.label]),
@@ -77,34 +69,6 @@ export const LeftPanel = () => {
             unoptimized
           />
         </div>
-
-        {scopes.length > 1 && activeScopeId && (
-          <ScopeSelector
-            activeScopeId={activeScopeId}
-            scopes={scopes}
-            currentChatRef={readChatRef(router.query)}
-            onChangeScope={(scopeId) => {
-              const nextScope = scopes.find(
-                (scope) => scope.scopeId === scopeId,
-              );
-              const currentChatRef = readChatRef(router.query);
-              const currentAccountStillActive =
-                !currentChatRef ||
-                nextScope?.accounts.some(
-                  (account) => account.accountId === currentChatRef.accountId,
-                );
-
-              if (currentAccountStillActive) {
-                setActiveScopeId(scopeId);
-                return;
-              }
-
-              void router
-                .push("/chat/new", undefined, { shallow: true })
-                .then(() => setActiveScopeId(scopeId));
-            }}
-          />
-        )}
 
         <nav
           className="hub__left-panel__actions"
@@ -152,53 +116,6 @@ export const LeftPanel = () => {
         </button>
       </div>
     </aside>
-  );
-};
-
-type ScopeSelectorProps = {
-  activeScopeId: string;
-  scopes: ChatScope[];
-  currentChatRef: ChatRef | null;
-  onChangeScope: (scopeId: string) => void;
-};
-
-const ScopeSelector = ({
-  activeScopeId,
-  scopes,
-  currentChatRef,
-  onChangeScope,
-}: ScopeSelectorProps) => {
-  const { t } = useTranslation();
-  const currentScopeContainsChat = scopes
-    .find((scope) => scope.scopeId === activeScopeId)
-    ?.accounts.some(
-      (account) => account.accountId === currentChatRef?.accountId,
-    );
-
-  return (
-    <div className="hub__left-panel__scope">
-      <select
-        className="hub__left-panel__scope__select"
-        aria-label={t("Chat scope")}
-        value={activeScopeId}
-        onChange={(event) => onChangeScope(event.target.value)}
-      >
-        {scopes.map((scope) => (
-          <option key={scope.scopeId} value={scope.scopeId}>
-            {scope.label}
-          </option>
-        ))}
-      </select>
-      <ArrowDropDown
-        className="hub__left-panel__scope__icon"
-        aria-hidden="true"
-      />
-      {currentChatRef && currentScopeContainsChat === false && (
-        <span className="hub__visually-hidden">
-          {t("The selected chat is outside the active scope.")}
-        </span>
-      )}
-    </div>
   );
 };
 
