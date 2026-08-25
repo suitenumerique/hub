@@ -2,7 +2,7 @@ import {
   Error as ErrorIcon,
   Info,
   Warning,
-} from "@gouvfr-lasuite/ui-kit/icons";
+} from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import { ReactNode } from "react";
 

@@ -1,8 +1,13 @@
 import Head from "next/head";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Footer, Hero, HomeGutter, MainLayout } from "@gouvfr-lasuite/ui-kit";
-import { Button } from "@gouvfr-lasuite/cunningham-react";
+import {
+  Footer,
+  Hero,
+  HomeGutter,
+  MainLayout,
+} from "@gouvfr-lasuite/ui-components";
+import { Button } from "@gouvfr-lasuite/ui-components";
 
 import { login, useAuth } from "@/features/auth/Auth";
 import { useConfig } from "@/features/config/ConfigProvider";

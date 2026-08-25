@@ -1,4 +1,4 @@
-import { Bell } from "@gouvfr-lasuite/ui-kit/icons";
+import { Bell } from "@gouvfr-lasuite/ui-components/icons";
 import {
   Fragment,
   useCallback,

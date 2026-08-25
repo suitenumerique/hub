@@ -1,9 +1,9 @@
-import { Button } from "@gouvfr-lasuite/cunningham-react";
+import { Button } from "@gouvfr-lasuite/ui-components";
 import {
   DropdownMenu,
   type DropdownMenuItem,
   useDropdownMenu,
-} from "@gouvfr-lasuite/ui-kit";
+} from "@gouvfr-lasuite/ui-components";
 import {
   ArrowDropDown,
   Bell,
@@ -15,7 +15,7 @@ import {
   Star,
   StarFilled,
   Thread,
-} from "@gouvfr-lasuite/ui-kit/icons";
+} from "@gouvfr-lasuite/ui-components/icons";
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";

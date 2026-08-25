@@ -5,7 +5,7 @@ import {
   Plus,
   QuestionMark,
   Zoom,
-} from "@gouvfr-lasuite/ui-kit/icons";
+} from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import Image from "next/image";
 import Link from "next/link";

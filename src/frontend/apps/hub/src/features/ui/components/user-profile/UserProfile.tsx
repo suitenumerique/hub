@@ -1,4 +1,4 @@
-import { UserMenu } from "@gouvfr-lasuite/ui-kit";
+import { UserMenu } from "@gouvfr-lasuite/ui-components";
 
 import { logout, useAuth } from "@/features/auth/Auth";
 import { LoginButton } from "@/features/auth/components/LoginButton";

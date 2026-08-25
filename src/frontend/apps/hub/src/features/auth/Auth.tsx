@@ -1,4 +1,4 @@
-import { Spinner } from "@gouvfr-lasuite/ui-kit";
+import { Spinner } from "@gouvfr-lasuite/ui-components";
 import { posthog } from "posthog-js";
 import React, { PropsWithChildren, useEffect, useState } from "react";
 

@@ -1,7 +1,7 @@
 import {
   ArrowCornerDownRight,
   ChevronRight,
-} from "@gouvfr-lasuite/ui-kit/icons";
+} from "@gouvfr-lasuite/ui-components/icons";
 import { useTranslation } from "react-i18next";
 
 import type { ChatThread } from "@/features/drivers/types";

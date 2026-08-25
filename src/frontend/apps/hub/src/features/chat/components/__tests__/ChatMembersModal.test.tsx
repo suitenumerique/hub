@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@/i18n/initI18n";
 
-import { CunninghamProvider } from "@gouvfr-lasuite/ui-kit";
+import { CunninghamProvider } from "@gouvfr-lasuite/ui-components";
 import { render, screen } from "@testing-library/react";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 

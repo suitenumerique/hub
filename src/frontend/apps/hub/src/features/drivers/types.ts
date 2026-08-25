@@ -1,4 +1,4 @@
-import { FooterProps } from "@gouvfr-lasuite/ui-kit";
+import { FooterProps } from "@gouvfr-lasuite/ui-components";
 
 import { AvatarColor } from "@/features/ui/components/avatar/palette";
 

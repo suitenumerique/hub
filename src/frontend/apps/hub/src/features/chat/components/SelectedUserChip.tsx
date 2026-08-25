@@ -1,4 +1,4 @@
-import { XMark } from "@gouvfr-lasuite/ui-kit/icons";
+import { XMark } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import { useTranslation } from "react-i18next";
 

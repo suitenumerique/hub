@@ -1,4 +1,4 @@
-import { Trash } from "@gouvfr-lasuite/ui-kit/icons";
+import { Trash } from "@gouvfr-lasuite/ui-components/icons";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 

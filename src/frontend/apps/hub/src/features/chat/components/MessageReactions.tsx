@@ -1,4 +1,4 @@
-import { EmojiAdd, Plus } from "@gouvfr-lasuite/ui-kit/icons";
+import { EmojiAdd, Plus } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,7 +9,7 @@ import { emojiToCodepoints } from "../fluentEmoji";
 
 import { EmojiPickerPopover } from "./EmojiPickerPopover";
 import { FluentEmoji } from "./FluentEmoji";
-import { Button, ButtonElement } from "@gouvfr-lasuite/cunningham-react";
+import { Button, ButtonElement } from "@gouvfr-lasuite/ui-components";
 
 type MessageReactionsProps = {
   reactions: ChatReaction[];

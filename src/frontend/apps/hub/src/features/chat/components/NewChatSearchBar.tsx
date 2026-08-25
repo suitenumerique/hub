@@ -1,4 +1,9 @@
-import { File, Meet, Thread, UserSearch } from "@gouvfr-lasuite/ui-kit/icons";
+import {
+  File,
+  Meet,
+  Thread,
+  UserSearch,
+} from "@gouvfr-lasuite/ui-components/icons";
 import { KeyboardEvent, RefObject, useEffect, useMemo, useState } from "react";
 import { ComboBox, Input, Popover } from "react-aria-components";
 import type { Key } from "react-aria-components";

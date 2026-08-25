@@ -1,4 +1,4 @@
-import { Plus } from "@gouvfr-lasuite/ui-kit/icons";
+import { Plus } from "@gouvfr-lasuite/ui-components/icons";
 import { useTranslation } from "react-i18next";
 
 export const NewChatPlaceholder = () => {

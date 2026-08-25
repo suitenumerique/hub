@@ -2,7 +2,7 @@ import {
   DropdownMenu,
   type DropdownMenuItem,
   useDropdownMenu,
-} from "@gouvfr-lasuite/ui-kit";
+} from "@gouvfr-lasuite/ui-components";
 import {
   Copy,
   Edit,
@@ -10,7 +10,7 @@ import {
   More,
   Reply,
   Trash,
-} from "@gouvfr-lasuite/ui-kit/icons";
+} from "@gouvfr-lasuite/ui-components/icons";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 

@@ -1,4 +1,4 @@
-import { ArrowLeft, XMark } from "@gouvfr-lasuite/ui-kit/icons";
+import { ArrowLeft, XMark } from "@gouvfr-lasuite/ui-components/icons";
 import { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
