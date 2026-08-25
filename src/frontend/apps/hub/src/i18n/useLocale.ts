@@ -1,4 +1,4 @@
-import { DEFAULT_LOCALE } from "@gouvfr-lasuite/cunningham-react";
+import { DEFAULT_LOCALE } from "@gouvfr-lasuite/ui-components";
 import { useTranslation } from "react-i18next";
 
 enum Locales {

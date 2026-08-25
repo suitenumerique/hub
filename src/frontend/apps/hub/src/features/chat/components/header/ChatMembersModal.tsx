@@ -1,5 +1,8 @@
-import { Button } from "@gouvfr-lasuite/cunningham-react";
-import { ShareModal, type DropdownMenuOption } from "@gouvfr-lasuite/ui-kit";
+import { Button } from "@gouvfr-lasuite/ui-components";
+import {
+  ShareModal,
+  type DropdownMenuOption,
+} from "@gouvfr-lasuite/ui-components";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 

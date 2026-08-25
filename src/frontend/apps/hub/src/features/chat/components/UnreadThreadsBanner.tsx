@@ -1,4 +1,4 @@
-import { CircleCheck, Reply } from "@gouvfr-lasuite/ui-kit/icons";
+import { CircleCheck, Reply } from "@gouvfr-lasuite/ui-components/icons";
 import { useTranslation } from "react-i18next";
 
 import type { ChatRef, ChatThread } from "@/features/drivers/types";

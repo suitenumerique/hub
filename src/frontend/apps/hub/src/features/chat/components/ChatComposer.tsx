@@ -1,4 +1,4 @@
-import { ArrowUp, Edit, XMark } from "@gouvfr-lasuite/ui-kit/icons";
+import { ArrowUp, Edit, XMark } from "@gouvfr-lasuite/ui-components/icons";
 import {
   FormEvent,
   useCallback,

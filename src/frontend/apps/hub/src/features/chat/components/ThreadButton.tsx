@@ -1,4 +1,4 @@
-import { ArrowCornerDownRight } from "@gouvfr-lasuite/ui-kit/icons";
+import { ArrowCornerDownRight } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import { useTranslation } from "react-i18next";
 

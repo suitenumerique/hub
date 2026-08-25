@@ -1,4 +1,4 @@
-import { Plus, Shapes } from "@gouvfr-lasuite/ui-kit/icons";
+import { Plus, Shapes } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import { ListBox, ListBoxItem } from "react-aria-components";
 import { useTranslation } from "react-i18next";

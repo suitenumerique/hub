@@ -32,6 +32,7 @@ and this project adheres to
 
 ### Changed
 
+- ⬆️(frontend) Migrate to ui-components 1.0.0
 - ♻️(frontend) Use the local Matrix account as the sole chat runtime
 - ♻️(frontend) Show Documents as unavailable until Matrix media support lands
 - ♻️(frontend) Simplify the conversation auto-scroll onto the Virtuoso API

@@ -1,4 +1,4 @@
-import { CunninghamProvider } from "@gouvfr-lasuite/ui-kit";
+import { CunninghamProvider } from "@gouvfr-lasuite/ui-components";
 import {
   MutationCache,
   Query,
