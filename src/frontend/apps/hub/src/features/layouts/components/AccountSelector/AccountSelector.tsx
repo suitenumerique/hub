@@ -3,7 +3,7 @@ import { UserProfile } from "@/features/ui/components/user-profile/UserProfile";
 
 export const AccountSelector = () => (
   <div className="hub__account-selector">
-    <Gaufre />
     <UserProfile />
+    <Gaufre />
   </div>
 );

@@ -10,7 +10,6 @@ import type { Key } from "react-aria-components";
 import { useTranslation } from "react-i18next";
 
 import type { ChatUser } from "@/features/drivers/types";
-import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 
 import { useChatUserSearch } from "../hooks/useChatUserSearch";
 
@@ -222,7 +221,6 @@ export const NewChatSearchBar = ({
             </button>
           </div>
         )}
-        <AccountSelector />
       </div>
     </header>
   );

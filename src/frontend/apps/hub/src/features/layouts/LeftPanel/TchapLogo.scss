@@ -1,0 +1,43 @@
+.hub__tchap-logo {
+  position: relative;
+  display: block;
+  width: 108px;
+  height: 40px;
+  overflow: hidden;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  &__mark {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 32px;
+    height: 32px;
+    overflow: hidden;
+  }
+
+  &__asset,
+  &__wordmark {
+    position: absolute;
+    display: block;
+    overflow: hidden;
+  }
+
+  &__asset {
+    &--primary {
+      inset: 8.07% 23.99% 6.25% 4.5%;
+    }
+
+    &--secondary {
+      inset: 41.37% 6.24% 6.27% 49.04%;
+    }
+  }
+
+  &__wordmark {
+    inset: 28.13% 4.29% 15.14% 37.5%;
+  }
+}

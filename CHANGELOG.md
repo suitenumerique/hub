@@ -32,6 +32,8 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Align the sidebar branding and account controls with Tchap
+- ♻️(frontend) Streamline the new-chat conversation flow
 - ⬆️(frontend) Migrate to ui-components 1.0.0
 - ♻️(frontend) Use the local Matrix account as the sole chat runtime
 - ♻️(frontend) Show Documents as unavailable until Matrix media support lands
@@ -40,6 +42,7 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Keep modals above chat headers and messages below them
 - 🐛(frontend) Show an error toast when a chat message fails to send
 - 🐛(frontend) Reset the composer draft when switching conversation
 - 🌐(frontend) Translate the current user's optimistic thread author

@@ -1,13 +1,11 @@
+import { Button } from "@gouvfr-lasuite/ui-components";
 import {
   ArrowDropDown,
-  GearRounded,
   Meet,
   Plus,
   QuestionMark,
-  Zoom,
 } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { ReactNode, useId, useState } from "react";
@@ -21,7 +19,10 @@ import {
 import { useChats } from "@/features/chat/hooks/useChats";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatUnread } from "@/features/drivers/types";
+import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
+
+import { TchapLogo } from "./TchapLogo";
 
 type ActionItem =
   | { id: string; href: string; icon: ReactNode; label: string }
@@ -49,25 +50,13 @@ export const LeftPanel = () => {
       icon: <Meet size={16} />,
       label: t("Start a meeting"),
     },
-    {
-      id: "search",
-      icon: <Zoom size={16} />,
-      label: t("Search"),
-    },
   ];
 
   return (
     <aside className="hub__left-panel" aria-label={t("Side panel")}>
       <div className="hub__left-panel__top">
         <div className="hub__left-panel__logo">
-          <Image
-            src="/assets/logo_text.svg"
-            alt={t("LaSuite Hub")}
-            width={168}
-            height={40}
-            priority
-            unoptimized
-          />
+          <TchapLogo />
         </div>
 
         <nav
@@ -100,20 +89,13 @@ export const LeftPanel = () => {
       </div>
 
       <div className="hub__left-panel__footer">
-        <button
-          type="button"
-          className="hub__left-panel__icon-button"
+        <AccountSelector />
+        <Button
+          variant="tertiary"
+          color="neutral"
+          icon={<QuestionMark size={24} />}
           aria-label={t("Help")}
-        >
-          <QuestionMark size={16} />
-        </button>
-        <button
-          type="button"
-          className="hub__left-panel__icon-button"
-          aria-label={t("Settings")}
-        >
-          <GearRounded size={16} />
-        </button>
+        />
       </div>
     </aside>
   );
