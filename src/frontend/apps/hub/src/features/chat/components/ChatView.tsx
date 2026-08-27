@@ -43,8 +43,12 @@ type ChatViewProps = {
    * actually sends.
    */
   onSent?: (ref: ChatRef) => void;
-  /** Bumped by the host to move focus into the composer (New Chat Enter). */
+  /** Bumped by the host to move focus into the composer. */
   composerFocusSignal?: number;
+  /** Enables drafting before a selected participant set has a conversation. */
+  canComposeDraft?: boolean;
+  /** Resolves or creates that conversation, then sends the draft. */
+  onSubmitDraft?: (content: string) => Promise<unknown>;
 };
 
 /**
@@ -59,6 +63,8 @@ export const ChatView = ({
   renderEmpty,
   onSent,
   composerFocusSignal,
+  canComposeDraft = false,
+  onSubmitDraft,
 }: ChatViewProps) => {
   const { t } = useTranslation();
   const { chat } = useChat(chatRef);
@@ -85,13 +91,17 @@ export const ChatView = ({
         setEditingMessage(null);
         return message;
       }
-      const message = await sendMessage(content);
-      if (chatRef) {
-        onSent?.(chatRef);
+      if (!chatRef) {
+        if (!onSubmitDraft) {
+          throw new Error("Draft composition is not available.");
+        }
+        return onSubmitDraft(content);
       }
+      const message = await sendMessage(content);
+      onSent?.(chatRef);
       return message;
     },
-    [chatRef, editMessage, editingMessage, onSent, sendMessage],
+    [chatRef, editMessage, editingMessage, onSent, onSubmitDraft, sendMessage],
   );
 
   const [activeTool, setActiveTool] = useState<ChatTool | null>(null);
@@ -227,7 +237,9 @@ export const ChatView = ({
                           )
                         : undefined
                     }
-                    disabled={!chatRef || !isCompositionSupported}
+                    disabled={
+                      chatRef ? !isCompositionSupported : !canComposeDraft
+                    }
                     isSubmitting={isSendingMessage || isEditing}
                     focusSignal={composerFocusSignal}
                     errorMessage={
@@ -240,7 +252,9 @@ export const ChatView = ({
                     editDraft={editingMessage}
                     onCancelEdit={() => setEditingMessage(null)}
                     onTypingActivity={onTypingActivity}
-                    onSubmit={chatRef ? handleSubmit : undefined}
+                    onSubmit={
+                      chatRef || canComposeDraft ? handleSubmit : undefined
+                    }
                   />
                 </div>
               </div>
