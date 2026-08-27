@@ -63,6 +63,7 @@ export const ChatComposer = ({
   const [draft, setDraft] = useState("");
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
   const lastConcreteConversationId = useRef(conversationId);
+  const handledFocusSignalRef = useRef<number | undefined>(undefined);
   const trimmedDraft = useMemo(() => draft.trim(), [draft]);
   const isBusy = isSubmitting || isSubmittingDraft;
   const canSubmit =
@@ -118,9 +119,14 @@ export const ChatComposer = ({
   // Move focus into the input whenever the parent bumps `focusSignal` (e.g. the
   // New Chat search bar on Enter), as long as the composer is enabled.
   useEffect(() => {
-    if (!focusSignal || disabled) {
+    if (!focusSignal) {
+      handledFocusSignalRef.current = undefined;
       return;
     }
+    if (disabled || handledFocusSignalRef.current === focusSignal) {
+      return;
+    }
+    handledFocusSignalRef.current = focusSignal;
 
     const raf = requestAnimationFrame(() => {
       inputRef.current?.focus();
