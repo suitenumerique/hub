@@ -277,9 +277,9 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
           startReached={hasOlder ? fetchOlder : undefined}
           increaseViewportBy={{ top: 400, bottom: 0 }}
           components={{
-            // Always render a spacer the height of the floating ChatHeader so
-            // the topmost message is never hidden behind it. The top-loader
-            // takes over the spacer's contents while fetching older pages.
+            // Always render enough space for the floating header and the
+            // topmost message's hover toolbar. The top-loader takes over the
+            // spacer's contents while fetching older pages.
             Header: () => (
               <div className="hub__chat-conversation__top-spacer">
                 {isFetchingOlder && (

@@ -23,11 +23,10 @@
     min-height: 0;
   }
 
-  // Matches the floating ChatHeader's content height (12px padding + 32px
-  // breadcrumb + 12px padding). Keeps the topmost message clear of the
-  // header when the user has scrolled to the very start of the conversation.
+  // Clear the 56px floating header, the 36px hover toolbar rendered above the
+  // bubble, and an 8px visual gap between them.
   &__top-spacer {
-    height: 56px;
+    height: 100px;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -29,9 +29,7 @@ export const useNewChatConversation = ({
   const [query, setQuery] = useState("");
   const [createdChatRef, setCreatedChatRef] = useState<ChatRef | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const inFlightCreationsRef = useRef<Map<string, Promise<ChatRef>>>(
-    new Map(),
-  );
+  const inFlightCreationsRef = useRef<Map<string, Promise<ChatRef>>>(new Map());
   const creationTargetRef = useRef<string | null>(null);
 
   const selectedUserIds = useMemo(
@@ -47,8 +45,7 @@ export const useNewChatConversation = ({
   );
   const { chat } = useChatForUsers(isNew ? selectedUserIds : []);
   const isCreationSupported = useChatCreationSupport(accountId);
-  const isCompositionSupported =
-    useAccountChatCompositionSupport(accountId);
+  const isCompositionSupported = useAccountChatCompositionSupport(accountId);
   const { createChatForUsers } = useCreateChatForUsers(accountId);
   const { sendMessageTo } = useSendChatMessage(null);
 

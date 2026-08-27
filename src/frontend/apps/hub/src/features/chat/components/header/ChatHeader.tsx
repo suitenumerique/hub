@@ -9,11 +9,11 @@ import {
   Bell,
   Edit,
   File,
-  Identity,
   Leave,
   Meet,
+  Shared,
   Star,
-  StarFilled,
+  StarSlash,
   Thread,
 } from "@gouvfr-lasuite/ui-components/icons";
 import { useRouter } from "next/router";
@@ -25,7 +25,6 @@ import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsP
 import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
 import type { Chat } from "@/features/drivers/types";
-import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { ChatMembersModal } from "./ChatMembersModal";
@@ -45,9 +44,8 @@ type ChatHeaderProps = {
 
 /**
  * Top bar of a conversation. Renders even when `chat` is still loading so the
- * `<AccountSelector>` and chat tools stay mounted across navigations between
- * conversations — only the breadcrumb swaps to a skeleton while the chat is
- * being fetched.
+ * chat tools stay mounted across navigations between conversations — only the
+ * breadcrumb swaps to a skeleton while the chat is being fetched.
  */
 export const ChatHeader = ({
   chat,
@@ -120,8 +118,6 @@ export const ChatHeader = ({
             />
           </div>
         )}
-
-        <AccountSelector />
       </div>
     </header>
   );
@@ -167,7 +163,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       {
         id: "members",
         label: t("Members"),
-        icon: <Identity />,
+        icon: <Shared />,
         callback: () => setIsMembersOpen(true),
       },
       {
@@ -175,7 +171,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         label: isFavourite
           ? t("Remove from favourites")
           : t("Add to favourites"),
-        icon: isFavourite ? <StarFilled /> : <Star />,
+        icon: isFavourite ? <StarSlash /> : <Star />,
         isDisabled: isPending,
         callback: () => setFavourite(!isFavourite),
       },

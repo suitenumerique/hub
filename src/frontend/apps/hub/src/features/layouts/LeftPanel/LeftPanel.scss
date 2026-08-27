@@ -38,12 +38,6 @@
 
   &__logo {
     padding: 0 12px;
-
-    img {
-      display: block;
-      height: 40px;
-      width: auto;
-    }
   }
 
   &__actions {
@@ -300,11 +294,21 @@
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 12px;
-    background: var(--c--contextuals--background--surface--tertiary, #f6f8f9);
-    border-top: 1px solid
-      var(--c--contextuals--border--surface--primary, #dfe2ea);
+    justify-content: space-between;
+    padding: 24px 12px 12px;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      color-mix(
+          in srgb,
+          var(--c--contextuals--background--surface--tertiary, #f6f8f9) 80%,
+          transparent
+        )
+        42.43%,
+      var(--c--contextuals--background--surface--tertiary, #f6f8f9) 84.71%
+    );
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
   }
 
   &__icon-button {

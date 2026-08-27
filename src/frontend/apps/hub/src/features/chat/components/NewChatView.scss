@@ -13,7 +13,8 @@
 
 .hub__chat-view[data-header-variant="search"] {
   .hub__chat-conversation__top-spacer {
-    height: 64px;
+    // The search header is 8px taller than the regular chat header.
+    height: 108px;
   }
 }
 
