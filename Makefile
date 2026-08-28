@@ -259,6 +259,10 @@ seed-matrix: ## seed the local Matrix stack with a DM and a group room (needs ru
 	@python3 bin/seed-matrix
 .PHONY: seed-matrix
 
+seed-matrix-unread: ## add 60 main-timeline unread messages to the seeded group
+	@python3 bin/seed-matrix --unread-demo
+.PHONY: seed-matrix-unread
+
 clear-db-e2e: ## quickly clears the e2e database, used by Playwright between tests
 	$(PSQL_E2E) -c "$$(cat bin/clear_db_e2e.sql)"
 .PHONY: clear-db-e2e

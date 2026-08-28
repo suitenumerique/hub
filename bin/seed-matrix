@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Dev-only deterministic seed for the local Matrix stack.
 
-Run with `make seed-matrix` after `make run-matrix`.
+Run with `make seed-matrix` after `make run-matrix`. Use
+`make seed-matrix-unread` to append a realistic main-timeline unread batch.
 
 The seed is intentionally small for this PR:
   - provision Matrix users linked to existing Keycloak users;
@@ -9,7 +10,8 @@ The seed is intentionally small for this PR:
   - add a few plaintext messages and one thread in the group.
 
 Idempotency is alias-based: each room has a fixed alias, so a later run finds
-the room and does not post the transcript again.
+the room and does not post the base transcript again. Unread demo batches are
+deliberately appended on every run.
 """
 
 from __future__ import annotations
@@ -22,11 +24,13 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterator
 from typing import Any
 
 KEYCLOAK = "http://localhost:9803"
 HOMESERVER = "http://localhost:9808"
 SERVER_NAME = "localhost"
+HUB_USER_ID = f"@hub:{SERVER_NAME}"
 
 MAS_CONTAINER = "hub-mas-1"
 MAS_CONFIG = "/config/config.yaml"
@@ -58,6 +62,251 @@ THREAD_ROOT_INDEX = 0
 THREAD_REPLIES = [
     ("user-e2e-webkit", "First seeded reply in the Matrix thread."),
     ("user-e2e-chromium", "Second seeded reply, unread after the baseline receipt."),
+]
+
+UNREAD_DEMO_MESSAGES = [
+    (
+        "user-e2e-chromium",
+        "Bonjour, j’ai relu la note de cadrage pour la réunion de jeudi.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Merci. J’ouvre la dernière version pour vérifier les points en suspens.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Le calendrier me paraît réaliste si la validation juridique arrive mardi.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Je relance le service juridique ce matin et je te tiens au courant.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Il manque aussi le contact du référent sécurité dans l’annexe.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Je l’ai demandé hier, on devrait recevoir ses coordonnées avant midi.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Parfait. Je peux avancer sur la synthèse des risques en attendant.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Oui, garde surtout les trois risques qui nécessitent une décision.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Pour le premier, je propose de décaler le pilote d’une semaine.",
+    ),
+    (
+        "user-e2e-webkit",
+        "D’accord, cela laisse aussi plus de temps pour former les équipes.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Est-ce qu’on conserve les deux sites prévus pour la phase pilote ?",
+    ),
+    (
+        "user-e2e-webkit",
+        "Oui, les deux directions ont confirmé leur disponibilité ce matin.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Je vais ajouter cette confirmation dans le compte rendu préparatoire.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Peux-tu aussi préciser que le support sera renforcé la première semaine ?",
+    ),
+    (
+        "user-e2e-chromium",
+        "Bien noté. Je prévois un point quotidien de quinze minutes avec eux.",
+    ),
+    (
+        "user-e2e-webkit",
+        "C’est suffisant, à condition d’avoir un canal d’escalade "
+        "clairement identifié.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Je propose que l’équipe support centralise les alertes prioritaires.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Bonne idée. Je vérifie qui peut assurer la permanence côté support.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Le tableau de suivi est à jour avec les responsables et les échéances.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Je viens de le consulter, il reste deux lignes sans propriétaire.",
+    ),
+    (
+        "user-e2e-chromium",
+        "La première concerne la communication, je peux la prendre.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Je prends la seconde sur la consolidation des retours utilisateurs.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Merci. On aura ainsi une version complète avant le comité de mercredi.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Pour le comité, souhaites-tu une présentation ou seulement la note ?",
+    ),
+    (
+        "user-e2e-chromium",
+        "Une présentation courte serait utile, cinq diapositives maximum.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Je prépare la trame avec contexte, décisions et prochaines étapes.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Ajoute une diapositive sur les indicateurs de réussite du pilote.",
+    ),
+    (
+        "user-e2e-webkit",
+        "D’accord. Je reprends les indicateurs validés lors du dernier atelier.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Le taux d’adoption doit rester l’indicateur principal, selon moi.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Oui, avec le délai de traitement comme indicateur de qualité associé.",
+    ),
+    (
+        "user-e2e-chromium",
+        "On pourrait suivre aussi le nombre de demandes transmises au support.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Je l’ajoute en indicateur de vigilance plutôt qu’en objectif principal.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Très bien. As-tu reçu les dernières estimations budgétaires ?",
+    ),
+    (
+        "user-e2e-webkit",
+        "Oui, elles sont légèrement inférieures à l’enveloppe prévue.",
+    ),
+    (
+        "user-e2e-chromium",
+        "C’est une bonne nouvelle. Gardons tout de même une marge pour le support.",
+    ),
+    (
+        "user-e2e-webkit",
+        "J’ai réservé dix pour cent de l’enveloppe pour les imprévus du pilote.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Cela me semble prudent. Je l’indiquerai dans la synthèse financière.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Merci. Il faudra faire valider ce point par la direction avant jeudi.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Je peux demander un accord écrit après le comité de mercredi.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Parfait, cela évitera de retarder l’envoi aux équipes pilotes.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Concernant l’envoi, je propose un message commun aux deux directions.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Oui, avec un paragraphe adapté pour chaque référent local.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Je rédige la partie commune et je te laisse les éléments spécifiques.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Entendu. Je les récupère dans les comptes rendus des entretiens.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Peux-tu me les transmettre avant demain seize heures ?",
+    ),
+    (
+        "user-e2e-webkit",
+        "Oui, je bloque une heure demain matin pour finaliser cela.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Merci. Je ferai ensuite une relecture complète avant diffusion.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Je veux bien relire la version finale avec toi en fin de journée.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Avec plaisir. Je t’envoie une invitation pour dix-sept heures trente.",
+    ),
+    (
+        "user-e2e-webkit",
+        "C’est bon pour moi, l’invitation apparaît dans mon agenda.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Avant cela, je vais vérifier les chiffres avec l’équipe données.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Ils ont publié une nouvelle extraction ce matin dans le dossier partagé.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Je la vois. Les résultats du second site sont meilleurs que prévu.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Oui, leur préparation en amont semble avoir fait la différence.",
+    ),
+    (
+        "user-e2e-chromium",
+        "On devrait reprendre leur méthode dans les recommandations finales.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Bonne idée, je demande au référent de résumer les actions menées.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Cela nous donnera un exemple concret à présenter au comité.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Exactement. Je l’intégrerai dans la diapositive sur les enseignements.",
+    ),
+    (
+        "user-e2e-chromium",
+        "Je pense que nous avons couvert tous les points importants "
+        "pour aujourd’hui.",
+    ),
+    (
+        "user-e2e-webkit",
+        "Oui, je partage la trame cet après-midi et je signale les derniers blocages.",
+    ),
 ]
 
 
@@ -278,21 +527,166 @@ def send_thread_receipt(
     )
 
 
+def room_message_events(
+    token: str,
+    room_id: str,
+) -> Iterator[dict[str, Any]]:
+    """Read the full room history backwards, one Matrix page at a time."""
+    from_token: str | None = None
+
+    while True:
+        query: dict[str, str | int] = {"dir": "b", "limit": 100}
+        if from_token:
+            query["from"] = from_token
+        page = http_json(
+            "GET",
+            (
+                f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/messages?"
+                f"{urllib.parse.urlencode(query)}"
+            ),
+            token=token,
+        )
+        chunk = page.get("chunk", [])
+        if not isinstance(chunk, list):
+            return
+        yield from chunk
+
+        next_token = page.get("end")
+        if not chunk or not next_token or next_token == from_token:
+            return
+        from_token = next_token
+
+
+def is_main_timeline_message(event: dict[str, Any]) -> bool:
+    """Match the frontend's visible main-timeline message boundary."""
+    content = event.get("content", {})
+    relation_type = content.get("m.relates_to", {}).get("rel_type")
+    return event.get("type") == "m.room.message" and relation_type not in {
+        "m.thread",
+        "m.replace",
+    }
+
+
 def find_message_id_by_body(token: str, room_id: str, body: str) -> str | None:
-    events = http_json(
-        "GET",
-        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/messages?dir=b&limit=100",
-        token=token,
-    ).get("chunk", [])
-    for event in events:
+    for event in room_message_events(token, room_id):
         content = event.get("content", {})
-        if (
-            event.get("type") == "m.room.message"
-            and content.get("body") == body
-            and content.get("m.relates_to", {}).get("rel_type") != "m.thread"
-        ):
+        if is_main_timeline_message(event) and content.get("body") == body:
             return event.get("event_id")
     return None
+
+
+def latest_main_message_id(token: str, room_id: str) -> str | None:
+    for event in room_message_events(token, room_id):
+        if is_main_timeline_message(event):
+            return event.get("event_id")
+    return None
+
+
+def fully_read_event_id(token: str, room_id: str) -> str | None:
+    """Return Hub's current fully-read marker when one is stored."""
+    user_id = urllib.parse.quote(HUB_USER_ID, safe="")
+    encoded_room_id = urllib.parse.quote(room_id, safe="")
+    try:
+        account_data = http_json(
+            "GET",
+            (
+                f"{HOMESERVER}/_matrix/client/v3/user/{user_id}/rooms/"
+                f"{encoded_room_id}/account_data/m.fully_read"
+            ),
+            token=token,
+        )
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+
+    event_id = account_data.get("event_id")
+    return event_id if isinstance(event_id, str) else None
+
+
+def should_preserve_main_boundary(
+    token: str,
+    room_id: str,
+    boundary_id: str,
+) -> bool:
+    """Protect an existing foreign backlog or an unavailable boundary."""
+    for event in room_message_events(token, room_id):
+        if event.get("event_id") == boundary_id:
+            return False
+        if (
+            is_main_timeline_message(event)
+            and event.get("sender") != HUB_USER_ID
+        ):
+            return True
+
+    # A purged or inaccessible marker must never make the command skip unread
+    # messages by silently moving the boundary to the latest event.
+    return True
+
+
+def set_main_read_boundary(token: str, room_id: str, event_id: str) -> None:
+    """Advance Hub's main boundary without changing any thread receipt."""
+    http_json(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/read_markers",
+        token=token,
+        body={"m.fully_read": event_id},
+    )
+    http_json(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/receipt/m.read/{event_id}",
+        token=token,
+        body={"thread_id": "main"},
+    )
+
+
+def prepare_main_read_boundary(token: str, room_id: str) -> None:
+    """Initialize the demo boundary without consuming an existing backlog."""
+    boundary_id = fully_read_event_id(token, room_id)
+    if boundary_id and should_preserve_main_boundary(token, room_id, boundary_id):
+        print(
+            "seed-matrix: existing Hub main-timeline unread boundary preserved; "
+            "thread receipts are unchanged."
+        )
+        return
+
+    boundary_id = latest_main_message_id(token, room_id)
+    if not boundary_id:
+        fail("could not find a main-timeline event for the Hub read boundary")
+    set_main_read_boundary(token, room_id, boundary_id)
+    print(
+        "seed-matrix: Hub main timeline marked read before the demo batch; "
+        "thread receipts are unchanged."
+    )
+
+
+def seed_unread_demo(tokens: dict[str, str], room_id: str) -> None:
+    chromium = sum(
+        author == "user-e2e-chromium" for author, _ in UNREAD_DEMO_MESSAGES
+    )
+    webkit = sum(author == "user-e2e-webkit" for author, _ in UNREAD_DEMO_MESSAGES)
+    if len(UNREAD_DEMO_MESSAGES) != 60 or chromium != 30 or webkit != 30:
+        fail("unread demo must contain exactly 30 Chromium and 30 WebKit messages")
+
+    prepare_main_read_boundary(tokens["hub"], room_id)
+    print(
+        "seed-matrix: keep the Hub conversation closed or away from its bottom "
+        "until all messages are sent."
+    )
+    run_id = time.time_ns()
+    for index, (author, body) in enumerate(UNREAD_DEMO_MESSAGES, start=1):
+        send_message(
+            tokens[author],
+            room_id,
+            f"[{index}/60] {body}",
+            f"{GROUP_ALIAS_LOCALPART}-unread-{run_id}-{index}",
+        )
+        if index % 10 == 0:
+            print(f"seed-matrix: unread demo progress {index}/60")
+    print(
+        "seed-matrix: added 60 main-timeline messages "
+        f"(Chromium: {chromium}, WebKit: {webkit}) to {room_id}."
+    )
 
 
 def thread_relations(token: str, room_id: str, root_id: str) -> list[dict[str, Any]]:
@@ -366,15 +760,21 @@ def ensure_room(
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--users-only",
         action="store_true",
         help="provision linked Matrix users without creating rooms or messages",
     )
+    mode.add_argument(
+        "--unread-demo",
+        action="store_true",
+        help="append 30 Chromium and 30 WebKit main-timeline messages",
+    )
     return parser.parse_args()
 
 
-def main(*, users_only: bool = False) -> None:
+def main(*, users_only: bool = False, unread_demo: bool = False) -> None:
     print("seed-matrix: provisioning identities...")
     admin_token = keycloak_admin_token()
     tokens = {
@@ -411,9 +811,14 @@ def main(*, users_only: bool = False) -> None:
     if not root_id:
         fail("could not find the seeded group message used as thread root.")
     ensure_thread(tokens, group_room_id, root_id)
+    if unread_demo:
+        seed_unread_demo(tokens, group_room_id)
     print("seed-matrix: Done.")
 
 
 if __name__ == "__main__":
     arguments = parse_args()
-    main(users_only=arguments.users_only)
+    main(
+        users_only=arguments.users_only,
+        unread_demo=arguments.unread_demo,
+    )

@@ -194,6 +194,21 @@ $ make seed-matrix
 multi-user room, and posts a few text messages. It is idempotent: running it
 again finds the existing room aliases and does not duplicate the transcript.
 
+To test the first-unread separator with a longer main timeline, append a fresh
+batch of 30 Chromium messages and 30 WebKit messages to the seeded group:
+
+```shellscript
+$ make seed-matrix-unread
+```
+
+The command advances Hub's `m.fully_read` marker and its `m.read` receipt for
+the main timeline only when no main-timeline backlog is already unread. This
+means consecutive runs preserve the original unread boundary while each one
+appends a new 60-message batch, numbered from `1/60` to `60/60`. The seeded
+thread's receipt is never modified. Keep the group closed in Hub, or stay away
+from the bottom of its timeline while the command runs, so the active client
+does not immediately mark the incoming messages as read.
+
 To start again with no Matrix rooms or messages while keeping the local
 Keycloak users available for login and new conversations:
 
