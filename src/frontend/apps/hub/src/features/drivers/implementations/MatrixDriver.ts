@@ -10,6 +10,7 @@ import {
   MatrixEventEvent,
   MsgType,
   Preset,
+  ReceiptType,
   RelationType,
   type Room,
   RoomEvent,
@@ -70,7 +71,7 @@ import {
   ChatMessage,
   ChatMember,
   ChatMembers,
-  ChatMessagesPage,
+  ChatMessageWindow,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -247,6 +248,11 @@ export class MatrixDriver extends Driver {
    * opened thread and prevents it leaking into the room timeline.
    */
   private redactedThreadReplies = new Map<string, RedactedThreadReply>();
+  /** Pagination ends which the SDK can leave tokened after returning `false`. */
+  private exhaustedTimelineDirections = new WeakMap<
+    EventTimeline,
+    Set<"older" | "newer">
+  >();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
   /** Parsed per-account config; source of truth for the fixed server and OIDC. */
@@ -740,19 +746,454 @@ export class MatrixDriver extends Driver {
     };
   }
 
+  /** Ordered timelines connected to the one containing an anchor event. */
+  private timelineChain(timeline: EventTimeline): EventTimeline[] {
+    let oldest = timeline;
+    const seen = new Set<EventTimeline>();
+    while (
+      oldest.getNeighbouringTimeline(EventTimeline.BACKWARDS) &&
+      !seen.has(oldest)
+    ) {
+      seen.add(oldest);
+      oldest = oldest.getNeighbouringTimeline(EventTimeline.BACKWARDS)!;
+    }
+
+    const chain: EventTimeline[] = [];
+    let current: EventTimeline | null = oldest;
+    while (current && !chain.includes(current)) {
+      chain.push(current);
+      current = current.getNeighbouringTimeline(EventTimeline.FORWARDS);
+    }
+    return chain;
+  }
+
+  private timelineEdge(
+    timeline: EventTimeline,
+    direction: "older" | "newer",
+  ): EventTimeline {
+    const chain = this.timelineChain(timeline);
+    return direction === "older" ? chain[0] : chain[chain.length - 1];
+  }
+
+  /** Main-timeline bubbles in chronological order across a connected chain. */
+  private loadedMainTimelineEvents(
+    chatId: string,
+    timeline: EventTimeline,
+  ): MatrixEvent[] {
+    const ids = new Set<string>();
+    return this.timelineChain(timeline)
+      .flatMap((item) => item.getEvents())
+      .filter((event) => {
+        const eventId = event.getId();
+        if (
+          !eventId ||
+          ids.has(eventId) ||
+          !isMainTimelineMessage(event) ||
+          this.isRedactedThreadReply(chatId, event)
+        ) {
+          return false;
+        }
+        ids.add(eventId);
+        return true;
+      });
+  }
+
+  private canPaginateTimeline(
+    timeline: EventTimeline,
+    direction: "older" | "newer",
+  ): boolean {
+    const edge = this.timelineEdge(timeline, direction);
+    const exhausted = this.exhaustedTimelineDirections.get(edge);
+    const matrixDirection =
+      direction === "older"
+        ? EventTimeline.BACKWARDS
+        : EventTimeline.FORWARDS;
+    return (
+      !exhausted?.has(direction) &&
+      edge.getPaginationToken(matrixDirection) !== null
+    );
+  }
+
+  private markTimelineExhausted(
+    timeline: EventTimeline,
+    direction: "older" | "newer",
+  ): void {
+    const edge = this.timelineEdge(timeline, direction);
+    const exhausted = this.exhaustedTimelineDirections.get(edge) ?? new Set();
+    exhausted.add(direction);
+    this.exhaustedTimelineDirections.set(edge, exhausted);
+  }
+
   /**
-   * Reads a page of timeline history for a room, oldest-message-first. Backed by
-   * the Matrix live timeline rather than a raw `/messages` call so events are
-   * decrypted and de-duplicated by the SDK. The cursor is the oldest message id
-   * of the previous page (see `nextCursor` below); the live timeline is
-   * paginated backwards until enough history is in memory to fill the page, or
-   * the start of the room is reached.
+   * Extends one side of a contextual timeline. `matrix-js-sdk` can leave a
+   * pagination token in place after returning `false`, so exhaustion is also
+   * remembered locally to avoid requesting the same end forever.
+   */
+  private async paginateTimeline(
+    mx: MatrixClient,
+    timeline: EventTimeline,
+    direction: "older" | "newer",
+    limit: number,
+  ): Promise<boolean> {
+    if (!this.canPaginateTimeline(timeline, direction)) {
+      return false;
+    }
+    const edge = this.timelineEdge(timeline, direction);
+    const matrixDirection =
+      direction === "older"
+        ? EventTimeline.BACKWARDS
+        : EventTimeline.FORWARDS;
+    const previousToken = edge.getPaginationToken(matrixDirection);
+    let more: boolean;
+    try {
+      more = await mx.paginateEventTimeline(edge, {
+        backwards: direction === "older",
+        limit,
+      });
+    } catch (error) {
+      if (!isRecoverableMatrixPaginationError(error)) {
+        throw error;
+      }
+      this.markTimelineExhausted(timeline, direction);
+      return false;
+    }
+    this.restoreRedactedThreadReplies(mx);
+    const nextEdge = this.timelineEdge(timeline, direction);
+    const nextToken = nextEdge.getPaginationToken(matrixDirection);
+    if (!more || (nextEdge === edge && nextToken === previousToken)) {
+      this.markTimelineExhausted(timeline, direction);
+      return false;
+    }
+    return true;
+  }
+
+  private async mapMessageWindow(
+    mx: MatrixClient,
+    room: Room,
+    pageEvents: MatrixEvent[],
+    window: Omit<ChatMessageWindow, "messages" | "authors">,
+  ): Promise<ChatMessageWindow> {
+    const selfUserId = mx.getUserId() ?? undefined;
+    const mappedMessages = pageEvents.map((event) =>
+      this.messageWithThreadOverlay(room, event, selfUserId),
+    );
+    const messages = await Promise.all(
+      mappedMessages.map((message, index) =>
+        reconcileMessageReactions(
+          mx,
+          room,
+          pageEvents[index],
+          message,
+          selfUserId,
+        ),
+      ),
+    );
+    return {
+      ...window,
+      messages,
+      authors: buildAuthors(room, pageEvents, selfUserId),
+    };
+  }
+
+  private async latestMessageWindow(
+    mx: MatrixClient,
+    room: Room,
+    limit: number,
+    anchorStatus: ChatMessageWindow["anchorStatus"] = "none",
+  ): Promise<ChatMessageWindow> {
+    const timeline = room.getLiveTimeline();
+    for (let page = 0; ; page += 1) {
+      let events = this.loadedMainTimelineEvents(room.roomId, timeline);
+      if (events.length >= limit) {
+        const pageEvents = events.slice(-limit);
+        const hasOlder =
+          events.length > pageEvents.length ||
+          this.canPaginateTimeline(timeline, "older");
+        return this.mapMessageWindow(mx, room, pageEvents, {
+          firstUnreadMessageId: null,
+          olderCursor: hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
+          newerCursor: null,
+          anchorStatus,
+        });
+      }
+      if (!(await this.paginateTimeline(mx, timeline, "older", limit))) {
+        events = this.loadedMainTimelineEvents(room.roomId, timeline);
+        const pageEvents = events.slice(-limit);
+        return this.mapMessageWindow(mx, room, pageEvents, {
+          firstUnreadMessageId: null,
+          olderCursor: null,
+          newerCursor: null,
+          anchorStatus,
+        });
+      }
+      if (page >= 19) {
+        throw new Error(
+          `MatrixDriver.getChatMessages: room "${room.roomId}" exceeds the pagination safety limit.`,
+        );
+      }
+    }
+  }
+
+  private personalReadBoundary(room: Room, userId: string): string | null {
+    const fullyRead = room
+      .getAccountData(ReceiptType.FullyRead)
+      ?.getContent<{ event_id?: string }>().event_id;
+    if (fullyRead) {
+      return fullyRead;
+    }
+
+    const publicReceipt = room.getReadReceiptForUserId(
+      userId,
+      false,
+      ReceiptType.Read,
+    );
+    const privateReceipt = room.getReadReceiptForUserId(
+      userId,
+      false,
+      ReceiptType.ReadPrivate,
+    );
+    const mainReceipts = [publicReceipt, privateReceipt].filter(
+      (receipt) =>
+        receipt &&
+        (!receipt.data.thread_id || receipt.data.thread_id === "main"),
+    );
+    mainReceipts.sort((left, right) =>
+      left!.data.ts === right!.data.ts
+        ? left === publicReceipt
+          ? -1
+          : 1
+        : left!.data.ts - right!.data.ts,
+    );
+    return mainReceipts.at(-1)?.eventId ?? null;
+  }
+
+  private async directionalMessageWindow(
+    mx: MatrixClient,
+    room: Room,
+    cursor: string,
+    direction: "older" | "newer",
+    limit: number,
+  ): Promise<ChatMessageWindow> {
+    const timelineSet = room.getUnfilteredTimelineSet();
+    let timeline = timelineSet.getTimelineForEvent(cursor);
+    if (!timeline) {
+      timeline = await mx.getEventTimeline(timelineSet, cursor);
+    }
+    if (!timeline) {
+      throw new Error(
+        `MatrixDriver.getChatMessages: cursor "${cursor}" not found in room "${room.roomId}".`,
+      );
+    }
+
+    let events: MatrixEvent[] = [];
+    let cursorIndex = -1;
+    for (let page = 0; ; page += 1) {
+      events = this.loadedMainTimelineEvents(room.roomId, timeline);
+      cursorIndex = events.findIndex((event) => event.getId() === cursor);
+      if (cursorIndex < 0) {
+        throw new Error(
+          `MatrixDriver.getChatMessages: cursor "${cursor}" is not a visible message in room "${room.roomId}".`,
+        );
+      }
+      const available =
+        direction === "older"
+          ? cursorIndex
+          : events.length - cursorIndex - 1;
+      if (
+        available >= limit ||
+        !(await this.paginateTimeline(mx, timeline, direction, limit))
+      ) {
+        break;
+      }
+      if (page >= 19) {
+        throw new Error(
+          `MatrixDriver.getChatMessages: room "${room.roomId}" exceeds the pagination safety limit.`,
+        );
+      }
+    }
+
+    events = this.loadedMainTimelineEvents(room.roomId, timeline);
+    cursorIndex = events.findIndex((event) => event.getId() === cursor);
+    const availableEvents =
+      direction === "older"
+        ? events.slice(0, cursorIndex)
+        : events.slice(cursorIndex + 1);
+    const pageEvents =
+      direction === "older"
+        ? availableEvents.slice(-limit)
+        : availableEvents.slice(0, limit);
+    const hasMore =
+      availableEvents.length > pageEvents.length ||
+      this.canPaginateTimeline(timeline, direction);
+
+    return this.mapMessageWindow(mx, room, pageEvents, {
+      firstUnreadMessageId: null,
+      olderCursor:
+        direction === "older"
+          ? hasMore
+            ? (pageEvents[0]?.getId() ?? null)
+            : null
+          : (pageEvents[0]?.getId() ?? null),
+      newerCursor:
+        direction === "newer"
+          ? hasMore
+            ? (pageEvents.at(-1)?.getId() ?? null)
+            : null
+          : (pageEvents.at(-1)?.getId() ?? null),
+      anchorStatus: "resolved",
+    });
+  }
+
+  private async firstUnreadMessageWindow(
+    mx: MatrixClient,
+    room: Room,
+    limit: number,
+  ): Promise<ChatMessageWindow> {
+    const selfUserId = mx.getUserId();
+    if (!selfUserId || !computeRoomUnread(room, selfUserId)) {
+      return this.latestMessageWindow(mx, room, limit);
+    }
+
+    const boundaryId = this.personalReadBoundary(room, selfUserId);
+    if (!boundaryId) {
+      return this.latestMessageWindow(mx, room, limit, "unavailable");
+    }
+
+    const timelineSet = room.getUnfilteredTimelineSet();
+    let timeline = timelineSet.getTimelineForEvent(boundaryId);
+    try {
+      timeline ??= await mx.getEventTimeline(timelineSet, boundaryId);
+    } catch (error) {
+      if (!isRecoverableMatrixPaginationError(error)) {
+        throw error;
+      }
+      return this.latestMessageWindow(mx, room, limit, "unavailable");
+    }
+    if (!timeline) {
+      return this.latestMessageWindow(mx, room, limit, "unavailable");
+    }
+
+    let firstUnreadId: string | null = null;
+    for (let page = 0; ; page += 1) {
+      const chainEvents = this.timelineChain(timeline).flatMap((item) =>
+        item.getEvents(),
+      );
+      const boundaryIndex = chainEvents.findIndex(
+        (event) => event.getId() === boundaryId,
+      );
+      if (boundaryIndex < 0) {
+        return this.latestMessageWindow(mx, room, limit, "unavailable");
+      }
+      firstUnreadId =
+        chainEvents
+          .slice(boundaryIndex + 1)
+          .find(
+            (event) =>
+              isMainTimelineMessage(event) &&
+              !event.isRedacted() &&
+              !this.isRedactedThreadReply(room.roomId, event) &&
+              event.getSender() !== selfUserId,
+          )
+          ?.getId() ?? null;
+      if (
+        firstUnreadId ||
+        !(await this.paginateTimeline(mx, timeline, "newer", limit))
+      ) {
+        break;
+      }
+      if (page >= 19) {
+        throw new Error(
+          `MatrixDriver.getChatMessages: room "${room.roomId}" exceeds the pagination safety limit.`,
+        );
+      }
+    }
+
+    if (!firstUnreadId) {
+      const chainEvents = this.timelineChain(timeline).flatMap((item) =>
+        item.getEvents(),
+      );
+      const boundaryIndex = chainEvents.findIndex(
+        (event) => event.getId() === boundaryId,
+      );
+      firstUnreadId =
+        chainEvents
+          .slice(boundaryIndex + 1)
+          .find(
+            (event) =>
+              isMainTimelineMessage(event) &&
+              !event.isRedacted() &&
+              !this.isRedactedThreadReply(room.roomId, event) &&
+              event.getSender() !== selfUserId,
+          )
+          ?.getId() ?? null;
+    }
+
+    if (!firstUnreadId) {
+      return this.latestMessageWindow(mx, room, limit);
+    }
+
+    const beforeTarget = Math.floor(limit / 3);
+    const afterTarget = Math.max(1, limit - beforeTarget);
+    for (const [direction, target] of [
+      ["older", beforeTarget],
+      ["newer", afterTarget],
+    ] as const) {
+      for (let page = 0; ; page += 1) {
+        const events = this.loadedMainTimelineEvents(room.roomId, timeline);
+        const unreadIndex = events.findIndex(
+          (event) => event.getId() === firstUnreadId,
+        );
+        const available =
+          direction === "older"
+            ? unreadIndex
+            : events.length - unreadIndex;
+        if (
+          available >= target ||
+          !(await this.paginateTimeline(mx, timeline, direction, limit))
+        ) {
+          break;
+        }
+        if (page >= 19) {
+          throw new Error(
+            `MatrixDriver.getChatMessages: room "${room.roomId}" exceeds the pagination safety limit.`,
+          );
+        }
+      }
+    }
+
+    const events = this.loadedMainTimelineEvents(room.roomId, timeline);
+    const unreadIndex = events.findIndex(
+      (event) => event.getId() === firstUnreadId,
+    );
+    let startIndex = Math.max(0, unreadIndex - beforeTarget);
+    const endIndex = Math.min(events.length, startIndex + limit);
+    startIndex = Math.max(0, endIndex - limit);
+    const pageEvents = events.slice(startIndex, endIndex);
+    const hasOlder =
+      startIndex > 0 || this.canPaginateTimeline(timeline, "older");
+    const hasNewer =
+      endIndex < events.length || this.canPaginateTimeline(timeline, "newer");
+
+    return this.mapMessageWindow(mx, room, pageEvents, {
+      firstUnreadMessageId: firstUnreadId,
+      olderCursor: hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
+      newerCursor: hasNewer ? (pageEvents.at(-1)?.getId() ?? null) : null,
+      anchorStatus: "resolved",
+    });
+  }
+
+  /**
+   * Reads a chronological, bidirectional timeline window. The initial window
+   * can target the live end or Matrix's personal read boundary; subsequent
+   * calls extend that window from one of the returned cursors.
    */
   async getChatMessages({
     chatId,
     cursor,
+    anchor = "latest",
+    direction = "older",
     limit = DEFAULT_CHAT_PAGE_SIZE,
-  }: GetChatMessagesParams): Promise<ChatMessagesPage> {
+  }: GetChatMessagesParams): Promise<ChatMessageWindow> {
     const mx = this.requireClient("getChatMessages");
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     if (!joinedRoomIds.has(chatId)) {
@@ -768,100 +1209,18 @@ export class MatrixDriver extends Driver {
     }
     this.restoreRedactedThreadReplies(mx);
 
-    const timeline = room.getLiveTimeline();
-    const loaded = () =>
-      timeline
-        .getEvents()
-        .filter(
-          (event) =>
-            isMainTimelineMessage(event) &&
-            !this.isRedactedThreadReply(chatId, event),
-        );
-
-    // Number of message events strictly older than the cursor currently in
-    // memory; without a cursor every loaded message counts (latest page).
-    let events = loaded();
-    const eventsBeforeCursor = () =>
-      cursor
-        ? events.findIndex((event) => event.getId() === cursor)
-        : events.length;
-
-    let reachedStart = false;
-    for (let page = 0; eventsBeforeCursor() < limit; page += 1) {
-      if (page >= 20) {
-        throw new Error(
-          `MatrixDriver.getChatMessages: room "${chatId}" exceeds the pagination safety limit.`,
-        );
-      }
-      const previousToken = timeline.getPaginationToken(
-        EventTimeline.BACKWARDS,
-      );
-      let more: boolean;
-      try {
-        more = await mx.paginateEventTimeline(timeline, {
-          backwards: true,
-          limit,
-        });
-      } catch (error) {
-        if (!isRecoverableMatrixPaginationError(error)) {
-          throw error;
-        }
-        reachedStart = true;
-        break;
-      }
-      // Pagination can bring an older redacted thread reply into the room only
-      // after the initial restoration pass. Hydrate its persisted association
-      // before rebuilding the main-timeline projection.
-      this.restoreRedactedThreadReplies(mx);
-      events = loaded();
-      const nextToken = timeline.getPaginationToken(EventTimeline.BACKWARDS);
-      // matrix-js-sdk cannot advance a timeline token when a /messages page is
-      // made entirely of already-known or thread-partitioned events. Retrying
-      // that same token would hammer the homeserver forever; keep the loaded
-      // latest range and treat this direction as exhausted for this read.
-      if (!more || nextToken === previousToken) {
-        reachedStart = true;
-        break;
-      }
-    }
-
-    let endIndex = events.length;
     if (cursor) {
-      endIndex = events.findIndex((event) => event.getId() === cursor);
-      if (endIndex < 0) {
-        throw new Error(
-          `MatrixDriver.getChatMessages: cursor "${cursor}" not found in room "${chatId}".`,
-        );
-      }
+      return this.directionalMessageWindow(
+        mx,
+        room,
+        cursor,
+        direction,
+        limit,
+      );
     }
-    const startIndex = Math.max(0, endIndex - limit);
-    const pageEvents = events.slice(startIndex, endIndex);
-
-    // The connected Matrix user is folded onto the "me" sentinel so their
-    // messages render as "sent" (see `toAuthorId`).
-    const selfUserId = mx.getUserId() ?? undefined;
-    const mappedMessages = pageEvents.map((event) =>
-      this.messageWithThreadOverlay(room, event, selfUserId),
-    );
-    // Most messages have no reactions and need no extra request. For the few
-    // which have a server aggregate or a locally-known relation, reconcile
-    // against `/relations` so a stale IndexedDB local echo cannot reappear
-    // after its redaction.
-    const messages = await Promise.all(
-      mappedMessages.map((message, index) =>
-        reconcileMessageReactions(
-          mx,
-          room,
-          pageEvents[index],
-          message,
-          selfUserId,
-        ),
-      ),
-    );
-    const authors = buildAuthors(room, pageEvents, selfUserId);
-    const nextCursor =
-      startIndex === 0 && reachedStart ? null : (messages[0]?.id ?? null);
-    return { messages, authors, nextCursor };
+    return anchor === "first-unread"
+      ? this.firstUnreadMessageWindow(mx, room, limit)
+      : this.latestMessageWindow(mx, room, limit);
   }
 
   /** Resolves a connected client for Matrix-only operations. */
@@ -1310,10 +1669,20 @@ export class MatrixDriver extends Driver {
     const events = room
       .getLiveTimeline()
       .getEvents()
-      .filter(isMainTimelineMessage);
+      .filter(
+        (event) =>
+          isMainTimelineMessage(event) &&
+          !this.isRedactedThreadReply(chatId, event),
+      );
     const latest = events[events.length - 1];
-    if (latest) {
-      await mx.sendReadReceipt(latest);
+    const latestId = latest?.getId();
+    if (latest && latestId) {
+      await mx.setRoomReadMarkers(chatId, latestId, latest);
+      this.emit({
+        type: "unread:changed",
+        chatId,
+        unread: roomUnread(room, mx.getUserId() ?? undefined),
+      });
     }
   }
 

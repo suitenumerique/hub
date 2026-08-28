@@ -1,6 +1,9 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 
-import { useDriverEntries } from "@/features/drivers/DriverRegistry";
+import {
+  getRegistry,
+  useDriverEntries,
+} from "@/features/drivers/DriverRegistry";
 import type { AccountId, ChatRef, ChatUnread } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
@@ -8,6 +11,22 @@ import { chatKeys } from "../chatKeys";
 const READ: ChatUnread = { unread: false, highlight: false };
 
 export type ChatUnreadLookup = (ref: ChatRef) => ChatUnread;
+
+/** Read state for the active conversation, including cache readiness. */
+export const useChatUnreadState = (
+  ref: ChatRef,
+): { unread: ChatUnread; isPending: boolean } => {
+  const query = useQuery({
+    queryKey: chatKeys.unreadOf(ref.accountId),
+    queryFn: () => getRegistry().get(ref.accountId).getUnread(),
+    staleTime: Infinity,
+    meta: { noGlobalError: true },
+  });
+  return {
+    unread: query.data?.[ref.chatId] ?? READ,
+    isPending: query.isPending,
+  };
+};
 
 /**
  * Loads each driver's read-state slice once, then exposes a cheap lookup for

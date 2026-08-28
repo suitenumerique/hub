@@ -10,80 +10,77 @@ import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import type {
-  ChatRef,
   ChatMessage,
   ChatMessageAuthor,
+  ChatRef,
 } from "@/features/drivers/types";
 
 import { useChatMessages } from "../hooks/useChatMessages";
-import { useChatUnread } from "../hooks/useChatUnread";
+import { useChatUnreadState } from "../hooks/useChatUnread";
 import { useMarkChatRead } from "../hooks/useMarkChatRead";
 
 import { ChatBubble } from "./ChatBubble";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
+import { UnreadSeparator } from "./UnreadSeparator";
 
 type ChatVirtualListProps = {
   chatRef: ChatRef;
 };
 
-// Average bubble height. Lets Virtuoso lay out rows without waiting on the
-// first measurement pass — eliminates the visible "flash" before the list
-// snaps to the bottom on chat open / switch.
 const DEFAULT_ITEM_HEIGHT = 72;
-
-// Avoid clearing a room merely because it flashed on screen during navigation.
 const MARK_READ_DEBOUNCE_MS = 500;
 const MARK_READ_RETRY_MAX_MS = 8000;
 
-// State machine for the skeleton overlay: it stays mounted (and fully
-// opaque) while messages are loading, then transitions to `leaving` once
-// Virtuoso has had a frame to render — the CSS fade-out runs and the
-// transition-end handler flips it to `hidden`, at which point we unmount it.
 type SkeletonState = "visible" | "leaving" | "hidden";
 
 export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
   const { t } = useTranslation();
+  const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
+  const { unread, isPending: isUnreadPending } = useChatUnreadState(chatRef);
+  const isUnread = unread.unread;
   const {
     messages,
     authorsById,
+    firstUnreadMessageId,
+    anchorStatus,
     hasOlder,
+    hasNewer,
     isFetchingOlder,
+    isFetchingNewer,
     isInitialLoading,
     firstItemIndex,
     fetchOlder,
-  } = useChatMessages(chatRef);
-  const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
+    fetchNewer,
+  } = useChatMessages(chatRef, {
+    anchor: isUnread ? "first-unread" : "latest",
+    enabled: !isUnreadPending,
+  });
   const lastMessage = messages[messages.length - 1];
-  const unreadLookup = useChatUnread();
-  const isUnread = unreadLookup(chatRef).unread;
   const markChatRead = useMarkChatRead(chatRef);
 
-  // Keep one Virtuoso instance alive across chat switches — remounting it on
-  // every chat change costs ~500ms of measurement + layout, which is what
-  // made switching feel sluggish.
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const previousChatRef = useRef(chatRef);
+  const scrollerRef = useRef<HTMLElement | Window | null>(null);
   const previousAppendState = useRef({
     chatKey,
     messageCount: messages.length,
     lastMessageId: lastMessage?.id ?? null,
   });
   const atBottomRef = useRef(true);
-  // Set while a freshly appended message should stay pinned to the bottom.
-  // Virtuoso estimates row heights before measuring, so the first scroll can
-  // land a few px short; `totalListHeightChanged` re-pins once the real height
-  // is known. Cleared as soon as the viewport actually reaches the bottom.
   const shouldStickToBottomRef = useRef(false);
   const pendingScrollRaf = useRef<number | null>(null);
+  const pendingScrollTimer = useRef<number | null>(null);
   const lastMarkedKeyRef = useRef<string | null>(null);
   const markReadTimerRef = useRef<number | null>(null);
   const markReadRetryCountRef = useRef(0);
   const [markReadRetryTick, setMarkReadRetryTick] = useState(0);
+  const [positionedChatKey, setPositionedChatKey] = useState<string | null>(
+    null,
+  );
+  const [clearedBoundaryChatKey, setClearedBoundaryChatKey] = useState<
+    string | null
+  >(null);
 
-  /**
-   * A room is read only when its latest message is actually visible: the window
-   * is focused, the list is at the bottom, and the initial load has completed.
-   */
+  /** Mark only the true live end, never the bottom of a contextual window. */
   const maybeMarkRead = useCallback(() => {
     const latestId = lastMessage?.id;
     const markerKey = latestId ? `${chatKey}:${latestId}` : null;
@@ -93,6 +90,8 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
     }
     if (
       isInitialLoading ||
+      hasNewer ||
+      positionedChatKey !== chatKey ||
       !atBottomRef.current ||
       !markerKey ||
       lastMarkedKeyRef.current === markerKey ||
@@ -112,6 +111,7 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
       void markChatRead()
         .then(() => {
           markReadRetryCountRef.current = 0;
+          setClearedBoundaryChatKey(chatKey);
         })
         .catch(() => {
           if (lastMarkedKeyRef.current !== markerKey) {
@@ -129,11 +129,21 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
           }, retryDelay);
         });
     }, MARK_READ_DEBOUNCE_MS);
-  }, [chatKey, isInitialLoading, isUnread, lastMessage?.id, markChatRead]);
+  }, [
+    chatKey,
+    hasNewer,
+    isInitialLoading,
+    isUnread,
+    lastMessage?.id,
+    markChatRead,
+    positionedChatKey,
+  ]);
 
   useEffect(() => {
     lastMarkedKeyRef.current = null;
     markReadRetryCountRef.current = 0;
+    setPositionedChatKey(null);
+    setClearedBoundaryChatKey(null);
     return () => {
       lastMarkedKeyRef.current = null;
     };
@@ -151,60 +161,89 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
     };
   }, [markReadRetryTick, maybeMarkRead]);
 
-  const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
-    isInitialLoading ? "visible" : "hidden",
-  );
+  const [skeletonState, setSkeletonState] = useState<SkeletonState>("visible");
+  const needsInitialPosition =
+    isInitialLoading || positionedChatKey !== chatKey;
 
   useEffect(() => {
-    if (isInitialLoading) {
+    if (needsInitialPosition) {
       setSkeletonState("visible");
       return;
     }
-    // Wait one frame so Virtuoso has mounted and painted its first batch of
-    // bubbles before we start fading the skeleton out — without this delay
-    // the skeleton would unmount before Virtuoso lays out, leaving a blank
-    // conversation for one or two frames.
     const raf = requestAnimationFrame(() => {
       setSkeletonState((current) =>
         current === "visible" ? "leaving" : current,
       );
     });
     return () => cancelAnimationFrame(raf);
-  }, [isInitialLoading]);
+  }, [needsInitialPosition]);
 
+  // Once the anchored window is rendered, place the first unread row one
+  // third from the viewport top. The separator stays inside that row, so
+  // Virtuoso's item indexes remain identical to the message indexes.
   useEffect(() => {
     if (
-      previousChatRef.current.accountId === chatRef.accountId &&
-      previousChatRef.current.chatId === chatRef.chatId
+      isInitialLoading ||
+      positionedChatKey === chatKey ||
+      anchorStatus === null
     ) {
       return;
     }
-    previousChatRef.current = chatRef;
-    // Two rAFs: the first lets React commit the new `data` + `firstItemIndex`,
-    // the second lets Virtuoso recompute its internal layout before we ask it
-    // to scroll to the last row.
-    pendingScrollRaf.current = requestAnimationFrame(() => {
+    const firstUnreadIndex = firstUnreadMessageId
+      ? messages.findIndex((message) => message.id === firstUnreadMessageId)
+      : -1;
+
+    // Virtuoso performs its own delayed initial scroll while it measures the
+    // first rendered rows. Wait for that cycle before applying our anchor so
+    // its internal retry cannot move the conversation back to the live end.
+    pendingScrollTimer.current = window.setTimeout(() => {
+      pendingScrollTimer.current = null;
       pendingScrollRaf.current = requestAnimationFrame(() => {
         pendingScrollRaf.current = null;
-        virtuosoRef.current?.scrollToIndex({
-          index: "LAST",
-          align: "end",
-          behavior: "smooth",
-        });
+        if (firstUnreadIndex >= 0 && anchorStatus === "resolved") {
+          // Virtuoso reports its initial bottom state before this imperative
+          // anchor is applied. Clear that provisional value so it cannot
+          // advance Matrix's markers while the unread row is still moving.
+          atBottomRef.current = false;
+          const scrollerHeight =
+            scrollerRef.current && "clientHeight" in scrollerRef.current
+              ? scrollerRef.current.clientHeight
+              : 0;
+          virtuosoRef.current?.scrollToIndex({
+            index: firstUnreadIndex,
+            align: "start",
+            offset: -Math.round(scrollerHeight / 3),
+            behavior: "auto",
+          });
+        } else {
+          virtuosoRef.current?.scrollToIndex({
+            index: "LAST",
+            align: "end",
+            behavior: "auto",
+          });
+        }
+        setPositionedChatKey(chatKey);
       });
-    });
+    }, 250);
     return () => {
+      if (pendingScrollTimer.current !== null) {
+        window.clearTimeout(pendingScrollTimer.current);
+        pendingScrollTimer.current = null;
+      }
       if (pendingScrollRaf.current !== null) {
         cancelAnimationFrame(pendingScrollRaf.current);
         pendingScrollRaf.current = null;
       }
     };
-  }, [chatRef]);
+  }, [
+    anchorStatus,
+    chatKey,
+    firstUnreadMessageId,
+    isInitialLoading,
+    messages,
+    positionedChatKey,
+  ]);
 
-  // Scroll so the latest message's bottom aligns with the viewport bottom,
-  // through Virtuoso's measurement-aware API rather than touching `scrollTop`
-  // directly — on a virtualised list the scroller's `scrollHeight` is only an
-  // estimate, so manual `scrollTop = scrollHeight` overshoots and janks.
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
       index: "LAST",
@@ -213,11 +252,9 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
     });
   }, []);
 
-  // Stick to the bottom when a new latest message arrives — but only when the
-  // reader is already at the bottom, or it is their own send (they expect to
-  // follow it even from an older scroll position). `followOutput` handles the
-  // "already at bottom" case on its own; this covers "my own send while
-  // scrolled up", which `followOutput` deliberately ignores.
+  // New live events never change the anchored separator. Follow only when the
+  // loaded window has reached the live end and the reader is already there,
+  // or when the newly appended message is their own send.
   useLayoutEffect(() => {
     const previous = previousAppendState.current;
     const isSameChat = previous.chatKey === chatKey;
@@ -225,7 +262,8 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
       messages.length > previous.messageCount &&
       lastMessage?.id !== previous.lastMessageId;
     const shouldFollowAppend =
-      atBottomRef.current || lastMessage?.authorId === "me";
+      !hasNewer &&
+      (atBottomRef.current || lastMessage?.authorId === "me");
     previousAppendState.current = {
       chatKey,
       messageCount: messages.length,
@@ -240,23 +278,35 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
     scrollToBottom();
   }, [
     chatKey,
+    hasNewer,
     lastMessage?.authorId,
     lastMessage?.id,
     messages.length,
     scrollToBottom,
   ]);
 
+  const hasActiveUnreadBoundary =
+    isUnread && clearedBoundaryChatKey !== chatKey;
+  const showUnreadSeparator =
+    hasActiveUnreadBoundary &&
+    anchorStatus === "resolved" &&
+    firstUnreadMessageId !== null;
+  const isLocatingUnread =
+    isUnread &&
+    (isUnreadPending || (isInitialLoading && anchorStatus === null));
+
   return (
     <div className="hub__chat-conversation__list">
       {!isInitialLoading && (
         <Virtuoso
           ref={virtuosoRef}
+          scrollerRef={(element) => {
+            scrollerRef.current = element;
+          }}
           data={messages}
           firstItemIndex={firstItemIndex}
           computeItemKey={(_index, message) => message.id}
           defaultItemHeight={DEFAULT_ITEM_HEIGHT}
-          // Honoured only on the very first mount; subsequent chat switches
-          // rely on the imperative scrollToIndex above.
           initialTopMostItemIndex={Math.max(0, messages.length - 1)}
           followOutput="auto"
           atBottomStateChange={(atBottom) => {
@@ -267,55 +317,69 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
             }
           }}
           totalListHeightChanged={() => {
-            // Re-pin to the bottom while a stick is pending: the just-appended
-            // row's real height differs from the initial estimate, and that
-            // height change would otherwise leave a gap below the last message.
             if (shouldStickToBottomRef.current) {
               scrollToBottom();
             }
           }}
           startReached={hasOlder ? fetchOlder : undefined}
-          increaseViewportBy={{ top: 400, bottom: 0 }}
+          endReached={hasNewer ? fetchNewer : undefined}
+          increaseViewportBy={{ top: 400, bottom: 400 }}
           components={{
-            // Always render enough space for the floating header and the
-            // topmost message's hover toolbar. The top-loader takes over the
-            // spacer's contents while fetching older pages.
             Header: () => (
               <div className="hub__chat-conversation__top-spacer">
                 {isFetchingOlder && (
-                  <div
-                    className="hub__chat-conversation__top-loader"
-                    role="status"
-                  >
-                    <span className="material-icons" aria-hidden="true">
-                      sync
-                    </span>
-                    {t("Loading older messages…")}
-                  </div>
+                  <TimelineStatus label={t("Loading older messages…")} />
                 )}
               </div>
             ),
+            Footer: () =>
+              isFetchingNewer ? (
+                <div className="hub__chat-conversation__bottom-loader">
+                  <TimelineStatus label={t("Loading newer messages…")} />
+                </div>
+              ) : null,
           }}
           itemContent={(virtualIndex, message) => {
             const arrayIndex = virtualIndex - firstItemIndex;
+            const isFirstUnread =
+              showUnreadSeparator && message.id === firstUnreadMessageId;
+            const nextMessage = messages[arrayIndex + 1];
             return (
               <Row
                 message={message}
                 chatRef={chatRef}
-                prev={messages[arrayIndex - 1]}
-                next={messages[arrayIndex + 1]}
+                prev={isFirstUnread ? undefined : messages[arrayIndex - 1]}
+                next={
+                  nextMessage?.id === firstUnreadMessageId
+                    ? undefined
+                    : nextMessage
+                }
                 authorsById={authorsById}
+                showUnreadSeparator={isFirstUnread}
               />
             );
           }}
         />
       )}
+      {!isInitialLoading &&
+        hasActiveUnreadBoundary &&
+        anchorStatus === "unavailable" && (
+          <div className="hub__chat-conversation__unread-unavailable">
+            <TimelineStatus
+              label={t("Unread messages are above")}
+              icon="north"
+              loading={false}
+            />
+          </div>
+        )}
       {skeletonState !== "hidden" && (
         <ChatConversationSkeleton
           leaving={skeletonState === "leaving"}
-          // Guard against a late `transitionend` from a previous leave: if the
-          // user re-loaded the chat in the meantime, the state is back to
-          // "visible" and we must not flip it to "hidden".
+          status={
+            isLocatingUnread
+              ? t("Looking for the first unread message…")
+              : undefined
+          }
           onLeaveEnd={() =>
             setSkeletonState((current) =>
               current === "leaving" ? "hidden" : current,
@@ -327,13 +391,34 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
   );
 };
 
+const TimelineStatus = ({
+  label,
+  icon = "sync",
+  loading = true,
+}: {
+  label: string;
+  icon?: string;
+  loading?: boolean;
+}) => (
+  <div
+    className="hub__chat-conversation__top-loader"
+    role="status"
+    data-loading={loading || undefined}
+  >
+    <span className="material-icons" aria-hidden="true">
+      {icon}
+    </span>
+    {label}
+  </div>
+);
+
 type RowProps = {
   message: ChatMessage;
-  /** Stable for the whole list — does not invalidate the row memo. */
   chatRef: ChatRef;
   prev: ChatMessage | undefined;
   next: ChatMessage | undefined;
   authorsById: Map<string, ChatMessageAuthor>;
+  showUnreadSeparator: boolean;
 };
 
 const Row = memo(function Row({
@@ -342,6 +427,7 @@ const Row = memo(function Row({
   prev,
   next,
   authorsById,
+  showUnreadSeparator,
 }: RowProps) {
   const isSent = message.authorId === "me";
   const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
@@ -349,7 +435,7 @@ const Row = memo(function Row({
 
   if (isSent) {
     return (
-      <RowShell>
+      <RowShell separator={showUnreadSeparator}>
         <ChatBubble
           variant="sent"
           chatRef={chatRef}
@@ -373,7 +459,7 @@ const Row = memo(function Row({
     return null;
   }
   return (
-    <RowShell>
+    <RowShell separator={showUnreadSeparator}>
       <ChatBubble
         variant="received"
         chatRef={chatRef}
@@ -394,8 +480,17 @@ const Row = memo(function Row({
   );
 });
 
-const RowShell = ({ children }: { children: React.ReactNode }) => (
+const RowShell = ({
+  children,
+  separator,
+}: {
+  children: React.ReactNode;
+  separator: boolean;
+}) => (
   <div className="hub__chat-conversation__row">
-    <div className="hub__chat-conversation__row-inner">{children}</div>
+    <div className="hub__chat-conversation__row-inner">
+      {separator && <UnreadSeparator />}
+      {children}
+    </div>
   </div>
 );

@@ -242,6 +242,20 @@ export type ChatMessagesPage = {
 };
 
 /**
+ * A driver-neutral slice of a conversation timeline. Unlike the legacy
+ * `ChatMessagesPage`, a window can be extended in both directions and can be
+ * opened around the first unread message rather than only at the live end.
+ */
+export type ChatMessageWindow = {
+  messages: ChatMessage[];
+  authors: ChatMessageAuthor[];
+  firstUnreadMessageId: string | null;
+  olderCursor: string | null;
+  newerCursor: string | null;
+  anchorStatus: "resolved" | "none" | "unavailable";
+};
+
+/**
  * One row of the threads tools panel — a thread scoped to a single
  * conversation. The driver is the swap point: a real backend returns this
  * shape, or a richer one the driver narrows down.

@@ -38,8 +38,33 @@
 
     .material-icons {
       font-size: 16px;
+    }
+
+    &[data-loading] .material-icons {
       animation: hub-chat-spin 1.2s linear infinite;
     }
+  }
+
+  &__bottom-loader {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__unread-unavailable {
+    position: absolute;
+    top: 64px;
+    left: 50%;
+    z-index: 1;
+    transform: translateX(-50%);
+    padding: var(--c--globals--spacings--xxs, 6px)
+      var(--c--globals--spacings--sm, 12px);
+    border-radius: var(--c--globals--spacings--xs, 8px);
+    background: var(--c--contextuals--background--surface--primary, #fff);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
+    white-space: nowrap;
+    pointer-events: none;
   }
 
   &__row {
@@ -63,7 +88,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hub__chat-conversation__top-loader .material-icons {
+  .hub__chat-conversation__top-loader[data-loading] .material-icons {
     animation: none;
   }
 }

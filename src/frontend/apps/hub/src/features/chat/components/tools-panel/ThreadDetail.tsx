@@ -22,6 +22,7 @@ import { useEditChatMessage } from "../../hooks/useEditChatMessage";
 import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
+import { UnreadSeparator } from "../UnreadSeparator";
 
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
@@ -95,7 +96,7 @@ export const ThreadDetail = ({
       return;
     }
     const separator = container.querySelector<HTMLElement>(
-      ".hub__thread-detail__unread",
+      "[data-unread-separator]",
     );
     container.scrollTop = separator
       ? Math.max(0, separator.offsetTop - 12)
@@ -217,9 +218,7 @@ export const ThreadDetail = ({
             return (
               <Fragment key={message.id}>
                 {index === thread.firstUnreadIndex && (
-                  <div className="hub__thread-detail__unread" role="separator">
-                    <span>{t("Unread")}</span>
-                  </div>
+                  <UnreadSeparator />
                 )}
                 {isSent ? (
                   <ChatBubble

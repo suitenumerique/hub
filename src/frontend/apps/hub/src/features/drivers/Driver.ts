@@ -3,7 +3,7 @@ import {
   ChatLocalUser,
   ChatMessage,
   ChatMessageAuthor,
-  ChatMessagesPage,
+  ChatMessageWindow,
   ChatMembers,
   ChatReaction,
   ChatThread,
@@ -25,11 +25,15 @@ export type ChatUserFilters = {
 export type GetChatMessagesParams = {
   chatId: string;
   /**
-   * Cursor returned in `nextCursor` by the previous page. When provided, the
-   * driver returns the page of messages immediately older than this cursor.
-   * `null` or omitted means "fetch the latest page".
+   * Cursor returned by one side of the previous window. Its direction decides
+   * whether the driver returns messages immediately before or after it.
+   * `null` or omitted opens a new window at `anchor`.
    */
   cursor?: string | null;
+  /** Timeline position used for the initial window when no cursor is given. */
+  anchor?: "first-unread" | "latest";
+  /** Direction to extend an existing window when a cursor is given. */
+  direction?: "older" | "newer";
   /** Maximum number of messages to return. Drivers may clamp to a server cap. */
   limit?: number;
 };
@@ -207,7 +211,7 @@ export abstract class Driver {
   abstract getChat(chatId: string): Promise<LocalChat>;
   abstract getChatMessages(
     params: GetChatMessagesParams,
-  ): Promise<ChatMessagesPage>;
+  ): Promise<ChatMessageWindow>;
   /**
    * Toggles the current user's reaction with `emoji` on a message and resolves
    * with the updated message. Adding when absent, removing when already

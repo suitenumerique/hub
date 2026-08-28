@@ -33,7 +33,15 @@ const appendMessage = (
   event: Extract<ChatEvent, { type: "message:new" }>,
 ): ChatMessagesData => {
   const [newest, ...rest] = data.pages;
-  if (!newest || newest.messages.some((m) => m.id === event.message.id)) {
+  const hasUnloadedNewerMessages = Boolean(
+    (newest as ChatMessagesPage & { newerCursor?: string | null })
+      ?.newerCursor,
+  );
+  if (
+    !newest ||
+    hasUnloadedNewerMessages ||
+    newest.messages.some((m) => m.id === event.message.id)
+  ) {
     return data;
   }
   const authors = event.authors
