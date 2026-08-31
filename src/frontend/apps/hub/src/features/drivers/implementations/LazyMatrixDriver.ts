@@ -9,6 +9,7 @@ import {
   type EditChatMessageParams,
   type GetChatMessagesParams,
   type GetChatThreadParams,
+  type MarkChatReadParams,
   type MarkChatThreadReadParams,
   type RemoveChatFromHistoryResult,
   type SendChatMessageParams,
@@ -168,8 +169,8 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.markAllChatThreadsRead(chatId));
   }
 
-  async markChatRead(chatId: string): Promise<void> {
-    return this.withTarget((driver) => driver.markChatRead(chatId));
+  async markChatRead(params: MarkChatReadParams): Promise<void> {
+    return this.withTarget((driver) => driver.markChatRead(params));
   }
 
   async getUnread(): Promise<Record<string, ChatUnread>> {

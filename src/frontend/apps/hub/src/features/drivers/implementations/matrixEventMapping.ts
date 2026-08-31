@@ -296,17 +296,25 @@ const computeThreadUnread = (
 export const roomUnread = (
   room: Room,
   selfUserId: string | undefined,
-): ChatUnread => ({
-  unread:
-    room.getUnreadNotificationCount(NotificationCountType.Total) > 0 ||
-    computeRoomUnread(room, selfUserId) ||
-    room
-      .getThreads()
-      .some((thread) => computeThreadUnread(room, thread, selfUserId) > 0),
-  // Unlike getRoomUnreadNotificationCount, this includes thread mentions.
-  highlight:
-    room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0,
-});
+): ChatUnread => {
+  const mainTimelineUnread = computeRoomUnread(room, selfUserId);
+  const mainTimelineCount = room.getRoomUnreadNotificationCount(
+    NotificationCountType.Total,
+  );
+  return {
+    unread:
+      room.getUnreadNotificationCount(NotificationCountType.Total) > 0 ||
+      mainTimelineUnread ||
+      room
+        .getThreads()
+        .some((thread) => computeThreadUnread(room, thread, selfUserId) > 0),
+    // Unlike getRoomUnreadNotificationCount, this includes thread mentions.
+    highlight:
+      room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0,
+    mainTimelineUnread,
+    mainTimelineCount,
+  };
+};
 
 export const authorForSender = (
   room: Room,

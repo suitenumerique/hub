@@ -1,5 +1,5 @@
 // Always wraps the composer so its instance stays mounted across the
-// empty → chat transition. Only when an unread-threads banner is present does
+// empty → chat transition. Only when an unread banner is present does
 // it become the bordered box from the Figma "Answer Field" unread variant —
 // otherwise it is a transparent passthrough and the composer keeps its own
 // border.
@@ -7,20 +7,30 @@
   display: flex;
   flex-direction: column;
 
-  &:has(.hub__unread-threads-banner) {
+  &:has(.hub__chat-unread-banners) {
     border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
     border-radius: var(--c--globals--spacings--xs, 8px);
     overflow: clip;
   }
 }
 
-.hub__unread-threads-banner {
+.hub__chat-unread-banners {
+  display: flex;
+  flex-direction: column;
+}
+
+.hub__unread-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--c--globals--spacings--xs, 8px);
   padding: var(--c--globals--spacings--xxxs, 4px);
   font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+
+  + .hub__unread-banner {
+    border-top: 1px solid
+      var(--c--contextuals--border--surface--primary, #dfe2ea);
+  }
 
   &__open,
   &__mark {
@@ -50,6 +60,11 @@
       outline: 2px solid
         var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
       outline-offset: 2px;
+    }
+
+    &:disabled {
+      cursor: wait;
+      opacity: 0.6;
     }
   }
 

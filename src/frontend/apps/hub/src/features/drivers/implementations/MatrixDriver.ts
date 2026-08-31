@@ -56,6 +56,7 @@ import {
   EditChatMessageParams,
   GetChatThreadParams,
   GetChatMessagesParams,
+  MarkChatReadParams,
   MarkChatThreadReadParams,
   RemoveChatFromHistoryResult,
   SendChatMessageParams,
@@ -268,6 +269,14 @@ export class MatrixDriver extends Driver {
    * browser, so credentials must not be keyed only by account id.
    */
   private storageOwner: string | null = null;
+  /** Serializes per-room marker writes so stale requests cannot win a race. */
+  private mainReadMarkerQueues = new Map<string, Promise<void>>();
+  /**
+   * Server-confirmed markers waiting for their room account-data echo. The SDK
+   * locally echoes read receipts but not `m.fully_read`, so consulting only the
+   * Room immediately after a write would temporarily reopen the old boundary.
+   */
+  private confirmedMainReadBoundaries = new Map<string, string>();
 
   constructor(
     accountId: AccountId = "matrix-local",
@@ -805,9 +814,7 @@ export class MatrixDriver extends Driver {
     const edge = this.timelineEdge(timeline, direction);
     const exhausted = this.exhaustedTimelineDirections.get(edge);
     const matrixDirection =
-      direction === "older"
-        ? EventTimeline.BACKWARDS
-        : EventTimeline.FORWARDS;
+      direction === "older" ? EventTimeline.BACKWARDS : EventTimeline.FORWARDS;
     return (
       !exhausted?.has(direction) &&
       edge.getPaginationToken(matrixDirection) !== null
@@ -840,9 +847,7 @@ export class MatrixDriver extends Driver {
     }
     const edge = this.timelineEdge(timeline, direction);
     const matrixDirection =
-      direction === "older"
-        ? EventTimeline.BACKWARDS
-        : EventTimeline.FORWARDS;
+      direction === "older" ? EventTimeline.BACKWARDS : EventTimeline.FORWARDS;
     const previousToken = edge.getPaginationToken(matrixDirection);
     let more: boolean;
     try {
@@ -935,6 +940,11 @@ export class MatrixDriver extends Driver {
   }
 
   private personalReadBoundary(room: Room, userId: string): string | null {
+    const confirmedBoundary = this.confirmedMainReadBoundaries.get(room.roomId);
+    if (confirmedBoundary) {
+      return confirmedBoundary;
+    }
+
     const fullyRead = room
       .getAccountData(ReceiptType.FullyRead)
       ?.getContent<{ event_id?: string }>().event_id;
@@ -996,9 +1006,7 @@ export class MatrixDriver extends Driver {
         );
       }
       const available =
-        direction === "older"
-          ? cursorIndex
-          : events.length - cursorIndex - 1;
+        direction === "older" ? cursorIndex : events.length - cursorIndex - 1;
       if (
         available >= limit ||
         !(await this.paginateTimeline(mx, timeline, direction, limit))
@@ -1144,9 +1152,7 @@ export class MatrixDriver extends Driver {
           (event) => event.getId() === firstUnreadId,
         );
         const available =
-          direction === "older"
-            ? unreadIndex
-            : events.length - unreadIndex;
+          direction === "older" ? unreadIndex : events.length - unreadIndex;
         if (
           available >= target ||
           !(await this.paginateTimeline(mx, timeline, direction, limit))
@@ -1210,13 +1216,7 @@ export class MatrixDriver extends Driver {
     this.restoreRedactedThreadReplies(mx);
 
     if (cursor) {
-      return this.directionalMessageWindow(
-        mx,
-        room,
-        cursor,
-        direction,
-        limit,
-      );
+      return this.directionalMessageWindow(mx, room, cursor, direction, limit);
     }
     return anchor === "first-unread"
       ? this.firstUnreadMessageWindow(mx, room, limit)
@@ -1656,34 +1656,90 @@ export class MatrixDriver extends Driver {
     );
   }
 
-  /**
-   * Marks only the main timeline read. The default SDK receipt adds
-   * `thread_id: "main"`; deliberately do not pass `unthreaded=true`, which
-   * would also clear unread threads.
-   */
-  async markChatRead(chatId: string): Promise<void> {
+  /** Advances only the main timeline through one loaded visible message. */
+  async markChatRead(params: MarkChatReadParams): Promise<void> {
+    const previous = this.mainReadMarkerQueues.get(params.chatId);
+    const queued = (previous?.catch(() => undefined) ?? Promise.resolve()).then(
+      () => this.markChatReadNow(params),
+    );
+    this.mainReadMarkerQueues.set(params.chatId, queued);
+    try {
+      await queued;
+    } finally {
+      if (this.mainReadMarkerQueues.get(params.chatId) === queued) {
+        this.mainReadMarkerQueues.delete(params.chatId);
+      }
+    }
+  }
+
+  private async markChatReadNow({
+    chatId,
+    messageId,
+  }: MarkChatReadParams): Promise<void> {
     const { mx, room } = this.requireRoom("markChatRead", chatId);
-    if (!computeRoomUnread(room, mx.getUserId() ?? undefined)) {
+    const selfUserId = mx.getUserId();
+    if (!computeRoomUnread(room, selfUserId ?? undefined)) {
       return;
     }
-    const events = room
-      .getLiveTimeline()
-      .getEvents()
-      .filter(
-        (event) =>
-          isMainTimelineMessage(event) &&
-          !this.isRedactedThreadReply(chatId, event),
+    const timelineSet = room.getUnfilteredTimelineSet();
+    const target = timelineSet.findEventById(messageId);
+    if (
+      !target ||
+      !isMainTimelineMessage(target) ||
+      target.isRedacted() ||
+      this.isRedactedThreadReply(chatId, target)
+    ) {
+      throw new Error(
+        `MatrixDriver.markChatRead: message "${messageId}" is not a visible main-timeline event in room "${chatId}".`,
       );
-    const latest = events[events.length - 1];
-    const latestId = latest?.getId();
-    if (latest && latestId) {
-      await mx.setRoomReadMarkers(chatId, latestId, latest);
-      this.emit({
-        type: "unread:changed",
-        chatId,
-        unread: roomUnread(room, mx.getUserId() ?? undefined),
-      });
     }
+
+    const publicReceipt = selfUserId
+      ? room.getReadReceiptForUserId(selfUserId, false, ReceiptType.Read)
+      : null;
+    const privateReceipt = selfUserId
+      ? room.getReadReceiptForUserId(selfUserId, false, ReceiptType.ReadPrivate)
+      : null;
+    const currentBoundaries = new Set(
+      [
+        selfUserId ? this.personalReadBoundary(room, selfUserId) : null,
+        ...[publicReceipt, privateReceipt]
+          .filter(
+            (receipt) =>
+              receipt &&
+              (!receipt.data.thread_id || receipt.data.thread_id === "main"),
+          )
+          .map((receipt) => receipt!.eventId),
+      ].filter((eventId): eventId is string => Boolean(eventId)),
+    );
+    for (const currentBoundary of currentBoundaries) {
+      if (currentBoundary === messageId) {
+        continue;
+      }
+      if (!timelineSet.findEventById(currentBoundary)) {
+        await mx.getEventTimeline(timelineSet, currentBoundary);
+      }
+      const ordering = room.compareEventOrdering(currentBoundary, messageId);
+      if (ordering === null) {
+        throw new Error(
+          `MatrixDriver.markChatRead: cannot order boundary "${currentBoundary}" and message "${messageId}" in room "${chatId}".`,
+        );
+      }
+      if (ordering > 0) {
+        return;
+      }
+    }
+
+    // `/read_markers` cannot carry `thread_id`. Send only `m.fully_read`
+    // there, then let the SDK emit a threaded `m.read` with `thread_id: main`.
+    await mx.setRoomReadMarkers(chatId, messageId);
+    this.confirmedMainReadBoundaries.set(chatId, messageId);
+    await mx.sendReadReceipt(target);
+    this.emit({
+      type: "unread:changed",
+      chatId,
+      unread: roomUnread(room, selfUserId ?? undefined),
+    });
   }
 
   /**
@@ -2225,6 +2281,16 @@ export class MatrixDriver extends Driver {
       emitUnread(room);
       emitThreadsRefresh(room);
     };
+    const onAccountData = (event: MatrixEvent, room: Room) => {
+      if (event.getType() !== ReceiptType.FullyRead) {
+        return;
+      }
+      // `/sync` is now authoritative again, including markers advanced from
+      // another device. Until this echo, `personalReadBoundary` uses the last
+      // successful local write above the SDK's stale room account data.
+      this.confirmedMainReadBoundaries.delete(room.roomId);
+      emitUnread(room);
+    };
     const onReplaced = (event: MatrixEvent) => {
       const roomId = event.getRoomId();
       const room = roomId ? mx.getRoom(roomId) : null;
@@ -2530,6 +2596,7 @@ export class MatrixDriver extends Driver {
     mx.getRooms().forEach(attachThreadListeners);
     mx.on(RoomEvent.Timeline, onTimeline);
     mx.on(RoomEvent.Receipt, onReceipt);
+    mx.on(RoomEvent.AccountData, onAccountData);
     mx.on(RoomEvent.Redaction, onRedaction);
     mx.on(RoomEvent.RedactionCancelled, onRedactionCancelled);
     mx.on(MatrixEventEvent.Replaced, onReplaced);
@@ -2550,6 +2617,7 @@ export class MatrixDriver extends Driver {
     this.detachSync = () => {
       mx.off(RoomEvent.Timeline, onTimeline);
       mx.off(RoomEvent.Receipt, onReceipt);
+      mx.off(RoomEvent.AccountData, onAccountData);
       mx.off(RoomEvent.Redaction, onRedaction);
       mx.off(RoomEvent.RedactionCancelled, onRedactionCancelled);
       mx.off(MatrixEventEvent.Replaced, onReplaced);
@@ -2637,6 +2705,7 @@ export class MatrixDriver extends Driver {
     this.mx?.stopClient();
     this.mx = null;
     this.joinedRoomIds = null;
+    this.confirmedMainReadBoundaries.clear();
     this.sentThreadReplyEventIds.clear();
     this.redactedThreadReplies.clear();
   }

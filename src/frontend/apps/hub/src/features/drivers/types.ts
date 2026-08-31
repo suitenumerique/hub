@@ -44,6 +44,10 @@ export type ChatVisual =
 export type ChatUnread = {
   unread: boolean;
   highlight: boolean;
+  /** Whether unread events exist on the main timeline (threads excluded). */
+  mainTimelineUnread?: boolean;
+  /** Matrix unread count scoped to the room's main timeline, not its threads. */
+  mainTimelineCount?: number;
 };
 
 /**

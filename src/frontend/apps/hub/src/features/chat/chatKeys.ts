@@ -18,6 +18,8 @@ export const chatKeys = {
   chat: (ref: ChatRef) => ["chat", ref.accountId, ref.chatId] as const,
   messages: (ref: ChatRef) =>
     ["chat-messages", ref.accountId, ref.chatId] as const,
+  unreadAnchor: (ref: ChatRef) =>
+    ["chat-unread-anchor", ref.accountId, ref.chatId] as const,
   threads: (ref: ChatRef) =>
     ["chat-threads", ref.accountId, ref.chatId] as const,
   thread: (ref: ChatRef, threadId: string) =>

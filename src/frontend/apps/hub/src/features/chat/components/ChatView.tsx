@@ -23,9 +23,11 @@ import { useSendChatMessage } from "../hooks/useSendChatMessage";
 import { ChatComposer } from "./ChatComposer";
 import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
+import type { MainTimelineUnreadNavigation } from "./ChatVirtualList";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
+import { UnreadMessagesBanner } from "./UnreadMessagesBanner";
 import { TypingIndicator } from "./TypingIndicator";
 
 type ChatViewProps = {
@@ -81,6 +83,8 @@ export const ChatView = ({
   const { users: typingUsers, onTypingActivity } = useChatTyping(chatRef);
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
+  const [mainUnreadNavigation, setMainUnreadNavigation] =
+    useState<MainTimelineUnreadNavigation | null>(null);
 
   // The same composer submits either a new event or an in-place edit. Notify
   // `onSent` only for new messages so editing never changes navigation state.
@@ -124,6 +128,7 @@ export const ChatView = ({
     setFocusThreadComposer(false);
     setDraftThreadRoot(null);
     setEditingMessage(null);
+    setMainUnreadNavigation(null);
   }, [chatRef?.accountId, chatRef?.chatId]);
 
   const toggleTool = (tool: ChatTool) => {
@@ -208,7 +213,10 @@ export const ChatView = ({
               {invitationChat && chatRef ? (
                 <ChatInvitationView chatRef={chatRef} chat={invitationChat} />
               ) : chatRef ? (
-                <ChatConversation chatRef={chatRef} />
+                <ChatConversation
+                  chatRef={chatRef}
+                  onUnreadNavigationChange={setMainUnreadNavigation}
+                />
               ) : (
                 renderEmpty?.()
               )}
@@ -221,7 +229,10 @@ export const ChatView = ({
                   when a conversation resolves. */}
                 <div className="hub__chat-composer-stack">
                   {chatRef ? (
-                    <ConversationUnreadBanner chatRef={chatRef} />
+                    <ConversationUnreadBanner
+                      chatRef={chatRef}
+                      mainUnreadNavigation={mainUnreadNavigation}
+                    />
                   ) : null}
                   <TypingIndicator users={typingUsers} />
                   <ChatComposer
@@ -281,14 +292,27 @@ export const ChatView = ({
   );
 };
 
-const ConversationUnreadBanner = ({ chatRef }: { chatRef: ChatRef }) => {
+const ConversationUnreadBanner = ({
+  chatRef,
+  mainUnreadNavigation,
+}: {
+  chatRef: ChatRef;
+  mainUnreadNavigation: MainTimelineUnreadNavigation | null;
+}) => {
   const { unreadThreads } = useChatThreads(chatRef);
 
-  if (unreadThreads.length === 0) {
+  if (unreadThreads.length === 0 && !mainUnreadNavigation) {
     return null;
   }
 
   return (
-    <UnreadThreadsBanner chatRef={chatRef} unreadThreads={unreadThreads} />
+    <div className="hub__chat-unread-banners">
+      {unreadThreads.length > 0 && (
+        <UnreadThreadsBanner chatRef={chatRef} unreadThreads={unreadThreads} />
+      )}
+      {mainUnreadNavigation && (
+        <UnreadMessagesBanner navigation={mainUnreadNavigation} />
+      )}
+    </div>
   );
 };

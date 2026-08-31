@@ -34,8 +34,7 @@ const appendMessage = (
 ): ChatMessagesData => {
   const [newest, ...rest] = data.pages;
   const hasUnloadedNewerMessages = Boolean(
-    (newest as ChatMessagesPage & { newerCursor?: string | null })
-      ?.newerCursor,
+    (newest as ChatMessagesPage & { newerCursor?: string | null })?.newerCursor,
   );
   if (
     !newest ||
@@ -138,7 +137,9 @@ const applyChatEvent = (
           const previous = current?.[event.chatId];
           if (
             previous?.unread === event.unread.unread &&
-            previous.highlight === event.unread.highlight
+            previous.highlight === event.unread.highlight &&
+            previous.mainTimelineUnread === event.unread.mainTimelineUnread &&
+            previous.mainTimelineCount === event.unread.mainTimelineCount
           ) {
             return current;
           }

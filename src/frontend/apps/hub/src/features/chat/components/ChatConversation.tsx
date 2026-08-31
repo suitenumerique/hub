@@ -1,15 +1,27 @@
 import type { ChatRef } from "@/features/drivers/types";
 
-import { ChatVirtualList } from "./ChatVirtualList";
+import {
+  ChatVirtualList,
+  type MainTimelineUnreadNavigation,
+} from "./ChatVirtualList";
 
 type ChatConversationProps = {
   chatRef: ChatRef;
+  onUnreadNavigationChange?: (
+    navigation: MainTimelineUnreadNavigation | null,
+  ) => void;
 };
 
-export const ChatConversation = ({ chatRef }: ChatConversationProps) => {
+export const ChatConversation = ({
+  chatRef,
+  onUnreadNavigationChange,
+}: ChatConversationProps) => {
   return (
     <div className="hub__chat-conversation">
-      <ChatVirtualList chatRef={chatRef} />
+      <ChatVirtualList
+        chatRef={chatRef}
+        onUnreadNavigationChange={onUnreadNavigationChange}
+      />
     </div>
   );
 };

@@ -63,6 +63,12 @@ export type MarkChatThreadReadParams = {
   threadId: string;
 };
 
+export type MarkChatReadParams = {
+  chatId: string;
+  /** Last visible main-timeline message the user has genuinely read. */
+  messageId: string;
+};
+
 export type SendChatMessageParams = {
   chatId: string;
   content: string;
@@ -234,8 +240,8 @@ export abstract class Driver {
   abstract markChatThreadRead(params: MarkChatThreadReadParams): Promise<void>;
   /** Marks every thread of a conversation as read for the current user. */
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
-  /** Marks the main timeline read once it is genuinely visible to the user. */
-  abstract markChatRead(chatId: string): Promise<void>;
+  /** Advances the main timeline through a genuinely read visible message. */
+  abstract markChatRead(params: MarkChatReadParams): Promise<void>;
   /** Initial per-conversation read state; live changes use `unread:changed`. */
   abstract getUnread(): Promise<Record<string, ChatUnread>>;
 

@@ -4,12 +4,17 @@ import { useCallback } from "react";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { ChatRef } from "@/features/drivers/types";
 
-/** Sends the active account's read marker; the receipt event patches unread. */
-export const useMarkChatRead = (ref: ChatRef): (() => Promise<void>) => {
-  const { mutateAsync } = useMutation<void, Error, void>({
-    mutationFn: () => getRegistry().get(ref.accountId).markChatRead(ref.chatId),
+/** Advances the active account's main read marker through one visible message. */
+export const useMarkChatRead = (
+  ref: ChatRef,
+): ((messageId: string) => Promise<void>) => {
+  const { mutateAsync } = useMutation<void, Error, string>({
+    mutationFn: (messageId) =>
+      getRegistry()
+        .get(ref.accountId)
+        .markChatRead({ chatId: ref.chatId, messageId }),
     meta: { noGlobalError: true },
   });
 
-  return useCallback(() => mutateAsync(), [mutateAsync]);
+  return useCallback((messageId) => mutateAsync(messageId), [mutateAsync]);
 };

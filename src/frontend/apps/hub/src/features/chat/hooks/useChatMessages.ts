@@ -1,4 +1,9 @@
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
@@ -40,6 +45,7 @@ export type UseChatMessagesResult = {
   authorsById: Map<string, ChatMessageAuthor>;
   firstUnreadMessageId: string | null;
   anchorStatus: ChatMessageWindow["anchorStatus"] | null;
+  unreadAnchorStatus: ChatMessageWindow["anchorStatus"] | null;
   hasOlder: boolean;
   hasNewer: boolean;
   isFetchingOlder: boolean;
@@ -50,6 +56,14 @@ export type UseChatMessagesResult = {
   firstItemIndex: number;
   fetchOlder: () => void;
   fetchNewer: () => void;
+  openFirstUnread: () => Promise<boolean>;
+};
+
+type ChatMessagesData = InfiniteData<CompatibleMessageWindow, ChatPageParam>;
+
+const INITIAL_PAGE_PARAM: ChatPageParam = {
+  cursor: null,
+  direction: "initial",
 };
 
 const pageDirection = (
@@ -91,8 +105,7 @@ export const useChatMessages = (
         limit: CHAT_PAGE_SIZE,
         ...(useBidirectionalWindow
           ? {
-              anchor:
-                pageParam.direction === "initial" ? anchor : undefined,
+              anchor: pageParam.direction === "initial" ? anchor : undefined,
               direction:
                 pageParam.direction === "initial"
                   ? undefined
@@ -102,10 +115,7 @@ export const useChatMessages = (
       };
       return getRegistry().get(ref.accountId).getChatMessages(request);
     },
-    initialPageParam: {
-      cursor: null,
-      direction: "initial",
-    } as ChatPageParam,
+    initialPageParam: INITIAL_PAGE_PARAM,
     getNextPageParam: (lastPage) => {
       const cursor = lastPage.olderCursor ?? lastPage.nextCursor;
       return cursor ? { cursor, direction: "older" as const } : undefined;
@@ -122,6 +132,23 @@ export const useChatMessages = (
     meta: { noGlobalError: true },
   });
 
+  const unreadAnchorQuery = useQuery({
+    queryKey: chatKeys.unreadAnchor(ref),
+    queryFn: () =>
+      getRegistry().get(ref.accountId).getChatMessages({
+        chatId: ref.chatId,
+        cursor: null,
+        limit: CHAT_PAGE_SIZE,
+        anchor: "first-unread",
+      }),
+    // Resolve `/context` only after the user activates the unread button.
+    enabled: false,
+    staleTime: Infinity,
+    meta: { noGlobalError: true },
+  });
+  const unreadAnchorWindow = unreadAnchorQuery.data;
+  const refetchUnreadAnchor = unreadAnchorQuery.refetch;
+
   // A conversation is opened as a fresh navigation window. Dropping its
   // inactive cache on leave ensures a later unread opening resolves the then
   // current Matrix marker instead of reusing an older "latest" window.
@@ -129,6 +156,10 @@ export const useChatMessages = (
     () => () => {
       queryClient.removeQueries({
         queryKey: chatKeys.messages(ref),
+        exact: true,
+      });
+      queryClient.removeQueries({
+        queryKey: chatKeys.unreadAnchor(ref),
         exact: true,
       });
     },
@@ -181,6 +212,34 @@ export const useChatMessages = (
     }
   }, [query]);
 
+  const openFirstUnread = useCallback(async (): Promise<boolean> => {
+    // The read boundary can advance while this conversation stays mounted.
+    // Resolve it again on every activation instead of reopening a stale
+    // contextual window from the previous jump.
+    const anchorResult = await refetchUnreadAnchor();
+    const resolved = anchorResult.isSuccess ? anchorResult.data : undefined;
+    if (
+      !resolved ||
+      resolved.anchorStatus !== "resolved" ||
+      !resolved.firstUnreadMessageId
+    ) {
+      return false;
+    }
+
+    firstItemIndexState.current.initialPageSizeBaseline = null;
+    queryClient.setQueryData<ChatMessagesData>(
+      chatKeys.messages({
+        accountId: ref.accountId,
+        chatId: ref.chatId,
+      }),
+      {
+        pages: [resolved],
+        pageParams: [INITIAL_PAGE_PARAM],
+      },
+    );
+    return true;
+  }, [queryClient, ref.accountId, ref.chatId, refetchUnreadAnchor]);
+
   const firstItemIndex = useMemo(() => {
     const chatKey = `${ref.accountId}:${ref.chatId}`;
     const state = firstItemIndexState.current;
@@ -214,9 +273,7 @@ export const useChatMessages = (
       0,
     );
     return (
-      VIRTUOSO_INDEX_ANCHOR -
-      state.initialPageSizeBaseline -
-      olderMessagesCount
+      VIRTUOSO_INDEX_ANCHOR - state.initialPageSizeBaseline - olderMessagesCount
     );
   }, [query.data?.pageParams, query.data?.pages, ref.accountId, ref.chatId]);
 
@@ -225,6 +282,7 @@ export const useChatMessages = (
     authorsById,
     firstUnreadMessageId: initialPage?.firstUnreadMessageId ?? null,
     anchorStatus: initialPage?.anchorStatus ?? null,
+    unreadAnchorStatus: unreadAnchorWindow?.anchorStatus ?? null,
     hasOlder: Boolean(query.hasNextPage),
     hasNewer: Boolean(query.hasPreviousPage),
     isFetchingOlder: query.isFetchingNextPage,
@@ -234,5 +292,6 @@ export const useChatMessages = (
     firstItemIndex,
     fetchOlder,
     fetchNewer,
+    openFirstUnread,
   };
 };
