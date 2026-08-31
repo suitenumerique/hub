@@ -34,32 +34,6 @@
   }
 }
 
-.hub__chat-conversation__skeleton-status {
-  position: absolute;
-  top: 72px;
-  left: 50%;
-  z-index: 1;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: var(--c--globals--spacings--xs, 8px);
-  padding: var(--c--globals--spacings--xxs, 6px)
-    var(--c--globals--spacings--sm, 12px);
-  border-radius: var(--c--globals--spacings--xs, 8px);
-  background: var(--c--contextuals--background--surface--primary, #fff);
-  color: var(--c--contextuals--content--semantic--neutral--secondary, #555e74);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-  white-space: nowrap;
-
-  .material-icons {
-    font-size: 16px;
-    animation: hub-chat-spin 1.2s linear infinite;
-  }
-}
-
 .hub__chat-bubble-skeleton {
   display: flex;
   gap: var(--c--globals--spacings--xs, 8px);
@@ -142,10 +116,6 @@
 @media (prefers-reduced-motion: reduce) {
   .hub__chat-bubble-skeleton__avatar,
   .hub__chat-bubble-skeleton__body {
-    animation: none;
-  }
-
-  .hub__chat-conversation__skeleton-status .material-icons {
     animation: none;
   }
 }

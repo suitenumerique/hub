@@ -2,13 +2,13 @@ import type { ChatRef } from "@/features/drivers/types";
 
 import {
   ChatVirtualList,
-  type MainTimelineUnreadNavigation,
+  type MainTimelineUnreadNavigationUpdate,
 } from "./ChatVirtualList";
 
 type ChatConversationProps = {
   chatRef: ChatRef;
   onUnreadNavigationChange?: (
-    navigation: MainTimelineUnreadNavigation | null,
+    update: MainTimelineUnreadNavigationUpdate,
   ) => void;
 };
 
@@ -19,6 +19,7 @@ export const ChatConversation = ({
   return (
     <div className="hub__chat-conversation">
       <ChatVirtualList
+        key={`${chatRef.accountId}:${chatRef.chatId}`}
         chatRef={chatRef}
         onUnreadNavigationChange={onUnreadNavigationChange}
       />

@@ -45,9 +45,9 @@ export type ChatUnread = {
   unread: boolean;
   highlight: boolean;
   /** Whether unread events exist on the main timeline (threads excluded). */
-  mainTimelineUnread?: boolean;
-  /** Matrix unread count scoped to the room's main timeline, not its threads. */
-  mainTimelineCount?: number;
+  mainTimelineUnread: boolean;
+  /** Driver-provided count displayed by the main-timeline unread control. */
+  mainTimelineCount: number;
 };
 
 /**

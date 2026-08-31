@@ -201,6 +201,7 @@ export const ChatComposer = ({
         <div className="hub__chat-composer__field">
           <input
             ref={inputRef}
+            data-chat-composer-input
             type="text"
             className="hub__chat-composer__input"
             placeholder={placeholder ?? t("Your message")}

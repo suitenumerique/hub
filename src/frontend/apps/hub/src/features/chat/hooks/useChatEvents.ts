@@ -11,12 +11,12 @@ import type { ChatEvent } from "@/features/drivers/Driver";
 import type {
   AccountId,
   ChatRef,
-  ChatMessagesPage,
+  ChatMessageWindow,
   ChatThreadDetail,
   ChatUnread,
 } from "@/features/drivers/types";
 
-type ChatMessagesData = InfiniteData<ChatMessagesPage>;
+type ChatMessagesData = InfiniteData<ChatMessageWindow>;
 
 type ScopedChatEvent = {
   accountId: AccountId;
@@ -24,18 +24,16 @@ type ScopedChatEvent = {
 };
 
 /**
- * Appends a freshly-received message to the newest page of the infinite-query
- * cache (page 0 holds the latest range; messages within a page are ASC). A
- * no-op when the cache is cold or the message is already present.
+ * Appends a freshly-received message to the newest page of an infinite-query
+ * cache. A contextual window is updated only after it has reached the live end
+ * (`newerCursor` is empty); otherwise inserting the event would create a gap.
  */
 const appendMessage = (
   data: ChatMessagesData,
   event: Extract<ChatEvent, { type: "message:new" }>,
 ): ChatMessagesData => {
   const [newest, ...rest] = data.pages;
-  const hasUnloadedNewerMessages = Boolean(
-    (newest as ChatMessagesPage & { newerCursor?: string | null })?.newerCursor,
-  );
+  const hasUnloadedNewerMessages = Boolean(newest?.newerCursor);
   if (
     !newest ||
     hasUnloadedNewerMessages ||
@@ -60,14 +58,30 @@ const appendMessage = (
   };
 };
 
+/**
+ * Applies a main-timeline patch to both the permanent live cache and the
+ * temporary unread window when each cache is present.
+ */
+const updateMessageWindows = (
+  queryClient: QueryClient,
+  ref: ChatRef,
+  update: (data: ChatMessagesData) => ChatMessagesData,
+): void => {
+  chatKeys.messageWindows(ref).forEach((queryKey) => {
+    queryClient.setQueryData<ChatMessagesData>(queryKey, (data) =>
+      data ? update(data) : data,
+    );
+  });
+};
+
 /** Replaces a message across every loaded page with a fresh object (so the
  * memoized virtual-list row re-renders). No-op for pages without it. */
 const replaceMessage = (
   data: ChatMessagesData,
   messageId: string,
   update: (
-    m: ChatMessagesPage["messages"][number],
-  ) => ChatMessagesPage["messages"][number],
+    m: ChatMessageWindow["messages"][number],
+  ) => ChatMessageWindow["messages"][number],
 ): ChatMessagesData => ({
   ...data,
   pages: data.pages.map((page) =>
@@ -119,9 +133,8 @@ const applyChatEvent = (
 
   switch (event.type) {
     case "message:new":
-      queryClient.setQueryData<ChatMessagesData>(
-        chatKeys.messages(ref),
-        (data) => (data ? appendMessage(data, event) : data),
+      updateMessageWindows(queryClient, ref, (data) =>
+        appendMessage(data, event),
       );
       // Touches list ordering / last activity. Read state has its own slice.
       void queryClient.invalidateQueries({
@@ -149,14 +162,10 @@ const applyChatEvent = (
       return;
 
     case "message:updated":
-      queryClient.setQueryData<ChatMessagesData>(
-        chatKeys.messages(ref),
-        (data) =>
-          data
-            ? event.threadId && event.message.id !== event.threadId
-              ? removeMessage(data, event.message.id)
-              : replaceMessage(data, event.message.id, () => event.message)
-            : data,
+      updateMessageWindows(queryClient, ref, (data) =>
+        event.threadId && event.message.id !== event.threadId
+          ? removeMessage(data, event.message.id)
+          : replaceMessage(data, event.message.id, () => event.message),
       );
       if (event.threadId) {
         queryClient.setQueryData<ChatThreadDetail>(
@@ -192,20 +201,30 @@ const applyChatEvent = (
         );
         return;
       }
-      queryClient.setQueryData<ChatMessagesData>(
-        chatKeys.messages(ref),
-        (data) =>
-          data
-            ? replaceMessage(data, event.messageId, (m) => ({
-                ...m,
-                reactions: event.reactions,
-              }))
-            : data,
+      updateMessageWindows(queryClient, ref, (data) =>
+        replaceMessage(data, event.messageId, (m) => ({
+          ...m,
+          reactions: event.reactions,
+        })),
       );
       return;
 
     case "chat:changed":
-      void queryClient.invalidateQueries({ queryKey: chatKeys.messages(ref) });
+      {
+        const [liveMessagesKey, unreadMessagesKey] =
+          chatKeys.messageWindows(ref);
+        void queryClient.invalidateQueries({
+          queryKey: liveMessagesKey,
+          exact: true,
+        });
+        // The contextual query is intentionally disabled between manual page
+        // loads, so invalidating it would leave the visible window stale.
+        // Reset it instead: coarse timeline changes return the view to live.
+        void queryClient.resetQueries({
+          queryKey: unreadMessagesKey,
+          exact: true,
+        });
+      }
       void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
       return;
 

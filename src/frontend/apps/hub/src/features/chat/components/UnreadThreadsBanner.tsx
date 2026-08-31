@@ -45,9 +45,7 @@ export const UnreadThreadsBanner = ({
         <span className="hub__unread-banner__icon" aria-hidden="true">
           <Reply />
         </span>
-        {count === 1
-          ? t("1 unread thread")
-          : t("{{count}} unread threads", { count })}
+        {t("{{count}} unread threads", { count })}
       </button>
       <button
         type="button"
@@ -57,7 +55,7 @@ export const UnreadThreadsBanner = ({
         <span className="hub__unread-banner__icon" aria-hidden="true">
           <CircleCheck />
         </span>
-        {t("Mark as read")}
+        {t("Mark all as read")}
       </button>
     </div>
   );

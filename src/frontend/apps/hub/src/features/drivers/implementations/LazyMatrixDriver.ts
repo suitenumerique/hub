@@ -10,6 +10,7 @@ import {
   type GetChatMessagesParams,
   type GetChatThreadParams,
   type MarkChatReadParams,
+  type MarkChatReadResult,
   type MarkChatThreadReadParams,
   type RemoveChatFromHistoryResult,
   type SendChatMessageParams,
@@ -169,7 +170,7 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.markAllChatThreadsRead(chatId));
   }
 
-  async markChatRead(params: MarkChatReadParams): Promise<void> {
+  async markChatRead(params: MarkChatReadParams): Promise<MarkChatReadResult> {
     return this.withTarget((driver) => driver.markChatRead(params));
   }
 

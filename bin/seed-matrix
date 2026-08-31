@@ -64,250 +64,45 @@ THREAD_REPLIES = [
     ("user-e2e-chromium", "Second seeded reply, unread after the baseline receipt."),
 ]
 
-UNREAD_DEMO_MESSAGES = [
+UNREAD_DEMO_MESSAGE_COUNT = 60
+UNREAD_DEMO_EXCHANGES = [
     (
-        "user-e2e-chromium",
-        "Bonjour, j’ai relu la note de cadrage pour la réunion de jeudi.",
+        "J’ai relu la note de cadrage et relevé les décisions encore ouvertes.",
+        "Merci, je vérifie la dernière version et les responsables associés.",
     ),
     (
-        "user-e2e-webkit",
-        "Merci. J’ouvre la dernière version pour vérifier les points en suspens.",
+        "Le calendrier reste réaliste si la validation arrive cette semaine.",
+        "Je relance l’équipe concernée et je mets à jour le tableau de suivi.",
     ),
     (
-        "user-e2e-chromium",
-        "Le calendrier me paraît réaliste si la validation juridique arrive mardi.",
+        "Le support du pilote doit garder un canal d’escalade clairement identifié.",
+        "D’accord, je confirme la permanence et les contacts avant le comité.",
     ),
     (
-        "user-e2e-webkit",
-        "Je relance le service juridique ce matin et je te tiens au courant.",
+        "Les indicateurs d’adoption et de délai de traitement sont prêts.",
+        "Je les ajoute à la synthèse avec une courte note sur les risques.",
     ),
     (
-        "user-e2e-chromium",
-        "Il manque aussi le contact du référent sécurité dans l’annexe.",
+        "Les estimations restent dans l’enveloppe avec une marge pour les imprévus.",
+        "Parfait, je demande une validation écrite avant l’envoi aux équipes.",
     ),
     (
-        "user-e2e-webkit",
-        "Je l’ai demandé hier, on devrait recevoir ses coordonnées avant midi.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Parfait. Je peux avancer sur la synthèse des risques en attendant.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Oui, garde surtout les trois risques qui nécessitent une décision.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Pour le premier, je propose de décaler le pilote d’une semaine.",
-    ),
-    (
-        "user-e2e-webkit",
-        "D’accord, cela laisse aussi plus de temps pour former les équipes.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Est-ce qu’on conserve les deux sites prévus pour la phase pilote ?",
-    ),
-    (
-        "user-e2e-webkit",
-        "Oui, les deux directions ont confirmé leur disponibilité ce matin.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Je vais ajouter cette confirmation dans le compte rendu préparatoire.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Peux-tu aussi préciser que le support sera renforcé la première semaine ?",
-    ),
-    (
-        "user-e2e-chromium",
-        "Bien noté. Je prévois un point quotidien de quinze minutes avec eux.",
-    ),
-    (
-        "user-e2e-webkit",
-        "C’est suffisant, à condition d’avoir un canal d’escalade "
-        "clairement identifié.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Je propose que l’équipe support centralise les alertes prioritaires.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Bonne idée. Je vérifie qui peut assurer la permanence côté support.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Le tableau de suivi est à jour avec les responsables et les échéances.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Je viens de le consulter, il reste deux lignes sans propriétaire.",
-    ),
-    (
-        "user-e2e-chromium",
-        "La première concerne la communication, je peux la prendre.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Je prends la seconde sur la consolidation des retours utilisateurs.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Merci. On aura ainsi une version complète avant le comité de mercredi.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Pour le comité, souhaites-tu une présentation ou seulement la note ?",
-    ),
-    (
-        "user-e2e-chromium",
-        "Une présentation courte serait utile, cinq diapositives maximum.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Je prépare la trame avec contexte, décisions et prochaines étapes.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Ajoute une diapositive sur les indicateurs de réussite du pilote.",
-    ),
-    (
-        "user-e2e-webkit",
-        "D’accord. Je reprends les indicateurs validés lors du dernier atelier.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Le taux d’adoption doit rester l’indicateur principal, selon moi.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Oui, avec le délai de traitement comme indicateur de qualité associé.",
-    ),
-    (
-        "user-e2e-chromium",
-        "On pourrait suivre aussi le nombre de demandes transmises au support.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Je l’ajoute en indicateur de vigilance plutôt qu’en objectif principal.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Très bien. As-tu reçu les dernières estimations budgétaires ?",
-    ),
-    (
-        "user-e2e-webkit",
-        "Oui, elles sont légèrement inférieures à l’enveloppe prévue.",
-    ),
-    (
-        "user-e2e-chromium",
-        "C’est une bonne nouvelle. Gardons tout de même une marge pour le support.",
-    ),
-    (
-        "user-e2e-webkit",
-        "J’ai réservé dix pour cent de l’enveloppe pour les imprévus du pilote.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Cela me semble prudent. Je l’indiquerai dans la synthèse financière.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Merci. Il faudra faire valider ce point par la direction avant jeudi.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Je peux demander un accord écrit après le comité de mercredi.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Parfait, cela évitera de retarder l’envoi aux équipes pilotes.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Concernant l’envoi, je propose un message commun aux deux directions.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Oui, avec un paragraphe adapté pour chaque référent local.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Je rédige la partie commune et je te laisse les éléments spécifiques.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Entendu. Je les récupère dans les comptes rendus des entretiens.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Peux-tu me les transmettre avant demain seize heures ?",
-    ),
-    (
-        "user-e2e-webkit",
-        "Oui, je bloque une heure demain matin pour finaliser cela.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Merci. Je ferai ensuite une relecture complète avant diffusion.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Je veux bien relire la version finale avec toi en fin de journée.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Avec plaisir. Je t’envoie une invitation pour dix-sept heures trente.",
-    ),
-    (
-        "user-e2e-webkit",
-        "C’est bon pour moi, l’invitation apparaît dans mon agenda.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Avant cela, je vais vérifier les chiffres avec l’équipe données.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Ils ont publié une nouvelle extraction ce matin dans le dossier partagé.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Je la vois. Les résultats du second site sont meilleurs que prévu.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Oui, leur préparation en amont semble avoir fait la différence.",
-    ),
-    (
-        "user-e2e-chromium",
-        "On devrait reprendre leur méthode dans les recommandations finales.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Bonne idée, je demande au référent de résumer les actions menées.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Cela nous donnera un exemple concret à présenter au comité.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Exactement. Je l’intégrerai dans la diapositive sur les enseignements.",
-    ),
-    (
-        "user-e2e-chromium",
-        "Je pense que nous avons couvert tous les points importants "
-        "pour aujourd’hui.",
-    ),
-    (
-        "user-e2e-webkit",
-        "Oui, je partage la trame cet après-midi et je signale les derniers blocages.",
+        "Le second site a de meilleurs résultats grâce à sa préparation en amont.",
+        "Je récupère leur méthode pour l’intégrer aux recommandations finales.",
     ),
 ]
+
+
+def unread_demo_messages() -> list[tuple[str, str]]:
+    """Build a varied deterministic batch without a large literal transcript."""
+    messages: list[tuple[str, str]] = []
+    for index in range(UNREAD_DEMO_MESSAGE_COUNT):
+        exchange = UNREAD_DEMO_EXCHANGES[(index // 2) % len(UNREAD_DEMO_EXCHANGES)]
+        author_index = index % 2
+        author = "user-e2e-chromium" if author_index == 0 else "user-e2e-webkit"
+        cycle = index // (2 * len(UNREAD_DEMO_EXCHANGES)) + 1
+        messages.append((author, f"{exchange[author_index]} Passage {cycle}."))
+    return messages
 
 
 def fail(message: str) -> None:
@@ -641,7 +436,7 @@ def set_main_read_boundary(token: str, room_id: str, event_id: str) -> None:
 
 
 def prepare_main_read_boundary(token: str, room_id: str) -> None:
-    """Initialize the demo boundary without consuming an existing backlog."""
+    """Preserve a known fully-read backlog, or initialize a fresh demo room."""
     boundary_id = fully_read_event_id(token, room_id)
     if boundary_id and should_preserve_main_boundary(token, room_id, boundary_id):
         print(
@@ -649,6 +444,12 @@ def prepare_main_read_boundary(token: str, room_id: str) -> None:
             "thread receipts are unchanged."
         )
         return
+
+    if not boundary_id:
+        print(
+            "seed-matrix: no m.fully_read marker found; initializing the demo "
+            "boundary at the current live end."
+        )
 
     boundary_id = latest_main_message_id(token, room_id)
     if not boundary_id:
@@ -661,12 +462,21 @@ def prepare_main_read_boundary(token: str, room_id: str) -> None:
 
 
 def seed_unread_demo(tokens: dict[str, str], room_id: str) -> None:
+    messages = unread_demo_messages()
     chromium = sum(
-        author == "user-e2e-chromium" for author, _ in UNREAD_DEMO_MESSAGES
+        author == "user-e2e-chromium" for author, _ in messages
     )
-    webkit = sum(author == "user-e2e-webkit" for author, _ in UNREAD_DEMO_MESSAGES)
-    if len(UNREAD_DEMO_MESSAGES) != 60 or chromium != 30 or webkit != 30:
-        fail("unread demo must contain exactly 30 Chromium and 30 WebKit messages")
+    webkit = sum(author == "user-e2e-webkit" for author, _ in messages)
+    expected_per_author = UNREAD_DEMO_MESSAGE_COUNT // 2
+    if (
+        len(messages) != UNREAD_DEMO_MESSAGE_COUNT
+        or chromium != expected_per_author
+        or webkit != expected_per_author
+    ):
+        fail(
+            "unread demo must contain exactly "
+            f"{expected_per_author} Chromium and {expected_per_author} WebKit messages"
+        )
 
     prepare_main_read_boundary(tokens["hub"], room_id)
     print(
@@ -674,17 +484,20 @@ def seed_unread_demo(tokens: dict[str, str], room_id: str) -> None:
         "until all messages are sent."
     )
     run_id = time.time_ns()
-    for index, (author, body) in enumerate(UNREAD_DEMO_MESSAGES, start=1):
+    for index, (author, body) in enumerate(messages, start=1):
         send_message(
             tokens[author],
             room_id,
-            f"[{index}/60] {body}",
+            f"[{index}/{UNREAD_DEMO_MESSAGE_COUNT}] {body}",
             f"{GROUP_ALIAS_LOCALPART}-unread-{run_id}-{index}",
         )
         if index % 10 == 0:
-            print(f"seed-matrix: unread demo progress {index}/60")
+            print(
+                "seed-matrix: unread demo progress "
+                f"{index}/{UNREAD_DEMO_MESSAGE_COUNT}"
+            )
     print(
-        "seed-matrix: added 60 main-timeline messages "
+        f"seed-matrix: added {UNREAD_DEMO_MESSAGE_COUNT} main-timeline messages "
         f"(Chromium: {chromium}, WebKit: {webkit}) to {room_id}."
     )
 

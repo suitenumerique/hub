@@ -12,17 +12,8 @@ export const UnreadMessagesBanner = ({
   navigation,
 }: UnreadMessagesBannerProps) => {
   const { t } = useTranslation();
-  const { count, status, isOpening, isMarkingRead, open, markRead } =
-    navigation;
-  const label = isOpening
-    ? t("Looking for the first unread message…")
-    : status === "unavailable"
-      ? t("Unread messages are above")
-      : count === 1
-        ? t("1 unread message")
-        : count
-          ? t("{{count}} unread messages", { count })
-          : t("Unread messages");
+  const { count, isOpening, isMarkingRead, open, markRead } = navigation;
+  const label = t("{{count}} unread messages", { count });
 
   return (
     <div className="hub__unread-banner hub__unread-messages-banner">

@@ -17,8 +17,6 @@ type ChatConversationSkeletonProps = {
   leaving?: boolean;
   /** Fires once the leave transition finishes — caller can unmount the node. */
   onLeaveEnd?: () => void;
-  /** Optional visible status for work that may take longer than a normal load. */
-  status?: string;
 };
 
 // Deterministic — alternates variants and varies widths/heights so the
@@ -69,7 +67,6 @@ const SKELETON_ROWS: SkeletonRow[] = [
 export const ChatConversationSkeleton = ({
   leaving = false,
   onLeaveEnd,
-  status,
 }: ChatConversationSkeletonProps) => {
   const { t } = useTranslation();
 
@@ -95,14 +92,6 @@ export const ChatConversationSkeleton = ({
         }
       }}
     >
-      {status && (
-        <span className="hub__chat-conversation__skeleton-status">
-          <span className="material-icons" aria-hidden="true">
-            sync
-          </span>
-          {status}
-        </span>
-      )}
       {SKELETON_ROWS.map((row, index) => (
         <div key={index} className="hub__chat-conversation__row">
           <div className="hub__chat-conversation__row-inner">

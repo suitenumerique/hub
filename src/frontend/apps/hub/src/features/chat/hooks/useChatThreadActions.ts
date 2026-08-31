@@ -1,5 +1,4 @@
 import {
-  type InfiniteData,
   type QueryKey,
   useMutation,
   useQueryClient,
@@ -7,24 +6,38 @@ import {
 import { useCallback } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
-import type {
-  ChatMessagesPage,
-  ChatRef,
-  ChatThread,
-} from "@/features/drivers/types";
+import type { ChatRef, ChatThread } from "@/features/drivers/types";
 
-import { chatKeys } from "../chatKeys";
+import { chatKeys, type ChatMessageWindowQueryKey } from "../chatKeys";
 
-type ChatMessagesData = InfiniteData<ChatMessagesPage>;
+import {
+  type ChatMessagesData,
+  getOptimisticRootThreadUnreadMarker,
+  getOptimisticThreadUnreadMarker,
+  hasOptimisticRootThreadUnreadMutation,
+  hasOptimisticThreadUnreadMutation,
+  markOptimisticRootThreadUnread,
+  markOptimisticThreadUnread,
+  type ThreadUnreadMutationMarker,
+} from "./chatCompositionCache";
 
 type ThreadMatcher = (threadId: string) => boolean;
 
+type PreviousUnreadState = {
+  unreadCount: number;
+  marker?: ThreadUnreadMutationMarker;
+};
+
+type MessageWindowReadSnapshot = {
+  queryKey: ChatMessageWindowQueryKey;
+  previousRootUnread: Record<string, PreviousUnreadState>;
+};
+
 type ReadContext = {
+  marker: ThreadUnreadMutationMarker;
   threadsKey: QueryKey;
-  messagesKey: QueryKey;
-  affectedThreadIds: string[];
-  previousThreadUnread: Record<string, number>;
-  previousRootUnread: Record<string, number>;
+  messageWindows: MessageWindowReadSnapshot[];
+  previousThreadUnread: Record<string, PreviousUnreadState>;
 };
 
 /**
@@ -35,15 +48,19 @@ type ReadContext = {
 const clearThreadBadges = (
   data: ChatMessagesData,
   matches: ThreadMatcher,
+  marker: ThreadUnreadMutationMarker,
 ): ChatMessagesData => ({
   ...data,
   pages: data.pages.map((page) => {
-    const touched = page.messages.some(
-      (message) =>
-        message.thread !== undefined &&
-        message.thread.unreadCount !== 0 &&
-        matches(message.thread.id),
-    );
+    const touched = page.messages.some((message) => {
+      const thread = message.thread;
+      return (
+        thread !== undefined &&
+        matches(thread.id) &&
+        (thread.unreadCount !== 0 ||
+          getOptimisticRootThreadUnreadMarker(thread) !== undefined)
+      );
+    });
     if (!touched) {
       return page;
     }
@@ -51,49 +68,70 @@ const clearThreadBadges = (
       ...page,
       messages: page.messages.map((message) =>
         message.thread !== undefined &&
-        message.thread.unreadCount !== 0 &&
-        matches(message.thread.id)
-          ? { ...message, thread: { ...message.thread, unreadCount: 0 } }
+        matches(message.thread.id) &&
+        (message.thread.unreadCount !== 0 ||
+          getOptimisticRootThreadUnreadMarker(message.thread) !== undefined)
+          ? {
+              ...message,
+              thread: markOptimisticRootThreadUnread(message.thread, marker),
+            }
           : message,
       ),
     };
   }),
 });
 
-const rootUnreadByThreadId = (
+const rootUnreadStateByThreadId = (
   data: ChatMessagesData | undefined,
   matches: ThreadMatcher,
-): Record<string, number> =>
+): Record<string, PreviousUnreadState> =>
   Object.fromEntries(
     (data?.pages ?? [])
       .flatMap((page) => page.messages)
       .flatMap((message) => (message.thread ? [message.thread] : []))
-      .filter((thread) => matches(thread.id))
-      .map((thread) => [thread.id, thread.unreadCount]),
+      .filter(
+        (thread) =>
+          matches(thread.id) &&
+          (thread.unreadCount !== 0 ||
+            getOptimisticRootThreadUnreadMarker(thread) !== undefined),
+      )
+      .map((thread) => {
+        const marker = getOptimisticRootThreadUnreadMarker(thread);
+        return [
+          thread.id,
+          {
+            unreadCount: thread.unreadCount,
+            ...(marker ? { marker } : {}),
+          },
+        ];
+      }),
   );
 
 /** Restore only badges still carrying our optimistic zero. */
 const restoreThreadBadges = (
   data: ChatMessagesData,
-  affectedThreadIds: Set<string>,
-  previousUnread: Record<string, number>,
+  previousUnread: Record<string, PreviousUnreadState>,
+  marker: ThreadUnreadMutationMarker,
 ): ChatMessagesData => ({
   ...data,
   pages: data.pages.map((page) => ({
     ...page,
     messages: page.messages.map((message) => {
       const thread = message.thread;
+      const previous = thread ? previousUnread[thread.id] : undefined;
       if (
         !thread ||
-        !affectedThreadIds.has(thread.id) ||
-        thread.unreadCount !== 0 ||
-        previousUnread[thread.id] === undefined
+        !hasOptimisticRootThreadUnreadMutation(thread, marker) ||
+        !previous
       ) {
         return message;
       }
+      const restored = { ...thread, unreadCount: previous.unreadCount };
       return {
         ...message,
-        thread: { ...thread, unreadCount: previousUnread[thread.id] },
+        thread: previous.marker
+          ? markOptimisticRootThreadUnread(restored, previous.marker)
+          : restored,
       };
     }),
   })),
@@ -108,10 +146,9 @@ export type UseChatThreadActionsResult = {
 
 /**
  * Mutations that clear thread unread state through the driver. Each mutation
- * optimistically updates both the `["chat-threads", chatId]` cache (the panel
- * and the unread banner) and the `["chat-messages", chatId]` cache (the thread
- * button on the root bubble). A failed receipt is retried, then only its own
- * zeroed badges are restored so a concurrently received reply is never lost.
+ * optimistically updates the thread list and both main-timeline windows. A
+ * failed receipt is retried, then only badges still carrying this mutation's
+ * marker are restored, so a concurrent reply or receipt always wins.
  */
 export const useChatThreadActions = (
   ref: ChatRef,
@@ -122,39 +159,61 @@ export const useChatThreadActions = (
     matches: ThreadMatcher,
   ): Promise<ReadContext> => {
     const threadsKey: QueryKey = chatKeys.threads(ref);
-    const messagesKey: QueryKey = chatKeys.messages(ref);
+    const messageWindowKeys = [...chatKeys.messageWindows(ref)];
     // Stop any in-flight refetch from overwriting the optimistic write.
-    await queryClient.cancelQueries({ queryKey: threadsKey });
-    await queryClient.cancelQueries({ queryKey: messagesKey });
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: threadsKey }),
+      ...messageWindowKeys.map((queryKey) =>
+        queryClient.cancelQueries({ queryKey, exact: true }),
+      ),
+    ]);
     const previousThreads = queryClient.getQueryData<ChatThread[]>(threadsKey);
-    const previousMessages =
-      queryClient.getQueryData<ChatMessagesData>(messagesKey);
     const previousThreadUnread = Object.fromEntries(
       (previousThreads ?? [])
-        .filter((thread) => matches(thread.id))
-        .map((thread) => [thread.id, thread.unreadCount]),
+        .filter(
+          (thread) =>
+            matches(thread.id) &&
+            (thread.unreadCount !== 0 ||
+              getOptimisticThreadUnreadMarker(thread) !== undefined),
+        )
+        .map((thread) => {
+          const marker = getOptimisticThreadUnreadMarker(thread);
+          return [
+            thread.id,
+            {
+              unreadCount: thread.unreadCount,
+              ...(marker ? { marker } : {}),
+            },
+          ];
+        }),
     );
-    const previousRootUnread = rootUnreadByThreadId(previousMessages, matches);
-    const affectedThreadIds = [
-      ...new Set([
-        ...Object.keys(previousThreadUnread),
-        ...Object.keys(previousRootUnread),
-      ]),
-    ];
+    const messageWindows = messageWindowKeys.map((queryKey) => ({
+      queryKey,
+      previousRootUnread: rootUnreadStateByThreadId(
+        queryClient.getQueryData<ChatMessagesData>(queryKey),
+        matches,
+      ),
+    }));
+    const marker: ThreadUnreadMutationMarker = {};
     queryClient.setQueryData<ChatThread[]>(threadsKey, (old) =>
       old?.map((thread) =>
-        matches(thread.id) ? { ...thread, unreadCount: 0 } : thread,
+        matches(thread.id) &&
+        (thread.unreadCount !== 0 ||
+          getOptimisticThreadUnreadMarker(thread) !== undefined)
+          ? markOptimisticThreadUnread({ ...thread, unreadCount: 0 }, marker)
+          : thread,
       ),
     );
-    queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
-      old ? clearThreadBadges(old, matches) : old,
-    );
+    messageWindows.forEach(({ queryKey }) => {
+      queryClient.setQueryData<ChatMessagesData>(queryKey, (old) =>
+        old ? clearThreadBadges(old, matches, marker) : old,
+      );
+    });
     return {
+      marker,
       threadsKey,
-      messagesKey,
-      affectedThreadIds,
+      messageWindows,
       previousThreadUnread,
-      previousRootUnread,
     };
   };
 
@@ -162,32 +221,32 @@ export const useChatThreadActions = (
     if (!context) {
       return;
     }
-    const affectedThreadIds = new Set(context.affectedThreadIds);
     queryClient.setQueryData<ChatThread[]>(context.threadsKey, (current) =>
-      current?.map((thread) =>
-        affectedThreadIds.has(thread.id) &&
-        thread.unreadCount === 0 &&
-        context.previousThreadUnread[thread.id] !== undefined
-          ? {
-              ...thread,
-              unreadCount: context.previousThreadUnread[thread.id],
-            }
-          : thread,
-      ),
+      current?.map((thread) => {
+        const previous = context.previousThreadUnread[thread.id];
+        if (
+          !previous ||
+          !hasOptimisticThreadUnreadMutation(thread, context.marker)
+        ) {
+          return thread;
+        }
+        const restored = { ...thread, unreadCount: previous.unreadCount };
+        return previous.marker
+          ? markOptimisticThreadUnread(restored, previous.marker)
+          : restored;
+      }),
     );
-    queryClient.setQueryData<ChatMessagesData>(
-      context.messagesKey,
-      (current) =>
+    context.messageWindows.forEach(({ queryKey, previousRootUnread }) => {
+      queryClient.setQueryData<ChatMessagesData>(queryKey, (current) =>
         current
-          ? restoreThreadBadges(
-              current,
-              affectedThreadIds,
-              context.previousRootUnread,
-            )
+          ? restoreThreadBadges(current, previousRootUnread, context.marker)
           : current,
-    );
+      );
+    });
     void queryClient.invalidateQueries({ queryKey: context.threadsKey });
-    void queryClient.invalidateQueries({ queryKey: context.messagesKey });
+    context.messageWindows.forEach(({ queryKey }) => {
+      void queryClient.invalidateQueries({ queryKey });
+    });
   };
 
   // `mutate` is a stable reference across renders — destructuring it keeps the

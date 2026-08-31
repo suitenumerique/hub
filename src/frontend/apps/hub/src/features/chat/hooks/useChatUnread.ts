@@ -8,7 +8,12 @@ import type { AccountId, ChatRef, ChatUnread } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
 
-const READ: ChatUnread = { unread: false, highlight: false };
+const READ: ChatUnread = {
+  unread: false,
+  highlight: false,
+  mainTimelineUnread: false,
+  mainTimelineCount: 0,
+};
 
 export type ChatUnreadLookup = (ref: ChatRef) => ChatUnread;
 

@@ -1,78 +1,73 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
-import type {
-  ChatMessage,
-  ChatMessageAuthor,
-  ChatRef,
-} from "@/features/drivers/types";
+import type { ChatRef } from "@/features/drivers/types";
 
 import { useChatMessages } from "../hooks/useChatMessages";
 import { useChatUnreadState } from "../hooks/useChatUnread";
 import { useMarkChatRead } from "../hooks/useMarkChatRead";
+import { useReadAtLiveEnd } from "../hooks/useReadAtLiveEnd";
+import { useUnreadJump } from "../hooks/useUnreadJump";
+import { useVisibleUnreadMessage } from "../hooks/useVisibleUnreadMessage";
 
-import { ChatBubble } from "./ChatBubble";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
-import { UnreadSeparator } from "./UnreadSeparator";
+import { ChatMessageRow } from "./ChatMessageRow";
 
 type ChatVirtualListProps = {
   chatRef: ChatRef;
   onUnreadNavigationChange?: (
-    navigation: MainTimelineUnreadNavigation | null,
+    update: MainTimelineUnreadNavigationUpdate,
   ) => void;
 };
 
 export type MainTimelineUnreadNavigation = {
-  count: number | null;
-  status: "unresolved" | "resolved" | "unavailable";
+  count: number;
   isOpening: boolean;
   isMarkingRead: boolean;
   open: () => void;
   markRead: () => void;
 };
 
+export type MainTimelineUnreadNavigationUpdate = {
+  chatKey: string;
+  navigation: MainTimelineUnreadNavigation | null;
+};
+
 const DEFAULT_ITEM_HEIGHT = 72;
-const MARK_READ_DEBOUNCE_MS = 500;
-const MARK_READ_RETRY_MAX_MS = 8000;
-const UNREAD_SCROLL_FALLBACK_MS = 1200;
+// Virtuoso stays mounted between conversations. Give it one measurement pass
+// before applying the new conversation's imperative live-end position.
+const INITIAL_POSITION_DELAY_MS = 250;
 
 type SkeletonState = "visible" | "leaving" | "hidden";
 
-type PendingReadProgress = {
-  chatKey: string;
-  messageId: string;
-  clearBoundary: boolean;
-};
-
-type InFlightReadProgress = PendingReadProgress & {
-  countBaseline: {
-    count: number | null;
-    matrixCount: number | null;
-  };
-};
-
-type ReadTrackingSnapshot = {
-  chatKey: string;
-  liveEndEnabled: boolean;
-  partialEnabled: boolean;
-  firstUnreadIndex: number;
-  messages: ChatMessage[];
-  messageIndexById: Map<string, number>;
-};
-
-type DisplayedUnreadCountState = {
-  chatKey: string;
-  count: number | null;
-  matrixCount: number | null;
+const scheduleComposerFocusRestore = (
+  focusOrigin: Element | null,
+  restoreFromBody = false,
+): void => {
+  const focusCameFromUnreadControls =
+    focusOrigin instanceof HTMLElement &&
+    (focusOrigin.matches("[data-unread-separator]") ||
+      Boolean(focusOrigin.closest(".hub__unread-banner")));
+  if (
+    !focusCameFromUnreadControls &&
+    !(restoreFromBody && focusOrigin === document.body)
+  ) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    if (
+      document.activeElement !== focusOrigin &&
+      document.activeElement !== document.body
+    ) {
+      return;
+    }
+    document
+      .querySelector<HTMLInputElement>(
+        "[data-chat-composer-input]:not(:disabled)",
+      )
+      ?.focus();
+  });
 };
 
 export const ChatVirtualList = ({
@@ -81,14 +76,15 @@ export const ChatVirtualList = ({
 }: ChatVirtualListProps) => {
   const { t } = useTranslation();
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
+
   const { unread, isPending: isUnreadPending } = useChatUnreadState(chatRef);
-  const isUnread = unread.unread;
   const {
     messages,
     authorsById,
     firstUnreadMessageId,
     anchorStatus,
-    unreadAnchorStatus,
+    isUnreadWindowActive,
+    liveEndMessageId,
     hasOlder,
     hasNewer,
     isFetchingOlder,
@@ -98,8 +94,8 @@ export const ChatVirtualList = ({
     fetchOlder,
     fetchNewer,
     openFirstUnread,
+    closeUnreadContext,
   } = useChatMessages(chatRef, {
-    anchor: "latest",
     enabled: !isUnreadPending,
   });
   const lastMessage = messages[messages.length - 1];
@@ -113,551 +109,138 @@ export const ChatVirtualList = ({
     : -1;
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const scrollerRef = useRef<HTMLElement | Window | null>(null);
+
+  const [isPositioned, setIsPositioned] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [isLiveReadArmed, setIsLiveReadArmed] = useState(false);
   const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(
     null,
   );
-  const previousAppendState = useRef({
+  const [markingMessageId, setMarkingMessageId] = useState<string | null>(null);
+  const isMarkingMainRead = markingMessageId !== null;
+  const [skeletonState, setSkeletonState] = useState<SkeletonState>("visible");
+  const needsInitialPosition = isInitialLoading || !isPositioned;
+
+  const closeUnreadWindowAndReturnToLiveEnd = useCallback(
+    (restoreFocusIfLost = false) => {
+      scheduleComposerFocusRestore(document.activeElement, restoreFocusIfLost);
+      closeUnreadContext();
+      requestAnimationFrame(() => {
+        virtuosoRef.current?.scrollToIndex({
+          index: "LAST",
+          align: "end",
+          behavior: "auto",
+        });
+        setIsAtBottom(true);
+      });
+    },
+    [closeUnreadContext],
+  );
+  const handleUnreadJumpAborted = useCallback(
+    () => closeUnreadWindowAndReturnToLiveEnd(true),
+    [closeUnreadWindowAndReturnToLiveEnd],
+  );
+
+  const unreadJump = useUnreadJump({
     chatKey,
-    messageCount: messages.length,
-    lastMessageId: lastMessage?.id ?? null,
+    enabled: unread.mainTimelineUnread,
+    // Virtuoso's imperative API uses the zero-based data index even when
+    // rendered item callbacks receive indices offset by `firstItemIndex`.
+    targetIndex: firstUnreadIndex,
+    openFirstUnread,
+    virtuosoRef,
+    onJumpAborted: handleUnreadJumpAborted,
+    isContextActive: isUnreadWindowActive,
+    onAtBottomChange: setIsAtBottom,
   });
-  const atBottomRef = useRef(true);
-  const shouldStickToBottomRef = useRef(false);
-  const pendingScrollRaf = useRef<number | null>(null);
-  const pendingScrollTimer = useRef<number | null>(null);
-  const pendingBottomSyncRaf = useRef<number | null>(null);
-  const pendingUnreadScrollTimer = useRef<number | null>(null);
-  const pendingUnreadJumpRef = useRef(false);
-  const unreadScrollAnimationRef = useRef(false);
-  const unreadScrollStartedRef = useRef(false);
-  const anchoredBottomStateReadyRef = useRef(false);
-  const viewportReadRafRef = useRef<number | null>(null);
-  const furthestReadMessageIdRef = useRef<string | null>(null);
-  const lastCountedReadMessageIdRef = useRef<string | null>(null);
-  const pendingReadProgressRef = useRef<PendingReadProgress | null>(null);
-  const inFlightReadProgressRef = useRef<InFlightReadProgress | null>(null);
-  const lastMarkedMessageIdRef = useRef<string | null>(null);
-  const markReadTimerRef = useRef<number | null>(null);
-  const markReadRetryCountRef = useRef(0);
-  const flushReadProgressRef = useRef<() => void>(() => {});
-  const [positionedChatKey, setPositionedChatKey] = useState<string | null>(
-    null,
-  );
-  const [readTrackingReadyChatKey, setReadTrackingReadyChatKey] = useState<
-    string | null
-  >(null);
-  const [unreadNavigationChatKey, setUnreadNavigationChatKey] = useState<
-    string | null
-  >(null);
-  const [unreadJumpRequest, setUnreadJumpRequest] = useState(0);
-  const [isJumpingToUnread, setIsJumpingToUnread] = useState(false);
-  const [isOpeningFirstUnread, setIsOpeningFirstUnread] = useState(false);
-  const [isMarkingMainRead, setIsMarkingMainRead] = useState(false);
-  const [clearedBoundaryChatKey, setClearedBoundaryChatKey] = useState<
-    string | null
-  >(null);
-  const matrixMainUnreadCount = unread.mainTimelineCount ?? null;
-  const [displayedUnreadCountState, setDisplayedUnreadCountState] =
-    useState<DisplayedUnreadCountState>(() => ({
-      chatKey,
-      count: matrixMainUnreadCount,
-      matrixCount: matrixMainUnreadCount,
-    }));
-  const displayedUnreadCountStateRef = useRef(displayedUnreadCountState);
-  displayedUnreadCountStateRef.current = displayedUnreadCountState;
-  const displayedUnreadCount =
-    displayedUnreadCountState.chatKey === chatKey
-      ? displayedUnreadCountState.count
-      : matrixMainUnreadCount;
-  const readTrackingRef = useRef<ReadTrackingSnapshot>({
-    chatKey,
-    liveEndEnabled: false,
-    partialEnabled: false,
-    firstUnreadIndex,
-    messages,
-    messageIndexById,
-  });
-  readTrackingRef.current = {
-    chatKey,
-    liveEndEnabled:
-      isUnread &&
-      positionedChatKey === chatKey &&
-      readTrackingReadyChatKey === chatKey &&
-      !isInitialLoading,
-    partialEnabled:
-      isUnread &&
-      anchorStatus === "resolved" &&
-      firstUnreadMessageId !== null &&
-      unreadNavigationChatKey === chatKey &&
-      positionedChatKey === chatKey &&
-      readTrackingReadyChatKey === chatKey &&
-      clearedBoundaryChatKey !== chatKey,
-    firstUnreadIndex,
-    messages,
-    messageIndexById,
-  };
-  const markChatReadRef = useRef(markChatRead);
-  markChatReadRef.current = markChatRead;
-  const liveEndMessageRef = useRef<{
-    chatKey: string;
-    messageId: string | null;
-  }>({ chatKey, messageId: null });
-  if (liveEndMessageRef.current.chatKey !== chatKey) {
-    liveEndMessageRef.current = { chatKey, messageId: null };
-  }
-  if (!hasNewer && lastMessage) {
-    liveEndMessageRef.current.messageId = lastMessage.id;
-  }
-
-  const rememberReadProgress = useCallback(
-    (messageId: string, clearBoundary: boolean): boolean => {
-      const snapshot = readTrackingRef.current;
-      if (clearBoundary ? !snapshot.liveEndEnabled : !snapshot.partialEnabled) {
-        return false;
-      }
-
-      const nextIndex = snapshot.messageIndexById.get(messageId);
-      if (
-        nextIndex === undefined ||
-        (!clearBoundary && nextIndex < snapshot.firstUnreadIndex)
-      ) {
-        return false;
-      }
-      if (lastMarkedMessageIdRef.current === messageId) {
-        if (clearBoundary) {
-          setClearedBoundaryChatKey(snapshot.chatKey);
-        }
-        return false;
-      }
-      const furthestId = furthestReadMessageIdRef.current;
-      const furthestIndex = furthestId
-        ? snapshot.messageIndexById.get(furthestId)
-        : undefined;
-      if (furthestIndex !== undefined && nextIndex < furthestIndex) {
-        return false;
-      }
-
-      furthestReadMessageIdRef.current = messageId;
-      const pending = pendingReadProgressRef.current;
-      pendingReadProgressRef.current = {
-        chatKey: snapshot.chatKey,
-        messageId,
-        clearBoundary:
-          clearBoundary ||
-          (pending?.messageId === messageId && pending.clearBoundary),
-      };
-      return true;
-    },
-    [],
-  );
-
-  const scheduleReadProgressFlush = useCallback(
-    (delay = MARK_READ_DEBOUNCE_MS) => {
-      if (markReadTimerRef.current !== null) {
-        window.clearTimeout(markReadTimerRef.current);
-      }
-      markReadTimerRef.current = window.setTimeout(() => {
-        markReadTimerRef.current = null;
-        flushReadProgressRef.current();
-      }, delay);
-    },
-    [],
-  );
-
-  const commitDisplayedReadProgress = useCallback(
-    (
-      messageId: string,
-      clearBoundary: boolean,
-      countBaseline?: InFlightReadProgress["countBaseline"],
-    ) => {
-      const snapshot = readTrackingRef.current;
-      if (clearBoundary) {
-        lastCountedReadMessageIdRef.current = messageId;
-        setDisplayedUnreadCountState((current) =>
-          current.chatKey === snapshot.chatKey
-            ? { ...current, count: 0 }
-            : current,
-        );
-        return;
-      }
-
-      const targetIndex = snapshot.messageIndexById.get(messageId);
-      if (targetIndex === undefined) {
-        return;
-      }
-
-      const previousMessageId = lastCountedReadMessageIdRef.current;
-      const previousIndex = previousMessageId
-        ? snapshot.messageIndexById.get(previousMessageId)
-        : undefined;
-      if (previousMessageId && previousIndex === undefined) {
-        return;
-      }
-      if (previousIndex !== undefined && targetIndex <= previousIndex) {
-        return;
-      }
-
-      const startIndex =
-        previousIndex === undefined
-          ? snapshot.firstUnreadIndex
-          : previousIndex + 1;
-      if (startIndex < 0 || targetIndex < startIndex) {
-        return;
-      }
-
-      let receivedMessagesRead = 0;
-      for (let index = startIndex; index <= targetIndex; index += 1) {
-        const message = snapshot.messages[index];
-        if (message && message.authorId !== "me") {
-          receivedMessagesRead += 1;
-        }
-      }
-      lastCountedReadMessageIdRef.current = messageId;
-      if (receivedMessagesRead === 0) {
-        return;
-      }
-      setDisplayedUnreadCountState((current) => {
-        if (current.chatKey !== snapshot.chatKey) {
-          return current;
-        }
-        const baselineCount = countBaseline?.count ?? current.count;
-        if (baselineCount === null) {
-          return current;
-        }
-        const matrixIncrease =
-          countBaseline?.matrixCount !== null &&
-          countBaseline?.matrixCount !== undefined &&
-          current.matrixCount !== null
-            ? Math.max(0, current.matrixCount - countBaseline.matrixCount)
-            : 0;
-        const optimisticCount = Math.max(
-          0,
-          baselineCount - receivedMessagesRead + matrixIncrease,
-        );
-        return {
-          ...current,
-          count:
-            current.count === null
-              ? optimisticCount
-              : Math.min(current.count, optimisticCount),
-        };
-      });
-    },
-    [],
-  );
-
-  const flushReadProgress = useCallback(() => {
-    if (inFlightReadProgressRef.current) {
-      return;
-    }
-    const progress = pendingReadProgressRef.current;
-    if (!progress || progress.chatKey !== readTrackingRef.current.chatKey) {
-      pendingReadProgressRef.current = null;
-      return;
-    }
-    if (lastMarkedMessageIdRef.current === progress.messageId) {
-      pendingReadProgressRef.current = null;
-      if (progress.clearBoundary) {
-        setClearedBoundaryChatKey(progress.chatKey);
-      }
-      return;
-    }
-
-    pendingReadProgressRef.current = null;
-    const displayedCount = displayedUnreadCountStateRef.current;
-    const inFlightProgress: InFlightReadProgress = {
-      ...progress,
-      countBaseline:
-        displayedCount.chatKey === progress.chatKey
-          ? {
-              count: displayedCount.count,
-              matrixCount: displayedCount.matrixCount,
-            }
-          : { count: null, matrixCount: null },
-    };
-    inFlightReadProgressRef.current = inFlightProgress;
-    let succeeded = false;
-    void markChatReadRef
-      .current(progress.messageId)
-      .then(() => {
-        succeeded = true;
-        if (progress.chatKey !== readTrackingRef.current.chatKey) {
-          return;
-        }
-        lastMarkedMessageIdRef.current = progress.messageId;
-        markReadRetryCountRef.current = 0;
-        commitDisplayedReadProgress(
-          progress.messageId,
-          progress.clearBoundary,
-          inFlightProgress.countBaseline,
-        );
-        if (progress.clearBoundary) {
-          setClearedBoundaryChatKey(progress.chatKey);
-        }
-      })
-      .catch(() => {
-        if (progress.chatKey !== readTrackingRef.current.chatKey) {
-          return;
-        }
-        const pending = pendingReadProgressRef.current;
-        const indexes = readTrackingRef.current.messageIndexById;
-        const failedIndex = indexes.get(progress.messageId) ?? -1;
-        const pendingIndex = pending
-          ? (indexes.get(pending.messageId) ?? -1)
-          : -1;
-        if (!pending || failedIndex >= pendingIndex) {
-          pendingReadProgressRef.current = {
-            ...progress,
-            clearBoundary:
-              progress.clearBoundary || Boolean(pending?.clearBoundary),
-          };
-        }
-        const retryDelay = Math.min(
-          1000 * 2 ** markReadRetryCountRef.current,
-          MARK_READ_RETRY_MAX_MS,
-        );
-        markReadRetryCountRef.current += 1;
-        scheduleReadProgressFlush(retryDelay);
-      })
-      .finally(() => {
-        if (inFlightReadProgressRef.current === inFlightProgress) {
-          inFlightReadProgressRef.current = null;
-        }
-        if (
-          succeeded &&
-          pendingReadProgressRef.current?.chatKey ===
-            readTrackingRef.current.chatKey
-        ) {
-          scheduleReadProgressFlush(0);
-        }
-      });
-  }, [commitDisplayedReadProgress, scheduleReadProgressFlush]);
-  flushReadProgressRef.current = flushReadProgress;
-
-  const captureVisibleReadProgress = useCallback(() => {
-    const snapshot = readTrackingRef.current;
-    const scroller = scrollerRef.current;
-    if (
-      !snapshot.partialEnabled ||
-      !(scroller instanceof HTMLElement) ||
-      !document.hasFocus()
-    ) {
-      return;
-    }
-
-    const viewport = scroller.getBoundingClientRect();
-    let candidateId: string | null = null;
-    let candidateIndex = -1;
-    scroller
-      .querySelectorAll<HTMLElement>("[data-chat-message-id]")
-      .forEach((row) => {
-        const messageId = row.dataset.chatMessageId;
-        const index = messageId
-          ? snapshot.messageIndexById.get(messageId)
-          : undefined;
-        if (messageId === undefined || index === undefined) {
-          return;
-        }
-        const bounds = row.getBoundingClientRect();
-        const bottomIsVisible =
-          bounds.bottom >= viewport.top && bounds.bottom <= viewport.bottom + 1;
-        if (
-          bottomIsVisible &&
-          bounds.top < viewport.bottom &&
-          index > candidateIndex
-        ) {
-          candidateId = messageId;
-          candidateIndex = index;
-        }
-      });
-
-    if (candidateId && rememberReadProgress(candidateId, false)) {
-      scheduleReadProgressFlush();
-    }
-  }, [rememberReadProgress, scheduleReadProgressFlush]);
-
-  /** Mark only the true live end, never the bottom of a contextual window. */
-  const maybeMarkRead = useCallback(() => {
-    const latestId = lastMessage?.id;
-    if (
-      isInitialLoading ||
-      hasNewer ||
-      positionedChatKey !== chatKey ||
-      !atBottomRef.current ||
-      !latestId ||
-      (typeof document !== "undefined" && !document.hasFocus())
-    ) {
-      return;
-    }
-    if (rememberReadProgress(latestId, true)) {
-      scheduleReadProgressFlush();
-    }
-  }, [
-    chatKey,
-    hasNewer,
-    isInitialLoading,
-    isUnread,
-    lastMessage?.id,
-    positionedChatKey,
-    readTrackingReadyChatKey,
-    rememberReadProgress,
-    scheduleReadProgressFlush,
-  ]);
-
-  useEffect(() => {
-    furthestReadMessageIdRef.current = null;
-    lastCountedReadMessageIdRef.current = null;
-    pendingReadProgressRef.current = null;
-    inFlightReadProgressRef.current = null;
-    lastMarkedMessageIdRef.current = null;
-    markReadRetryCountRef.current = 0;
-    pendingUnreadJumpRef.current = false;
-    unreadScrollAnimationRef.current = false;
-    unreadScrollStartedRef.current = false;
-    anchoredBottomStateReadyRef.current = false;
-    setPositionedChatKey(null);
-    setReadTrackingReadyChatKey(null);
-    setUnreadNavigationChatKey(null);
-    setUnreadJumpRequest(0);
-    setIsJumpingToUnread(false);
-    setIsOpeningFirstUnread(false);
-    setIsMarkingMainRead(false);
-    setClearedBoundaryChatKey(null);
-    return () => {
-      if (markReadTimerRef.current !== null) {
-        window.clearTimeout(markReadTimerRef.current);
-        markReadTimerRef.current = null;
-      }
-      if (pendingBottomSyncRaf.current !== null) {
-        cancelAnimationFrame(pendingBottomSyncRaf.current);
-        pendingBottomSyncRaf.current = null;
-      }
-      if (pendingUnreadScrollTimer.current !== null) {
-        window.clearTimeout(pendingUnreadScrollTimer.current);
-        pendingUnreadScrollTimer.current = null;
-      }
-      const pending = pendingReadProgressRef.current;
-      if (pending?.chatKey === chatKey) {
-        pendingReadProgressRef.current = null;
-        void markChatRead(pending.messageId);
-      }
-    };
-  }, [chatKey, markChatRead]);
-
-  useEffect(() => {
-    setDisplayedUnreadCountState((current) => {
-      if (current.chatKey !== chatKey) {
-        return {
-          chatKey,
-          count: matrixMainUnreadCount,
-          matrixCount: matrixMainUnreadCount,
-        };
-      }
-      if (
-        matrixMainUnreadCount === null ||
-        current.matrixCount === matrixMainUnreadCount
-      ) {
-        return current;
-      }
-      if (current.matrixCount === null || current.count === null) {
-        return {
-          ...current,
-          count: matrixMainUnreadCount,
-          matrixCount: matrixMainUnreadCount,
-        };
-      }
-
-      const count =
-        matrixMainUnreadCount > current.matrixCount
-          ? current.count + matrixMainUnreadCount - current.matrixCount
-          : Math.min(current.count, matrixMainUnreadCount);
-      return { ...current, count, matrixCount: matrixMainUnreadCount };
-    });
-  }, [chatKey, matrixMainUnreadCount]);
-
-  useEffect(() => {
-    maybeMarkRead();
-    window.addEventListener("focus", maybeMarkRead);
-    return () => {
-      window.removeEventListener("focus", maybeMarkRead);
-    };
-  }, [maybeMarkRead]);
-
-  useEffect(() => {
-    if (!scrollerElement) {
-      return;
-    }
-    const onScroll = () => {
-      if (viewportReadRafRef.current !== null) {
-        return;
-      }
-      viewportReadRafRef.current = requestAnimationFrame(() => {
-        viewportReadRafRef.current = null;
-        captureVisibleReadProgress();
-        if (pendingReadProgressRef.current) {
-          scheduleReadProgressFlush();
-        }
-      });
-    };
-    scrollerElement.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      scrollerElement.removeEventListener("scroll", onScroll);
-      if (viewportReadRafRef.current !== null) {
-        cancelAnimationFrame(viewportReadRafRef.current);
-        viewportReadRafRef.current = null;
-      }
-    };
-  }, [captureVisibleReadProgress, scheduleReadProgressFlush, scrollerElement]);
-
-  useEffect(() => {
-    const canTrackCurrentPosition =
-      clearedBoundaryChatKey === chatKey ||
-      !isUnread ||
-      unread.mainTimelineUnread === false ||
-      (unreadNavigationChatKey === chatKey && !isJumpingToUnread);
-    if (positionedChatKey !== chatKey || !canTrackCurrentPosition) {
-      return;
-    }
-    const raf = requestAnimationFrame(() => {
-      setReadTrackingReadyChatKey(chatKey);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [
-    chatKey,
-    clearedBoundaryChatKey,
-    isUnread,
-    isJumpingToUnread,
-    positionedChatKey,
-    unread.mainTimelineUnread,
-    unreadNavigationChatKey,
-  ]);
-
-  useEffect(() => {
-    if (readTrackingReadyChatKey !== chatKey) {
-      return;
-    }
-    const raf = requestAnimationFrame(captureVisibleReadProgress);
-    maybeMarkRead();
-    return () => cancelAnimationFrame(raf);
-  }, [
-    captureVisibleReadProgress,
-    chatKey,
-    maybeMarkRead,
-    readTrackingReadyChatKey,
-  ]);
-
+  const isJumpingToUnread = unreadJump.isJumping;
+  const hasUnreadContext = unreadJump.hasUnreadContext;
   const handleScrollerRef = useCallback(
     (element: HTMLElement | Window | null) => {
-      scrollerRef.current = element;
+      unreadJump.scrollerRef(element);
       setScrollerElement(element instanceof HTMLElement ? element : null);
     },
-    [],
+    [unreadJump.scrollerRef],
   );
 
-  const [skeletonState, setSkeletonState] = useState<SkeletonState>("visible");
-  const needsInitialPosition =
-    isInitialLoading || positionedChatKey !== chatKey;
+  const visibleReadMessageId = useVisibleUnreadMessage({
+    enabled: unread.mainTimelineUnread && isPositioned,
+    scroller: scrollerElement,
+    messageIndexById,
+    firstUnreadIndex,
+    isJumping: isJumpingToUnread,
+    hasUnreadContext,
+  });
+
+  const closeUnreadNavigation = useCallback(() => {
+    const shouldReturnToLiveEnd = hasUnreadContext || isJumpingToUnread;
+    if (shouldReturnToLiveEnd) {
+      closeUnreadWindowAndReturnToLiveEnd(hasUnreadContext);
+    } else {
+      closeUnreadContext();
+    }
+    unreadJump.reset();
+  }, [
+    closeUnreadContext,
+    closeUnreadWindowAndReturnToLiveEnd,
+    hasUnreadContext,
+    isJumpingToUnread,
+    unreadJump.reset,
+  ]);
+
+  const partialReadEnabled =
+    unread.mainTimelineUnread &&
+    !isInitialLoading &&
+    !isJumpingToUnread &&
+    !isMarkingMainRead &&
+    isPositioned &&
+    firstUnreadIndex >= 0 &&
+    visibleReadMessageId !== null;
+  const liveEndReadEnabled =
+    unread.mainTimelineUnread &&
+    !isInitialLoading &&
+    !hasNewer &&
+    !isJumpingToUnread &&
+    !isMarkingMainRead &&
+    isLiveReadArmed &&
+    isPositioned &&
+    isAtBottom;
+  const submitRead = useReadAtLiveEnd({
+    chatKey,
+    enabled: partialReadEnabled || liveEndReadEnabled,
+    messageId: partialReadEnabled ? visibleReadMessageId : liveEndMessageId,
+    markRead: markChatRead,
+  });
+
+  useEffect(() => {
+    if (!isUnreadPending && !unread.mainTimelineUnread) {
+      closeUnreadNavigation();
+    }
+  }, [closeUnreadNavigation, isUnreadPending, unread.mainTimelineUnread]);
+
+  // Do not erase an existing backlog just because a conversation initially
+  // opens at its live end. Reading becomes automatic only after the room was
+  // already read, or after the user explicitly opened the unread context.
+  useEffect(() => {
+    if (
+      isLiveReadArmed ||
+      isInitialLoading ||
+      !isPositioned ||
+      isJumpingToUnread ||
+      (unread.mainTimelineUnread && !hasUnreadContext)
+    ) {
+      return;
+    }
+    const raf = requestAnimationFrame(() => setIsLiveReadArmed(true));
+    return () => cancelAnimationFrame(raf);
+  }, [
+    hasUnreadContext,
+    isInitialLoading,
+    isJumpingToUnread,
+    isLiveReadArmed,
+    isPositioned,
+    unread.mainTimelineUnread,
+  ]);
 
   useEffect(() => {
     if (needsInitialPosition) {
@@ -672,253 +255,118 @@ export const ChatVirtualList = ({
     return () => cancelAnimationFrame(raf);
   }, [needsInitialPosition]);
 
-  // Conversation opening always lands on the live end. The unread context is
-  // resolved and installed only when the user activates the composer banner.
+  // Conversations open at the live end; unread context is installed only by
+  // the explicit banner action. A height callback is not sufficient here:
+  // switching between equally-sized conversations may not emit one.
   useEffect(() => {
-    if (
-      isInitialLoading ||
-      positionedChatKey === chatKey ||
-      anchorStatus === null
-    ) {
+    if (isInitialLoading || isPositioned || anchorStatus === null) {
       return;
     }
-    pendingScrollTimer.current = window.setTimeout(() => {
-      pendingScrollTimer.current = null;
-      pendingScrollRaf.current = requestAnimationFrame(() => {
-        pendingScrollRaf.current = null;
+    let raf: number | null = null;
+    const timer = window.setTimeout(() => {
+      raf = requestAnimationFrame(() => {
         virtuosoRef.current?.scrollToIndex({
           index: "LAST",
           align: "end",
           behavior: "auto",
         });
-        setPositionedChatKey(chatKey);
+        setIsAtBottom(true);
+        setIsPositioned(true);
       });
-    }, 250);
+    }, INITIAL_POSITION_DELAY_MS);
     return () => {
-      if (pendingScrollTimer.current !== null) {
-        window.clearTimeout(pendingScrollTimer.current);
-        pendingScrollTimer.current = null;
-      }
-      if (pendingScrollRaf.current !== null) {
-        cancelAnimationFrame(pendingScrollRaf.current);
-        pendingScrollRaf.current = null;
+      window.clearTimeout(timer);
+      if (raf !== null) {
+        cancelAnimationFrame(raf);
       }
     };
-  }, [anchorStatus, chatKey, isInitialLoading, positionedChatKey]);
+  }, [anchorStatus, isInitialLoading, isPositioned]);
 
-  const finishUnreadJump = useCallback(() => {
-    if (!unreadScrollAnimationRef.current) {
-      return;
-    }
-    unreadScrollAnimationRef.current = false;
-    unreadScrollStartedRef.current = false;
-    if (pendingUnreadScrollTimer.current !== null) {
-      window.clearTimeout(pendingUnreadScrollTimer.current);
-      pendingUnreadScrollTimer.current = null;
-    }
-    pendingBottomSyncRaf.current = requestAnimationFrame(() => {
-      pendingBottomSyncRaf.current = null;
-      const scroller = scrollerRef.current;
-      if (scroller instanceof HTMLElement) {
-        atBottomRef.current =
-          scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <=
-          1;
-      }
-      anchoredBottomStateReadyRef.current = true;
-      setIsJumpingToUnread(false);
-    });
-  }, []);
-
-  const handleOpenFirstUnread = useCallback(() => {
-    if (isOpeningFirstUnread || unreadScrollAnimationRef.current) {
-      return;
-    }
-    shouldStickToBottomRef.current = false;
-    atBottomRef.current = false;
-    pendingUnreadJumpRef.current = true;
-    anchoredBottomStateReadyRef.current = false;
-    setIsJumpingToUnread(true);
-    setIsOpeningFirstUnread(true);
-    void openFirstUnread()
-      .then((opened) => {
-        if (!opened) {
-          pendingUnreadJumpRef.current = false;
-          setIsJumpingToUnread(false);
-          return;
-        }
-        // The freshly-resolved boundary can occupy the same array index as
-        // the previous one. An explicit request makes the positioning effect
-        // run even when all derived anchor values are numerically unchanged.
-        setUnreadJumpRequest((current) => current + 1);
-      })
-      .catch(() => {
-        pendingUnreadJumpRef.current = false;
-        setIsJumpingToUnread(false);
-      })
-      .finally(() => setIsOpeningFirstUnread(false));
-  }, [isOpeningFirstUnread, openFirstUnread]);
-
-  // Installing the contextual page changes the Virtuoso data first. Apply the
-  // requested position on the following frame so the separator's row exists.
+  // `endReached` can fire while the unread jump is still animating. Once the
+  // jump settles, reaching the contextual bottom must still load toward live.
   useEffect(() => {
     if (
-      !pendingUnreadJumpRef.current ||
-      isInitialLoading ||
-      anchorStatus !== "resolved" ||
-      firstUnreadIndex < 0
+      isPositioned &&
+      isAtBottom &&
+      hasNewer &&
+      !isJumpingToUnread &&
+      !isFetchingNewer
     ) {
-      return;
+      fetchNewer();
     }
-    const raf = requestAnimationFrame(() => {
-      pendingUnreadJumpRef.current = false;
-      shouldStickToBottomRef.current = false;
-      atBottomRef.current = false;
-      setReadTrackingReadyChatKey(null);
-      const scrollerHeight =
-        scrollerRef.current && "clientHeight" in scrollerRef.current
-          ? scrollerRef.current.clientHeight
-          : 0;
-      unreadScrollAnimationRef.current = true;
-      unreadScrollStartedRef.current = false;
-      pendingUnreadScrollTimer.current = window.setTimeout(
-        finishUnreadJump,
-        UNREAD_SCROLL_FALLBACK_MS,
-      );
-      virtuosoRef.current?.scrollToIndex({
-        index: firstUnreadIndex,
-        align: "start",
-        offset: -Math.round(scrollerHeight / 3),
-        behavior: "smooth",
-      });
-      setUnreadNavigationChatKey(chatKey);
-    });
-    return () => cancelAnimationFrame(raf);
   }, [
-    anchorStatus,
-    chatKey,
-    finishUnreadJump,
-    firstUnreadIndex,
-    isInitialLoading,
-    unreadJumpRequest,
+    fetchNewer,
+    hasNewer,
+    isAtBottom,
+    isFetchingNewer,
+    isJumpingToUnread,
+    isPositioned,
   ]);
 
   const handleMarkMainRead = useCallback(() => {
-    const messageId = liveEndMessageRef.current.messageId;
-    if (!messageId || isMarkingMainRead) {
+    if (!liveEndMessageId || markingMessageId !== null) {
       return;
     }
-    setIsMarkingMainRead(true);
-    void markChatRead(messageId)
-      .then(() => {
-        lastMarkedMessageIdRef.current = messageId;
-        furthestReadMessageIdRef.current = messageId;
-        pendingReadProgressRef.current = null;
-        markReadRetryCountRef.current = 0;
-        commitDisplayedReadProgress(messageId, true);
-        setClearedBoundaryChatKey(chatKey);
+    const focusOrigin = document.activeElement;
+    const messageId = liveEndMessageId;
+    setMarkingMessageId(messageId);
+    void submitRead(messageId)
+      .then((result) => {
+        if (result.status !== "unavailable") {
+          closeUnreadNavigation();
+          scheduleComposerFocusRestore(focusOrigin);
+        }
       })
       .catch(() => undefined)
-      .finally(() => setIsMarkingMainRead(false));
-  }, [chatKey, commitDisplayedReadProgress, isMarkingMainRead, markChatRead]);
+      .finally(() => {
+        setMarkingMessageId((current) =>
+          current === messageId ? null : current,
+        );
+      });
+  }, [closeUnreadNavigation, liveEndMessageId, markingMessageId, submitRead]);
 
-  const scrollToBottom = useCallback(() => {
-    virtuosoRef.current?.scrollToIndex({
-      index: "LAST",
-      align: "end",
-      behavior: "auto",
-    });
-  }, []);
-
-  // New live events never change the anchored separator. Follow only when the
-  // loaded window has reached the live end and the reader is already there,
-  // or when the newly appended message is their own send.
-  useLayoutEffect(() => {
-    const previous = previousAppendState.current;
-    const isSameChat = previous.chatKey === chatKey;
-    const didAppendLatest =
-      messages.length > previous.messageCount &&
-      lastMessage?.id !== previous.lastMessageId;
-    const canFollowAnchoredBottom =
-      unreadNavigationChatKey !== chatKey ||
-      (anchoredBottomStateReadyRef.current && atBottomRef.current);
-    const shouldFollowAppend =
-      !isJumpingToUnread &&
-      !hasNewer &&
-      (canFollowAnchoredBottom || lastMessage?.authorId === "me");
-    previousAppendState.current = {
-      chatKey,
-      messageCount: messages.length,
-      lastMessageId: lastMessage?.id ?? null,
-    };
-
-    if (!isSameChat || !didAppendLatest || !shouldFollowAppend) {
-      return;
-    }
-
-    shouldStickToBottomRef.current = true;
-    scrollToBottom();
-  }, [
-    chatKey,
-    hasNewer,
-    isJumpingToUnread,
-    lastMessage?.authorId,
-    lastMessage?.id,
-    messages.length,
-    scrollToBottom,
-    unreadNavigationChatKey,
-  ]);
-
-  const hasActiveUnreadBoundary =
-    isUnread && clearedBoundaryChatKey !== chatKey;
   const hasActiveMainUnread =
-    hasActiveUnreadBoundary &&
-    unread.mainTimelineUnread === true &&
-    !isInitialLoading &&
-    positionedChatKey === chatKey;
+    unread.mainTimelineUnread && !isInitialLoading && isPositioned;
   const showUnreadSeparator =
-    hasActiveUnreadBoundary &&
-    unreadNavigationChatKey === chatKey &&
-    anchorStatus === "resolved" &&
-    firstUnreadMessageId !== null;
+    hasActiveMainUnread &&
+    firstUnreadMessageId !== null &&
+    firstUnreadIndex >= 0;
   const unreadNavigation = useMemo<MainTimelineUnreadNavigation | null>(() => {
     if (!hasActiveMainUnread) {
       return null;
     }
     return {
-      count: displayedUnreadCount,
-      status:
-        unreadAnchorStatus === "resolved" ||
-        unreadAnchorStatus === "unavailable"
-          ? unreadAnchorStatus
-          : "unresolved",
-      isOpening: isOpeningFirstUnread || isJumpingToUnread,
+      count: unread.mainTimelineCount,
+      isOpening: isJumpingToUnread,
       isMarkingRead: isMarkingMainRead,
-      open: handleOpenFirstUnread,
+      open: unreadJump.open,
       markRead: handleMarkMainRead,
     };
   }, [
     handleMarkMainRead,
-    handleOpenFirstUnread,
     hasActiveMainUnread,
-    displayedUnreadCount,
-    isMarkingMainRead,
-    isOpeningFirstUnread,
     isJumpingToUnread,
-    unreadAnchorStatus,
+    isMarkingMainRead,
+    unread.mainTimelineCount,
+    unreadJump.open,
   ]);
+  const unreadNavigationUpdate = useMemo<MainTimelineUnreadNavigationUpdate>(
+    () => ({ chatKey, navigation: unreadNavigation }),
+    [chatKey, unreadNavigation],
+  );
 
   useEffect(() => {
-    onUnreadNavigationChange?.(unreadNavigation);
-  }, [onUnreadNavigationChange, unreadNavigation]);
+    onUnreadNavigationChange?.(unreadNavigationUpdate);
+  }, [onUnreadNavigationChange, unreadNavigationUpdate]);
 
   useEffect(
-    () => () => onUnreadNavigationChange?.(null),
+    () => () => onUnreadNavigationChange?.({ chatKey, navigation: null }),
     [chatKey, onUnreadNavigationChange],
   );
 
   return (
     <div className="hub__chat-conversation__list">
-      {!isInitialLoading && (
+      {!isInitialLoading ? (
         <Virtuoso
           ref={virtuosoRef}
           scrollerRef={handleScrollerRef}
@@ -927,45 +375,16 @@ export const ChatVirtualList = ({
           computeItemKey={(_index, message) => message.id}
           defaultItemHeight={DEFAULT_ITEM_HEIGHT}
           initialTopMostItemIndex={Math.max(0, messages.length - 1)}
-          followOutput={
-            isJumpingToUnread || unreadNavigationChatKey === chatKey
-              ? false
-              : "auto"
+          followOutput={(atBottom) =>
+            !isJumpingToUnread &&
+            !hasNewer &&
+            (atBottom || lastMessage?.authorId === "me")
+              ? "auto"
+              : false
           }
-          isScrolling={(isScrolling) => {
-            if (!unreadScrollAnimationRef.current) {
-              return;
-            }
-            if (isScrolling) {
-              unreadScrollStartedRef.current = true;
-              return;
-            }
-            if (unreadScrollStartedRef.current) {
-              finishUnreadJump();
-            }
-          }}
+          isScrolling={unreadJump.onScrolling}
           atBottomStateChange={(atBottom) => {
-            atBottomRef.current = atBottom;
-            if (
-              !atBottom &&
-              !isJumpingToUnread &&
-              unreadNavigationChatKey === chatKey
-            ) {
-              anchoredBottomStateReadyRef.current = true;
-            }
-            if (atBottom) {
-              shouldStickToBottomRef.current = false;
-              if (hasNewer && !isJumpingToUnread) {
-                fetchNewer();
-              } else {
-                maybeMarkRead();
-              }
-            }
-          }}
-          totalListHeightChanged={() => {
-            if (shouldStickToBottomRef.current) {
-              scrollToBottom();
-            }
+            setIsAtBottom(atBottom);
           }}
           startReached={hasOlder ? fetchOlder : undefined}
           endReached={hasNewer && !isJumpingToUnread ? fetchNewer : undefined}
@@ -973,9 +392,9 @@ export const ChatVirtualList = ({
           components={{
             Header: () => (
               <div className="hub__chat-conversation__top-spacer">
-                {isFetchingOlder && (
+                {isFetchingOlder ? (
                   <TimelineStatus label={t("Loading older messages…")} />
-                )}
+                ) : null}
               </div>
             ),
             Footer: () =>
@@ -990,8 +409,9 @@ export const ChatVirtualList = ({
             const isFirstUnread =
               showUnreadSeparator && message.id === firstUnreadMessageId;
             const nextMessage = messages[arrayIndex + 1];
+            // The separator also breaks sender grouping on both sides.
             return (
-              <Row
+              <ChatMessageRow
                 message={message}
                 chatRef={chatRef}
                 prev={isFirstUnread ? undefined : messages[arrayIndex - 1]}
@@ -1002,23 +422,15 @@ export const ChatVirtualList = ({
                 }
                 authorsById={authorsById}
                 showUnreadSeparator={isFirstUnread}
+                unreadSeparatorRef={
+                  isFirstUnread ? unreadJump.separatorRef : undefined
+                }
               />
             );
           }}
         />
-      )}
-      {!isInitialLoading &&
-        hasActiveUnreadBoundary &&
-        anchorStatus === "unavailable" && (
-          <div className="hub__chat-conversation__unread-unavailable">
-            <TimelineStatus
-              label={t("Unread messages are above")}
-              icon="north"
-              loading={false}
-            />
-          </div>
-        )}
-      {skeletonState !== "hidden" && (
+      ) : null}
+      {skeletonState !== "hidden" ? (
         <ChatConversationSkeleton
           leaving={skeletonState === "leaving"}
           onLeaveEnd={() =>
@@ -1027,113 +439,20 @@ export const ChatVirtualList = ({
             )
           }
         />
-      )}
+      ) : null}
     </div>
   );
 };
 
-const TimelineStatus = ({
-  label,
-  icon = "sync",
-  loading = true,
-}: {
-  label: string;
-  icon?: string;
-  loading?: boolean;
-}) => (
+const TimelineStatus = ({ label }: { label: string }) => (
   <div
     className="hub__chat-conversation__top-loader"
     role="status"
-    data-loading={loading || undefined}
+    data-loading
   >
     <span className="material-icons" aria-hidden="true">
-      {icon}
+      sync
     </span>
     {label}
-  </div>
-);
-
-type RowProps = {
-  message: ChatMessage;
-  chatRef: ChatRef;
-  prev: ChatMessage | undefined;
-  next: ChatMessage | undefined;
-  authorsById: Map<string, ChatMessageAuthor>;
-  showUnreadSeparator: boolean;
-};
-
-const Row = memo(function Row({
-  message,
-  chatRef,
-  prev,
-  next,
-  authorsById,
-  showUnreadSeparator,
-}: RowProps) {
-  const isSent = message.authorId === "me";
-  const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
-  const isLastOfGroup = !next || next.authorId !== message.authorId;
-
-  if (isSent) {
-    return (
-      <RowShell messageId={message.id} separator={showUnreadSeparator}>
-        <ChatBubble
-          variant="sent"
-          chatRef={chatRef}
-          messageId={message.id}
-          content={message.content}
-          timestamp={message.timestamp}
-          reactions={message.reactions}
-          isDeleted={message.isDeleted}
-          isEdited={message.isEdited}
-          canEdit={message.canEdit}
-          canDelete={message.canDelete}
-          thread={message.thread}
-          showTimestamp={isLastOfGroup}
-        />
-      </RowShell>
-    );
-  }
-
-  const author = authorsById.get(message.authorId);
-  if (!author) {
-    return null;
-  }
-  return (
-    <RowShell messageId={message.id} separator={showUnreadSeparator}>
-      <ChatBubble
-        variant="received"
-        chatRef={chatRef}
-        messageId={message.id}
-        content={message.content}
-        author={author}
-        timestamp={message.timestamp}
-        reactions={message.reactions}
-        isDeleted={message.isDeleted}
-        isEdited={message.isEdited}
-        canEdit={message.canEdit}
-        canDelete={message.canDelete}
-        thread={message.thread}
-        showHeader={isFirstOfGroup}
-        showAvatar={isLastOfGroup}
-      />
-    </RowShell>
-  );
-});
-
-const RowShell = ({
-  children,
-  messageId,
-  separator,
-}: {
-  children: React.ReactNode;
-  messageId: string;
-  separator: boolean;
-}) => (
-  <div className="hub__chat-conversation__row" data-chat-message-id={messageId}>
-    <div className="hub__chat-conversation__row-inner">
-      {separator && <UnreadSeparator />}
-      {children}
-    </div>
   </div>
 );

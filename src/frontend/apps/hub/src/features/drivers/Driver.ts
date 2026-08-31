@@ -24,19 +24,23 @@ export type ChatUserFilters = {
 
 export type GetChatMessagesParams = {
   chatId: string;
-  /**
-   * Cursor returned by one side of the previous window. Its direction decides
-   * whether the driver returns messages immediately before or after it.
-   * `null` or omitted opens a new window at `anchor`.
-   */
-  cursor?: string | null;
-  /** Timeline position used for the initial window when no cursor is given. */
-  anchor?: "first-unread" | "latest";
-  /** Direction to extend an existing window when a cursor is given. */
-  direction?: "older" | "newer";
   /** Maximum number of messages to return. Drivers may clamp to a server cap. */
   limit?: number;
-};
+} & (
+  | {
+      /** Timeline position used to open a new message window. */
+      anchor: "first-unread" | "latest";
+      cursor?: never;
+      direction?: never;
+    }
+  | {
+      /** Cursor returned by one side of the previous message window. */
+      cursor: string;
+      /** Side of the existing window to extend. */
+      direction: "older" | "newer";
+      anchor?: never;
+    }
+);
 
 export type ToggleChatReactionParams = {
   chatId: string;
@@ -68,6 +72,12 @@ export type MarkChatReadParams = {
   /** Last visible main-timeline message the user has genuinely read. */
   messageId: string;
 };
+
+/** Outcome of a monotonic main-timeline read-marker attempt. */
+export type MarkChatReadResult =
+  | { status: "updated" }
+  | { status: "unchanged" }
+  | { status: "unavailable" };
 
 export type SendChatMessageParams = {
   chatId: string;
@@ -241,7 +251,9 @@ export abstract class Driver {
   /** Marks every thread of a conversation as read for the current user. */
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
   /** Advances the main timeline through a genuinely read visible message. */
-  abstract markChatRead(params: MarkChatReadParams): Promise<void>;
+  abstract markChatRead(
+    params: MarkChatReadParams,
+  ): Promise<MarkChatReadResult>;
   /** Initial per-conversation read state; live changes use `unread:changed`. */
   abstract getUnread(): Promise<Record<string, ChatUnread>>;
 

@@ -16,7 +16,7 @@ import type {
   ChatThreadMutationResult,
 } from "@/features/drivers/types";
 
-import { chatKeys } from "../chatKeys";
+import { chatKeys, type ChatMessageWindowQueryKey } from "../chatKeys";
 
 import {
   type ChatMessagesData,
@@ -26,8 +26,8 @@ import {
   markOptimisticRootThreadSummary,
   mergeRootThreadSummary,
   OPTIMISTIC_THREAD_ID_PREFIX,
+  patchRootThreadSummary,
   removeThread,
-  replaceRootMessageInPages,
   rollbackOptimisticRootThreadSummary,
   upsertThread,
 } from "./chatCompositionCache";
@@ -39,15 +39,19 @@ type StartThreadVariables = {
   options?: StartThreadOptions;
 };
 
+type MessageWindowSnapshot = {
+  queryKey: ChatMessageWindowQueryKey;
+  previousRootThreadSummary: ChatMessage["thread"];
+};
+
 type StartThreadContext = {
-  messagesKey: QueryKey;
+  messageWindows: MessageWindowSnapshot[];
   threadsKey: QueryKey;
   tempThreadKey: QueryKey;
   tempThreadId: string;
   previousThreads: ChatThread[] | undefined;
   optimisticThreads: ChatThread[] | undefined;
   rootMessageId: string;
-  previousRootThreadSummary: ChatMessage["thread"];
   optimisticRootThreadMarker: string;
 };
 
@@ -96,24 +100,27 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       });
     },
     onMutate: async ({ rootMessage, content, options }) => {
-      const messagesKey: QueryKey = chatKeys.messages(ref);
+      const messageWindowKeys = [...chatKeys.messageWindows(ref)];
       const threadsKey: QueryKey = chatKeys.threads(ref);
       const reply = createOptimisticMessage(content, "optimistic-thread-start");
       const tempThreadId = `${OPTIMISTIC_THREAD_ID_PREFIX}${reply.id}`;
       const tempThreadKey: QueryKey = chatKeys.thread(ref, tempThreadId);
       await Promise.all([
-        queryClient.cancelQueries({ queryKey: messagesKey }),
+        ...messageWindowKeys.map((queryKey) =>
+          queryClient.cancelQueries({ queryKey, exact: true }),
+        ),
         queryClient.cancelQueries({ queryKey: threadsKey }),
       ]);
 
-      const previousMessages =
-        queryClient.getQueryData<ChatMessagesData>(messagesKey);
+      const messageWindows = messageWindowKeys.map((queryKey) => ({
+        queryKey,
+        previousRootThreadSummary: getRootThreadSummary(
+          queryClient.getQueryData<ChatMessagesData>(queryKey),
+          rootMessage.id,
+        ),
+      }));
       const previousThreads =
         queryClient.getQueryData<ChatThread[]>(threadsKey);
-      const previousRootThreadSummary = getRootThreadSummary(
-        previousMessages,
-        rootMessage.id,
-      );
       const rootWithThread: ChatMessage = {
         ...rootMessage,
         thread: markOptimisticRootThreadSummary(
@@ -141,9 +148,22 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         firstUnreadIndex: null,
       };
 
-      queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
-        old ? replaceRootMessageInPages(old, rootWithThread) : old,
-      );
+      messageWindows.forEach(({ queryKey }) => {
+        queryClient.setQueryData<ChatMessagesData>(queryKey, (old) =>
+          old
+            ? patchRootThreadSummary(
+                old,
+                rootMessage.id,
+                {
+                  id: tempThreadId,
+                  replyCount: 1,
+                  unreadCount: 0,
+                },
+                tempThreadId,
+              )
+            : old,
+        );
+      });
       queryClient.setQueryData<ChatThread[]>(threadsKey, (old) =>
         old ? upsertThread(old, thread) : old,
       );
@@ -154,14 +174,13 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         queryClient.getQueryData<ChatThread[]>(threadsKey);
 
       return {
-        messagesKey,
+        messageWindows,
         threadsKey,
         tempThreadKey,
         tempThreadId,
         previousThreads,
         optimisticThreads,
         rootMessageId: rootMessage.id,
-        previousRootThreadSummary,
         optimisticRootThreadMarker: tempThreadId,
       };
     },
@@ -169,11 +188,13 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       if (!context) {
         return;
       }
-      queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) =>
-        old
-          ? mergeRootThreadSummary(old, result.rootMessage.id, result.thread)
-          : old,
-      );
+      context.messageWindows.forEach(({ queryKey }) => {
+        queryClient.setQueryData<ChatMessagesData>(queryKey, (old) =>
+          old
+            ? mergeRootThreadSummary(old, result.rootMessage.id, result.thread)
+            : old,
+        );
+      });
       queryClient.setQueryData<ChatThread[]>(context.threadsKey, (old) =>
         old
           ? upsertThread(removeThread(old, context.tempThreadId), result.thread)
@@ -197,17 +218,19 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       if (!context) {
         return;
       }
-      queryClient.setQueryData<ChatMessagesData>(
-        context.messagesKey,
-        (current) =>
-          current
-            ? rollbackOptimisticRootThreadSummary(
-                current,
-                context.rootMessageId,
-                context.optimisticRootThreadMarker,
-                context.previousRootThreadSummary,
-              )
-            : current,
+      context.messageWindows.forEach(
+        ({ queryKey, previousRootThreadSummary }) => {
+          queryClient.setQueryData<ChatMessagesData>(queryKey, (current) =>
+            current
+              ? rollbackOptimisticRootThreadSummary(
+                  current,
+                  context.rootMessageId,
+                  context.optimisticRootThreadMarker,
+                  previousRootThreadSummary,
+                )
+              : current,
+          );
+        },
       );
       queryClient.setQueryData<ChatThread[]>(context.threadsKey, (current) =>
         current === context.optimisticThreads
@@ -220,7 +243,9 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         queryKey: context.tempThreadKey,
         exact: true,
       });
-      void queryClient.invalidateQueries({ queryKey: context.messagesKey });
+      context.messageWindows.forEach(({ queryKey }) => {
+        void queryClient.invalidateQueries({ queryKey });
+      });
       void queryClient.invalidateQueries({ queryKey: context.threadsKey });
     },
     meta: { noGlobalError: true },

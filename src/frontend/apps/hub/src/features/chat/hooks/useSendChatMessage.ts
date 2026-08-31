@@ -14,6 +14,7 @@ import {
   appendMessageToNewestPage,
   type ChatMessagesData,
   createOptimisticMessage,
+  removeMessageFromPages,
   replaceMessageInPages,
 } from "./chatCompositionCache";
 import { useChatCompositionSupport } from "./useChatCompositionSupport";
@@ -23,7 +24,6 @@ type SendMessageVariables = { ref: ChatRef; content: string };
 type SendMessageContext = {
   ref: ChatRef;
   messagesKey: QueryKey;
-  previousMessages: ChatMessagesData | undefined;
   optimisticId: string;
 };
 
@@ -55,9 +55,22 @@ export const useSendChatMessage = (
     },
     onMutate: async ({ ref: targetRef, content }) => {
       const messagesKey: QueryKey = chatKeys.messages(targetRef);
-      await queryClient.cancelQueries({ queryKey: messagesKey });
-      const previousMessages =
-        queryClient.getQueryData<ChatMessagesData>(messagesKey);
+      const unreadMessagesKey: QueryKey = chatKeys.unreadMessages(targetRef);
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: messagesKey, exact: true }),
+        queryClient.cancelQueries({
+          queryKey: unreadMessagesKey,
+          exact: true,
+        }),
+      ]);
+      await queryClient.resetQueries({
+        queryKey: unreadMessagesKey,
+        exact: true,
+      });
+
+      // Composition always targets the permanent live window. Resetting only
+      // the contextual cache switches `useChatMessages` back to live before
+      // the optimistic row is appended, preserving the page-0 invariant.
       const optimistic = createOptimisticMessage(content, "optimistic-message");
 
       queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
@@ -67,7 +80,6 @@ export const useSendChatMessage = (
       return {
         ref: targetRef,
         messagesKey,
-        previousMessages,
         optimisticId: optimistic.id,
       };
     },
@@ -76,7 +88,17 @@ export const useSendChatMessage = (
         return;
       }
       queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) =>
-        old ? replaceMessageInPages(old, context.optimisticId, message) : old,
+        old
+          ? appendMessageToNewestPage(
+              removeMessageFromPages(old, context.optimisticId),
+              message,
+            )
+          : old,
+      );
+      queryClient.setQueryData<ChatMessagesData>(
+        chatKeys.unreadMessages(context.ref),
+        (old) =>
+          old ? replaceMessageInPages(old, context.optimisticId, message) : old,
       );
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(context.ref.accountId),
@@ -85,7 +107,13 @@ export const useSendChatMessage = (
     },
     onError: (_error, _variables, context) => {
       if (context) {
-        queryClient.setQueryData(context.messagesKey, context.previousMessages);
+        chatKeys.messageWindows(context.ref).forEach((queryKey) => {
+          queryClient.setQueryData<ChatMessagesData>(queryKey, (current) =>
+            current
+              ? removeMessageFromPages(current, context.optimisticId)
+              : current,
+          );
+        });
       }
     },
     meta: { noGlobalError: true },

@@ -3,13 +3,13 @@ import type { TFunction } from "i18next";
 
 import type {
   ChatMessage,
-  ChatMessagesPage,
+  ChatMessageWindow,
   ChatThread,
   ChatThreadDetail,
   ChatThreadSummary,
 } from "@/features/drivers/types";
 
-export type ChatMessagesData = InfiniteData<ChatMessagesPage>;
+export type ChatMessagesData = InfiniteData<ChatMessageWindow>;
 
 /**
  * Optimistic author for the current user's own thread replies, shown until the
@@ -34,8 +34,25 @@ const optimisticRootThreadSummaryMarker = Symbol(
   "optimistic-root-thread-summary",
 );
 
+export type RootThreadSummaryMutationMarker = object | string;
+
 type MarkedThreadSummary = ChatThreadSummary & {
-  [optimisticRootThreadSummaryMarker]?: string;
+  [optimisticRootThreadSummaryMarker]?: RootThreadSummaryMutationMarker;
+};
+
+const optimisticThreadUnreadMarker = Symbol("optimistic-thread-unread");
+const optimisticRootThreadUnreadMarker = Symbol(
+  "optimistic-root-thread-unread",
+);
+
+export type ThreadUnreadMutationMarker = object;
+
+type MarkedThread = ChatThread & {
+  [optimisticThreadUnreadMarker]?: ThreadUnreadMutationMarker;
+};
+
+type MarkedRootThreadUnread = ChatThreadSummary & {
+  [optimisticRootThreadUnreadMarker]?: ThreadUnreadMutationMarker;
 };
 
 export const isOptimisticThreadId = (threadId: string): boolean =>
@@ -43,12 +60,61 @@ export const isOptimisticThreadId = (threadId: string): boolean =>
 
 export const markOptimisticRootThreadSummary = (
   summary: ChatThreadSummary,
-  marker: string,
+  marker: RootThreadSummaryMutationMarker,
 ): ChatThreadSummary =>
   ({
     ...summary,
     [optimisticRootThreadSummaryMarker]: marker,
   }) as MarkedThreadSummary;
+
+export const hasOptimisticRootThreadSummaryMutation = (
+  summary: ChatThreadSummary,
+  marker: RootThreadSummaryMutationMarker,
+): boolean =>
+  (summary as MarkedThreadSummary)[optimisticRootThreadSummaryMarker] ===
+  marker;
+
+export const markOptimisticThreadUnread = (
+  thread: ChatThread,
+  marker: ThreadUnreadMutationMarker,
+): ChatThread => {
+  const marked = { ...thread } as MarkedThread;
+  Object.defineProperty(marked, optimisticThreadUnreadMarker, {
+    value: marker,
+  });
+  return marked;
+};
+
+export const hasOptimisticThreadUnreadMutation = (
+  thread: ChatThread,
+  marker: ThreadUnreadMutationMarker,
+): boolean => getOptimisticThreadUnreadMarker(thread) === marker;
+
+export const getOptimisticThreadUnreadMarker = (
+  thread: ChatThread,
+): ThreadUnreadMutationMarker | undefined =>
+  (thread as MarkedThread)[optimisticThreadUnreadMarker];
+
+export const markOptimisticRootThreadUnread = (
+  summary: ChatThreadSummary,
+  marker: ThreadUnreadMutationMarker,
+): ChatThreadSummary => {
+  const marked = { ...summary, unreadCount: 0 } as MarkedRootThreadUnread;
+  Object.defineProperty(marked, optimisticRootThreadUnreadMarker, {
+    value: marker,
+  });
+  return marked;
+};
+
+export const hasOptimisticRootThreadUnreadMutation = (
+  summary: ChatThreadSummary,
+  marker: ThreadUnreadMutationMarker,
+): boolean => getOptimisticRootThreadUnreadMarker(summary) === marker;
+
+export const getOptimisticRootThreadUnreadMarker = (
+  summary: ChatThreadSummary,
+): ThreadUnreadMutationMarker | undefined =>
+  (summary as MarkedRootThreadUnread)[optimisticRootThreadUnreadMarker];
 
 export const createOptimisticMessage = (
   content: string,
@@ -64,13 +130,16 @@ export const createOptimisticMessage = (
   };
 };
 
+/** Appends to the permanent live cache, whose page 0 is the live end. */
 export const appendMessageToNewestPage = (
   data: ChatMessagesData,
   message: ChatMessage,
 ): ChatMessagesData => {
   const [newest, ...rest] = data.pages;
+  const hasUnloadedNewerMessages = Boolean(newest?.newerCursor);
   if (
     !newest ||
+    hasUnloadedNewerMessages ||
     newest.messages.some((candidate) => candidate.id === message.id)
   ) {
     return data;
@@ -81,10 +150,10 @@ export const appendMessageToNewestPage = (
   };
 };
 
-export const replaceMessageInPages = (
+export const updateMessageInPages = (
   data: ChatMessagesData,
   messageId: string,
-  replacement: ChatMessage,
+  update: (message: ChatMessage) => ChatMessage,
 ): ChatMessagesData => ({
   ...data,
   pages: data.pages.map((page) =>
@@ -92,12 +161,26 @@ export const replaceMessageInPages = (
       ? {
           ...page,
           messages: page.messages.map((message) =>
-            message.id === messageId ? replacement : message,
+            message.id === messageId ? update(message) : message,
           ),
         }
       : page,
   ),
 });
+
+export const replaceMessageInPages = (
+  data: ChatMessagesData,
+  messageId: string,
+  replacement: ChatMessage,
+): ChatMessagesData => updateMessageInPages(data, messageId, () => replacement);
+
+export const getMessageFromPages = (
+  data: ChatMessagesData | undefined,
+  messageId: string,
+): ChatMessage | undefined =>
+  data?.pages
+    .flatMap((page) => page.messages)
+    .find((message) => message.id === messageId);
 
 const optimisticMessageMutationMarker = Symbol("optimistic-message-mutation");
 
@@ -121,8 +204,12 @@ export const markOptimisticMessageMutation = (
 export const hasOptimisticMessageMutation = (
   message: ChatMessage,
   marker: MessageMutationMarker,
-): boolean =>
-  (message as OptimisticMessage)[optimisticMessageMutationMarker] === marker;
+): boolean => getOptimisticMessageMutationMarker(message) === marker;
+
+export const getOptimisticMessageMutationMarker = (
+  message: ChatMessage,
+): MessageMutationMarker | undefined =>
+  (message as OptimisticMessage)[optimisticMessageMutationMarker];
 
 export const removeMessageFromPages = (
   data: ChatMessagesData,
@@ -198,7 +285,7 @@ export const getRootThreadSummary = (
 export const rollbackOptimisticRootThreadSummary = (
   data: ChatMessagesData,
   rootMessageId: string,
-  optimisticMarker: string,
+  optimisticMarker: RootThreadSummaryMutationMarker,
   previousSummary: ChatThreadSummary | undefined,
 ): ChatMessagesData => {
   let changed = false;
@@ -206,9 +293,11 @@ export const rollbackOptimisticRootThreadSummary = (
     const messages = page.messages.map((message) => {
       if (
         message.id !== rootMessageId ||
-        (message.thread as MarkedThreadSummary | undefined)?.[
-          optimisticRootThreadSummaryMarker
-        ] !== optimisticMarker
+        !message.thread ||
+        !hasOptimisticRootThreadSummaryMutation(
+          message.thread,
+          optimisticMarker,
+        )
       ) {
         return message;
       }
@@ -267,16 +356,23 @@ export const appendThreadMessage = (
     ? detail
     : { ...detail, messages: [...detail.messages, message] };
 
+export const updateThreadMessage = (
+  detail: ChatThreadDetail,
+  messageId: string,
+  update: (message: ChatMessage) => ChatMessage,
+): ChatThreadDetail => ({
+  ...detail,
+  messages: detail.messages.map((message) =>
+    message.id === messageId ? update(message) : message,
+  ),
+});
+
 export const replaceThreadMessage = (
   detail: ChatThreadDetail,
   messageId: string,
   replacement: ChatMessage,
-): ChatThreadDetail => ({
-  ...detail,
-  messages: detail.messages.map((message) =>
-    message.id === messageId ? replacement : message,
-  ),
-});
+): ChatThreadDetail =>
+  updateThreadMessage(detail, messageId, () => replacement);
 
 export const replaceOrAppendThreadMessage = (
   detail: ChatThreadDetail,

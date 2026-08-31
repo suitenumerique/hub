@@ -15,7 +15,7 @@ import type {
   ChatThreadSummary,
 } from "@/features/drivers/types";
 
-import { chatKeys } from "../chatKeys";
+import { chatKeys, type ChatMessageWindowQueryKey } from "../chatKeys";
 
 import {
   appendThreadMessage,
@@ -35,10 +35,15 @@ import { useChatThreadCompositionSupport } from "./useChatThreadCompositionSuppo
 
 type SendThreadReplyVariables = { content: string };
 
+type MessageWindowSnapshot = {
+  queryKey: ChatMessageWindowQueryKey;
+  previousRootThreadSummary: ChatThreadSummary | undefined;
+};
+
 type SendThreadReplyContext = {
   threadKey: QueryKey;
   threadsKey: QueryKey;
-  messagesKey: QueryKey;
+  messageWindows: MessageWindowSnapshot[];
   previousThread: ChatThreadDetail | undefined;
   previousThreads: ChatThread[] | undefined;
   optimisticThread: ChatThreadDetail | undefined;
@@ -47,7 +52,6 @@ type SendThreadReplyContext = {
   optimisticTimestamp: string;
   previousThreadListEntry: ChatThread | undefined;
   rootMessageId: string | null;
-  previousRootThreadSummary: ChatThreadSummary | undefined;
   optimisticRootThreadMarker: string;
   expectedReplyCount: number;
 };
@@ -87,19 +91,19 @@ export const useSendChatThreadReply = (
     onMutate: async ({ content }) => {
       const threadKey: QueryKey = chatKeys.thread(ref, threadId);
       const threadsKey: QueryKey = chatKeys.threads(ref);
-      const messagesKey: QueryKey = chatKeys.messages(ref);
+      const messageWindowKeys = [...chatKeys.messageWindows(ref)];
       await Promise.all([
         queryClient.cancelQueries({ queryKey: threadKey }),
         queryClient.cancelQueries({ queryKey: threadsKey }),
-        queryClient.cancelQueries({ queryKey: messagesKey }),
+        ...messageWindowKeys.map((queryKey) =>
+          queryClient.cancelQueries({ queryKey, exact: true }),
+        ),
       ]);
 
       const previousThread =
         queryClient.getQueryData<ChatThreadDetail>(threadKey);
       const previousThreads =
         queryClient.getQueryData<ChatThread[]>(threadsKey);
-      const previousMessages =
-        queryClient.getQueryData<ChatMessagesData>(messagesKey);
       const optimistic = createOptimisticMessage(
         content,
         "optimistic-thread-reply",
@@ -111,11 +115,23 @@ export const useSendChatThreadReply = (
         previousThread?.rootMessageId ??
         previousThreadListEntry?.rootMessageId ??
         null;
-      const previousRootReplyCount = rootMessageId
-        ? getRootThreadSummary(previousMessages, rootMessageId)?.replyCount
-        : undefined;
-      const previousRootThreadSummary = rootMessageId
-        ? getRootThreadSummary(previousMessages, rootMessageId)
+      const messageWindows = messageWindowKeys.map((queryKey) => ({
+        queryKey,
+        previousRootThreadSummary: rootMessageId
+          ? getRootThreadSummary(
+              queryClient.getQueryData<ChatMessagesData>(queryKey),
+              rootMessageId,
+            )
+          : undefined,
+      }));
+      const rootReplyCounts = messageWindows.flatMap(
+        ({ previousRootThreadSummary }) =>
+          previousRootThreadSummary
+            ? [previousRootThreadSummary.replyCount]
+            : [],
+      );
+      const previousRootReplyCount = rootReplyCounts.length
+        ? Math.max(...rootReplyCounts)
         : undefined;
       const expectedReplyCount =
         Math.max(
@@ -142,20 +158,22 @@ export const useSendChatThreadReply = (
         });
       });
       if (rootMessageId) {
-        queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
-          old
-            ? patchRootThreadSummary(
-                old,
-                rootMessageId,
-                {
-                  id: threadId,
-                  replyCount: expectedReplyCount,
-                  unreadCount: 0,
-                },
-                optimistic.id,
-              )
-            : old,
-        );
+        messageWindows.forEach(({ queryKey }) => {
+          queryClient.setQueryData<ChatMessagesData>(queryKey, (old) =>
+            old
+              ? patchRootThreadSummary(
+                  old,
+                  rootMessageId,
+                  {
+                    id: threadId,
+                    replyCount: expectedReplyCount,
+                    unreadCount: 0,
+                  },
+                  optimistic.id,
+                )
+              : old,
+          );
+        });
       }
 
       const optimisticThread =
@@ -165,7 +183,7 @@ export const useSendChatThreadReply = (
       return {
         threadKey,
         threadsKey,
-        messagesKey,
+        messageWindows,
         previousThread,
         previousThreads,
         optimisticThread,
@@ -174,7 +192,6 @@ export const useSendChatThreadReply = (
         optimisticTimestamp: optimistic.timestamp,
         previousThreadListEntry,
         rootMessageId,
-        previousRootThreadSummary,
         optimisticRootThreadMarker: optimistic.id,
         expectedReplyCount,
       };
@@ -220,11 +237,17 @@ export const useSendChatThreadReply = (
           ),
         });
       });
-      queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) =>
-        old
-          ? mergeRootThreadSummary(old, result.rootMessage.id, normalizedThread)
-          : old,
-      );
+      context.messageWindows.forEach(({ queryKey }) => {
+        queryClient.setQueryData<ChatMessagesData>(queryKey, (old) =>
+          old
+            ? mergeRootThreadSummary(
+                old,
+                result.rootMessage.id,
+                normalizedThread,
+              )
+            : old,
+        );
+      });
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(ref.accountId),
       });
@@ -273,21 +296,25 @@ export const useSendChatThreadReply = (
             })
           : removeThread(current, threadId);
       });
-      queryClient.setQueryData<ChatMessagesData>(
-        context.messagesKey,
-        (current) =>
-          current && context.rootMessageId
-            ? rollbackOptimisticRootThreadSummary(
-                current,
-                context.rootMessageId,
-                context.optimisticRootThreadMarker,
-                context.previousRootThreadSummary,
-              )
-            : current,
+      context.messageWindows.forEach(
+        ({ queryKey, previousRootThreadSummary }) => {
+          queryClient.setQueryData<ChatMessagesData>(queryKey, (current) =>
+            current && context.rootMessageId
+              ? rollbackOptimisticRootThreadSummary(
+                  current,
+                  context.rootMessageId,
+                  context.optimisticRootThreadMarker,
+                  previousRootThreadSummary,
+                )
+              : current,
+          );
+        },
       );
       void queryClient.invalidateQueries({ queryKey: context.threadKey });
       void queryClient.invalidateQueries({ queryKey: context.threadsKey });
-      void queryClient.invalidateQueries({ queryKey: context.messagesKey });
+      context.messageWindows.forEach(({ queryKey }) => {
+        void queryClient.invalidateQueries({ queryKey });
+      });
     },
     meta: { noGlobalError: true },
   });

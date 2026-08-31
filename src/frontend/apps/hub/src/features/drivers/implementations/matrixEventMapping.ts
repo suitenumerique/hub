@@ -312,7 +312,9 @@ export const roomUnread = (
     highlight:
       room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0,
     mainTimelineUnread,
-    mainTimelineCount,
+    // Receipt-based detection can find unread messages before Matrix exposes a
+    // notification count. Keep the button numeric in that short-lived case.
+    mainTimelineCount: mainTimelineUnread ? Math.max(1, mainTimelineCount) : 0,
   };
 };
 

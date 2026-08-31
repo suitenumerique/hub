@@ -1,4 +1,11 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Chat, ChatRef } from "@/features/drivers/types";
@@ -23,7 +30,10 @@ import { useSendChatMessage } from "../hooks/useSendChatMessage";
 import { ChatComposer } from "./ChatComposer";
 import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
-import type { MainTimelineUnreadNavigation } from "./ChatVirtualList";
+import type {
+  MainTimelineUnreadNavigation,
+  MainTimelineUnreadNavigationUpdate,
+} from "./ChatVirtualList";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
@@ -83,8 +93,25 @@ export const ChatView = ({
   const { users: typingUsers, onTypingActivity } = useChatTyping(chatRef);
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
-  const [mainUnreadNavigation, setMainUnreadNavigation] =
-    useState<MainTimelineUnreadNavigation | null>(null);
+  const activeChatKey = chatRef
+    ? `${chatRef.accountId}:${chatRef.chatId}`
+    : null;
+  const activeChatKeyRef = useRef(activeChatKey);
+  activeChatKeyRef.current = activeChatKey;
+  const [mainUnreadNavigationUpdate, setMainUnreadNavigationUpdate] =
+    useState<MainTimelineUnreadNavigationUpdate | null>(null);
+  const mainUnreadNavigation =
+    mainUnreadNavigationUpdate?.chatKey === activeChatKey
+      ? mainUnreadNavigationUpdate.navigation
+      : null;
+  const handleUnreadNavigationChange = useCallback(
+    (update: MainTimelineUnreadNavigationUpdate) => {
+      if (update.chatKey === activeChatKeyRef.current) {
+        setMainUnreadNavigationUpdate(update);
+      }
+    },
+    [],
+  );
 
   // The same composer submits either a new event or an in-place edit. Notify
   // `onSent` only for new messages so editing never changes navigation state.
@@ -128,7 +155,7 @@ export const ChatView = ({
     setFocusThreadComposer(false);
     setDraftThreadRoot(null);
     setEditingMessage(null);
-    setMainUnreadNavigation(null);
+    setMainUnreadNavigationUpdate(null);
   }, [chatRef?.accountId, chatRef?.chatId]);
 
   const toggleTool = (tool: ChatTool) => {
@@ -215,7 +242,7 @@ export const ChatView = ({
               ) : chatRef ? (
                 <ChatConversation
                   chatRef={chatRef}
-                  onUnreadNavigationChange={setMainUnreadNavigation}
+                  onUnreadNavigationChange={handleUnreadNavigationChange}
                 />
               ) : (
                 renderEmpty?.()
@@ -306,7 +333,11 @@ const ConversationUnreadBanner = ({
   }
 
   return (
-    <div className="hub__chat-unread-banners">
+    <div
+      className="hub__chat-unread-banners"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       {unreadThreads.length > 0 && (
         <UnreadThreadsBanner chatRef={chatRef} unreadThreads={unreadThreads} />
       )}

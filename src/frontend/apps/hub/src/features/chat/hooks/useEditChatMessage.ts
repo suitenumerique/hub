@@ -8,23 +8,29 @@ import type {
   ChatThreadDetail,
 } from "@/features/drivers/types";
 
-import { chatKeys } from "../chatKeys";
+import { chatKeys, type ChatMessageWindowQueryKey } from "../chatKeys";
 
 import {
   type ChatMessagesData,
+  getMessageFromPages,
+  getOptimisticMessageMutationMarker,
   hasOptimisticMessageMutation,
   markOptimisticMessageMutation,
   type MessageMutationMarker,
-  replaceMessageInPages,
-  replaceThreadMessage,
+  updateMessageInPages,
+  updateThreadMessage,
 } from "./chatCompositionCache";
 
 type EditVariables = { messageId: string; content: string };
 
+type MessageWindowSnapshot = {
+  queryKey: ChatMessageWindowQueryKey;
+  previousMessage?: ChatMessage;
+};
+
 type EditContext = {
   marker: MessageMutationMarker;
-  messagesKey?: ReturnType<typeof chatKeys.messages>;
-  previousTimelineMessage?: ChatMessage;
+  messageWindows: MessageWindowSnapshot[];
   threadKey?: ReturnType<typeof chatKeys.thread>;
   previousThreadMessage?: ChatMessage;
 };
@@ -41,6 +47,20 @@ const rollbackOptimisticEdit = (
         isEdited: previous.isEdited,
       }
     : current;
+
+const confirmOptimisticEdit = (
+  current: ChatMessage,
+  confirmed: ChatMessage,
+  marker: MessageMutationMarker,
+): ChatMessage =>
+  getOptimisticMessageMutationMarker(current) !== undefined &&
+  !hasOptimisticMessageMutation(current, marker)
+    ? current
+    : {
+        ...current,
+        content: confirmed.content,
+        isEdited: confirmed.isEdited,
+      };
 
 /** Edits either a main-timeline message or a message rendered in one thread. */
 export const useEditChatMessage = (
@@ -76,67 +96,55 @@ export const useEditChatMessage = (
       const isThreadReply = Boolean(
         containingThreadId && messageId !== containingThreadId,
       );
-      const messagesKey = isThreadReply ? undefined : chatKeys.messages(ref);
+      const messageWindowKeys = isThreadReply
+        ? []
+        : [...chatKeys.messageWindows(ref)];
       const threadKey = containingThreadId
         ? chatKeys.thread(ref, containingThreadId)
         : undefined;
       await Promise.all([
-        ...(messagesKey
-          ? [queryClient.cancelQueries({ queryKey: messagesKey })]
-          : []),
+        ...messageWindowKeys.map((queryKey) =>
+          queryClient.cancelQueries({ queryKey, exact: true }),
+        ),
         ...(threadKey
-          ? [queryClient.cancelQueries({ queryKey: threadKey })]
+          ? [queryClient.cancelQueries({ queryKey: threadKey, exact: true })]
           : []),
       ]);
-      const messages = messagesKey
-        ? queryClient.getQueryData<ChatMessagesData>(messagesKey)
-        : undefined;
+      const messageWindows = messageWindowKeys.map((queryKey) => ({
+        queryKey,
+        previousMessage: getMessageFromPages(
+          queryClient.getQueryData<ChatMessagesData>(queryKey),
+          messageId,
+        ),
+      }));
       const thread = threadKey
         ? queryClient.getQueryData<ChatThreadDetail>(threadKey)
         : undefined;
-      const previousTimelineMessage = messages?.pages
-        .flatMap((page) => page.messages)
-        .find((message) => message.id === messageId);
       const previousThreadMessage = thread?.messages.find(
         (message) => message.id === messageId,
       );
       const marker: MessageMutationMarker = {};
 
-      const patchMessage = (message: ChatMessage): ChatMessage => ({
-        ...markOptimisticMessageMutation(message, marker),
-        content,
-        isEdited: true,
+      const patchMessage = (message: ChatMessage): ChatMessage =>
+        markOptimisticMessageMutation(
+          { ...message, content, isEdited: true },
+          marker,
+        );
+      messageWindows.forEach(({ queryKey }) => {
+        queryClient.setQueryData<ChatMessagesData>(queryKey, (data) =>
+          data ? updateMessageInPages(data, messageId, patchMessage) : data,
+        );
       });
-      if (messagesKey) {
-        queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) => {
-          if (!data) {
-            return data;
-          }
-          const current = data.pages
-            .flatMap((page) => page.messages)
-            .find((message) => message.id === messageId);
-          return current
-            ? replaceMessageInPages(data, messageId, patchMessage(current))
-            : data;
-        });
-      }
       if (threadKey) {
-        queryClient.setQueryData<ChatThreadDetail>(threadKey, (detail) => {
-          if (!detail) {
-            return detail;
-          }
-          const current = detail.messages.find(
-            (message) => message.id === messageId,
-          );
-          return current
-            ? replaceThreadMessage(detail, messageId, patchMessage(current))
-            : detail;
-        });
+        queryClient.setQueryData<ChatThreadDetail>(threadKey, (detail) =>
+          detail
+            ? updateThreadMessage(detail, messageId, patchMessage)
+            : detail,
+        );
       }
       return {
         marker,
-        ...(messagesKey ? { messagesKey } : {}),
-        ...(previousTimelineMessage ? { previousTimelineMessage } : {}),
+        messageWindows,
         ...(threadKey ? { threadKey } : {}),
         ...(previousThreadMessage ? { previousThreadMessage } : {}),
       };
@@ -145,18 +153,24 @@ export const useEditChatMessage = (
       if (!ref) {
         return;
       }
-      if (context.messagesKey) {
-        queryClient.setQueryData<ChatMessagesData>(
-          context.messagesKey,
-          (data) =>
-            data ? replaceMessageInPages(data, message.id, message) : data,
+      context.messageWindows.forEach(({ queryKey }) => {
+        queryClient.setQueryData<ChatMessagesData>(queryKey, (data) =>
+          data
+            ? updateMessageInPages(data, message.id, (current) =>
+                confirmOptimisticEdit(current, message, context.marker),
+              )
+            : data,
         );
-      }
+      });
       if (context.threadKey) {
         queryClient.setQueryData<ChatThreadDetail>(
           context.threadKey,
           (detail) =>
-            detail ? replaceThreadMessage(detail, message.id, message) : detail,
+            detail
+              ? updateThreadMessage(detail, message.id, (current) =>
+                  confirmOptimisticEdit(current, message, context.marker),
+                )
+              : detail,
         );
         void queryClient.invalidateQueries({ queryKey: chatKeys.threads(ref) });
       }
@@ -167,46 +181,32 @@ export const useEditChatMessage = (
     },
     onError: (_error, _variables, context) => {
       if (context) {
-        if (context.messagesKey && context.previousTimelineMessage) {
-          const previous = context.previousTimelineMessage;
-          queryClient.setQueryData<ChatMessagesData>(
-            context.messagesKey,
-            (data) => {
-              if (!data) {
-                return data;
-              }
-              const current = data.pages
-                .flatMap((page) => page.messages)
-                .find((message) => message.id === previous.id);
-              return current
-                ? replaceMessageInPages(
-                    data,
-                    current.id,
-                    rollbackOptimisticEdit(current, previous, context.marker),
-                  )
-                : data;
-            },
+        context.messageWindows.forEach(({ queryKey, previousMessage }) => {
+          if (!previousMessage) {
+            return;
+          }
+          queryClient.setQueryData<ChatMessagesData>(queryKey, (data) =>
+            data
+              ? updateMessageInPages(data, previousMessage.id, (current) =>
+                  rollbackOptimisticEdit(
+                    current,
+                    previousMessage,
+                    context.marker,
+                  ),
+                )
+              : data,
           );
-        }
+        });
         if (context.threadKey && context.previousThreadMessage) {
           const previous = context.previousThreadMessage;
           queryClient.setQueryData<ChatThreadDetail>(
             context.threadKey,
-            (detail) => {
-              if (!detail) {
-                return detail;
-              }
-              const current = detail.messages.find(
-                (message) => message.id === previous.id,
-              );
-              return current
-                ? replaceThreadMessage(
-                    detail,
-                    current.id,
+            (detail) =>
+              detail
+                ? updateThreadMessage(detail, previous.id, (current) =>
                     rollbackOptimisticEdit(current, previous, context.marker),
                   )
-                : detail;
-            },
+                : detail,
           );
         }
       }
