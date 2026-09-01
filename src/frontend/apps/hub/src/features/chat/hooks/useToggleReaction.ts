@@ -147,9 +147,7 @@ export const useToggleReaction = (
     },
     onMutate: async ({ messageId, emoji }) => {
       const messageWindowKeys =
-        !threadId || messageId === threadId
-          ? [...chatKeys.messageWindows(ref)]
-          : [];
+        !threadId || messageId === threadId ? [chatKeys.messages(ref)] : [];
       const threadKey = threadId ? chatKeys.thread(ref, threadId) : undefined;
       // Stop any in-flight refetch from overwriting the optimistic write.
       await Promise.all([

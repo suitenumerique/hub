@@ -159,7 +159,7 @@ export const useChatThreadActions = (
     matches: ThreadMatcher,
   ): Promise<ReadContext> => {
     const threadsKey: QueryKey = chatKeys.threads(ref);
-    const messageWindowKeys = [...chatKeys.messageWindows(ref)];
+    const messageWindowKeys = [chatKeys.messages(ref)];
     // Stop any in-flight refetch from overwriting the optimistic write.
     await Promise.all([
       queryClient.cancelQueries({ queryKey: threadsKey }),

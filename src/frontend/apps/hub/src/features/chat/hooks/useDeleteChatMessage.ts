@@ -117,9 +117,7 @@ export const useDeleteChatMessage = (
       const isThreadReply = Boolean(
         containingThreadId && message.id !== containingThreadId,
       );
-      const messageWindowKeys = isThreadReply
-        ? []
-        : [...chatKeys.messageWindows(ref)];
+      const messageWindowKeys = isThreadReply ? [] : [chatKeys.messages(ref)];
       const affectedThreadId = containingThreadId ?? message.thread?.id;
       const threadKey = affectedThreadId
         ? chatKeys.thread(ref, affectedThreadId)

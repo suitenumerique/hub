@@ -96,9 +96,7 @@ export const useEditChatMessage = (
       const isThreadReply = Boolean(
         containingThreadId && messageId !== containingThreadId,
       );
-      const messageWindowKeys = isThreadReply
-        ? []
-        : [...chatKeys.messageWindows(ref)];
+      const messageWindowKeys = isThreadReply ? [] : [chatKeys.messages(ref)];
       const threadKey = containingThreadId
         ? chatKeys.thread(ref, containingThreadId)
         : undefined;

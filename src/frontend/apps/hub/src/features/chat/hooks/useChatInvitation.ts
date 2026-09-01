@@ -55,17 +55,11 @@ export const useChatInvitation = (
         return;
       }
       queryClient.setQueryData<Chat>(chatKeys.chat(chatRef), chat);
-      const [liveMessagesKey, unreadMessagesKey] =
-        chatKeys.messageWindows(chatRef);
-      queryClient.removeQueries({
-        queryKey: unreadMessagesKey,
-        exact: true,
-      });
       queryClient.removeQueries({ queryKey: chatKeys.threads(chatRef) });
       queryClient.removeQueries({ queryKey: chatKeys.threadDetails(chatRef) });
       queryClient.removeQueries({ queryKey: chatKeys.members(chatRef) });
       void queryClient.invalidateQueries({
-        queryKey: liveMessagesKey,
+        queryKey: chatKeys.messages(chatRef),
         exact: true,
       });
       void queryClient.invalidateQueries({
@@ -95,8 +89,9 @@ export const useChatInvitation = (
         return;
       }
       queryClient.removeQueries({ queryKey: chatKeys.chat(chatRef) });
-      chatKeys.messageWindows(chatRef).forEach((queryKey) => {
-        queryClient.removeQueries({ queryKey, exact: true });
+      queryClient.removeQueries({
+        queryKey: chatKeys.messages(chatRef),
+        exact: true,
       });
       queryClient.removeQueries({ queryKey: chatKeys.threads(chatRef) });
       queryClient.removeQueries({ queryKey: chatKeys.threadDetails(chatRef) });

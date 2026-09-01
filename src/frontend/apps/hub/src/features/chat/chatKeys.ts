@@ -3,9 +3,6 @@ import type { AccountId, ChatRef } from "@/features/drivers/types";
 const liveMessagesKey = (ref: ChatRef) =>
   ["chat-messages", ref.accountId, ref.chatId] as const;
 
-const unreadMessagesKey = (ref: ChatRef) =>
-  ["chat-unread-messages", ref.accountId, ref.chatId] as const;
-
 export const chatKeys = {
   chatsAll: () => ["chats"] as const,
   chatsOf: (accountId: AccountId) => ["chats", accountId] as const,
@@ -23,11 +20,6 @@ export const chatKeys = {
     ["chat-for-users", accountId ?? "none"] as const,
   chat: (ref: ChatRef) => ["chat", ref.accountId, ref.chatId] as const,
   messages: liveMessagesKey,
-  /** Temporary bidirectional window opened around the first unread message. */
-  unreadMessages: unreadMessagesKey,
-  /** Every main-timeline cache, from permanent live end to temporary context. */
-  messageWindows: (ref: ChatRef) =>
-    [liveMessagesKey(ref), unreadMessagesKey(ref)] as const,
   threads: (ref: ChatRef) =>
     ["chat-threads", ref.accountId, ref.chatId] as const,
   thread: (ref: ChatRef, threadId: string) =>
@@ -40,6 +32,4 @@ export const chatKeys = {
     ["chat-connection", accountId, userId] as const,
 };
 
-export type ChatMessageWindowQueryKey = ReturnType<
-  typeof chatKeys.messageWindows
->[number];
+export type ChatMessageWindowQueryKey = ReturnType<typeof liveMessagesKey>;

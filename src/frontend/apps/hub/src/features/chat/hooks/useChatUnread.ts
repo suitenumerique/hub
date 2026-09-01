@@ -13,6 +13,7 @@ const READ: ChatUnread = {
   highlight: false,
   mainTimelineUnread: false,
   mainTimelineCount: 0,
+  mainTimelineReadBoundaryId: null,
 };
 
 export type ChatUnreadLookup = (ref: ChatRef) => ChatUnread;

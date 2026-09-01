@@ -75,11 +75,14 @@ export const isMainTimelineMessage = (event: MatrixEvent): boolean =>
 export const computeRoomUnread = (
   room: Room,
   selfUserId: string | undefined,
+  mainTimelineCount = room.getRoomUnreadNotificationCount(
+    NotificationCountType.Total,
+  ),
 ): boolean => {
   if (!selfUserId) {
     return false;
   }
-  if (room.getRoomUnreadNotificationCount(NotificationCountType.Total) > 0) {
+  if (mainTimelineCount > 0) {
     return true;
   }
   return room
@@ -296,10 +299,16 @@ const computeThreadUnread = (
 export const roomUnread = (
   room: Room,
   selfUserId: string | undefined,
+  mainTimelineReadBoundaryId: string | null,
+  projectedMainTimelineCount?: number,
 ): ChatUnread => {
-  const mainTimelineUnread = computeRoomUnread(room, selfUserId);
-  const mainTimelineCount = room.getRoomUnreadNotificationCount(
-    NotificationCountType.Total,
+  const mainTimelineCount =
+    projectedMainTimelineCount ??
+    room.getRoomUnreadNotificationCount(NotificationCountType.Total);
+  const mainTimelineUnread = computeRoomUnread(
+    room,
+    selfUserId,
+    mainTimelineCount,
   );
   return {
     unread:
@@ -315,6 +324,7 @@ export const roomUnread = (
     // Receipt-based detection can find unread messages before Matrix exposes a
     // notification count. Keep the button numeric in that short-lived case.
     mainTimelineCount: mainTimelineUnread ? Math.max(1, mainTimelineCount) : 0,
+    mainTimelineReadBoundaryId,
   };
 };
 

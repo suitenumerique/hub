@@ -69,8 +69,8 @@ export type MarkChatThreadReadParams = {
 
 export type MarkChatReadParams = {
   chatId: string;
-  /** Last visible main-timeline message the user has genuinely read. */
-  messageId: string;
+  /** Last visible main-timeline message genuinely read; omit to mark live. */
+  messageId?: string;
 };
 
 /** Outcome of a monotonic main-timeline read-marker attempt. */

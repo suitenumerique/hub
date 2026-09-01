@@ -48,6 +48,8 @@ export type ChatUnread = {
   mainTimelineUnread: boolean;
   /** Driver-provided count displayed by the main-timeline unread control. */
   mainTimelineCount: number;
+  /** Persisted Matrix boundary through which the main timeline was read. */
+  mainTimelineReadBoundaryId: string | null;
 };
 
 /**
@@ -253,6 +255,9 @@ export type ChatMessagesPage = {
 export type ChatMessageWindow = {
   messages: ChatMessage[];
   authors: ChatMessageAuthor[];
+  /** Matrix boundary used when this window was resolved. */
+  readBoundaryId: string | null;
+  /** Visible navigation target derived from the persisted read boundary. */
   firstUnreadMessageId: string | null;
   olderCursor: string | null;
   newerCursor: string | null;

@@ -100,7 +100,7 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       });
     },
     onMutate: async ({ rootMessage, content, options }) => {
-      const messageWindowKeys = [...chatKeys.messageWindows(ref)];
+      const messageWindowKeys = [chatKeys.messages(ref)];
       const threadsKey: QueryKey = chatKeys.threads(ref);
       const reply = createOptimisticMessage(content, "optimistic-thread-start");
       const tempThreadId = `${OPTIMISTIC_THREAD_ID_PREFIX}${reply.id}`;

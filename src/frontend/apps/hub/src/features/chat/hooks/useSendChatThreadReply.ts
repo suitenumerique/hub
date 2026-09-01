@@ -91,7 +91,7 @@ export const useSendChatThreadReply = (
     onMutate: async ({ content }) => {
       const threadKey: QueryKey = chatKeys.thread(ref, threadId);
       const threadsKey: QueryKey = chatKeys.threads(ref);
-      const messageWindowKeys = [...chatKeys.messageWindows(ref)];
+      const messageWindowKeys = [chatKeys.messages(ref)];
       await Promise.all([
         queryClient.cancelQueries({ queryKey: threadKey }),
         queryClient.cancelQueries({ queryKey: threadsKey }),

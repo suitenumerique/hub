@@ -12,6 +12,7 @@ import type {
   ChatMessageAuthor,
   ChatMessageWindow,
   ChatRef,
+  ChatUnread,
 } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
@@ -26,16 +27,17 @@ type ChatPageParam =
 
 type FirstItemIndexState = {
   chatKey: string | null;
-  window: "live" | "unread" | null;
+  windowVersion: number;
   initialPageSizeBaseline: number | null;
 };
 
 type UseChatMessagesOptions = {
   enabled?: boolean;
+  readBoundaryId?: string | null;
 };
 
 export type OpenFirstUnreadResult =
-  | { status: "opened" }
+  | { status: "opened"; firstUnreadMessageId: string }
   | { status: "none" }
   | { status: "unavailable" }
   | { status: "error"; error: unknown };
@@ -43,48 +45,37 @@ export type OpenFirstUnreadResult =
 export type UseChatMessagesResult = {
   messages: ChatMessage[];
   authorsById: Map<string, ChatMessageAuthor>;
+  readBoundaryId: string | null;
   firstUnreadMessageId: string | null;
   anchorStatus: ChatMessageWindow["anchorStatus"] | null;
-  /** Whether the temporary first-unread query currently owns the list data. */
-  isUnreadWindowActive: boolean;
-  /** Last message of the permanent live window, even while context is shown. */
-  liveEndMessageId: string | null;
   hasOlder: boolean;
   hasNewer: boolean;
   isFetchingOlder: boolean;
   isFetchingNewer: boolean;
   isInitialLoading: boolean;
   isError: boolean;
-  /** First virtual item index for Virtuoso. See `VIRTUOSO_INDEX_ANCHOR`. */
   firstItemIndex: number;
   fetchOlder: () => void;
   fetchNewer: () => void;
   openFirstUnread: () => Promise<OpenFirstUnreadResult>;
-  /** Idempotently leaves the contextual window without touching live data. */
-  closeUnreadContext: () => void;
 };
 
 type ChatMessagesData = InfiniteData<ChatMessageWindow, ChatPageParam>;
 
-const INITIAL_PAGE_PARAM: ChatPageParam = {
-  direction: "initial",
-};
+const INITIAL_PAGE_PARAM: ChatPageParam = { direction: "initial" };
 
 const toMessageWindowRequest = (
   chatId: string,
   pageParam: ChatPageParam,
-  anchor: "first-unread" | "latest",
-): GetChatMessagesParams => {
-  if (pageParam.direction === "initial") {
-    return { chatId, limit: CHAT_PAGE_SIZE, anchor };
-  }
-  return {
-    chatId,
-    limit: CHAT_PAGE_SIZE,
-    cursor: pageParam.cursor,
-    direction: pageParam.direction,
-  };
-};
+): GetChatMessagesParams =>
+  pageParam.direction === "initial"
+    ? { chatId, limit: CHAT_PAGE_SIZE, anchor: "latest" }
+    : {
+        chatId,
+        limit: CHAT_PAGE_SIZE,
+        cursor: pageParam.cursor,
+        direction: pageParam.direction,
+      };
 
 const chronologicalMessages = (data: ChatMessagesData): ChatMessage[] => {
   const seen = new Set<string>();
@@ -107,17 +98,16 @@ export const useChatMessages = (
   const chatKey = `${ref.accountId}:${ref.chatId}`;
   const enabled = options?.enabled ?? true;
   const queryClient = useQueryClient();
+  const openingRequestId = useRef(0);
+  const paginationRequest = useRef<Promise<unknown> | null>(null);
+  const windowVersion = useRef(0);
   const firstItemIndexState = useRef<FirstItemIndexState>({
     chatKey: null,
-    window: null,
+    windowVersion: -1,
     initialPageSizeBaseline: null,
   });
-  const unreadRequestIdRef = useRef(0);
-  const paginationRequestRef = useRef<Promise<unknown> | null>(null);
 
-  // This cache always represents the true live end. Composition and global
-  // `message:new` events rely on page 0 being the newest loaded page.
-  const liveQuery = useInfiniteQuery<
+  const query = useInfiniteQuery<
     ChatMessageWindow,
     Error,
     ChatMessagesData,
@@ -125,21 +115,18 @@ export const useChatMessages = (
     ChatPageParam
   >({
     queryKey: chatKeys.messages(ref),
-    queryFn: async ({ pageParam }): Promise<ChatMessageWindow> => {
-      const request = toMessageWindowRequest(ref.chatId, pageParam, "latest");
-      return getRegistry().get(ref.accountId).getChatMessages(request);
-    },
+    queryFn: ({ pageParam }) =>
+      getRegistry()
+        .get(ref.accountId)
+        .getChatMessages(toMessageWindowRequest(ref.chatId, pageParam)),
     initialPageParam: INITIAL_PAGE_PARAM,
-    getNextPageParam: (lastPage) => {
-      const cursor = lastPage.olderCursor;
-      return cursor ? { cursor, direction: "older" as const } : undefined;
-    },
+    getNextPageParam: (lastPage) =>
+      lastPage.olderCursor
+        ? { cursor: lastPage.olderCursor, direction: "older" as const }
+        : undefined,
     getPreviousPageParam: (firstPage) =>
       firstPage.newerCursor
-        ? {
-            cursor: firstPage.newerCursor,
-            direction: "newer" as const,
-          }
+        ? { cursor: firstPage.newerCursor, direction: "newer" as const }
         : undefined,
     enabled,
     staleTime: Infinity,
@@ -147,350 +134,182 @@ export const useChatMessages = (
     meta: { noGlobalError: true },
   });
 
-  // The unread window is intentionally a different cache. It can have newer
-  // pages still missing, so installing it into `chatKeys.messages` would break
-  // the live cache's page-0 invariant and optimistic composition ordering.
-  const unreadQuery = useInfiniteQuery<
-    ChatMessageWindow,
-    Error,
-    ChatMessagesData,
-    ReturnType<typeof chatKeys.unreadMessages>,
-    ChatPageParam
-  >({
-    queryKey: chatKeys.unreadMessages(ref),
-    queryFn: async ({ pageParam }): Promise<ChatMessageWindow> =>
-      getRegistry()
-        .get(ref.accountId)
-        .getChatMessages(
-          toMessageWindowRequest(ref.chatId, pageParam, "first-unread"),
-        ),
-    initialPageParam: INITIAL_PAGE_PARAM,
-    getNextPageParam: (lastPage) => {
-      const cursor = lastPage.olderCursor;
-      return cursor ? { cursor, direction: "older" as const } : undefined;
-    },
-    getPreviousPageParam: (firstPage) =>
-      firstPage.newerCursor
-        ? {
-            cursor: firstPage.newerCursor,
-            direction: "newer" as const,
-          }
-        : undefined,
-    // `openFirstUnread` explicitly refetches this disabled query. Keeping the
-    // request in React Query lets cache resets cancel an in-flight opening.
-    enabled: false,
-    staleTime: Infinity,
-    meta: { noGlobalError: true },
-  });
-  const refetchUnread = unreadQuery.refetch;
-
-  // A later visit must resolve both the current live end and the current read
-  // boundary. Keeping either window would preserve stale unread metadata.
   useEffect(
     () => () => {
-      unreadRequestIdRef.current += 1;
+      openingRequestId.current += 1;
       queryClient.removeQueries({
         queryKey: chatKeys.messages(ref),
         exact: true,
       });
-      queryClient.removeQueries({
-        queryKey: chatKeys.unreadMessages(ref),
-        exact: true,
-      });
     },
     [queryClient, ref.accountId, ref.chatId],
   );
 
-  const isUnreadWindowActive = unreadQuery.data !== undefined;
-  const activeWindow = isUnreadWindowActive ? "unread" : "live";
-  const activeData = isUnreadWindowActive ? unreadQuery.data : liveQuery.data;
-  const hasOlder = Boolean(
-    isUnreadWindowActive ? unreadQuery.hasNextPage : liveQuery.hasNextPage,
+  const data = query.data;
+  const messages = useMemo(
+    () => (data ? chronologicalMessages(data) : []),
+    [data],
   );
-  const hasNewer = Boolean(
-    isUnreadWindowActive
-      ? unreadQuery.hasPreviousPage
-      : liveQuery.hasPreviousPage,
-  );
-  const isFetchingOlder = isUnreadWindowActive
-    ? unreadQuery.isFetchingNextPage
-    : liveQuery.isFetchingNextPage;
-  const isFetchingNewer = isUnreadWindowActive
-    ? unreadQuery.isFetchingPreviousPage
-    : liveQuery.isFetchingPreviousPage;
-  const fetchOlderPage = isUnreadWindowActive
-    ? unreadQuery.fetchNextPage
-    : liveQuery.fetchNextPage;
-  const fetchNewerPage = isUnreadWindowActive
-    ? unreadQuery.fetchPreviousPage
-    : liveQuery.fetchPreviousPage;
-
-  const messages = useMemo(() => {
-    if (!activeData) {
-      return [];
-    }
-    return chronologicalMessages(activeData);
-  }, [activeData]);
-
   const authorsById = useMemo(() => {
-    const map = new Map<string, ChatMessageAuthor>();
-    activeData?.pages.forEach((page) => {
-      page.authors.forEach((author) => map.set(author.id, author));
+    const authors = new Map<string, ChatMessageAuthor>();
+    data?.pages.forEach((page) => {
+      page.authors.forEach((author) => authors.set(author.id, author));
     });
-    return map;
-  }, [activeData]);
-
-  const initialPage = useMemo(() => {
-    const index = activeData?.pageParams.findIndex(
-      (param) => param.direction === "initial",
+    return authors;
+  }, [data]);
+  const initialPageIndex =
+    data?.pageParams.findIndex((param) => param.direction === "initial") ?? -1;
+  const initialPage =
+    initialPageIndex >= 0 ? data?.pages[initialPageIndex] : undefined;
+  const resolvedFirstUnreadMessageId = useMemo(() => {
+    const currentBoundaryId = options?.readBoundaryId;
+    const windowTarget =
+      data?.pages.find(
+        (page) =>
+          page.firstUnreadMessageId &&
+          (!currentBoundaryId || page.readBoundaryId === currentBoundaryId),
+      )?.firstUnreadMessageId ?? null;
+    if (!currentBoundaryId) {
+      return windowTarget;
+    }
+    const boundaryIndex = messages.findIndex(
+      (message) => message.id === currentBoundaryId,
     );
-    return index === undefined || index < 0
-      ? undefined
-      : activeData?.pages[index];
-  }, [activeData]);
-  const firstUnreadMessageId =
-    initialPage?.firstUnreadMessageId ??
-    activeData?.pages.find((page) => page.firstUnreadMessageId)
-      ?.firstUnreadMessageId ??
-    null;
-
-  const resetUnreadContext = useCallback(
-    () =>
-      queryClient.resetQueries({
-        queryKey: chatKeys.unreadMessages(ref),
-        exact: true,
-      }),
-    [queryClient, ref.accountId, ref.chatId],
-  );
-
-  const closeUnreadContext = useCallback(() => {
-    unreadRequestIdRef.current += 1;
-    void resetUnreadContext();
-  }, [resetUnreadContext]);
-
-  /**
-   * Live events can arrive while the last contextual page is loading. Until
-   * that page removes its `newerCursor`, `useChatEvents` patches only the live
-   * cache to avoid creating a gap. Once both windows overlap at the live end,
-   * copy those trailing events into the contextual page.
-   */
-  const reconcileUnreadWithLiveEnd = useCallback((): boolean => {
-    let isConnected = true;
-    queryClient.setQueryData<ChatMessagesData>(
-      chatKeys.unreadMessages(ref),
-      (contextData) => {
-        if (!contextData) {
-          return contextData;
-        }
-        const newestContextPage = contextData.pages[0];
-        if (!newestContextPage) {
-          isConnected = false;
-          return contextData;
-        }
-        if (newestContextPage.newerCursor) {
-          return contextData;
-        }
-
-        const liveData = queryClient.getQueryData<ChatMessagesData>(
-          chatKeys.messages(ref),
-        );
-        const contextEndId = newestContextPage.messages.at(-1)?.id;
-        if (!liveData || !contextEndId) {
-          isConnected = false;
-          return contextData;
-        }
-
-        const liveMessages = chronologicalMessages(liveData);
-        const overlapIndex = liveMessages.findIndex(
-          (message) => message.id === contextEndId,
-        );
-        if (overlapIndex < 0) {
-          isConnected = false;
-          return contextData;
-        }
-
-        const contextIds = new Set(
-          contextData.pages.flatMap((page) =>
-            page.messages.map((message) => message.id),
-          ),
-        );
-        const trailingMessages = liveMessages
-          .slice(overlapIndex + 1)
-          .filter((message) => !contextIds.has(message.id));
-        if (trailingMessages.length === 0) {
-          return contextData;
-        }
-
-        const authors = new Map(
-          newestContextPage.authors.map((author) => [author.id, author]),
-        );
-        liveData.pages.forEach((page) => {
-          page.authors.forEach((author) => authors.set(author.id, author));
-        });
-        return {
-          ...contextData,
-          pages: [
-            {
-              ...newestContextPage,
-              messages: [...newestContextPage.messages, ...trailingMessages],
-              authors: [...authors.values()],
-            },
-            ...contextData.pages.slice(1),
-          ],
-        };
-      },
+    if (boundaryIndex < 0) {
+      // Matrix's persistent boundary need not itself be a rendered bubble.
+      return windowTarget;
+    }
+    return (
+      messages
+        .slice(boundaryIndex + 1)
+        .find((message) => message.authorId !== "me" && !message.isDeleted)
+        ?.id ?? null
     );
-    return isConnected;
-  }, [queryClient, ref.accountId, ref.chatId]);
+  }, [data?.pages, messages, options?.readBoundaryId]);
 
-  const trackPagination = useCallback(
-    (request: Promise<unknown>, onSuccess?: () => void) => {
-      paginationRequestRef.current = request;
-      const release = () => {
-        if (paginationRequestRef.current === request) {
-          paginationRequestRef.current = null;
-        }
-      };
-      void request.then(() => {
-        try {
-          onSuccess?.();
-        } finally {
-          release();
-        }
-      }, release);
-    },
-    [],
-  );
+  const trackPagination = useCallback((request: Promise<unknown>) => {
+    paginationRequest.current = request;
+    const release = () => {
+      if (paginationRequest.current === request) {
+        paginationRequest.current = null;
+      }
+    };
+    void request.then(release, release);
+  }, []);
 
   const fetchOlder = useCallback(() => {
     if (
-      !hasOlder ||
-      isFetchingOlder ||
-      isFetchingNewer ||
-      paginationRequestRef.current
+      !query.hasNextPage ||
+      query.isFetchingNextPage ||
+      query.isFetchingPreviousPage ||
+      paginationRequest.current
     ) {
       return;
     }
-    trackPagination(fetchOlderPage({ cancelRefetch: false }));
-  }, [
-    fetchOlderPage,
-    hasOlder,
-    isFetchingNewer,
-    isFetchingOlder,
-    trackPagination,
-  ]);
+    trackPagination(query.fetchNextPage({ cancelRefetch: false }));
+  }, [query, trackPagination]);
 
   const fetchNewer = useCallback(() => {
     if (
-      !hasNewer ||
-      isFetchingNewer ||
-      isFetchingOlder ||
-      paginationRequestRef.current
+      !query.hasPreviousPage ||
+      query.isFetchingPreviousPage ||
+      query.isFetchingNextPage ||
+      paginationRequest.current
     ) {
       return;
     }
-    trackPagination(fetchNewerPage({ cancelRefetch: false }), () => {
-      if (isUnreadWindowActive && !reconcileUnreadWithLiveEnd()) {
-        void resetUnreadContext();
-      }
-    });
-  }, [
-    fetchNewerPage,
-    hasNewer,
-    isFetchingOlder,
-    isFetchingNewer,
-    isUnreadWindowActive,
-    reconcileUnreadWithLiveEnd,
-    resetUnreadContext,
-    trackPagination,
-  ]);
+    trackPagination(query.fetchPreviousPage({ cancelRefetch: false }));
+  }, [query, trackPagination]);
 
   const openFirstUnread =
     useCallback(async (): Promise<OpenFirstUnreadResult> => {
-      const requestId = unreadRequestIdRef.current + 1;
-      unreadRequestIdRef.current = requestId;
-      // Stop showing any previous contextual window before resolving the current
-      // boundary. This also leaves the live cache untouched if resolution fails.
-      await resetUnreadContext();
-      if (unreadRequestIdRef.current !== requestId) {
-        return {
-          status: "error",
-          error: new Error("Unread context request was superseded."),
-        };
-      }
+      const requestId = openingRequestId.current + 1;
+      openingRequestId.current = requestId;
+      await queryClient.cancelQueries({
+        queryKey: chatKeys.messages(ref),
+        exact: true,
+      });
 
-      // The boundary can advance while this conversation stays mounted, so the
-      // disabled query is forced on every activation rather than read as fresh.
-      const result = await refetchUnread();
+      try {
+        let window: ChatMessageWindow | null = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const boundaryAtStart = queryClient.getQueryData<
+            Record<string, ChatUnread>
+          >(chatKeys.unreadOf(ref.accountId))?.[ref.chatId]
+            ?.mainTimelineReadBoundaryId;
+          const resolved = await getRegistry()
+            .get(ref.accountId)
+            .getChatMessages({
+              chatId: ref.chatId,
+              limit: CHAT_PAGE_SIZE,
+              anchor: "first-unread",
+            });
+          const boundaryNow = queryClient.getQueryData<
+            Record<string, ChatUnread>
+          >(chatKeys.unreadOf(ref.accountId))?.[ref.chatId]
+            ?.mainTimelineReadBoundaryId;
+          if (boundaryNow === boundaryAtStart) {
+            window = resolved;
+            break;
+          }
+        }
+        if (openingRequestId.current !== requestId) {
+          return {
+            status: "error",
+            error: new Error("Unread navigation was superseded."),
+          };
+        }
+        if (!window) {
+          return { status: "unavailable" };
+        }
+        if (window.anchorStatus === "none") {
+          return { status: "none" };
+        }
+        if (window.anchorStatus === "unavailable") {
+          return { status: "unavailable" };
+        }
+        const firstUnreadId = window.firstUnreadMessageId;
+        if (!firstUnreadId) {
+          return { status: "none" };
+        }
 
-      if (unreadRequestIdRef.current !== requestId) {
-        return {
-          status: "error",
-          error: new Error("Unread context request was superseded."),
-        };
+        windowVersion.current += 1;
+        queryClient.setQueryData<ChatMessagesData>(chatKeys.messages(ref), {
+          pages: [window],
+          pageParams: [INITIAL_PAGE_PARAM],
+        });
+        queryClient.setQueryData<Record<string, ChatUnread>>(
+          chatKeys.unreadOf(ref.accountId),
+          (current) =>
+            current?.[ref.chatId]
+              ? {
+                  ...current,
+                  [ref.chatId]: {
+                    ...current[ref.chatId],
+                    mainTimelineReadBoundaryId: window.readBoundaryId,
+                  },
+                }
+              : current,
+        );
+        return { status: "opened", firstUnreadMessageId: firstUnreadId };
+      } catch (error) {
+        return { status: "error", error };
       }
-
-      if (result.isError) {
-        return { status: "error", error: result.error };
-      }
-      const installed = queryClient.getQueryData<ChatMessagesData>(
-        chatKeys.unreadMessages(ref),
-      );
-      if (!installed) {
-        return {
-          status: "error",
-          error: new Error("Unread context request was cancelled."),
-        };
-      }
-      const initialIndex = installed.pageParams.findIndex(
-        (param) => param.direction === "initial",
-      );
-      const resolved = installed.pages[initialIndex];
-      if (!resolved) {
-        return {
-          status: "error",
-          error: new Error("Unread context response has no initial page."),
-        };
-      }
-
-      if (resolved.anchorStatus === "none") {
-        await resetUnreadContext();
-        return { status: "none" };
-      }
-      if (resolved.anchorStatus === "unavailable") {
-        await resetUnreadContext();
-        return { status: "unavailable" };
-      }
-      if (!resolved.firstUnreadMessageId) {
-        await resetUnreadContext();
-        return { status: "none" };
-      }
-
-      firstItemIndexState.current.initialPageSizeBaseline = null;
-      if (!reconcileUnreadWithLiveEnd()) {
-        await resetUnreadContext();
-        return { status: "unavailable" };
-      }
-      return { status: "opened" };
-    }, [
-      queryClient,
-      reconcileUnreadWithLiveEnd,
-      ref.accountId,
-      ref.chatId,
-      refetchUnread,
-      resetUnreadContext,
-    ]);
+    }, [queryClient, ref.accountId, ref.chatId]);
 
   const firstItemIndex = useMemo(() => {
     const state = firstItemIndexState.current;
-    if (state.chatKey !== chatKey || state.window !== activeWindow) {
+    if (
+      state.chatKey !== chatKey ||
+      state.windowVersion !== windowVersion.current
+    ) {
       state.chatKey = chatKey;
-      state.window = activeWindow;
+      state.windowVersion = windowVersion.current;
       state.initialPageSizeBaseline = null;
     }
 
-    const pages = activeData?.pages ?? [];
-    const pageParams = activeData?.pageParams ?? [];
+    const pages = data?.pages ?? [];
+    const pageParams = data?.pageParams ?? [];
     const initialIndex = pageParams.findIndex(
       (param) => param.direction === "initial",
     );
@@ -498,14 +317,12 @@ export const useChatMessages = (
     if (initialPageSize === undefined) {
       return VIRTUOSO_INDEX_ANCHOR;
     }
-
     if (
       state.initialPageSizeBaseline === null ||
       initialPageSize < state.initialPageSizeBaseline
     ) {
       state.initialPageSizeBaseline = initialPageSize;
     }
-
     const olderMessagesCount = pages.reduce(
       (total, page, index) =>
         pageParams[index]?.direction === "older"
@@ -516,33 +333,23 @@ export const useChatMessages = (
     return (
       VIRTUOSO_INDEX_ANCHOR - state.initialPageSizeBaseline - olderMessagesCount
     );
-  }, [
-    activeData?.pageParams,
-    activeData?.pages,
-    activeWindow,
-    ref.accountId,
-    ref.chatId,
-  ]);
+  }, [chatKey, data?.pageParams, data?.pages]);
 
   return {
     messages,
     authorsById,
-    firstUnreadMessageId,
+    readBoundaryId: initialPage?.readBoundaryId ?? null,
+    firstUnreadMessageId: resolvedFirstUnreadMessageId,
     anchorStatus: initialPage?.anchorStatus ?? null,
-    isUnreadWindowActive,
-    liveEndMessageId: liveQuery.data?.pages[0]?.messages.at(-1)?.id ?? null,
-    hasOlder,
-    hasNewer,
-    isFetchingOlder,
-    isFetchingNewer,
-    isInitialLoading:
-      !enabled ||
-      (isUnreadWindowActive ? unreadQuery.isPending : liveQuery.isPending),
-    isError: isUnreadWindowActive ? unreadQuery.isError : liveQuery.isError,
+    hasOlder: Boolean(query.hasNextPage),
+    hasNewer: Boolean(query.hasPreviousPage),
+    isFetchingOlder: query.isFetchingNextPage,
+    isFetchingNewer: query.isFetchingPreviousPage,
+    isInitialLoading: !enabled || query.isPending,
+    isError: query.isError,
     firstItemIndex,
     fetchOlder,
     fetchNewer,
     openFirstUnread,
-    closeUnreadContext,
   };
 };

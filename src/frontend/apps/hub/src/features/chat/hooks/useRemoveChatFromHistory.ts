@@ -64,8 +64,9 @@ export const useRemoveChatFromHistory = (
       },
     );
     queryClient.removeQueries({ queryKey: chatKeys.chat(ref) });
-    chatKeys.messageWindows(ref).forEach((queryKey) => {
-      queryClient.removeQueries({ queryKey, exact: true });
+    queryClient.removeQueries({
+      queryKey: chatKeys.messages(ref),
+      exact: true,
     });
     queryClient.removeQueries({ queryKey: chatKeys.threads(ref) });
     queryClient.removeQueries({ queryKey: chatKeys.threadDetails(ref) });

@@ -67,11 +67,9 @@ const updateMessageWindows = (
   ref: ChatRef,
   update: (data: ChatMessagesData) => ChatMessagesData,
 ): void => {
-  chatKeys.messageWindows(ref).forEach((queryKey) => {
-    queryClient.setQueryData<ChatMessagesData>(queryKey, (data) =>
-      data ? update(data) : data,
-    );
-  });
+  queryClient.setQueryData<ChatMessagesData>(chatKeys.messages(ref), (data) =>
+    data ? update(data) : data,
+  );
 };
 
 /** Replaces a message across every loaded page with a fresh object (so the
@@ -152,7 +150,9 @@ const applyChatEvent = (
             previous?.unread === event.unread.unread &&
             previous.highlight === event.unread.highlight &&
             previous.mainTimelineUnread === event.unread.mainTimelineUnread &&
-            previous.mainTimelineCount === event.unread.mainTimelineCount
+            previous.mainTimelineCount === event.unread.mainTimelineCount &&
+            previous.mainTimelineReadBoundaryId ===
+              event.unread.mainTimelineReadBoundaryId
           ) {
             return current;
           }
@@ -210,21 +210,10 @@ const applyChatEvent = (
       return;
 
     case "chat:changed":
-      {
-        const [liveMessagesKey, unreadMessagesKey] =
-          chatKeys.messageWindows(ref);
-        void queryClient.invalidateQueries({
-          queryKey: liveMessagesKey,
-          exact: true,
-        });
-        // The contextual query is intentionally disabled between manual page
-        // loads, so invalidating it would leave the visible window stale.
-        // Reset it instead: coarse timeline changes return the view to live.
-        void queryClient.resetQueries({
-          queryKey: unreadMessagesKey,
-          exact: true,
-        });
-      }
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.messages(ref),
+        exact: true,
+      });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
       return;
 

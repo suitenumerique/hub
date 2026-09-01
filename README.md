@@ -201,14 +201,16 @@ batch of 30 Chromium messages and 30 WebKit messages to the seeded group:
 $ make seed-matrix-unread
 ```
 
+The batch repeats `Chromium ×2`, `WebKit ×2`, `Chromium ×4`, `WebKit ×4`
+until each account has sent exactly 30 messages.
+
 On its first run, the command initializes Hub's `m.fully_read` marker and its
-main-timeline `m.read` receipt at the current live end. Run it on the dedicated
-seed room: a receipt-only backlog cannot be detected before this marker exists.
-Later runs preserve an unread backlog anchored by `m.fully_read` and append a
-new 60-message batch, numbered from `1/60` to `60/60`. The seeded thread's
-receipt is never modified. Keep the group closed in Hub, or stay away from the
-bottom of its timeline while the command runs, so the active client does not
-immediately mark the incoming messages as read.
+main-timeline `m.read` receipt at the current live end. Later runs resolve the
+furthest of those two persisted boundaries, preserve an existing unread
+backlog, and append a new 60-message batch numbered from `1/60` to `60/60`.
+The seeded thread's receipt is never modified. Keep the group closed in Hub, or
+stay away from the bottom of its timeline while the command runs, so the active
+client does not immediately mark the incoming messages as read.
 
 To start again with no Matrix rooms or messages while keeping the local
 Keycloak users available for login and new conversations:

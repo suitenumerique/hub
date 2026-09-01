@@ -65,6 +65,12 @@ THREAD_REPLIES = [
 ]
 
 UNREAD_DEMO_MESSAGE_COUNT = 60
+UNREAD_DEMO_AUTHOR_BLOCKS = [
+    ("user-e2e-chromium", 2),
+    ("user-e2e-webkit", 2),
+    ("user-e2e-chromium", 4),
+    ("user-e2e-webkit", 4),
+]
 UNREAD_DEMO_EXCHANGES = [
     (
         "J’ai relu la note de cadrage et relevé les décisions encore ouvertes.",
@@ -94,14 +100,23 @@ UNREAD_DEMO_EXCHANGES = [
 
 
 def unread_demo_messages() -> list[tuple[str, str]]:
-    """Build a varied deterministic batch without a large literal transcript."""
+    """Build the required 2/2/4/4 author blocks up to 30 messages each."""
     messages: list[tuple[str, str]] = []
-    for index in range(UNREAD_DEMO_MESSAGE_COUNT):
-        exchange = UNREAD_DEMO_EXCHANGES[(index // 2) % len(UNREAD_DEMO_EXCHANGES)]
-        author_index = index % 2
-        author = "user-e2e-chromium" if author_index == 0 else "user-e2e-webkit"
-        cycle = index // (2 * len(UNREAD_DEMO_EXCHANGES)) + 1
-        messages.append((author, f"{exchange[author_index]} Passage {cycle}."))
+    cycle = 1
+    while len(messages) < UNREAD_DEMO_MESSAGE_COUNT:
+        for author, block_size in UNREAD_DEMO_AUTHOR_BLOCKS:
+            author_index = 0 if author == "user-e2e-chromium" else 1
+            for _ in range(block_size):
+                index = len(messages)
+                exchange = UNREAD_DEMO_EXCHANGES[
+                    (index // 2) % len(UNREAD_DEMO_EXCHANGES)
+                ]
+                messages.append(
+                    (author, f"{exchange[author_index]} Passage {cycle}.")
+                )
+            if len(messages) == UNREAD_DEMO_MESSAGE_COUNT:
+                break
+        cycle += 1
     return messages
 
 
@@ -282,6 +297,44 @@ def join_room(token: str, room_id: str) -> None:
     )
 
 
+def invite_user(token: str, room_id: str, localpart: str) -> None:
+    http_json(
+        "POST",
+        f"{HOMESERVER}/_matrix/client/v3/rooms/{room_id}/invite",
+        token=token,
+        body={"user_id": f"@{localpart}:{SERVER_NAME}"},
+    )
+
+
+def room_membership(token: str, room_id: str, localpart: str) -> str | None:
+    user_id = urllib.parse.quote(f"@{localpart}:{SERVER_NAME}", safe="")
+    encoded_room_id = urllib.parse.quote(room_id, safe="")
+    try:
+        event = http_json(
+            "GET",
+            (
+                f"{HOMESERVER}/_matrix/client/v3/rooms/{encoded_room_id}/state/"
+                f"m.room.member/{user_id}"
+            ),
+            token=token,
+        )
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+    membership = event.get("membership")
+    return membership if isinstance(membership, str) else None
+
+
+def ensure_room_participant(
+    tokens: dict[str, str], owner: str, localpart: str, room_id: str
+) -> None:
+    membership = room_membership(tokens[owner], room_id, localpart)
+    if membership not in {"invite", "join"}:
+        invite_user(tokens[owner], room_id, localpart)
+    join_room(tokens[localpart], room_id)
+
+
 def send_message(token: str, room_id: str, body: str, txn_id: str) -> str:
     return http_json(
         "PUT",
@@ -399,6 +452,55 @@ def fully_read_event_id(token: str, room_id: str) -> str | None:
     return event_id if isinstance(event_id, str) else None
 
 
+def main_read_receipt_event_id(token: str, room_id: str) -> str | None:
+    """Return Hub's newest public/private receipt for the main timeline."""
+    sync = http_json(
+        "GET",
+        f"{HOMESERVER}/_matrix/client/v3/sync?timeout=0",
+        token=token,
+    )
+    ephemeral = (
+        sync.get("rooms", {})
+        .get("join", {})
+        .get(room_id, {})
+        .get("ephemeral", {})
+        .get("events", [])
+    )
+    receipts: list[tuple[int, str]] = []
+    for event in ephemeral:
+        if event.get("type") != "m.receipt":
+            continue
+        for event_id, receipt_types in event.get("content", {}).items():
+            for receipt_type in ("m.read", "m.read.private"):
+                data = receipt_types.get(receipt_type, {}).get(HUB_USER_ID)
+                if not isinstance(data, dict):
+                    continue
+                if data.get("thread_id") not in {None, "main"}:
+                    continue
+                receipts.append((int(data.get("ts", 0)), event_id))
+    return max(receipts, default=(0, None))[1]
+
+
+def persisted_main_boundary_id(token: str, room_id: str) -> str | None:
+    """Resolve the furthest stored fully-read marker or main receipt."""
+    candidates = {
+        event_id
+        for event_id in (
+            fully_read_event_id(token, room_id),
+            main_read_receipt_event_id(token, room_id),
+        )
+        if event_id
+    }
+    if not candidates:
+        return None
+    for event in room_message_events(token, room_id):
+        event_id = event.get("event_id")
+        if event_id in candidates:
+            return event_id
+    # An inaccessible marker must be preserved rather than silently advanced.
+    return next(iter(candidates))
+
+
 def should_preserve_main_boundary(
     token: str,
     room_id: str,
@@ -436,8 +538,8 @@ def set_main_read_boundary(token: str, room_id: str, event_id: str) -> None:
 
 
 def prepare_main_read_boundary(token: str, room_id: str) -> None:
-    """Preserve a known fully-read backlog, or initialize a fresh demo room."""
-    boundary_id = fully_read_event_id(token, room_id)
+    """Preserve a known main-timeline backlog, or initialize a fresh room."""
+    boundary_id = persisted_main_boundary_id(token, room_id)
     if boundary_id and should_preserve_main_boundary(token, room_id, boundary_id):
         print(
             "seed-matrix: existing Hub main-timeline unread boundary preserved; "
@@ -447,7 +549,7 @@ def prepare_main_read_boundary(token: str, room_id: str) -> None:
 
     if not boundary_id:
         print(
-            "seed-matrix: no m.fully_read marker found; initializing the demo "
+            "seed-matrix: no main read marker found; initializing the demo "
             "boundary at the current live end."
         )
 
@@ -556,8 +658,10 @@ def ensure_room(
     room_id = existing_room_id(tokens[owner], alias)
     if room_id:
         print(f"seed-matrix: room {alias} already exists ({room_id}).")
+        # `join` is idempotent and also accepts a pending invitation for Hub.
+        join_room(tokens[owner], room_id)
         for localpart in invited:
-            join_room(tokens[localpart], room_id)
+            ensure_room_participant(tokens, owner, localpart, room_id)
         return room_id
 
     print(f"seed-matrix: creating unencrypted room {alias}...")

@@ -8,8 +8,12 @@ import type { ChatRef } from "@/features/drivers/types";
 /** Advances the active account's main read marker through one visible message. */
 export const useMarkChatRead = (
   ref: ChatRef,
-): ((messageId: string) => Promise<MarkChatReadResult>) => {
-  const { mutateAsync } = useMutation<MarkChatReadResult, Error, string>({
+): ((messageId?: string) => Promise<MarkChatReadResult>) => {
+  const { mutateAsync } = useMutation<
+    MarkChatReadResult,
+    Error,
+    string | undefined
+  >({
     mutationFn: (messageId) =>
       getRegistry()
         .get(ref.accountId)

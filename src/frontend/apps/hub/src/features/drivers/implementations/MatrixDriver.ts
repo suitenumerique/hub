@@ -9,6 +9,7 @@ import {
   type MatrixEvent,
   MatrixEventEvent,
   MsgType,
+  NotificationCountType,
   Preset,
   ReceiptType,
   RelationType,
@@ -286,14 +287,20 @@ export class MatrixDriver extends Driver {
   private storageOwner: string | null = null;
   /** Serializes per-room marker writes so stale requests cannot win a race. */
   private mainReadMarkerQueues = new Map<string, Promise<MarkChatReadResult>>();
-  /** Main receipts whose HTTP request failed after its optimistic local echo. */
-  private failedMainReadReceiptTargets = new Map<string, string>();
   /**
    * Server-confirmed markers waiting for their room account-data echo. The SDK
    * locally echoes read receipts but not `m.fully_read`, so consulting only the
    * Room immediately after a write would temporarily reopen the old boundary.
    */
   private confirmedMainReadBoundaries = new Map<string, string>();
+  /** Optimistic counts kept outside the Matrix SDK's mutable room snapshot. */
+  private mainReadCountProjections = new Map<
+    string,
+    {
+      liveEndId: string | null;
+      remainingCount: number;
+    }
+  >();
 
   constructor(
     accountId: AccountId = "matrix-local",
@@ -359,7 +366,7 @@ export class MatrixDriver extends Driver {
       mx
         .getVisibleRooms()
         .filter((room) => joinedRoomIds.has(room.roomId))
-        .map((room) => [room.roomId, roomUnread(room, selfUserId)]),
+        .map((room) => [room.roomId, this.unreadSnapshot(room, selfUserId)]),
     );
   }
 
@@ -946,10 +953,16 @@ export class MatrixDriver extends Driver {
         const hasOlder =
           events.length > pageEvents.length ||
           this.canPaginateTimeline(timeline, "older", paginationSession);
+        const readBoundaryId = this.personalReadBoundaryOrNull(
+          room,
+          mx.getUserId(),
+        );
         return this.mapMessageWindow(mx, room, pageEvents, {
-          firstUnreadMessageId: this.loadedFirstUnreadMessageId(
+          readBoundaryId,
+          firstUnreadMessageId: this.firstUnreadMessageIdInPage(
             room,
             timeline,
+            readBoundaryId,
             mx.getUserId(),
           ),
           olderCursor: hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
@@ -969,10 +982,16 @@ export class MatrixDriver extends Driver {
         events = this.loadedMainTimelineEvents(room.roomId, timeline);
         const pageEvents = events.slice(-limit);
         const hasOlder = events.length > pageEvents.length;
+        const readBoundaryId = this.personalReadBoundaryOrNull(
+          room,
+          mx.getUserId(),
+        );
         return this.mapMessageWindow(mx, room, pageEvents, {
-          firstUnreadMessageId: this.loadedFirstUnreadMessageId(
+          readBoundaryId,
+          firstUnreadMessageId: this.firstUnreadMessageIdInPage(
             room,
             timeline,
+            readBoundaryId,
             mx.getUserId(),
           ),
           olderCursor: hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
@@ -983,19 +1002,10 @@ export class MatrixDriver extends Driver {
     }
   }
 
-  private personalReadBoundary(room: Room, userId: string): string | null {
-    const confirmedBoundary = this.confirmedMainReadBoundaries.get(room.roomId);
-    if (confirmedBoundary) {
-      return confirmedBoundary;
-    }
-
+  private persistedMainReadBoundaries(room: Room, userId: string): string[] {
     const fullyRead = room
       .getAccountData(ReceiptType.FullyRead)
       ?.getContent<{ event_id?: string }>().event_id;
-    if (fullyRead) {
-      return fullyRead;
-    }
-
     const publicReceipt = room.getReadReceiptForUserId(
       userId,
       false,
@@ -1018,7 +1028,100 @@ export class MatrixDriver extends Driver {
           : 1
         : left!.data.ts - right!.data.ts,
     );
-    return mainReceipts.at(-1)?.eventId ?? null;
+    return [
+      ...(fullyRead ? [fullyRead] : []),
+      ...mainReceipts.map((receipt) => receipt!.eventId),
+      ...(this.confirmedMainReadBoundaries.get(room.roomId)
+        ? [this.confirmedMainReadBoundaries.get(room.roomId)!]
+        : []),
+    ].filter((eventId, index, all) => all.indexOf(eventId) === index);
+  }
+
+  private personalReadBoundary(room: Room, userId: string): string | null {
+    return this.persistedMainReadBoundaries(room, userId).reduce<string | null>(
+      (furthest, candidate) => {
+        if (!furthest) {
+          return candidate;
+        }
+        const ordering = room.compareEventOrdering(furthest, candidate);
+        return ordering !== null && ordering >= 0 ? furthest : candidate;
+      },
+      null,
+    );
+  }
+
+  private personalReadBoundaryOrNull(
+    room: Room,
+    userId: string | null,
+  ): string | null {
+    return userId ? this.personalReadBoundary(room, userId) : null;
+  }
+
+  private unreadSnapshot(
+    room: Room,
+    selfUserId: string | undefined,
+  ): ChatUnread {
+    const boundaryId = selfUserId
+      ? this.personalReadBoundary(room, selfUserId)
+      : null;
+    const projectedCount = this.projectedMainUnreadCount(room, selfUserId);
+    return roomUnread(room, selfUserId, boundaryId, projectedCount);
+  }
+
+  private projectedMainUnreadCount(
+    room: Room,
+    selfUserId: string | undefined,
+  ): number | undefined {
+    const projection = this.mainReadCountProjections.get(room.roomId);
+    if (projection) {
+      const liveEvents = this.loadedMainTimelineEvents(
+        room.roomId,
+        room.getLiveTimeline(),
+      );
+      const liveEndIndex = projection.liveEndId
+        ? liveEvents.findIndex(
+            (event) => event.getId() === projection.liveEndId,
+          )
+        : -1;
+      const receivedSinceWrite = liveEvents
+        .slice(liveEndIndex + 1)
+        .filter(
+          (event) => !event.isRedacted() && event.getSender() !== selfUserId,
+        ).length;
+      const projectedCount = projection.remainingCount + receivedSinceWrite;
+      const serverCount = room.getRoomUnreadNotificationCount(
+        NotificationCountType.Total,
+      );
+      if (serverCount <= projectedCount) {
+        this.mainReadCountProjections.delete(room.roomId);
+        return undefined;
+      }
+      return projectedCount;
+    }
+    return undefined;
+  }
+
+  private firstUnreadMessageIdInPage(
+    room: Room,
+    timeline: EventTimeline,
+    boundaryId: string | null,
+    selfUserId: string | null,
+  ): string | null {
+    if (!boundaryId || !selfUserId) {
+      return null;
+    }
+    const firstUnreadId = this.findFirstUnreadAfter(
+      room,
+      timeline,
+      boundaryId,
+      selfUserId,
+    ).eventId;
+    return firstUnreadId &&
+      this.loadedMainTimelineEvents(room.roomId, timeline).some(
+        (event) => event.getId() === firstUnreadId,
+      )
+      ? firstUnreadId
+      : null;
   }
 
   private findFirstUnreadAfter(
@@ -1047,23 +1150,6 @@ export class MatrixDriver extends Driver {
       )
       ?.getId();
     return { boundaryFound: true, eventId: eventId ?? null };
-  }
-
-  /** Returns the unread boundary once normal timeline pagination has loaded it. */
-  private loadedFirstUnreadMessageId(
-    room: Room,
-    timeline: EventTimeline,
-    selfUserId: string | null,
-  ): string | null {
-    if (!selfUserId) {
-      return null;
-    }
-    const boundaryId = this.personalReadBoundary(room, selfUserId);
-    if (!boundaryId) {
-      return null;
-    }
-    return this.findFirstUnreadAfter(room, timeline, boundaryId, selfUserId)
-      .eventId;
   }
 
   private async compareTimelineEventOrdering(
@@ -1103,6 +1189,33 @@ export class MatrixDriver extends Driver {
       return "before";
     }
     return ordering > 0 ? "after" : "same";
+  }
+
+  private countUnreadMessagesBetween(
+    room: Room,
+    boundaryId: string,
+    targetId: string,
+    selfUserId: string,
+  ): number | null {
+    const timeline = room
+      .getUnfilteredTimelineSet()
+      .getTimelineForEvent(targetId);
+    if (!timeline) {
+      return null;
+    }
+    const events = this.loadedMainTimelineEvents(room.roomId, timeline);
+    const boundaryIndex = events.findIndex(
+      (event) => event.getId() === boundaryId,
+    );
+    const targetIndex = events.findIndex((event) => event.getId() === targetId);
+    if (boundaryIndex < 0 || targetIndex <= boundaryIndex) {
+      return null;
+    }
+    return events
+      .slice(boundaryIndex + 1, targetIndex + 1)
+      .filter(
+        (event) => !event.isRedacted() && event.getSender() !== selfUserId,
+      ).length;
   }
 
   private async reconcileConfirmedMainReadBoundary(
@@ -1197,10 +1310,16 @@ export class MatrixDriver extends Driver {
       availableEvents.length > pageEvents.length ||
       this.canPaginateTimeline(timeline, direction, paginationSession);
 
+    const readBoundaryId = this.personalReadBoundaryOrNull(
+      room,
+      mx.getUserId(),
+    );
     return this.mapMessageWindow(mx, room, pageEvents, {
-      firstUnreadMessageId: this.loadedFirstUnreadMessageId(
+      readBoundaryId,
+      firstUnreadMessageId: this.firstUnreadMessageIdInPage(
         room,
         timeline,
+        readBoundaryId,
         mx.getUserId(),
       ),
       olderCursor:
@@ -1335,6 +1454,7 @@ export class MatrixDriver extends Driver {
       this.canPaginateTimeline(timeline, "newer", paginationSession);
 
     return this.mapMessageWindow(mx, room, pageEvents, {
+      readBoundaryId: boundaryId,
       firstUnreadMessageId: firstUnreadId,
       olderCursor: hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
       newerCursor: hasNewer ? (pageEvents.at(-1)?.getId() ?? null) : null,
@@ -1835,6 +1955,9 @@ export class MatrixDriver extends Driver {
   }: MarkChatReadParams): Promise<MarkChatReadResult> {
     const { mx, room } = this.requireRoom("markChatRead", chatId);
     const selfUserId = mx.getUserId();
+    if (!selfUserId) {
+      return { status: "unavailable" };
+    }
     const assertCurrentClient = () => {
       if (this.mx !== mx) {
         throw new Error(
@@ -1842,8 +1965,6 @@ export class MatrixDriver extends Driver {
         );
       }
     };
-    const retriesFailedReceipt =
-      this.failedMainReadReceiptTargets.get(chatId) === messageId;
     const emitCurrentUnread = () => {
       if (this.mx !== mx) {
         return;
@@ -1851,99 +1972,70 @@ export class MatrixDriver extends Driver {
       this.emit({
         type: "unread:changed",
         chatId,
-        unread: roomUnread(room, selfUserId ?? undefined),
+        unread: this.unreadSnapshot(room, selfUserId),
       });
     };
-    if (
-      !retriesFailedReceipt &&
-      !computeRoomUnread(room, selfUserId ?? undefined)
-    ) {
-      emitCurrentUnread();
-      return { status: "unchanged" };
-    }
     const timelineSet = room.getUnfilteredTimelineSet();
-    const target = timelineSet.findEventById(messageId);
+    const target = messageId
+      ? timelineSet.findEventById(messageId)
+      : this.loadedMainTimelineEvents(chatId, room.getLiveTimeline())
+          .filter((event) => !event.isRedacted())
+          .at(-1);
     if (
       !target ||
       !isMainTimelineMessage(target) ||
+      target.isRedacted() ||
       this.isRedactedThreadReply(chatId, target)
     ) {
-      if (retriesFailedReceipt) {
-        this.failedMainReadReceiptTargets.delete(chatId);
-      }
       return { status: "unavailable" };
     }
-
-    const publicReceipt = selfUserId
-      ? room.getReadReceiptForUserId(selfUserId, false, ReceiptType.Read)
-      : null;
-    const privateReceipt = selfUserId
-      ? room.getReadReceiptForUserId(selfUserId, false, ReceiptType.ReadPrivate)
-      : null;
-    const fullyReadBoundary =
-      this.confirmedMainReadBoundaries.get(chatId) ??
-      room
-        .getAccountData(ReceiptType.FullyRead)
-        ?.getContent<{ event_id?: string }>().event_id ??
-      null;
-    const mainReceiptBoundaries = new Set(
-      [publicReceipt, privateReceipt]
-        .filter(
-          (receipt) =>
-            receipt &&
-            (!receipt.data.thread_id || receipt.data.thread_id === "main"),
-        )
-        .map((receipt) => receipt!.eventId),
-    );
-    let fullyReadAtTarget = false;
-    let receiptAtTarget = false;
-    for (const [kind, currentBoundary] of [
-      ["fully-read", fullyReadBoundary],
-      ...[...mainReceiptBoundaries].map(
-        (eventId) => ["receipt", eventId] as const,
-      ),
-    ] as const) {
-      if (!currentBoundary) {
-        continue;
-      }
+    const targetId = target.getId();
+    if (!targetId) {
+      return { status: "unavailable" };
+    }
+    const currentBoundary = this.personalReadBoundary(room, selfUserId);
+    for (const persistedBoundary of this.persistedMainReadBoundaries(
+      room,
+      selfUserId,
+    )) {
       const ordering = await this.compareTimelineEventOrdering(
         mx,
         room,
-        currentBoundary,
-        messageId,
+        persistedBoundary,
+        targetId,
       );
       assertCurrentClient();
       if (ordering === "unknown") {
-        // An inaccessible boundary must not make the marker regress. It is
-        // terminal for this attempt, but remains distinguishable from a
-        // transport failure so callers may offer a later manual retry.
         return { status: "unavailable" };
       }
       if (ordering === "after") {
-        if (retriesFailedReceipt) {
-          this.failedMainReadReceiptTargets.delete(chatId);
-        }
         emitCurrentUnread();
         return { status: "unchanged" };
       }
-      if (ordering === "same") {
-        if (kind === "fully-read") {
-          fullyReadAtTarget = true;
-        } else {
-          receiptAtTarget = true;
-        }
-      }
     }
-    if (fullyReadAtTarget && receiptAtTarget && !retriesFailedReceipt) {
-      emitCurrentUnread();
-      return { status: "unchanged" };
-    }
+
+    const currentCount =
+      this.projectedMainUnreadCount(room, selfUserId) ??
+      room.getRoomUnreadNotificationCount(NotificationCountType.Total);
+    const liveEndId =
+      this.loadedMainTimelineEvents(chatId, room.getLiveTimeline())
+        .at(-1)
+        ?.getId() ?? null;
+    const crossed =
+      messageId && currentBoundary
+        ? this.countUnreadMessagesBetween(
+            room,
+            currentBoundary,
+            targetId,
+            selfUserId,
+          )
+        : null;
 
     // `/read_markers` cannot carry `thread_id`. Send only `m.fully_read`
     // there, then let the SDK emit a threaded `m.read` with `thread_id: main`.
-    await mx.setRoomReadMarkers(chatId, messageId);
+    await mx.setRoomReadMarkers(chatId, targetId);
     assertCurrentClient();
-    this.confirmedMainReadBoundaries.set(chatId, messageId);
+    this.confirmedMainReadBoundaries.set(chatId, targetId);
     const echoedBoundary = room
       .getAccountData(ReceiptType.FullyRead)
       ?.getContent<{ event_id?: string }>().event_id;
@@ -1955,19 +2047,14 @@ export class MatrixDriver extends Driver {
         echoedBoundary,
       ).catch(() => undefined);
     }
-    try {
-      await mx.sendReadReceipt(target);
-    } catch (error) {
-      // The SDK installs a local receipt before the HTTP request settles. Keep
-      // enough state to make the next queued attempt resend it instead of
-      // mistaking that optimistic echo for a completed marker pair.
-      if (this.mx === mx) {
-        this.failedMainReadReceiptTargets.set(chatId, messageId);
-      }
-      throw error;
-    }
+    await mx.sendReadReceipt(target);
     assertCurrentClient();
-    this.failedMainReadReceiptTargets.delete(chatId);
+
+    this.mainReadCountProjections.set(chatId, {
+      liveEndId,
+      remainingCount:
+        messageId && crossed !== null ? Math.max(0, currentCount - crossed) : 0,
+    });
     emitCurrentUnread();
     return { status: "updated" };
   }
@@ -2326,7 +2413,7 @@ export class MatrixDriver extends Driver {
       this.emit({
         type: "unread:changed",
         chatId: room.roomId,
-        unread: roomUnread(room, selfUserId),
+        unread: this.unreadSnapshot(room, selfUserId),
       });
     /** Replaces the root bubble so its summary count / unread badge moves live. */
     const emitThreadRootUpdate = (thread: Thread) => {
@@ -2949,7 +3036,6 @@ export class MatrixDriver extends Driver {
     this.joinedRoomIds = null;
     this.mainReadMarkerQueues.clear();
     this.confirmedMainReadBoundaries.clear();
-    this.failedMainReadReceiptTargets.clear();
     this.sentThreadReplyEventIds.clear();
     this.redactedThreadReplies.clear();
     this.redactedThreadReplyKeys.clear();

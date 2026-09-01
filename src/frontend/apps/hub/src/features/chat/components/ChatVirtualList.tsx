@@ -5,14 +5,17 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import type { ChatRef } from "@/features/drivers/types";
 
 import { useChatMessages } from "../hooks/useChatMessages";
+import {
+  type MainTimelineUnreadNavigation,
+  useMainTimelineUnread,
+} from "../hooks/useMainTimelineUnread";
 import { useChatUnreadState } from "../hooks/useChatUnread";
 import { useMarkChatRead } from "../hooks/useMarkChatRead";
-import { useReadAtLiveEnd } from "../hooks/useReadAtLiveEnd";
-import { useUnreadJump } from "../hooks/useUnreadJump";
-import { useVisibleUnreadMessage } from "../hooks/useVisibleUnreadMessage";
 
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
 import { ChatMessageRow } from "./ChatMessageRow";
+
+export type { MainTimelineUnreadNavigation } from "../hooks/useMainTimelineUnread";
 
 type ChatVirtualListProps = {
   chatRef: ChatRef;
@@ -21,54 +24,15 @@ type ChatVirtualListProps = {
   ) => void;
 };
 
-export type MainTimelineUnreadNavigation = {
-  count: number;
-  isOpening: boolean;
-  isMarkingRead: boolean;
-  open: () => void;
-  markRead: () => void;
-};
-
 export type MainTimelineUnreadNavigationUpdate = {
   chatKey: string;
   navigation: MainTimelineUnreadNavigation | null;
 };
 
 const DEFAULT_ITEM_HEIGHT = 72;
-// Virtuoso stays mounted between conversations. Give it one measurement pass
-// before applying the new conversation's imperative live-end position.
 const INITIAL_POSITION_DELAY_MS = 250;
 
 type SkeletonState = "visible" | "leaving" | "hidden";
-
-const scheduleComposerFocusRestore = (
-  focusOrigin: Element | null,
-  restoreFromBody = false,
-): void => {
-  const focusCameFromUnreadControls =
-    focusOrigin instanceof HTMLElement &&
-    (focusOrigin.matches("[data-unread-separator]") ||
-      Boolean(focusOrigin.closest(".hub__unread-banner")));
-  if (
-    !focusCameFromUnreadControls &&
-    !(restoreFromBody && focusOrigin === document.body)
-  ) {
-    return;
-  }
-  requestAnimationFrame(() => {
-    if (
-      document.activeElement !== focusOrigin &&
-      document.activeElement !== document.body
-    ) {
-      return;
-    }
-    document
-      .querySelector<HTMLInputElement>(
-        "[data-chat-composer-input]:not(:disabled)",
-      )
-      ?.focus();
-  });
-};
 
 export const ChatVirtualList = ({
   chatRef,
@@ -76,15 +40,12 @@ export const ChatVirtualList = ({
 }: ChatVirtualListProps) => {
   const { t } = useTranslation();
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
-
   const { unread, isPending: isUnreadPending } = useChatUnreadState(chatRef);
   const {
     messages,
     authorsById,
     firstUnreadMessageId,
     anchorStatus,
-    isUnreadWindowActive,
-    liveEndMessageId,
     hasOlder,
     hasNewer,
     isFetchingOlder,
@@ -94,275 +55,182 @@ export const ChatVirtualList = ({
     fetchOlder,
     fetchNewer,
     openFirstUnread,
-    closeUnreadContext,
   } = useChatMessages(chatRef, {
     enabled: !isUnreadPending,
+    readBoundaryId: unread.mainTimelineReadBoundaryId,
   });
-  const lastMessage = messages[messages.length - 1];
+
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const wasConnectedToLive = useRef(false);
+  const [isPositioned, setIsPositioned] = useState(false);
+  const [scroller, setScroller] = useState<HTMLElement | null>(null);
+  const [skeletonState, setSkeletonState] = useState<SkeletonState>("visible");
   const markChatRead = useMarkChatRead(chatRef);
+  const activeUnread =
+    unread.mainTimelineUnread && !isInitialLoading && isPositioned;
+  const unreadDomain = useMainTimelineUnread({
+    chatKey,
+    messages,
+    firstUnreadMessageId,
+    unreadCount: unread.mainTimelineCount,
+    enabled: activeUnread,
+    hasNewer,
+    openFirstUnread,
+    markRead: markChatRead,
+  });
   const messageIndexById = useMemo(
     () => new Map(messages.map((message, index) => [message.id, index])),
     [messages],
   );
-  const firstUnreadIndex = firstUnreadMessageId
-    ? (messageIndexById.get(firstUnreadMessageId) ?? -1)
+  const jumpTargetIndex = unreadDomain.jump.targetId
+    ? (messageIndexById.get(unreadDomain.jump.targetId) ?? -1)
     : -1;
-
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
-
-  const [isPositioned, setIsPositioned] = useState(false);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  const [isLiveReadArmed, setIsLiveReadArmed] = useState(false);
-  const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(
-    null,
-  );
-  const [markingMessageId, setMarkingMessageId] = useState<string | null>(null);
-  const isMarkingMainRead = markingMessageId !== null;
-  const [skeletonState, setSkeletonState] = useState<SkeletonState>("visible");
   const needsInitialPosition = isInitialLoading || !isPositioned;
-
-  const closeUnreadWindowAndReturnToLiveEnd = useCallback(
-    (restoreFocusIfLost = false) => {
-      scheduleComposerFocusRestore(document.activeElement, restoreFocusIfLost);
-      closeUnreadContext();
-      requestAnimationFrame(() => {
-        virtuosoRef.current?.scrollToIndex({
-          index: "LAST",
-          align: "end",
-          behavior: "auto",
-        });
-        setIsAtBottom(true);
-      });
-    },
-    [closeUnreadContext],
-  );
-  const handleUnreadJumpAborted = useCallback(
-    () => closeUnreadWindowAndReturnToLiveEnd(true),
-    [closeUnreadWindowAndReturnToLiveEnd],
-  );
-
-  const unreadJump = useUnreadJump({
-    chatKey,
-    enabled: unread.mainTimelineUnread,
-    // Virtuoso's imperative API uses the zero-based data index even when
-    // rendered item callbacks receive indices offset by `firstItemIndex`.
-    targetIndex: firstUnreadIndex,
-    openFirstUnread,
-    virtuosoRef,
-    onJumpAborted: handleUnreadJumpAborted,
-    isContextActive: isUnreadWindowActive,
-    onAtBottomChange: setIsAtBottom,
-  });
-  const isJumpingToUnread = unreadJump.isJumping;
-  const hasUnreadContext = unreadJump.hasUnreadContext;
-  const handleScrollerRef = useCallback(
-    (element: HTMLElement | Window | null) => {
-      unreadJump.scrollerRef(element);
-      setScrollerElement(element instanceof HTMLElement ? element : null);
-    },
-    [unreadJump.scrollerRef],
-  );
-
-  const visibleReadMessageId = useVisibleUnreadMessage({
-    enabled: unread.mainTimelineUnread && isPositioned,
-    scroller: scrollerElement,
-    messageIndexById,
-    firstUnreadIndex,
-    isJumping: isJumpingToUnread,
-    hasUnreadContext,
-  });
-
-  const closeUnreadNavigation = useCallback(() => {
-    const shouldReturnToLiveEnd = hasUnreadContext || isJumpingToUnread;
-    if (shouldReturnToLiveEnd) {
-      closeUnreadWindowAndReturnToLiveEnd(hasUnreadContext);
-    } else {
-      closeUnreadContext();
-    }
-    unreadJump.reset();
-  }, [
-    closeUnreadContext,
-    closeUnreadWindowAndReturnToLiveEnd,
-    hasUnreadContext,
-    isJumpingToUnread,
-    unreadJump.reset,
-  ]);
-
-  const partialReadEnabled =
-    unread.mainTimelineUnread &&
-    !isInitialLoading &&
-    !isJumpingToUnread &&
-    !isMarkingMainRead &&
-    isPositioned &&
-    firstUnreadIndex >= 0 &&
-    visibleReadMessageId !== null;
-  const liveEndReadEnabled =
-    unread.mainTimelineUnread &&
-    !isInitialLoading &&
-    !hasNewer &&
-    !isJumpingToUnread &&
-    !isMarkingMainRead &&
-    isLiveReadArmed &&
-    isPositioned &&
-    isAtBottom;
-  const submitRead = useReadAtLiveEnd({
-    chatKey,
-    enabled: partialReadEnabled || liveEndReadEnabled,
-    messageId: partialReadEnabled ? visibleReadMessageId : liveEndMessageId,
-    markRead: markChatRead,
-  });
+  const wasConnectedToLiveBeforeRender = wasConnectedToLive.current;
 
   useEffect(() => {
-    if (!isUnreadPending && !unread.mainTimelineUnread) {
-      closeUnreadNavigation();
-    }
-  }, [closeUnreadNavigation, isUnreadPending, unread.mainTimelineUnread]);
+    wasConnectedToLive.current = !hasNewer;
+  }, [chatKey, hasNewer]);
 
-  // Do not erase an existing backlog just because a conversation initially
-  // opens at its live end. Reading becomes automatic only after the room was
-  // already read, or after the user explicitly opened the unread context.
   useEffect(() => {
-    if (
-      isLiveReadArmed ||
-      isInitialLoading ||
-      !isPositioned ||
-      isJumpingToUnread ||
-      (unread.mainTimelineUnread && !hasUnreadContext)
-    ) {
+    if (!scroller) {
       return;
     }
-    const raf = requestAnimationFrame(() => setIsLiveReadArmed(true));
-    return () => cancelAnimationFrame(raf);
-  }, [
-    hasUnreadContext,
-    isInitialLoading,
-    isJumpingToUnread,
-    isLiveReadArmed,
-    isPositioned,
-    unread.mainTimelineUnread,
-  ]);
+    const onUserScroll = unreadDomain.onUserScroll;
+    scroller.addEventListener("wheel", onUserScroll, { passive: true });
+    scroller.addEventListener("touchmove", onUserScroll, { passive: true });
+    scroller.addEventListener("pointerdown", onUserScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("wheel", onUserScroll);
+      scroller.removeEventListener("touchmove", onUserScroll);
+      scroller.removeEventListener("pointerdown", onUserScroll);
+    };
+  }, [scroller, unreadDomain.onUserScroll]);
 
   useEffect(() => {
     if (needsInitialPosition) {
       setSkeletonState("visible");
       return;
     }
-    const raf = requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       setSkeletonState((current) =>
         current === "visible" ? "leaving" : current,
       );
     });
-    return () => cancelAnimationFrame(raf);
+    return () => cancelAnimationFrame(frame);
   }, [needsInitialPosition]);
 
-  // Conversations open at the live end; unread context is installed only by
-  // the explicit banner action. A height callback is not sufficient here:
-  // switching between equally-sized conversations may not emit one.
   useEffect(() => {
     if (isInitialLoading || isPositioned || anchorStatus === null) {
       return;
     }
-    let raf: number | null = null;
+    let frame: number | null = null;
     const timer = window.setTimeout(() => {
-      raf = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
         virtuosoRef.current?.scrollToIndex({
           index: "LAST",
           align: "end",
           behavior: "auto",
         });
-        setIsAtBottom(true);
         setIsPositioned(true);
       });
     }, INITIAL_POSITION_DELAY_MS);
     return () => {
       window.clearTimeout(timer);
-      if (raf !== null) {
-        cancelAnimationFrame(raf);
+      if (frame !== null) {
+        cancelAnimationFrame(frame);
       }
     };
   }, [anchorStatus, isInitialLoading, isPositioned]);
 
-  // `endReached` can fire while the unread jump is still animating. Once the
-  // jump settles, reaching the contextual bottom must still load toward live.
   useEffect(() => {
-    if (
-      isPositioned &&
-      isAtBottom &&
-      hasNewer &&
-      !isJumpingToUnread &&
-      !isFetchingNewer
-    ) {
-      fetchNewer();
-    }
-  }, [
-    fetchNewer,
-    hasNewer,
-    isAtBottom,
-    isFetchingNewer,
-    isJumpingToUnread,
-    isPositioned,
-  ]);
-
-  const handleMarkMainRead = useCallback(() => {
-    if (!liveEndMessageId || markingMessageId !== null) {
+    if (jumpTargetIndex < 0) {
       return;
     }
-    const focusOrigin = document.activeElement;
-    const messageId = liveEndMessageId;
-    setMarkingMessageId(messageId);
-    void submitRead(messageId)
-      .then((result) => {
-        if (result.status !== "unavailable") {
-          closeUnreadNavigation();
-          scheduleComposerFocusRestore(focusOrigin);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        setMarkingMessageId((current) =>
-          current === messageId ? null : current,
-        );
+    const scrollToUnread = () =>
+      virtuosoRef.current?.scrollToIndex({
+        index: jumpTargetIndex,
+        align: "start",
+        behavior: "auto",
       });
-  }, [closeUnreadNavigation, liveEndMessageId, markingMessageId, submitRead]);
-
-  const hasActiveMainUnread =
-    unread.mainTimelineUnread && !isInitialLoading && isPositioned;
-  const showUnreadSeparator =
-    hasActiveMainUnread &&
-    firstUnreadMessageId !== null &&
-    firstUnreadIndex >= 0;
-  const unreadNavigation = useMemo<MainTimelineUnreadNavigation | null>(() => {
-    if (!hasActiveMainUnread) {
-      return null;
-    }
-    return {
-      count: unread.mainTimelineCount,
-      isOpening: isJumpingToUnread,
-      isMarkingRead: isMarkingMainRead,
-      open: unreadJump.open,
-      markRead: handleMarkMainRead,
+    let settleTimer: number | null = null;
+    const frame = requestAnimationFrame(() => {
+      scrollToUnread();
+      // The contextual window replaces a differently measured list. Reapply
+      // the same relative index once Virtuoso has measured the new rows.
+      settleTimer = window.setTimeout(() => {
+        scrollToUnread();
+        requestAnimationFrame(unreadDomain.completeJump);
+      }, INITIAL_POSITION_DELAY_MS);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (settleTimer !== null) {
+        window.clearTimeout(settleTimer);
+      }
     };
-  }, [
-    handleMarkMainRead,
-    hasActiveMainUnread,
-    isJumpingToUnread,
-    isMarkingMainRead,
-    unread.mainTimelineCount,
-    unreadJump.open,
-  ]);
-  const unreadNavigationUpdate = useMemo<MainTimelineUnreadNavigationUpdate>(
-    () => ({ chatKey, navigation: unreadNavigation }),
-    [chatKey, unreadNavigation],
-  );
+  }, [jumpTargetIndex, unreadDomain.completeJump, unreadDomain.jump.request]);
 
+  const unreadNavigationUpdate = useMemo<MainTimelineUnreadNavigationUpdate>(
+    () => ({ chatKey, navigation: unreadDomain.navigation }),
+    [chatKey, unreadDomain.navigation],
+  );
   useEffect(() => {
     onUnreadNavigationChange?.(unreadNavigationUpdate);
   }, [onUnreadNavigationChange, unreadNavigationUpdate]);
-
   useEffect(
     () => () => onUnreadNavigationChange?.({ chatKey, navigation: null }),
     [chatKey, onUnreadNavigationChange],
   );
+
+  const lastMessage = messages.at(-1);
+  const firstUnreadIndex = unreadDomain.firstUnreadIndex;
+  const showUnreadSeparator = activeUnread && firstUnreadIndex >= 0;
+  const handleScrollerRef = useCallback(
+    (element: HTMLElement | Window | null) =>
+      setScroller(element instanceof HTMLElement ? element : null),
+    [],
+  );
+  const reportVisibleRange = useCallback(() => {
+    if (!scroller) {
+      return;
+    }
+    const viewport = scroller.getBoundingClientRect();
+    const rendered = Array.from(
+      scroller.querySelectorAll<HTMLElement>("[data-index]"),
+    );
+    const intersecting = rendered.filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.bottom > viewport.top && rect.top < viewport.bottom;
+    });
+    const fullyVisible = intersecting.filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top >= viewport.top && rect.bottom <= viewport.bottom;
+    });
+    const visible = fullyVisible.length > 0 ? fullyVisible : intersecting;
+    const indices = visible
+      // Virtuoso's DOM `data-index` is relative to `data`, even when the
+      // callback index is offset by `firstItemIndex`.
+      .map((element) => Number(element.dataset.index))
+      .filter(Number.isInteger);
+    if (indices.length === 0) {
+      return;
+    }
+    const separatorRect =
+      unreadDomain.separatorRef.current?.getBoundingClientRect();
+    const separatorVisible = Boolean(
+      separatorRect &&
+      separatorRect.bottom > viewport.top &&
+      separatorRect.top < viewport.bottom,
+    );
+    unreadDomain.onVisibleRangeChanged(
+      {
+        startIndex: Math.min(...indices),
+        endIndex: Math.max(...indices),
+      },
+      separatorVisible,
+    );
+  }, [scroller, unreadDomain.onVisibleRangeChanged, unreadDomain.separatorRef]);
 
   return (
     <div className="hub__chat-conversation__list">
@@ -376,19 +244,26 @@ export const ChatVirtualList = ({
           defaultItemHeight={DEFAULT_ITEM_HEIGHT}
           initialTopMostItemIndex={Math.max(0, messages.length - 1)}
           followOutput={(atBottom) =>
-            !isJumpingToUnread &&
             !hasNewer &&
-            (atBottom || lastMessage?.authorId === "me")
+            atBottom &&
+            (!activeUnread ||
+              (wasConnectedToLiveBeforeRender &&
+                lastMessage?.authorId === "me"))
               ? "auto"
               : false
           }
-          isScrolling={unreadJump.onScrolling}
+          isScrolling={(isScrolling) => {
+            if (!isScrolling) {
+              reportVisibleRange();
+            }
+            unreadDomain.onScrolling(isScrolling);
+          }}
+          rangeChanged={reportVisibleRange}
           atBottomStateChange={(atBottom) => {
-            setIsAtBottom(atBottom);
+            unreadDomain.onAtBottomChange(atBottom);
           }}
           startReached={hasOlder ? fetchOlder : undefined}
-          endReached={hasNewer && !isJumpingToUnread ? fetchNewer : undefined}
-          increaseViewportBy={{ top: 400, bottom: 400 }}
+          endReached={hasNewer ? fetchNewer : undefined}
           components={{
             Header: () => (
               <div className="hub__chat-conversation__top-spacer">
@@ -407,23 +282,20 @@ export const ChatVirtualList = ({
           itemContent={(virtualIndex, message) => {
             const arrayIndex = virtualIndex - firstItemIndex;
             const isFirstUnread =
-              showUnreadSeparator && message.id === firstUnreadMessageId;
+              showUnreadSeparator && arrayIndex === firstUnreadIndex;
             const nextMessage = messages[arrayIndex + 1];
-            // The separator also breaks sender grouping on both sides.
             return (
               <ChatMessageRow
                 message={message}
                 chatRef={chatRef}
                 prev={isFirstUnread ? undefined : messages[arrayIndex - 1]}
                 next={
-                  nextMessage?.id === firstUnreadMessageId
-                    ? undefined
-                    : nextMessage
+                  arrayIndex + 1 === firstUnreadIndex ? undefined : nextMessage
                 }
                 authorsById={authorsById}
                 showUnreadSeparator={isFirstUnread}
                 unreadSeparatorRef={
-                  isFirstUnread ? unreadJump.separatorRef : undefined
+                  isFirstUnread ? unreadDomain.separatorRef : undefined
                 }
               />
             );
