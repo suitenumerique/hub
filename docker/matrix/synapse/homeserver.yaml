@@ -34,6 +34,12 @@ signing_key_path: "/config/localhost.signing.key"
 report_stats: false
 enable_registration: false
 
+# DEV ONLY: keep client message throttling effectively out of the way while
+# exercising rapid chat flows and seed scripts against the local homeserver.
+rc_message:
+  per_second: 1000
+  burst_count: 10000
+
 # Obviously-fake dev-only secrets; fine here because this stack never ships.
 registration_shared_secret: "ThisIsARegistrationSharedSecretForDev"
 macaroon_secret_key: "ThisIsAMacaroonSecretKeyForDevOnly"

@@ -293,8 +293,8 @@
   &__footer {
     flex: 0 0 auto;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 8px;
     padding: 24px 12px 12px;
     background: linear-gradient(
       180deg,
@@ -309,6 +309,12 @@
     );
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
+
+    &__secondary-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
   }
 
   &__icon-button {

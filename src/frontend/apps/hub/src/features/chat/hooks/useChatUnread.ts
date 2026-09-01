@@ -11,9 +11,7 @@ import { chatKeys } from "../chatKeys";
 const READ: ChatUnread = {
   unread: false,
   highlight: false,
-  mainTimelineUnread: false,
-  mainTimelineCount: 0,
-  mainTimelineReadBoundaryId: null,
+  mainTimelineReadMarkerId: null,
 };
 
 export type ChatUnreadLookup = (ref: ChatRef) => ChatUnread;

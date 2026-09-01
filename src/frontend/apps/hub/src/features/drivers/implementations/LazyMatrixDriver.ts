@@ -1,5 +1,6 @@
 import {
   Driver as BaseDriver,
+  type AdvanceMainReadParams,
   type ChatConnectionState,
   type ChatEventListener,
   type ChatTypingListener,
@@ -7,11 +8,11 @@ import {
   type DeleteChatMessageParams,
   type Driver,
   type EditChatMessageParams,
-  type GetChatMessagesParams,
   type GetChatThreadParams,
-  type MarkChatReadParams,
   type MarkChatReadResult,
   type MarkChatThreadReadParams,
+  type OpenChatMessageWindowParams,
+  type PaginateChatMessageWindowParams,
   type RemoveChatFromHistoryResult,
   type SendChatMessageParams,
   type SendChatTypingParams,
@@ -136,10 +137,18 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.getChat(chatId));
   }
 
-  async getChatMessages(
-    params: GetChatMessagesParams,
+  async openChatMessageWindow(
+    params: OpenChatMessageWindowParams,
   ): Promise<ChatMessageWindow> {
-    return this.withTarget((driver) => driver.getChatMessages(params));
+    return this.withTarget((driver) => driver.openChatMessageWindow(params));
+  }
+
+  async paginateChatMessageWindow(
+    params: PaginateChatMessageWindowParams,
+  ): Promise<ChatMessageWindow | null> {
+    return this.withTarget((driver) =>
+      driver.paginateChatMessageWindow(params),
+    );
   }
 
   async toggleChatReaction(
@@ -170,8 +179,16 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.markAllChatThreadsRead(chatId));
   }
 
-  async markChatRead(params: MarkChatReadParams): Promise<MarkChatReadResult> {
-    return this.withTarget((driver) => driver.markChatRead(params));
+  async advanceMainReadReceipt(
+    params: AdvanceMainReadParams,
+  ): Promise<MarkChatReadResult> {
+    return this.withTarget((driver) => driver.advanceMainReadReceipt(params));
+  }
+
+  async advanceMainFullyRead(
+    params: AdvanceMainReadParams,
+  ): Promise<MarkChatReadResult> {
+    return this.withTarget((driver) => driver.advanceMainFullyRead(params));
   }
 
   async getUnread(): Promise<Record<string, ChatUnread>> {

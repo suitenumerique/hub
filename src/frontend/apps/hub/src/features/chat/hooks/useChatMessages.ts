@@ -3,51 +3,50 @@ import {
   useInfiniteQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
-import type { GetChatMessagesParams } from "@/features/drivers/Driver";
 import type {
   ChatMessage,
   ChatMessageAuthor,
   ChatMessageWindow,
   ChatRef,
-  ChatUnread,
 } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+
+import {
+  getChatMessageEventVersion,
+  getChatMessageWindowEventVersion,
+  mergeChatMessageWindowSnapshot,
+  tagChatMessageWindowEventVersion,
+  type ChatMessageWindowMergeMode,
+} from "./chatCompositionCache";
 
 export const CHAT_PAGE_SIZE = 50;
 
 const VIRTUOSO_INDEX_ANCHOR = 1_000_000;
 
-type ChatPageParam =
-  | { direction: "initial" }
-  | { cursor: string; direction: "older" | "newer" };
-
-type FirstItemIndexState = {
-  chatKey: string | null;
-  windowVersion: number;
-  initialPageSizeBaseline: number | null;
+type ChatPageParam = {
+  firstItemIndex: number;
 };
 
 type UseChatMessagesOptions = {
   enabled?: boolean;
-  readBoundaryId?: string | null;
+  readMarkerEventId: string | null;
 };
 
-export type OpenFirstUnreadResult =
-  | { status: "opened"; firstUnreadMessageId: string }
-  | { status: "none" }
+export type OpenReadMarkerResult =
+  | { status: "opened" }
   | { status: "unavailable" }
   | { status: "error"; error: unknown };
 
 export type UseChatMessagesResult = {
   messages: ChatMessage[];
   authorsById: Map<string, ChatMessageAuthor>;
-  readBoundaryId: string | null;
-  firstUnreadMessageId: string | null;
-  anchorStatus: ChatMessageWindow["anchorStatus"] | null;
+  windowId: string | null;
+  readMarker: ChatMessageWindow["readMarker"];
+  frozenReadMarkerEventId: string | null;
   hasOlder: boolean;
   hasNewer: boolean;
   isFetchingOlder: boolean;
@@ -57,55 +56,117 @@ export type UseChatMessagesResult = {
   firstItemIndex: number;
   fetchOlder: () => void;
   fetchNewer: () => void;
-  openFirstUnread: () => Promise<OpenFirstUnreadResult>;
+  openReadMarker: () => Promise<OpenReadMarkerResult>;
 };
 
 type ChatMessagesData = InfiniteData<ChatMessageWindow, ChatPageParam>;
 
-const INITIAL_PAGE_PARAM: ChatPageParam = { direction: "initial" };
+const INITIAL_PAGE_PARAM: ChatPageParam = {
+  firstItemIndex: VIRTUOSO_INDEX_ANCHOR,
+};
 
-const toMessageWindowRequest = (
-  chatId: string,
-  pageParam: ChatPageParam,
-): GetChatMessagesParams =>
-  pageParam.direction === "initial"
-    ? { chatId, limit: CHAT_PAGE_SIZE, anchor: "latest" }
-    : {
-        chatId,
-        limit: CHAT_PAGE_SIZE,
-        cursor: pageParam.cursor,
-        direction: pageParam.direction,
-      };
+const rowIndexForMessage = (
+  snapshot: ChatMessageWindow,
+  messageIndex: number,
+): number =>
+  messageIndex +
+  (snapshot.readMarker && snapshot.readMarker.insertionIndex <= messageIndex
+    ? 1
+    : 0);
 
-const chronologicalMessages = (data: ChatMessagesData): ChatMessage[] => {
-  const seen = new Set<string>();
-  return [...data.pages]
-    .reverse()
-    .flatMap((page) => page.messages)
-    .filter((message) => {
-      if (seen.has(message.id)) {
-        return false;
-      }
-      seen.add(message.id);
-      return true;
-    });
+/**
+ * Keeps one common message at the same absolute Virtuoso index when a driver
+ * replaces the bounded snapshot.
+ */
+const preservedFirstItemIndex = (
+  current: ChatMessageWindow | undefined,
+  incoming: ChatMessageWindow,
+  currentFirstItemIndex: number,
+): number => {
+  if (!current) {
+    return VIRTUOSO_INDEX_ANCHOR;
+  }
+
+  const incomingIndexById = new Map(
+    incoming.messages.map((message, index) => [message.id, index]),
+  );
+  for (
+    let currentIndex = 0;
+    currentIndex < current.messages.length;
+    currentIndex += 1
+  ) {
+    const incomingIndex = incomingIndexById.get(
+      current.messages[currentIndex].id,
+    );
+    if (incomingIndex === undefined) {
+      continue;
+    }
+    return (
+      currentFirstItemIndex +
+      rowIndexForMessage(current, currentIndex) -
+      rowIndexForMessage(incoming, incomingIndex)
+    );
+  }
+
+  return VIRTUOSO_INDEX_ANCHOR;
 };
 
 export const useChatMessages = (
   ref: ChatRef,
-  options?: UseChatMessagesOptions,
+  options: UseChatMessagesOptions,
 ): UseChatMessagesResult => {
-  const chatKey = `${ref.accountId}:${ref.chatId}`;
-  const enabled = options?.enabled ?? true;
+  const chatKey = ref.accountId + ":" + ref.chatId;
+  const enabled = options.enabled ?? true;
   const queryClient = useQueryClient();
   const openingRequestId = useRef(0);
-  const paginationRequest = useRef<Promise<unknown> | null>(null);
-  const windowVersion = useRef(0);
-  const firstItemIndexState = useRef<FirstItemIndexState>({
-    chatKey: null,
-    windowVersion: -1,
-    initialPageSizeBaseline: null,
+  const paginationRequest = useRef<Promise<void> | null>(null);
+  const staleSnapshotRefetchScheduled = useRef(false);
+  const mounted = useRef(true);
+  const [paginationDirection, setPaginationDirection] = useState<
+    "older" | "newer" | null
+  >(null);
+  const frozenMarker = useRef({
+    chatKey,
+    captured: false,
+    eventId: null as string | null,
   });
+
+  if (frozenMarker.current.chatKey !== chatKey) {
+    frozenMarker.current = {
+      chatKey,
+      captured: false,
+      eventId: null,
+    };
+  }
+  if (enabled && !frozenMarker.current.captured) {
+    frozenMarker.current.captured = true;
+    frozenMarker.current.eventId = options.readMarkerEventId;
+  }
+
+  const frozenReadMarkerEventId = frozenMarker.current.eventId;
+  const queryEnabled = enabled && frozenMarker.current.captured;
+  const queryKey = chatKeys.messages(ref);
+
+  const openStableWindow = useCallback(
+    async (anchorEventId?: string) => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const eventVersion = getChatMessageEventVersion(ref);
+        const snapshot = await getRegistry()
+          .get(ref.accountId)
+          .openChatMessageWindow({
+            chatId: ref.chatId,
+            anchorEventId,
+            readMarkerEventId: frozenReadMarkerEventId,
+            limit: CHAT_PAGE_SIZE,
+          });
+        if (eventVersion === getChatMessageEventVersion(ref)) {
+          return { snapshot, eventVersion };
+        }
+      }
+      throw new Error("The chat timeline changed while its window was opening");
+    },
+    [frozenReadMarkerEventId, ref.accountId, ref.chatId],
+  );
 
   const query = useInfiniteQuery<
     ChatMessageWindow,
@@ -114,115 +175,173 @@ export const useChatMessages = (
     ReturnType<typeof chatKeys.messages>,
     ChatPageParam
   >({
-    queryKey: chatKeys.messages(ref),
-    queryFn: ({ pageParam }) =>
-      getRegistry()
-        .get(ref.accountId)
-        .getChatMessages(toMessageWindowRequest(ref.chatId, pageParam)),
+    queryKey,
+    queryFn: async () => {
+      const { snapshot: incoming, eventVersion } = await openStableWindow();
+      const current = queryClient.getQueryData<ChatMessagesData>(
+        chatKeys.messages(ref),
+      )?.pages[0];
+      return tagChatMessageWindowEventVersion(
+        mergeChatMessageWindowSnapshot(current, incoming, "replace"),
+        eventVersion,
+      );
+    },
     initialPageParam: INITIAL_PAGE_PARAM,
-    getNextPageParam: (lastPage) =>
-      lastPage.olderCursor
-        ? { cursor: lastPage.olderCursor, direction: "older" as const }
-        : undefined,
-    getPreviousPageParam: (firstPage) =>
-      firstPage.newerCursor
-        ? { cursor: firstPage.newerCursor, direction: "newer" as const }
-        : undefined,
-    enabled,
+    getNextPageParam: () => undefined,
+    getPreviousPageParam: () => undefined,
+    enabled: queryEnabled,
     staleTime: Infinity,
     gcTime: Infinity,
+    refetchOnMount: "always",
+    structuralSharing: (oldData, newData) => {
+      const previousData = oldData as ChatMessagesData | undefined;
+      const nextData = newData as ChatMessagesData;
+      const snapshotVersion = getChatMessageWindowEventVersion(
+        nextData.pages[0],
+      );
+      if (
+        snapshotVersion !== undefined &&
+        snapshotVersion !== getChatMessageEventVersion(ref)
+      ) {
+        if (!staleSnapshotRefetchScheduled.current) {
+          staleSnapshotRefetchScheduled.current = true;
+          queueMicrotask(() => {
+            staleSnapshotRefetchScheduled.current = false;
+            void queryClient.invalidateQueries({
+              queryKey: chatKeys.messages(ref),
+              exact: true,
+              refetchType: "active",
+            });
+          });
+        }
+        return previousData ?? nextData;
+      }
+      return nextData;
+    },
     meta: { noGlobalError: true },
   });
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    paginationRequest.current = null;
+    setPaginationDirection(null);
+    return () => {
+      mounted.current = false;
       openingRequestId.current += 1;
-      queryClient.removeQueries({
-        queryKey: chatKeys.messages(ref),
-        exact: true,
-      });
+    };
+  }, [ref.accountId, ref.chatId]);
+
+  const data = query.data;
+  const snapshot = data?.pages[0];
+  const messages = snapshot?.messages ?? [];
+  const authorsById = useMemo(
+    () =>
+      new Map((snapshot?.authors ?? []).map((author) => [author.id, author])),
+    [snapshot?.authors],
+  );
+
+  const commitWindow = useCallback(
+    (
+      incoming: ChatMessageWindow,
+      mode: ChatMessageWindowMergeMode,
+      expectedWindowId?: string,
+    ): boolean => {
+      let committed = false;
+      queryClient.setQueryData<ChatMessagesData>(
+        chatKeys.messages(ref),
+        (current) => {
+          const currentSnapshot = current?.pages[0];
+          if (
+            expectedWindowId &&
+            currentSnapshot?.windowId !== expectedWindowId
+          ) {
+            return current;
+          }
+          const merged = mergeChatMessageWindowSnapshot(
+            currentSnapshot,
+            incoming,
+            mode,
+          );
+          const currentFirstItemIndex =
+            current?.pageParams[0]?.firstItemIndex ?? VIRTUOSO_INDEX_ANCHOR;
+          committed = true;
+          return {
+            pages: [merged],
+            pageParams: [
+              {
+                firstItemIndex: preservedFirstItemIndex(
+                  currentSnapshot,
+                  merged,
+                  currentFirstItemIndex,
+                ),
+              },
+            ],
+          };
+        },
+      );
+      return committed;
     },
     [queryClient, ref.accountId, ref.chatId],
   );
 
-  const data = query.data;
-  const messages = useMemo(
-    () => (data ? chronologicalMessages(data) : []),
-    [data],
-  );
-  const authorsById = useMemo(() => {
-    const authors = new Map<string, ChatMessageAuthor>();
-    data?.pages.forEach((page) => {
-      page.authors.forEach((author) => authors.set(author.id, author));
-    });
-    return authors;
-  }, [data]);
-  const initialPageIndex =
-    data?.pageParams.findIndex((param) => param.direction === "initial") ?? -1;
-  const initialPage =
-    initialPageIndex >= 0 ? data?.pages[initialPageIndex] : undefined;
-  const resolvedFirstUnreadMessageId = useMemo(() => {
-    const currentBoundaryId = options?.readBoundaryId;
-    const windowTarget =
-      data?.pages.find(
-        (page) =>
-          page.firstUnreadMessageId &&
-          (!currentBoundaryId || page.readBoundaryId === currentBoundaryId),
-      )?.firstUnreadMessageId ?? null;
-    if (!currentBoundaryId) {
-      return windowTarget;
-    }
-    const boundaryIndex = messages.findIndex(
-      (message) => message.id === currentBoundaryId,
-    );
-    if (boundaryIndex < 0) {
-      // Matrix's persistent boundary need not itself be a rendered bubble.
-      return windowTarget;
-    }
-    return (
-      messages
-        .slice(boundaryIndex + 1)
-        .find((message) => message.authorId !== "me" && !message.isDeleted)
-        ?.id ?? null
-    );
-  }, [data?.pages, messages, options?.readBoundaryId]);
-
-  const trackPagination = useCallback((request: Promise<unknown>) => {
-    paginationRequest.current = request;
-    const release = () => {
-      if (paginationRequest.current === request) {
-        paginationRequest.current = null;
+  const paginate = useCallback(
+    (direction: "older" | "newer") => {
+      if (paginationRequest.current) {
+        return;
       }
-    };
-    void request.then(release, release);
-  }, []);
+      const current = queryClient.getQueryData<ChatMessagesData>(
+        chatKeys.messages(ref),
+      )?.pages[0];
+      if (
+        !current ||
+        (direction === "older" ? !current.hasOlder : !current.hasNewer)
+      ) {
+        return;
+      }
 
-  const fetchOlder = useCallback(() => {
-    if (
-      !query.hasNextPage ||
-      query.isFetchingNextPage ||
-      query.isFetchingPreviousPage ||
-      paginationRequest.current
-    ) {
-      return;
-    }
-    trackPagination(query.fetchNextPage({ cancelRefetch: false }));
-  }, [query, trackPagination]);
+      setPaginationDirection(direction);
+      const driver = getRegistry().get(ref.accountId);
+      const request = (async () => {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const eventVersion = getChatMessageEventVersion(ref);
+          const incoming = await driver.paginateChatMessageWindow({
+            chatId: ref.chatId,
+            windowId: current.windowId,
+            direction,
+            limit: CHAT_PAGE_SIZE,
+          });
+          if (!incoming) {
+            return;
+          }
+          if (eventVersion === getChatMessageEventVersion(ref)) {
+            commitWindow(incoming, direction, current.windowId);
+            return;
+          }
+        }
+      })()
+        .catch(() => undefined)
+        .finally(() => {
+          if (paginationRequest.current === request) {
+            paginationRequest.current = null;
+            if (mounted.current) {
+              setPaginationDirection(null);
+            }
+          }
+        });
+      paginationRequest.current = request;
+    },
+    [commitWindow, queryClient, ref.accountId, ref.chatId],
+  );
 
-  const fetchNewer = useCallback(() => {
-    if (
-      !query.hasPreviousPage ||
-      query.isFetchingPreviousPage ||
-      query.isFetchingNextPage ||
-      paginationRequest.current
-    ) {
-      return;
-    }
-    trackPagination(query.fetchPreviousPage({ cancelRefetch: false }));
-  }, [query, trackPagination]);
+  const fetchOlder = useCallback(() => paginate("older"), [paginate]);
+  const fetchNewer = useCallback(() => paginate("newer"), [paginate]);
 
-  const openFirstUnread =
-    useCallback(async (): Promise<OpenFirstUnreadResult> => {
+  const openReadMarker =
+    useCallback(async (): Promise<OpenReadMarkerResult> => {
+      if (!frozenReadMarkerEventId) {
+        return { status: "unavailable" };
+      }
+
       const requestId = openingRequestId.current + 1;
       openingRequestId.current = requestId;
       await queryClient.cancelQueries({
@@ -231,125 +350,53 @@ export const useChatMessages = (
       });
 
       try {
-        let window: ChatMessageWindow | null = null;
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          const boundaryAtStart = queryClient.getQueryData<
-            Record<string, ChatUnread>
-          >(chatKeys.unreadOf(ref.accountId))?.[ref.chatId]
-            ?.mainTimelineReadBoundaryId;
-          const resolved = await getRegistry()
-            .get(ref.accountId)
-            .getChatMessages({
-              chatId: ref.chatId,
-              limit: CHAT_PAGE_SIZE,
-              anchor: "first-unread",
-            });
-          const boundaryNow = queryClient.getQueryData<
-            Record<string, ChatUnread>
-          >(chatKeys.unreadOf(ref.accountId))?.[ref.chatId]
-            ?.mainTimelineReadBoundaryId;
-          if (boundaryNow === boundaryAtStart) {
-            window = resolved;
-            break;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const { snapshot: incoming, eventVersion } = await openStableWindow(
+            frozenReadMarkerEventId,
+          );
+          if (openingRequestId.current !== requestId) {
+            return { status: "unavailable" };
           }
+          if (incoming.readMarker?.eventId !== frozenReadMarkerEventId) {
+            return { status: "unavailable" };
+          }
+          if (eventVersion !== getChatMessageEventVersion(ref)) {
+            continue;
+          }
+          commitWindow(incoming, "replace");
+          return { status: "opened" };
         }
-        if (openingRequestId.current !== requestId) {
-          return {
-            status: "error",
-            error: new Error("Unread navigation was superseded."),
-          };
-        }
-        if (!window) {
-          return { status: "unavailable" };
-        }
-        if (window.anchorStatus === "none") {
-          return { status: "none" };
-        }
-        if (window.anchorStatus === "unavailable") {
-          return { status: "unavailable" };
-        }
-        const firstUnreadId = window.firstUnreadMessageId;
-        if (!firstUnreadId) {
-          return { status: "none" };
-        }
-
-        windowVersion.current += 1;
-        queryClient.setQueryData<ChatMessagesData>(chatKeys.messages(ref), {
-          pages: [window],
-          pageParams: [INITIAL_PAGE_PARAM],
-        });
-        queryClient.setQueryData<Record<string, ChatUnread>>(
-          chatKeys.unreadOf(ref.accountId),
-          (current) =>
-            current?.[ref.chatId]
-              ? {
-                  ...current,
-                  [ref.chatId]: {
-                    ...current[ref.chatId],
-                    mainTimelineReadBoundaryId: window.readBoundaryId,
-                  },
-                }
-              : current,
-        );
-        return { status: "opened", firstUnreadMessageId: firstUnreadId };
+        return { status: "unavailable" };
       } catch (error) {
         return { status: "error", error };
       }
-    }, [queryClient, ref.accountId, ref.chatId]);
-
-  const firstItemIndex = useMemo(() => {
-    const state = firstItemIndexState.current;
-    if (
-      state.chatKey !== chatKey ||
-      state.windowVersion !== windowVersion.current
-    ) {
-      state.chatKey = chatKey;
-      state.windowVersion = windowVersion.current;
-      state.initialPageSizeBaseline = null;
-    }
-
-    const pages = data?.pages ?? [];
-    const pageParams = data?.pageParams ?? [];
-    const initialIndex = pageParams.findIndex(
-      (param) => param.direction === "initial",
-    );
-    const initialPageSize = pages[initialIndex]?.messages.length;
-    if (initialPageSize === undefined) {
-      return VIRTUOSO_INDEX_ANCHOR;
-    }
-    if (
-      state.initialPageSizeBaseline === null ||
-      initialPageSize < state.initialPageSizeBaseline
-    ) {
-      state.initialPageSizeBaseline = initialPageSize;
-    }
-    const olderMessagesCount = pages.reduce(
-      (total, page, index) =>
-        pageParams[index]?.direction === "older"
-          ? total + page.messages.length
-          : total,
-      0,
-    );
-    return (
-      VIRTUOSO_INDEX_ANCHOR - state.initialPageSizeBaseline - olderMessagesCount
-    );
-  }, [chatKey, data?.pageParams, data?.pages]);
+    }, [
+      commitWindow,
+      frozenReadMarkerEventId,
+      openStableWindow,
+      queryClient,
+      ref.accountId,
+      ref.chatId,
+    ]);
 
   return {
     messages,
     authorsById,
-    readBoundaryId: initialPage?.readBoundaryId ?? null,
-    firstUnreadMessageId: resolvedFirstUnreadMessageId,
-    anchorStatus: initialPage?.anchorStatus ?? null,
-    hasOlder: Boolean(query.hasNextPage),
-    hasNewer: Boolean(query.hasPreviousPage),
-    isFetchingOlder: query.isFetchingNextPage,
-    isFetchingNewer: query.isFetchingPreviousPage,
-    isInitialLoading: !enabled || query.isPending,
+    windowId: snapshot?.windowId ?? null,
+    readMarker: snapshot?.readMarker ?? null,
+    frozenReadMarkerEventId,
+    hasOlder: snapshot?.hasOlder ?? false,
+    hasNewer: snapshot?.hasNewer ?? false,
+    isFetchingOlder: paginationDirection === "older",
+    isFetchingNewer: paginationDirection === "newer",
+    // Cached snapshots belong to an earlier visit. Wait until this observer's
+    // forced live open has settled before exposing rows or viewport receipts.
+    isInitialLoading: !queryEnabled || !query.isFetchedAfterMount,
     isError: query.isError,
-    firstItemIndex,
+    firstItemIndex:
+      data?.pageParams[0]?.firstItemIndex ?? VIRTUOSO_INDEX_ANCHOR,
     fetchOlder,
     fetchNewer,
-    openFirstUnread,
+    openReadMarker,
   };
 };

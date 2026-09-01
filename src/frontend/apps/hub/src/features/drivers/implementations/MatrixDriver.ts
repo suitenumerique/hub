@@ -1,6 +1,7 @@
 import {
   ClientEvent,
   EventTimeline,
+  EventStatus,
   EventType,
   type IRoomTimelineData,
   KnownMembership,
@@ -9,7 +10,6 @@ import {
   type MatrixEvent,
   MatrixEventEvent,
   MsgType,
-  NotificationCountType,
   Preset,
   ReceiptType,
   RelationType,
@@ -24,6 +24,7 @@ import {
   ThreadEvent,
 } from "matrix-js-sdk/lib/matrix";
 import { HttpApiEvent } from "matrix-js-sdk/lib/http-api";
+import { TimelineWindow } from "matrix-js-sdk/lib/timeline-window";
 import {
   type ReactionEventContent,
   type RoomMessageEventContent,
@@ -47,6 +48,7 @@ import {
   getUserIdFromAccessToken,
 } from "@/features/matrix/utils/auth";
 import {
+  AdvanceMainReadParams,
   ChatConnectionState,
   ChatEvent,
   ChatEventListener,
@@ -56,10 +58,10 @@ import {
   Driver,
   EditChatMessageParams,
   GetChatThreadParams,
-  GetChatMessagesParams,
-  MarkChatReadParams,
   MarkChatReadResult,
   MarkChatThreadReadParams,
+  OpenChatMessageWindowParams,
+  PaginateChatMessageWindowParams,
   RemoveChatFromHistoryResult,
   SendChatMessageParams,
   SendChatTypingParams,
@@ -88,7 +90,6 @@ import {
 import {
   authorForSender,
   buildAuthors,
-  computeRoomUnread,
   fetchReactionSnapshot,
   forgetThreadReply,
   getThreadReplyCounter,
@@ -121,9 +122,10 @@ import {
   participantSetKey,
   roomOtherMembers,
 } from "./matrixRoomMapping";
-/** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
+/** Matches Matrix pagination requests; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
-const MAX_TIMELINE_PAGINATION_REQUESTS = 20;
+const INITIAL_TIMELINE_WINDOW_SIZE = 30;
+const MAX_TIMELINE_WINDOW_SIZE = 1000;
 const MATRIX_TYPING_TIMEOUT_MS = 30_000;
 
 // A generous fetch limit is requested from the user directory and the filtered
@@ -182,14 +184,6 @@ const isRecoverableMatrixPaginationError = (error: unknown): boolean => {
   return error.httpStatus === 403 || error.httpStatus === 404;
 };
 
-const assertCanPaginateTimeline = (chatId: string, attempt: number): void => {
-  if (attempt >= MAX_TIMELINE_PAGINATION_REQUESTS) {
-    throw new Error(
-      `MatrixDriver.getChatMessages: room "${chatId}" exceeds the pagination safety limit.`,
-    );
-  }
-};
-
 const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   userId: user.mxId,
   accessToken: user.accessToken,
@@ -231,11 +225,21 @@ type PersistedRedactedThreadReply = Pick<
 > & { rootEventId: string };
 
 type TimelineDirection = "older" | "newer";
-type TimelinePaginationSession = WeakMap<EventTimeline, Set<TimelineDirection>>;
 type TimelineEventOrdering = "before" | "same" | "after" | "unknown";
-type FirstUnreadSearch = {
-  boundaryFound: boolean;
-  eventId: string | null;
+type MessageWindowGeneration = {
+  generation: number;
+  windowId: string;
+  readMarkerEventId: string | null;
+  exhausted: Set<TimelineDirection>;
+  atLiveEnd: boolean;
+};
+type MessageWindowSession = {
+  client: MatrixClient;
+  room: Room;
+  window: TimelineWindow;
+  requestedGeneration: number;
+  current: MessageWindowGeneration | null;
+  operation: Promise<void>;
 };
 
 /**
@@ -285,22 +289,16 @@ export class MatrixDriver extends Driver {
    * browser, so credentials must not be keyed only by account id.
    */
   private storageOwner: string | null = null;
-  /** Serializes per-room marker writes so stale requests cannot win a race. */
+  /** One SDK timeline window per room/client; only its snapshots cross Driver. */
+  private messageWindowSessions = new Map<string, MessageWindowSession>();
+  private nextMessageWindowGeneration = 0;
+  /** Serializes per-room read writes so stale requests cannot win a race. */
   private mainReadMarkerQueues = new Map<string, Promise<MarkChatReadResult>>();
   /**
-   * Server-confirmed markers waiting for their room account-data echo. The SDK
-   * locally echoes read receipts but not `m.fully_read`, so consulting only the
-   * Room immediately after a write would temporarily reopen the old boundary.
+   * Successful local markers waiting for their room account-data echo. They
+   * stay authoritative over a delayed echo of an older `m.fully_read`.
    */
-  private confirmedMainReadBoundaries = new Map<string, string>();
-  /** Optimistic counts kept outside the Matrix SDK's mutable room snapshot. */
-  private mainReadCountProjections = new Map<
-    string,
-    {
-      liveEndId: string | null;
-      remainingCount: number;
-    }
-  >();
+  private pendingMainFullyRead = new Map<string, string>();
 
   constructor(
     accountId: AccountId = "matrix-local",
@@ -474,10 +472,10 @@ export class MatrixDriver extends Driver {
     const selfUserId = mx.getUserId() ?? undefined;
     const wanted = participantSetKey(userIds);
     // Gate on the server-confirmed joined set (like getChats/getChat/
-    // getChatMessages), not `getMyMembership()`: a stale room restored from
-    // IndexedDB after a homeserver reset can still report membership "join"
-    // locally, and must not resolve as an existing conversation (its getChat
-    // would then throw "not joined" and block creating a fresh one).
+    // openChatMessageWindow), not `getMyMembership()`: a stale room restored
+    // from IndexedDB after a homeserver reset can still report membership
+    // "join" locally, and must not resolve as an existing conversation (its
+    // getChat would then throw "not joined" and block creating a fresh one).
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     const match = mx
       .getVisibleRooms()
@@ -589,7 +587,7 @@ export class MatrixDriver extends Driver {
   async acceptChatInvitation(chatId: string): Promise<LocalChat> {
     const mx = this.requireClient("acceptChatInvitation");
     await mx.joinRoom(chatId);
-    // Drop the cached joined set so the conversation's first `getChatMessages`
+    // Drop the cached joined set so the first `openChatMessageWindow`
     // re-reads `/joined_rooms` and sees the room as joined (it isn't in the
     // stale cache captured while the room was still an invite).
     this.joinedRoomIds = null;
@@ -759,7 +757,10 @@ export class MatrixDriver extends Driver {
     event: MatrixEvent,
     selfUserId: string | undefined,
   ): ChatMessage {
-    const message = matrixEventToChatMessage(event, room, selfUserId);
+    const mappedMessage = matrixEventToChatMessage(event, room, selfUserId);
+    const message = event.status
+      ? { ...mappedMessage, isPending: true }
+      : mappedMessage;
     const eventId = event.getId();
     if (!eventId) {
       return message;
@@ -789,133 +790,69 @@ export class MatrixDriver extends Driver {
     };
   }
 
-  /** Ordered timelines connected to the one containing an anchor event. */
-  private timelineChain(timeline: EventTimeline): EventTimeline[] {
-    let oldest = timeline;
-    const seen = new Set<EventTimeline>();
-    while (
-      oldest.getNeighbouringTimeline(EventTimeline.BACKWARDS) &&
-      !seen.has(oldest)
-    ) {
-      seen.add(oldest);
-      oldest = oldest.getNeighbouringTimeline(EventTimeline.BACKWARDS)!;
-    }
-
-    const chain: EventTimeline[] = [];
-    let current: EventTimeline | null = oldest;
-    while (current && !chain.includes(current)) {
-      chain.push(current);
-      current = current.getNeighbouringTimeline(EventTimeline.FORWARDS);
-    }
-    return chain;
-  }
-
-  private timelineEdge(
-    timeline: EventTimeline,
-    direction: TimelineDirection,
-  ): EventTimeline {
-    const chain = this.timelineChain(timeline);
-    return direction === "older" ? chain[0] : chain[chain.length - 1];
-  }
-
-  /** Main-timeline bubbles in chronological order across a connected chain. */
-  private loadedMainTimelineEvents(
-    chatId: string,
-    timeline: EventTimeline,
-  ): MatrixEvent[] {
-    const ids = new Set<string>();
-    return this.timelineChain(timeline)
-      .flatMap((item) => item.getEvents())
-      .filter((event) => {
-        const eventId = event.getId();
-        if (
-          !eventId ||
-          ids.has(eventId) ||
-          !isMainTimelineMessage(event) ||
-          this.isRedactedThreadReply(chatId, event)
-        ) {
-          return false;
-        }
-        ids.add(eventId);
-        return true;
-      });
-  }
-
-  private canPaginateTimeline(
-    timeline: EventTimeline,
-    direction: TimelineDirection,
-    paginationSession: TimelinePaginationSession,
-  ): boolean {
-    const edge = this.timelineEdge(timeline, direction);
-    const exhausted = paginationSession.get(edge);
-    const matrixDirection =
-      direction === "older" ? EventTimeline.BACKWARDS : EventTimeline.FORWARDS;
-    return (
-      !exhausted?.has(direction) &&
-      edge.getPaginationToken(matrixDirection) !== null
-    );
-  }
-
-  private markTimelineExhausted(
-    timeline: EventTimeline,
-    direction: TimelineDirection,
-    paginationSession: TimelinePaginationSession,
-  ): void {
-    const edge = this.timelineEdge(timeline, direction);
-    const exhausted = paginationSession.get(edge) ?? new Set();
-    exhausted.add(direction);
-    paginationSession.set(edge, exhausted);
-  }
-
-  /**
-   * Extends one side of a contextual timeline. `matrix-js-sdk` can leave a
-   * pagination token in place after returning `false`, so exhaustion is
-   * remembered only for the current window request. A later request may then
-   * reuse a forward token after `/sync` has connected a previously gappy chain.
-   */
-  private async paginateTimeline(
-    mx: MatrixClient,
-    timeline: EventTimeline,
-    direction: TimelineDirection,
-    limit: number,
-    paginationSession: TimelinePaginationSession,
-  ): Promise<boolean> {
-    if (!this.canPaginateTimeline(timeline, direction, paginationSession)) {
-      return false;
-    }
-    const edge = this.timelineEdge(timeline, direction);
-    const matrixDirection =
-      direction === "older" ? EventTimeline.BACKWARDS : EventTimeline.FORWARDS;
-    const previousToken = edge.getPaginationToken(matrixDirection);
-    let more: boolean;
-    try {
-      more = await mx.paginateEventTimeline(edge, {
-        backwards: direction === "older",
-        limit,
-      });
-    } catch (error) {
-      if (!isRecoverableMatrixPaginationError(error)) {
-        throw error;
-      }
-      this.markTimelineExhausted(timeline, direction, paginationSession);
-      return false;
-    }
-    this.restoreRedactedThreadReplies(mx);
-    const nextEdge = this.timelineEdge(timeline, direction);
-    const nextToken = nextEdge.getPaginationToken(matrixDirection);
-    if (!more || (nextEdge === edge && nextToken === previousToken)) {
-      this.markTimelineExhausted(timeline, direction, paginationSession);
-      return false;
-    }
-    return true;
-  }
-
-  private async mapMessageWindow(
+  private getMessageWindowSession(
     mx: MatrixClient,
     room: Room,
-    pageEvents: MatrixEvent[],
-    window: Omit<ChatMessageWindow, "messages" | "authors">,
+  ): MessageWindowSession {
+    const existing = this.messageWindowSessions.get(room.roomId);
+    if (existing?.client === mx && existing.room === room) {
+      return existing;
+    }
+    const session: MessageWindowSession = {
+      client: mx,
+      room,
+      window: new TimelineWindow(mx, room.getUnfilteredTimelineSet(), {
+        windowLimit: MAX_TIMELINE_WINDOW_SIZE,
+      }),
+      requestedGeneration: 0,
+      current: null,
+      operation: Promise.resolve(),
+    };
+    this.messageWindowSessions.set(room.roomId, session);
+    return session;
+  }
+
+  private serializeMessageWindowOperation<T>(
+    session: MessageWindowSession,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const request = session.operation.then(operation, operation);
+    session.operation = request.then(
+      () => undefined,
+      () => undefined,
+    );
+    return request;
+  }
+
+  private visibleMessageEvents(
+    chatId: string,
+    rawEvents: MatrixEvent[],
+  ): Array<{ event: MatrixEvent; rawIndex: number }> {
+    const seen = new Set<string>();
+    return rawEvents.flatMap((event, rawIndex) => {
+      const eventId = event.getId();
+      if (
+        !eventId ||
+        seen.has(eventId) ||
+        (event.status && event.status !== EventStatus.SENT) ||
+        !isMainTimelineMessage(event) ||
+        this.isRedactedThreadReply(chatId, event)
+      ) {
+        return [];
+      }
+      seen.add(eventId);
+      return [{ event, rawIndex }];
+    });
+  }
+
+  private async snapshotMessageWindow(
+    session: MessageWindowSession,
+    generation: MessageWindowGeneration,
   ): Promise<ChatMessageWindow> {
+    const { client: mx, room, window } = session;
+    const rawEvents = window.getEvents();
+    const visibleEvents = this.visibleMessageEvents(room.roomId, rawEvents);
+    const pageEvents = visibleEvents.map(({ event }) => event);
     const selfUserId = mx.getUserId() ?? undefined;
     const mappedMessages = pageEvents.map((event) =>
       this.messageWithThreadOverlay(room, event, selfUserId),
@@ -931,225 +868,213 @@ export class MatrixDriver extends Driver {
         ),
       ),
     );
+    const markerRawIndex = generation.readMarkerEventId
+      ? rawEvents.findIndex(
+          (event) => event.getId() === generation.readMarkerEventId,
+        )
+      : -1;
+    const matrixOlder = EventTimeline.BACKWARDS;
+    const matrixNewer = EventTimeline.FORWARDS;
+    const hasOlder =
+      !generation.exhausted.has("older") && window.canPaginate(matrixOlder);
+    const hasNewer =
+      !generation.exhausted.has("newer") && window.canPaginate(matrixNewer);
+    generation.atLiveEnd = !hasNewer;
+    const markerInsertionIndex =
+      markerRawIndex >= 0
+        ? visibleEvents.filter(({ rawIndex }) => rawIndex <= markerRawIndex)
+            .length
+        : -1;
     return {
-      ...window,
+      windowId: generation.windowId,
       messages,
       authors: buildAuthors(room, pageEvents, selfUserId),
+      readMarker:
+        generation.readMarkerEventId &&
+        markerInsertionIndex >= 0
+          ? {
+              eventId: generation.readMarkerEventId,
+              insertionIndex: markerInsertionIndex,
+            }
+          : null,
+      hasOlder,
+      hasNewer,
     };
   }
 
-  private async latestMessageWindow(
-    mx: MatrixClient,
-    room: Room,
-    limit: number,
-    anchorStatus: ChatMessageWindow["anchorStatus"] = "none",
-  ): Promise<ChatMessageWindow> {
-    const paginationSession: TimelinePaginationSession = new WeakMap();
-    const timeline = room.getLiveTimeline();
-    for (let page = 0; ; page += 1) {
-      let events = this.loadedMainTimelineEvents(room.roomId, timeline);
-      if (events.length >= limit) {
-        const pageEvents = events.slice(-limit);
-        const hasOlder =
-          events.length > pageEvents.length ||
-          this.canPaginateTimeline(timeline, "older", paginationSession);
-        const readBoundaryId = this.personalReadBoundaryOrNull(
-          room,
-          mx.getUserId(),
-        );
-        return this.mapMessageWindow(mx, room, pageEvents, {
-          readBoundaryId,
-          firstUnreadMessageId: this.firstUnreadMessageIdInPage(
-            room,
-            timeline,
-            readBoundaryId,
-            mx.getUserId(),
-          ),
-          olderCursor: hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
-          newerCursor: null,
-          anchorStatus,
-        });
-      }
-      assertCanPaginateTimeline(room.roomId, page);
-      const hasMore = await this.paginateTimeline(
-        mx,
-        timeline,
-        "older",
-        limit,
-        paginationSession,
+  async openChatMessageWindow({
+    chatId,
+    anchorEventId,
+    readMarkerEventId,
+    limit = INITIAL_TIMELINE_WINDOW_SIZE,
+  }: OpenChatMessageWindowParams): Promise<ChatMessageWindow> {
+    const mx = this.requireClient("openChatMessageWindow");
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (!joinedRoomIds.has(chatId)) {
+      throw new Error(
+        `MatrixDriver.openChatMessageWindow: room "${chatId}" is not joined.`,
       );
-      if (!hasMore) {
-        events = this.loadedMainTimelineEvents(room.roomId, timeline);
-        const pageEvents = events.slice(-limit);
-        const hasOlder = events.length > pageEvents.length;
-        const readBoundaryId = this.personalReadBoundaryOrNull(
-          room,
-          mx.getUserId(),
-        );
-        return this.mapMessageWindow(mx, room, pageEvents, {
-          readBoundaryId,
-          firstUnreadMessageId: this.firstUnreadMessageIdInPage(
-            room,
-            timeline,
-            readBoundaryId,
-            mx.getUserId(),
-          ),
-          olderCursor: hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
-          newerCursor: null,
-          anchorStatus,
-        });
-      }
     }
-  }
-
-  private persistedMainReadBoundaries(room: Room, userId: string): string[] {
-    const fullyRead = room
-      .getAccountData(ReceiptType.FullyRead)
-      ?.getContent<{ event_id?: string }>().event_id;
-    const publicReceipt = room.getReadReceiptForUserId(
-      userId,
-      false,
-      ReceiptType.Read,
-    );
-    const privateReceipt = room.getReadReceiptForUserId(
-      userId,
-      false,
-      ReceiptType.ReadPrivate,
-    );
-    const mainReceipts = [publicReceipt, privateReceipt].filter(
-      (receipt) =>
-        receipt &&
-        (!receipt.data.thread_id || receipt.data.thread_id === "main"),
-    );
-    mainReceipts.sort((left, right) =>
-      left!.data.ts === right!.data.ts
-        ? left === publicReceipt
-          ? -1
-          : 1
-        : left!.data.ts - right!.data.ts,
-    );
-    return [
-      ...(fullyRead ? [fullyRead] : []),
-      ...mainReceipts.map((receipt) => receipt!.eventId),
-      ...(this.confirmedMainReadBoundaries.get(room.roomId)
-        ? [this.confirmedMainReadBoundaries.get(room.roomId)!]
-        : []),
-    ].filter((eventId, index, all) => all.indexOf(eventId) === index);
-  }
-
-  private personalReadBoundary(room: Room, userId: string): string | null {
-    return this.persistedMainReadBoundaries(room, userId).reduce<string | null>(
-      (furthest, candidate) => {
-        if (!furthest) {
-          return candidate;
+    const room = mx.getRoom(chatId);
+    if (!room) {
+      throw new Error(
+        `MatrixDriver.openChatMessageWindow: room "${chatId}" not found.`,
+      );
+    }
+    const session = this.getMessageWindowSession(mx, room);
+    const generationNumber = this.nextMessageWindowGeneration + 1;
+    this.nextMessageWindowGeneration = generationNumber;
+    session.requestedGeneration = generationNumber;
+    const generation: MessageWindowGeneration = {
+      generation: generationNumber,
+      windowId: `${this.accountId}:${chatId}:${generationNumber}`,
+      readMarkerEventId,
+      exhausted: new Set(),
+      atLiveEnd: anchorEventId === undefined,
+    };
+    const windowSize = Math.min(MAX_TIMELINE_WINDOW_SIZE, Math.max(1, limit));
+    return this.serializeMessageWindowOperation(session, async () => {
+      const previousGeneration = session.current;
+      session.current = generation;
+      try {
+        await session.window.load(anchorEventId, windowSize);
+      } catch (error) {
+        if (
+          session.current === generation &&
+          session.requestedGeneration === generation.generation
+        ) {
+          session.current = previousGeneration;
+          session.requestedGeneration = previousGeneration?.generation ?? 0;
         }
-        const ordering = room.compareEventOrdering(furthest, candidate);
-        return ordering !== null && ordering >= 0 ? furthest : candidate;
-      },
-      null,
-    );
-  }
-
-  private personalReadBoundaryOrNull(
-    room: Room,
-    userId: string | null,
-  ): string | null {
-    return userId ? this.personalReadBoundary(room, userId) : null;
-  }
-
-  private unreadSnapshot(
-    room: Room,
-    selfUserId: string | undefined,
-  ): ChatUnread {
-    const boundaryId = selfUserId
-      ? this.personalReadBoundary(room, selfUserId)
-      : null;
-    const projectedCount = this.projectedMainUnreadCount(room, selfUserId);
-    return roomUnread(room, selfUserId, boundaryId, projectedCount);
-  }
-
-  private projectedMainUnreadCount(
-    room: Room,
-    selfUserId: string | undefined,
-  ): number | undefined {
-    const projection = this.mainReadCountProjections.get(room.roomId);
-    if (projection) {
-      const liveEvents = this.loadedMainTimelineEvents(
-        room.roomId,
-        room.getLiveTimeline(),
-      );
-      const liveEndIndex = projection.liveEndId
-        ? liveEvents.findIndex(
-            (event) => event.getId() === projection.liveEndId,
-          )
-        : -1;
-      const receivedSinceWrite = liveEvents
-        .slice(liveEndIndex + 1)
-        .filter(
-          (event) => !event.isRedacted() && event.getSender() !== selfUserId,
-        ).length;
-      const projectedCount = projection.remainingCount + receivedSinceWrite;
-      const serverCount = room.getRoomUnreadNotificationCount(
-        NotificationCountType.Total,
-      );
-      if (serverCount <= projectedCount) {
-        this.mainReadCountProjections.delete(room.roomId);
-        return undefined;
+        throw error;
       }
-      return projectedCount;
-    }
-    return undefined;
+      if (
+        this.mx !== mx ||
+        this.messageWindowSessions.get(chatId) !== session
+      ) {
+        throw new Error(
+          "MatrixDriver.openChatMessageWindow: the Matrix client changed during the request.",
+        );
+      }
+      this.restoreRedactedThreadReplies(mx);
+      return this.snapshotMessageWindow(session, generation);
+    });
   }
 
-  private firstUnreadMessageIdInPage(
-    room: Room,
-    timeline: EventTimeline,
-    boundaryId: string | null,
-    selfUserId: string | null,
-  ): string | null {
-    if (!boundaryId || !selfUserId) {
+  async paginateChatMessageWindow({
+    chatId,
+    windowId,
+    direction,
+    limit = DEFAULT_CHAT_PAGE_SIZE,
+  }: PaginateChatMessageWindowParams): Promise<ChatMessageWindow | null> {
+    const mx = this.requireClient("paginateChatMessageWindow");
+    const session = this.messageWindowSessions.get(chatId);
+    const generation = session?.current;
+    if (
+      !session ||
+      session.client !== mx ||
+      !generation ||
+      generation.windowId !== windowId ||
+      session.requestedGeneration !== generation.generation
+    ) {
       return null;
     }
-    const firstUnreadId = this.findFirstUnreadAfter(
-      room,
-      timeline,
-      boundaryId,
-      selfUserId,
-    ).eventId;
-    return firstUnreadId &&
-      this.loadedMainTimelineEvents(room.roomId, timeline).some(
-        (event) => event.getId() === firstUnreadId,
-      )
-      ? firstUnreadId
-      : null;
+    return this.serializeMessageWindowOperation(session, async () => {
+      if (
+        this.mx !== mx ||
+        session.current !== generation ||
+        session.requestedGeneration !== generation.generation ||
+        generation.windowId !== windowId
+      ) {
+        return null;
+      }
+      const matrixDirection =
+        direction === "older"
+          ? EventTimeline.BACKWARDS
+          : EventTimeline.FORWARDS;
+      if (
+        !generation.exhausted.has(direction) &&
+        session.window.canPaginate(matrixDirection)
+      ) {
+        try {
+          const advanced = await session.window.paginate(
+            matrixDirection,
+            Math.min(MAX_TIMELINE_WINDOW_SIZE, Math.max(1, limit)),
+          );
+          if (!advanced) {
+            generation.exhausted.add(direction);
+          }
+        } catch (error) {
+          if (!isRecoverableMatrixPaginationError(error)) {
+            throw error;
+          }
+          generation.exhausted.add(direction);
+        }
+        this.restoreRedactedThreadReplies(mx);
+      }
+      if (
+        this.mx !== mx ||
+        session.current !== generation ||
+        session.requestedGeneration !== generation.generation
+      ) {
+        return null;
+      }
+      const snapshot = await this.snapshotMessageWindow(session, generation);
+      return session.current === generation &&
+        session.requestedGeneration === generation.generation
+        ? snapshot
+        : null;
+    });
   }
 
-  private findFirstUnreadAfter(
-    room: Room,
-    timeline: EventTimeline,
-    boundaryId: string,
-    selfUserId: string,
-  ): FirstUnreadSearch {
-    const chainEvents = this.timelineChain(timeline).flatMap((item) =>
-      item.getEvents(),
+  /** Latest public/private receipt scoped to the room main timeline. */
+  private latestMainReadReceiptId(room: Room, userId: string): string | null {
+    const receipts = [
+      room.getReadReceiptForUserId(userId, false, ReceiptType.Read),
+      room.getReadReceiptForUserId(userId, false, ReceiptType.ReadPrivate),
+    ].flatMap((receipt) => {
+      if (
+        !receipt ||
+        (receipt.data.thread_id && receipt.data.thread_id !== "main")
+      ) {
+        return [];
+      }
+      const event = room.findEventById(receipt.eventId);
+      return !event || !event.threadRootId || event.isThreadRoot
+        ? [receipt]
+        : [];
+    });
+    return (
+      receipts.reduce<(typeof receipts)[number] | null>((latest, candidate) => {
+        if (!latest) {
+          return candidate;
+        }
+        const ordering = room.compareEventOrdering(
+          latest.eventId,
+          candidate.eventId,
+        );
+        if (ordering === null) {
+          return candidate.data.ts > latest.data.ts ? candidate : latest;
+        }
+        return ordering < 0 ? candidate : latest;
+      }, null)?.eventId ?? null
     );
-    const boundaryIndex = chainEvents.findIndex(
-      (event) => event.getId() === boundaryId,
-    );
-    if (boundaryIndex < 0) {
-      return { boundaryFound: false, eventId: null };
-    }
-    const eventId = chainEvents
-      .slice(boundaryIndex + 1)
-      .find(
-        (event) =>
-          isMainTimelineMessage(event) &&
-          !event.isRedacted() &&
-          !this.isRedactedThreadReply(room.roomId, event) &&
-          event.getSender() !== selfUserId,
-      )
-      ?.getId();
-    return { boundaryFound: true, eventId: eventId ?? null };
+  }
+
+  private mainReadReceiptIds(room: Room, userId: string): string[] {
+    return [ReceiptType.Read, ReceiptType.ReadPrivate]
+      .flatMap((receiptType) => {
+        const receipt = room.getReadReceiptForUserId(
+          userId,
+          false,
+          receiptType,
+        );
+        return receipt &&
+          (!receipt.data.thread_id || receipt.data.thread_id === "main")
+          ? [receipt.eventId]
+          : [];
+      })
+      .filter((eventId, index, all) => all.indexOf(eventId) === index);
   }
 
   private async compareTimelineEventOrdering(
@@ -1169,7 +1094,7 @@ export class MatrixDriver extends Driver {
       }
       try {
         const timeline = await mx.getEventTimeline(timelineSet, eventId);
-        if (!timeline) {
+        if (!timeline || this.mx !== mx) {
           return "unknown";
         }
         this.restoreRedactedThreadReplies(mx);
@@ -1185,316 +1110,96 @@ export class MatrixDriver extends Driver {
     if (ordering === null) {
       return "unknown";
     }
-    if (ordering < 0) {
-      return "before";
-    }
-    return ordering > 0 ? "after" : "same";
+    return ordering < 0 ? "before" : ordering > 0 ? "after" : "same";
   }
 
-  private countUnreadMessagesBetween(
-    room: Room,
-    boundaryId: string,
-    targetId: string,
-    selfUserId: string,
-  ): number | null {
-    const timeline = room
-      .getUnfilteredTimelineSet()
-      .getTimelineForEvent(targetId);
-    if (!timeline) {
-      return null;
-    }
-    const events = this.loadedMainTimelineEvents(room.roomId, timeline);
-    const boundaryIndex = events.findIndex(
-      (event) => event.getId() === boundaryId,
-    );
-    const targetIndex = events.findIndex((event) => event.getId() === targetId);
-    if (boundaryIndex < 0 || targetIndex <= boundaryIndex) {
-      return null;
-    }
-    return events
-      .slice(boundaryIndex + 1, targetIndex + 1)
-      .filter(
-        (event) => !event.isRedacted() && event.getSender() !== selfUserId,
-      ).length;
-  }
-
-  private async reconcileConfirmedMainReadBoundary(
+  private async reconcilePendingMainFullyRead(
     mx: MatrixClient,
     room: Room,
-    echoedBoundary: string,
+    echoedMarker: string,
   ): Promise<boolean> {
-    if (this.mx !== mx) {
-      return false;
-    }
-    const confirmedBoundary = this.confirmedMainReadBoundaries.get(room.roomId);
-    if (!confirmedBoundary) {
+    const pendingMarker = this.pendingMainFullyRead.get(room.roomId);
+    if (!pendingMarker) {
       return false;
     }
     const ordering = await this.compareTimelineEventOrdering(
       mx,
       room,
-      confirmedBoundary,
-      echoedBoundary,
+      pendingMarker,
+      echoedMarker,
     );
     if (
       this.mx === mx &&
-      this.confirmedMainReadBoundaries.get(room.roomId) === confirmedBoundary &&
+      this.pendingMainFullyRead.get(room.roomId) === pendingMarker &&
       (ordering === "before" || ordering === "same")
     ) {
-      this.confirmedMainReadBoundaries.delete(room.roomId);
+      this.pendingMainFullyRead.delete(room.roomId);
       return true;
     }
     return false;
   }
 
-  private async directionalMessageWindow(
-    mx: MatrixClient,
-    room: Room,
-    cursor: string,
-    direction: TimelineDirection,
-    limit: number,
-  ): Promise<ChatMessageWindow> {
-    const paginationSession: TimelinePaginationSession = new WeakMap();
-    const timelineSet = room.getUnfilteredTimelineSet();
-    let timeline = timelineSet.getTimelineForEvent(cursor);
-    if (!timeline) {
-      timeline = await mx.getEventTimeline(timelineSet, cursor);
-      this.restoreRedactedThreadReplies(mx);
-    }
-    if (!timeline) {
-      throw new Error(
-        `MatrixDriver.getChatMessages: cursor "${cursor}" not found in room "${room.roomId}".`,
-      );
-    }
-
-    let events: MatrixEvent[] = [];
-    let cursorIndex = -1;
-    for (let page = 0; ; page += 1) {
-      events = this.loadedMainTimelineEvents(room.roomId, timeline);
-      cursorIndex = events.findIndex((event) => event.getId() === cursor);
-      if (cursorIndex < 0) {
-        throw new Error(
-          `MatrixDriver.getChatMessages: cursor "${cursor}" is not a visible message in room "${room.roomId}".`,
-        );
-      }
-      const available =
-        direction === "older" ? cursorIndex : events.length - cursorIndex - 1;
-      if (available >= limit) {
-        break;
-      }
-      assertCanPaginateTimeline(room.roomId, page);
-      if (
-        !(await this.paginateTimeline(
-          mx,
-          timeline,
-          direction,
-          limit,
-          paginationSession,
-        ))
-      ) {
-        break;
-      }
-    }
-
-    events = this.loadedMainTimelineEvents(room.roomId, timeline);
-    cursorIndex = events.findIndex((event) => event.getId() === cursor);
-    const availableEvents =
-      direction === "older"
-        ? events.slice(0, cursorIndex)
-        : events.slice(cursorIndex + 1);
-    const pageEvents =
-      direction === "older"
-        ? availableEvents.slice(-limit)
-        : availableEvents.slice(0, limit);
-    const hasMore =
-      availableEvents.length > pageEvents.length ||
-      this.canPaginateTimeline(timeline, direction, paginationSession);
-
-    const readBoundaryId = this.personalReadBoundaryOrNull(
-      room,
-      mx.getUserId(),
-    );
-    return this.mapMessageWindow(mx, room, pageEvents, {
-      readBoundaryId,
-      firstUnreadMessageId: this.firstUnreadMessageIdInPage(
-        room,
-        timeline,
-        readBoundaryId,
-        mx.getUserId(),
-      ),
-      olderCursor:
-        direction === "older"
-          ? hasMore
-            ? (pageEvents[0]?.getId() ?? null)
-            : null
-          : (pageEvents[0]?.getId() ?? null),
-      newerCursor:
-        direction === "newer"
-          ? hasMore
-            ? (pageEvents.at(-1)?.getId() ?? null)
-            : null
-          : (pageEvents.at(-1)?.getId() ?? null),
-      anchorStatus: "resolved",
-    });
-  }
-
-  private async firstUnreadMessageWindow(
-    mx: MatrixClient,
-    room: Room,
-    limit: number,
-  ): Promise<ChatMessageWindow> {
-    const paginationSession: TimelinePaginationSession = new WeakMap();
-    const selfUserId = mx.getUserId();
-    if (!selfUserId || !computeRoomUnread(room, selfUserId)) {
-      return this.latestMessageWindow(mx, room, limit);
-    }
-
-    const boundaryId = this.personalReadBoundary(room, selfUserId);
-    if (!boundaryId) {
-      return this.latestMessageWindow(mx, room, limit, "unavailable");
-    }
-
-    const timelineSet = room.getUnfilteredTimelineSet();
-    let timeline = timelineSet.getTimelineForEvent(boundaryId);
-    try {
-      timeline ??= await mx.getEventTimeline(timelineSet, boundaryId);
-      this.restoreRedactedThreadReplies(mx);
-    } catch (error) {
-      if (!isRecoverableMatrixPaginationError(error)) {
-        throw error;
-      }
-      return this.latestMessageWindow(mx, room, limit, "unavailable");
-    }
-    if (!timeline) {
-      return this.latestMessageWindow(mx, room, limit, "unavailable");
-    }
-
-    let firstUnread = this.findFirstUnreadAfter(
-      room,
-      timeline,
-      boundaryId,
-      selfUserId,
-    );
-    for (let page = 0; !firstUnread.eventId; page += 1) {
-      if (!firstUnread.boundaryFound) {
-        return this.latestMessageWindow(mx, room, limit, "unavailable");
-      }
-      assertCanPaginateTimeline(room.roomId, page);
-      const hasMore = await this.paginateTimeline(
-        mx,
-        timeline,
-        "newer",
-        limit,
-        paginationSession,
-      );
-      // The SDK can append the final chunk before returning `false`.
-      firstUnread = this.findFirstUnreadAfter(
-        room,
-        timeline,
-        boundaryId,
-        selfUserId,
-      );
-      if (!hasMore) {
-        break;
-      }
-    }
-
-    if (!firstUnread.boundaryFound) {
-      return this.latestMessageWindow(mx, room, limit, "unavailable");
-    }
-    const firstUnreadId = firstUnread.eventId;
-    if (!firstUnreadId) {
-      return this.latestMessageWindow(mx, room, limit);
-    }
-
-    const beforeTarget = Math.floor(limit / 3);
-    const afterTarget = Math.max(1, limit - beforeTarget);
-    for (const [direction, target] of [
-      ["older", beforeTarget],
-      ["newer", afterTarget],
-    ] as const) {
-      for (let page = 0; ; page += 1) {
-        const events = this.loadedMainTimelineEvents(room.roomId, timeline);
-        const unreadIndex = events.findIndex(
-          (event) => event.getId() === firstUnreadId,
-        );
-        const available =
-          direction === "older" ? unreadIndex : events.length - unreadIndex;
-        if (available >= target) {
-          break;
-        }
-        assertCanPaginateTimeline(room.roomId, page);
-        if (
-          !(await this.paginateTimeline(
-            mx,
-            timeline,
-            direction,
-            limit,
-            paginationSession,
-          ))
-        ) {
-          break;
-        }
-      }
-    }
-
-    const events = this.loadedMainTimelineEvents(room.roomId, timeline);
-    const unreadIndex = events.findIndex(
-      (event) => event.getId() === firstUnreadId,
-    );
-    let startIndex = Math.max(0, unreadIndex - beforeTarget);
-    const endIndex = Math.min(events.length, startIndex + limit);
-    startIndex = Math.max(0, endIndex - limit);
-    const pageEvents = events.slice(startIndex, endIndex);
-    const hasOlder =
-      startIndex > 0 ||
-      this.canPaginateTimeline(timeline, "older", paginationSession);
-    const hasNewer =
-      endIndex < events.length ||
-      this.canPaginateTimeline(timeline, "newer", paginationSession);
-
-    return this.mapMessageWindow(mx, room, pageEvents, {
-      readBoundaryId: boundaryId,
-      firstUnreadMessageId: firstUnreadId,
-      olderCursor: hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
-      newerCursor: hasNewer ? (pageEvents.at(-1)?.getId() ?? null) : null,
-      anchorStatus: "resolved",
-    });
-  }
-
   /**
-   * Reads a chronological, bidirectional timeline window. The initial window
-   * can target the live end or Matrix's personal read boundary; subsequent
-   * calls extend that window from one of the returned cursors.
+   * Element's marker source: pending local write, then `m.fully_read`, then the
+   * latest main-timeline receipt when no persistent marker exists. A window
+   * captures this value when it opens, so later receipts cannot move its row.
    */
-  async getChatMessages({
-    chatId,
-    cursor,
-    anchor = "latest",
-    direction = "older",
-    limit = DEFAULT_CHAT_PAGE_SIZE,
-  }: GetChatMessagesParams): Promise<ChatMessageWindow> {
-    const mx = this.requireClient("getChatMessages");
-    const joinedRoomIds = await this.getJoinedRoomIds(mx);
-    if (!joinedRoomIds.has(chatId)) {
-      throw new Error(
-        `MatrixDriver.getChatMessages: room "${chatId}" is not joined.`,
-      );
+  private mainTimelineReadMarkerId(
+    room: Room,
+    userId: string | undefined,
+  ): string | null {
+    if (!userId) {
+      return null;
     }
-    const room = mx.getRoom(chatId);
-    if (!room) {
-      throw new Error(
-        `MatrixDriver.getChatMessages: room "${chatId}" not found.`,
-      );
+    const persistentMarker = this.persistentMainReadMarkerId(room);
+    if (persistentMarker) {
+      return persistentMarker;
     }
-    this.restoreRedactedThreadReplies(mx);
+    return this.latestMainReadReceiptId(room, userId);
+  }
 
-    if (cursor) {
-      return this.directionalMessageWindow(mx, room, cursor, direction, limit);
+  private persistentMainReadMarkerId(room: Room): string | null {
+    return (
+      this.pendingMainFullyRead.get(room.roomId) ??
+      room
+        .getAccountData(ReceiptType.FullyRead)
+        ?.getContent<{ event_id?: string }>().event_id ??
+      null
+    );
+  }
+
+  private unreadSnapshot(
+    room: Room,
+    selfUserId: string | undefined,
+  ): ChatUnread {
+    return roomUnread(
+      room,
+      selfUserId,
+      this.mainTimelineReadMarkerId(room, selfUserId),
+    );
+  }
+
+  private extendLiveMessageWindow(room: Room, data: IRoomTimelineData): void {
+    const session = this.messageWindowSessions.get(room.roomId);
+    const generation = session?.current;
+    if (
+      !session ||
+      !generation ||
+      !generation.atLiveEnd ||
+      session.client !== this.mx ||
+      data.timeline.getTimelineSet() !== room.getUnfilteredTimelineSet()
+    ) {
+      return;
     }
-    return anchor === "first-unread"
-      ? this.firstUnreadMessageWindow(mx, room, limit)
-      : this.latestMessageWindow(mx, room, limit);
+    void this.serializeMessageWindowOperation(session, async () => {
+      if (
+        session.current === generation &&
+        session.requestedGeneration === generation.generation &&
+        generation.atLiveEnd
+      ) {
+        session.window.extend(EventTimeline.FORWARDS, 1);
+      }
+    }).catch(() => undefined);
   }
 
   /** Resolves a connected client for Matrix-only operations. */
@@ -1930,132 +1635,202 @@ export class MatrixDriver extends Driver {
     );
   }
 
-  /** Advances only the main timeline through one loaded visible message. */
-  async markChatRead(params: MarkChatReadParams): Promise<MarkChatReadResult> {
-    const previous = this.mainReadMarkerQueues.get(params.chatId);
+  private queueMainReadUpdate(
+    chatId: string,
+    update: () => Promise<MarkChatReadResult>,
+  ): Promise<MarkChatReadResult> {
+    const previous = this.mainReadMarkerQueues.get(chatId);
     const ready =
       previous?.then(
         () => undefined,
         () => undefined,
       ) ?? Promise.resolve();
-    const queued = ready.then(() => this.markChatReadNow(params));
-    this.mainReadMarkerQueues.set(params.chatId, queued);
-    try {
-      return await queued;
-    } finally {
-      if (this.mainReadMarkerQueues.get(params.chatId) === queued) {
-        this.mainReadMarkerQueues.delete(params.chatId);
+    const queued = ready.then(update);
+    this.mainReadMarkerQueues.set(chatId, queued);
+    const release = () => {
+      if (this.mainReadMarkerQueues.get(chatId) === queued) {
+        this.mainReadMarkerQueues.delete(chatId);
       }
+    };
+    void queued.then(release, release);
+    return queued;
+  }
+
+  private mainReadTarget(
+    room: Room,
+    messageId: string | undefined,
+    selfUserId: string,
+    excludeOwn: boolean,
+  ): MatrixEvent | null {
+    const isValid = (
+      event: MatrixEvent | undefined | null,
+    ): event is MatrixEvent => {
+      const eventId = event?.getId();
+      return Boolean(
+        event &&
+        eventId &&
+        isMainTimelineMessage(event) &&
+        !event.isRedacted() &&
+        !event.status &&
+        !room.hasPendingEvent(eventId!) &&
+        !this.isRedactedThreadReply(room.roomId, event) &&
+        (!excludeOwn || event.getSender() !== selfUserId),
+      );
+    };
+    if (messageId) {
+      const event = room.findEventById(messageId);
+      return isValid(event) ? event : null;
+    }
+    return room.getLiveTimeline().getEvents().findLast(isValid) ?? null;
+  }
+
+  private emitMainUnread(
+    mx: MatrixClient,
+    room: Room,
+    selfUserId: string,
+  ): void {
+    if (this.mx === mx) {
+      this.emit({
+        type: "unread:changed",
+        chatId: room.roomId,
+        unread: this.unreadSnapshot(room, selfUserId),
+      });
     }
   }
 
-  private async markChatReadNow({
+  async advanceMainReadReceipt(
+    params: AdvanceMainReadParams,
+  ): Promise<MarkChatReadResult> {
+    const scheduledClient = this.requireClient("advanceMainReadReceipt");
+    return this.queueMainReadUpdate(params.chatId, () =>
+      this.mx === scheduledClient
+        ? this.advanceMainReadReceiptNow(params)
+        : Promise.resolve({ status: "unavailable" }),
+    );
+  }
+
+  private async advanceMainReadReceiptNow({
     chatId,
     messageId,
-  }: MarkChatReadParams): Promise<MarkChatReadResult> {
-    const { mx, room } = this.requireRoom("markChatRead", chatId);
+  }: AdvanceMainReadParams): Promise<MarkChatReadResult> {
+    const { mx, room } = this.requireRoom("advanceMainReadReceipt", chatId);
     const selfUserId = mx.getUserId();
     if (!selfUserId) {
       return { status: "unavailable" };
     }
-    const assertCurrentClient = () => {
-      if (this.mx !== mx) {
-        throw new Error(
-          "MatrixDriver.markChatRead: the Matrix client changed during the request.",
-        );
-      }
-    };
-    const emitCurrentUnread = () => {
-      if (this.mx !== mx) {
-        return;
-      }
-      this.emit({
-        type: "unread:changed",
-        chatId,
-        unread: this.unreadSnapshot(room, selfUserId),
-      });
-    };
-    const timelineSet = room.getUnfilteredTimelineSet();
-    const target = messageId
-      ? timelineSet.findEventById(messageId)
-      : this.loadedMainTimelineEvents(chatId, room.getLiveTimeline())
-          .filter((event) => !event.isRedacted())
-          .at(-1);
-    if (
-      !target ||
-      !isMainTimelineMessage(target) ||
-      target.isRedacted() ||
-      this.isRedactedThreadReply(chatId, target)
-    ) {
+    const target = this.mainReadTarget(room, messageId, selfUserId, true);
+    const targetId = target?.getId();
+    if (!target || !targetId) {
       return { status: "unavailable" };
     }
-    const targetId = target.getId();
-    if (!targetId) {
-      return { status: "unavailable" };
+    if (room.hasUserReadEvent(selfUserId, targetId)) {
+      return { status: "unchanged" };
     }
-    const currentBoundary = this.personalReadBoundary(room, selfUserId);
-    for (const persistedBoundary of this.persistedMainReadBoundaries(
-      room,
-      selfUserId,
-    )) {
+    for (const receiptId of this.mainReadReceiptIds(room, selfUserId)) {
       const ordering = await this.compareTimelineEventOrdering(
         mx,
         room,
-        persistedBoundary,
+        receiptId,
         targetId,
       );
-      assertCurrentClient();
-      if (ordering === "unknown") {
+      if (this.mx !== mx || ordering === "unknown") {
         return { status: "unavailable" };
       }
-      if (ordering === "after") {
-        emitCurrentUnread();
+      if (ordering === "same" || ordering === "after") {
+        return { status: "unchanged" };
+      }
+    }
+    if (this.mx !== mx) {
+      return { status: "unavailable" };
+    }
+    await mx.sendReadReceipt(target);
+    if (this.mx !== mx) {
+      throw new Error(
+        "MatrixDriver.advanceMainReadReceipt: the Matrix client changed during the request.",
+      );
+    }
+    this.emitMainUnread(mx, room, selfUserId);
+    return { status: "updated" };
+  }
+
+  async advanceMainFullyRead(
+    params: AdvanceMainReadParams,
+  ): Promise<MarkChatReadResult> {
+    const scheduledClient = this.requireClient("advanceMainFullyRead");
+    return this.queueMainReadUpdate(params.chatId, () =>
+      this.mx === scheduledClient
+        ? this.advanceMainFullyReadNow(params)
+        : Promise.resolve({ status: "unavailable" }),
+    );
+  }
+
+  private async advanceMainFullyReadNow({
+    chatId,
+    messageId,
+  }: AdvanceMainReadParams): Promise<MarkChatReadResult> {
+    const { mx, room } = this.requireRoom("advanceMainFullyRead", chatId);
+    const selfUserId = mx.getUserId();
+    if (!selfUserId) {
+      return { status: "unavailable" };
+    }
+    const target = this.mainReadTarget(room, messageId, selfUserId, false);
+    const targetId = target?.getId();
+    if (!target || !targetId) {
+      return { status: "unavailable" };
+    }
+    const previousMarker = this.persistentMainReadMarkerId(room);
+    if (previousMarker === targetId) {
+      return { status: "unchanged" };
+    }
+    if (previousMarker) {
+      const ordering = await this.compareTimelineEventOrdering(
+        mx,
+        room,
+        previousMarker,
+        targetId,
+      );
+      if (this.mx !== mx || ordering === "unknown") {
+        return { status: "unavailable" };
+      }
+      if (ordering === "same" || ordering === "after") {
         return { status: "unchanged" };
       }
     }
 
-    const currentCount =
-      this.projectedMainUnreadCount(room, selfUserId) ??
-      room.getRoomUnreadNotificationCount(NotificationCountType.Total);
-    const liveEndId =
-      this.loadedMainTimelineEvents(chatId, room.getLiveTimeline())
-        .at(-1)
-        ?.getId() ?? null;
-    const crossed =
-      messageId && currentBoundary
-        ? this.countUnreadMessagesBetween(
-            room,
-            currentBoundary,
-            targetId,
-            selfUserId,
-          )
-        : null;
-
-    // `/read_markers` cannot carry `thread_id`. Send only `m.fully_read`
-    // there, then let the SDK emit a threaded `m.read` with `thread_id: main`.
-    await mx.setRoomReadMarkers(chatId, targetId);
-    assertCurrentClient();
-    this.confirmedMainReadBoundaries.set(chatId, targetId);
-    const echoedBoundary = room
+    const previousPending = this.pendingMainFullyRead.get(chatId);
+    this.pendingMainFullyRead.set(chatId, targetId);
+    try {
+      await mx.setRoomReadMarkers(chatId, targetId);
+    } catch (error) {
+      if (
+        this.mx === mx &&
+        this.pendingMainFullyRead.get(chatId) === targetId
+      ) {
+        if (previousPending) {
+          this.pendingMainFullyRead.set(chatId, previousPending);
+        } else {
+          this.pendingMainFullyRead.delete(chatId);
+        }
+      }
+      throw error;
+    }
+    if (this.mx !== mx) {
+      throw new Error(
+        "MatrixDriver.advanceMainFullyRead: the Matrix client changed during the request.",
+      );
+    }
+    const echoedMarker = room
       .getAccountData(ReceiptType.FullyRead)
       ?.getContent<{ event_id?: string }>().event_id;
-    if (echoedBoundary) {
-      // Account data can reach the room before the request promise settles.
-      void this.reconcileConfirmedMainReadBoundary(
-        mx,
-        room,
-        echoedBoundary,
-      ).catch(() => undefined);
+    if (echoedMarker) {
+      await this.reconcilePendingMainFullyRead(mx, room, echoedMarker);
+      if (this.mx !== mx) {
+        throw new Error(
+          "MatrixDriver.advanceMainFullyRead: the Matrix client changed during the request.",
+        );
+      }
     }
-    await mx.sendReadReceipt(target);
-    assertCurrentClient();
-
-    this.mainReadCountProjections.set(chatId, {
-      liveEndId,
-      remainingCount:
-        messageId && crossed !== null ? Math.max(0, currentCount - crossed) : 0,
-    });
-    emitCurrentUnread();
+    this.emitMainUnread(mx, room, selfUserId);
     return { status: "updated" };
   }
 
@@ -2503,10 +2278,13 @@ export class MatrixDriver extends Driver {
       removed: boolean,
       data: IRoomTimelineData,
     ) => {
-      // Backward-pagination history is served by `getChatMessages`, not the
+      // Backward history is served by `paginateChatMessageWindow`, not the
       // live stream.
       if (!room || removed) {
         return;
+      }
+      if (data.liveEvent === true) {
+        this.extendLiveMessageWindow(room, data);
       }
       if (this.isRedactedThreadReply(room.roomId, event)) {
         return;
@@ -2541,7 +2319,7 @@ export class MatrixDriver extends Driver {
       }
       // Both backward and forward pagination can re-emit historical events on
       // the room timeline. Only `/sync` live events belong on the global event
-      // stream; contextual pages are returned directly by `getChatMessages`.
+      // stream; contextual snapshots come from the active TimelineWindow.
       if (toStartOfTimeline || data.liveEvent !== true) {
         return;
       }
@@ -2605,18 +2383,16 @@ export class MatrixDriver extends Driver {
       if (event.getType() !== ReceiptType.FullyRead) {
         return;
       }
-      const echoedBoundary = event.getContent<{ event_id?: string }>().event_id;
-      if (echoedBoundary) {
-        // Keep a newer confirmed local marker when a delayed echo for an older
-        // write arrives. An equal or orderable newer server marker becomes
-        // authoritative.
-        void this.reconcileConfirmedMainReadBoundary(mx, room, echoedBoundary)
-          .then((changed) => {
-            if (changed && this.mx === mx) {
+      const echoedMarker = event.getContent<{ event_id?: string }>().event_id;
+      if (echoedMarker) {
+        void this.reconcilePendingMainFullyRead(mx, room, echoedMarker)
+          .catch(() => false)
+          .then(() => {
+            if (this.mx === mx) {
               emitUnread(room);
             }
-          })
-          .catch(() => undefined);
+          });
+        return;
       }
       emitUnread(room);
     };
@@ -3034,8 +2810,9 @@ export class MatrixDriver extends Driver {
     this.mx?.stopClient();
     this.mx = null;
     this.joinedRoomIds = null;
+    this.messageWindowSessions.clear();
     this.mainReadMarkerQueues.clear();
-    this.confirmedMainReadBoundaries.clear();
+    this.pendingMainFullyRead.clear();
     this.sentThreadReplyEventIds.clear();
     this.redactedThreadReplies.clear();
     this.redactedThreadReplyKeys.clear();

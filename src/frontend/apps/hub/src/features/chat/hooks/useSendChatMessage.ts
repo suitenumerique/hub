@@ -56,11 +56,14 @@ export const useSendChatMessage = (
       const messagesKey: QueryKey = chatKeys.messages(targetRef);
       await queryClient.cancelQueries({ queryKey: messagesKey, exact: true });
       const current = queryClient.getQueryData<ChatMessagesData>(messagesKey);
-      if (current?.pages[0]?.newerCursor) {
-        // Sending belongs at the live end, never across a contextual gap.
-        await queryClient.resetQueries({
+      if (current?.pages[0]?.hasNewer) {
+        // Sending belongs at the live end, never across a contextual gap. Keep
+        // the existing snapshot during the refetch so the queryFn can merge
+        // any concurrent optimistic edits instead of resetting them away.
+        await queryClient.invalidateQueries({
           queryKey: messagesKey,
           exact: true,
+          refetchType: "all",
         });
       }
       const optimistic = createOptimisticMessage(content, "optimistic-message");

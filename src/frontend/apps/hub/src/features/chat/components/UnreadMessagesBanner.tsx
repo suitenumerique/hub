@@ -12,8 +12,7 @@ export const UnreadMessagesBanner = ({
   navigation,
 }: UnreadMessagesBannerProps) => {
   const { t } = useTranslation();
-  const { count, isOpening, isMarkingRead, open, markRead } = navigation;
-  const label = t("{{count}} unread messages", { count });
+  const { isOpening, isMarkingRead, open, markRead } = navigation;
 
   return (
     <div className="hub__unread-banner hub__unread-messages-banner">
@@ -27,7 +26,7 @@ export const UnreadMessagesBanner = ({
         <span className="hub__unread-banner__icon" aria-hidden="true">
           <ArrowUp />
         </span>
-        {label}
+        {t("Unread message")}
       </button>
       <button
         type="button"
@@ -39,7 +38,7 @@ export const UnreadMessagesBanner = ({
         <span className="hub__unread-banner__icon" aria-hidden="true">
           <CircleCheck />
         </span>
-        {t("Mark as read")}
+        {t("Mark all as read")}
       </button>
     </div>
   );

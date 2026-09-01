@@ -11,6 +11,7 @@ import { useRouter } from "next/router";
 import { ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { LogoutButton } from "@/features/auth/components/LogoutButton";
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
 import {
   type ChatUnreadLookup,
@@ -89,13 +90,16 @@ export const LeftPanel = () => {
       </div>
 
       <div className="hub__left-panel__footer">
-        <AccountSelector />
-        <Button
-          variant="tertiary"
-          color="neutral"
-          icon={<QuestionMark size={24} />}
-          aria-label={t("Help")}
-        />
+        <div className="hub__left-panel__footer__secondary-actions">
+          <AccountSelector />
+          <Button
+            variant="tertiary"
+            color="neutral"
+            icon={<QuestionMark size={24} />}
+            aria-label={t("Help")}
+          />
+        </div>
+        <LogoutButton />
       </div>
     </aside>
   );

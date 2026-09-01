@@ -4,12 +4,59 @@ import type { TFunction } from "i18next";
 import type {
   ChatMessage,
   ChatMessageWindow,
+  ChatRef,
   ChatThread,
   ChatThreadDetail,
   ChatThreadSummary,
 } from "@/features/drivers/types";
 
 export type ChatMessagesData = InfiniteData<ChatMessageWindow>;
+
+const chatMessageEventVersions = new Map<string, number>();
+const snapshotEventVersion = Symbol("chat-message-snapshot-event-version");
+
+type VersionedChatMessageWindow = ChatMessageWindow & {
+  [snapshotEventVersion]?: number;
+};
+
+const chatMessageEventVersionKey = (ref: ChatRef): string =>
+  ref.accountId + "\u0000" + ref.chatId;
+
+export const getChatMessageEventVersion = (ref: ChatRef): number =>
+  chatMessageEventVersions.get(chatMessageEventVersionKey(ref)) ?? 0;
+
+export const bumpChatMessageEventVersion = (ref: ChatRef): void => {
+  const key = chatMessageEventVersionKey(ref);
+  chatMessageEventVersions.set(
+    key,
+    (chatMessageEventVersions.get(key) ?? 0) + 1,
+  );
+};
+
+export const tagChatMessageWindowEventVersion = (
+  snapshot: ChatMessageWindow,
+  version: number,
+): ChatMessageWindow => {
+  Object.defineProperty(snapshot, snapshotEventVersion, { value: version });
+  return snapshot;
+};
+
+export const getChatMessageWindowEventVersion = (
+  snapshot: ChatMessageWindow | undefined,
+): number | undefined =>
+  (snapshot as VersionedChatMessageWindow | undefined)?.[snapshotEventVersion];
+
+const updateMessageSnapshot = (
+  data: ChatMessagesData,
+  update: (snapshot: ChatMessageWindow) => ChatMessageWindow,
+): ChatMessagesData => {
+  const snapshot = data.pages[0];
+  if (!snapshot) {
+    return data;
+  }
+  const nextSnapshot = update(snapshot);
+  return nextSnapshot === snapshot ? data : { ...data, pages: [nextSnapshot] };
+};
 
 /**
  * Optimistic author for the current user's own thread replies, shown until the
@@ -127,26 +174,101 @@ export const createOptimisticMessage = (
     content,
     timestamp: new Date().toISOString(),
     reactions: [],
+    isPending: true,
   };
 };
 
-/** Appends to the permanent live cache, whose page 0 is the live end. */
+export type ChatMessageWindowMergeMode = "older" | "newer" | "replace";
+
+const hasOptimisticSymbolMarker = (message: ChatMessage): boolean =>
+  Object.getOwnPropertySymbols(message).length > 0 ||
+  (message.thread !== undefined &&
+    Object.getOwnPropertySymbols(message.thread).length > 0);
+
+/**
+ * Overlays volatile cache mutations on a fresh driver snapshot.
+ *
+ * The incoming snapshot owns all timeline structure (`windowId`, marker and
+ * pagination flags). Existing objects carrying a local symbol marker are kept
+ * only while the same event remains in the incoming window. Pending sends are
+ * carried across pagination/re-anchoring only when the incoming snapshot still
+ * contains the live end; a contextual snapshot intentionally drops them.
+ *
+ * Keeping a marked object also temporarily keeps all its fields, so unrelated
+ * remote changes to that row are applied after the mutation settles or a later
+ * unmarked driver event replaces it. Marked rows which leave the bounded
+ * window cannot be preserved in this cache.
+ * A directional response for a superseded `windowId` is rejected; only an
+ * explicit replacement may install a new window generation.
+ */
+export const mergeChatMessageWindowSnapshot = (
+  current: ChatMessageWindow | undefined,
+  incoming: ChatMessageWindow,
+  mode: ChatMessageWindowMergeMode,
+): ChatMessageWindow => {
+  if (!current) {
+    return incoming;
+  }
+  if (mode !== "replace" && current.windowId !== incoming.windowId) {
+    return current;
+  }
+
+  const currentById = new Map(
+    current.messages.map((message) => [message.id, message]),
+  );
+  const incomingIds = new Set(incoming.messages.map((message) => message.id));
+  const messages = incoming.messages.map((message) => {
+    const existing = currentById.get(message.id);
+    if (existing && hasOptimisticSymbolMarker(existing)) {
+      return existing;
+    }
+    return message;
+  });
+
+  if (!incoming.hasNewer) {
+    messages.push(
+      ...current.messages.filter(
+        (message) => message.isPending === true && !incomingIds.has(message.id),
+      ),
+    );
+  }
+
+  const referencedCurrentAuthorIds = new Set(
+    messages
+      .filter((message) => currentById.get(message.id) === message)
+      .map((message) => message.authorId),
+  );
+  const incomingAuthorIds = new Set(
+    incoming.authors.map((author) => author.id),
+  );
+  const authors = [
+    ...incoming.authors,
+    ...current.authors.filter(
+      (author) =>
+        referencedCurrentAuthorIds.has(author.id) &&
+        !incomingAuthorIds.has(author.id),
+    ),
+  ];
+
+  return { ...incoming, messages, authors };
+};
+
+/** Appends to the single cached snapshot when it contains the live end. */
 export const appendMessageToNewestPage = (
   data: ChatMessagesData,
   message: ChatMessage,
 ): ChatMessagesData => {
-  const [newest, ...rest] = data.pages;
-  const hasUnloadedNewerMessages = Boolean(newest?.newerCursor);
+  const snapshot = data.pages[0];
   if (
-    !newest ||
-    hasUnloadedNewerMessages ||
-    newest.messages.some((candidate) => candidate.id === message.id)
+    !snapshot ||
+    snapshot.hasNewer ||
+    snapshot.messages.some((candidate) => candidate.id === message.id)
   ) {
     return data;
   }
   return {
     ...data,
-    pages: [{ ...newest, messages: [...newest.messages, message] }, ...rest],
+    pages: [{ ...snapshot, messages: [...snapshot.messages, message] }],
   };
 };
 
@@ -154,19 +276,17 @@ export const updateMessageInPages = (
   data: ChatMessagesData,
   messageId: string,
   update: (message: ChatMessage) => ChatMessage,
-): ChatMessagesData => ({
-  ...data,
-  pages: data.pages.map((page) =>
-    page.messages.some((message) => message.id === messageId)
+): ChatMessagesData =>
+  updateMessageSnapshot(data, (snapshot) =>
+    snapshot.messages.some((message) => message.id === messageId)
       ? {
-          ...page,
-          messages: page.messages.map((message) =>
+          ...snapshot,
+          messages: snapshot.messages.map((message) =>
             message.id === messageId ? update(message) : message,
           ),
         }
-      : page,
-  ),
-});
+      : snapshot,
+  );
 
 export const replaceMessageInPages = (
   data: ChatMessagesData,
@@ -178,9 +298,7 @@ export const getMessageFromPages = (
   data: ChatMessagesData | undefined,
   messageId: string,
 ): ChatMessage | undefined =>
-  data?.pages
-    .flatMap((page) => page.messages)
-    .find((message) => message.id === messageId);
+  data?.pages[0]?.messages.find((message) => message.id === messageId);
 
 const optimisticMessageMutationMarker = Symbol("optimistic-message-mutation");
 
@@ -214,17 +332,27 @@ export const getOptimisticMessageMutationMarker = (
 export const removeMessageFromPages = (
   data: ChatMessagesData,
   messageId: string,
-): ChatMessagesData => ({
-  ...data,
-  pages: data.pages.map((page) =>
-    page.messages.some((message) => message.id === messageId)
-      ? {
-          ...page,
-          messages: page.messages.filter((message) => message.id !== messageId),
-        }
-      : page,
-  ),
-});
+): ChatMessagesData =>
+  updateMessageSnapshot(data, (snapshot) => {
+    const removedIndex = snapshot.messages.findIndex(
+      (message) => message.id === messageId,
+    );
+    if (removedIndex < 0) {
+      return snapshot;
+    }
+    const readMarker = snapshot.readMarker;
+    return {
+      ...snapshot,
+      messages: snapshot.messages.filter((message) => message.id !== messageId),
+      readMarker:
+        readMarker && removedIndex < readMarker.insertionIndex
+          ? {
+              ...readMarker,
+              insertionIndex: readMarker.insertionIndex - 1,
+            }
+          : readMarker,
+    };
+  });
 
 export const replaceRootMessageInPages = (
   data: ChatMessagesData,
@@ -236,13 +364,12 @@ export const patchRootThreadSummary = (
   rootMessageId: string,
   thread: Pick<ChatThread, "id" | "replyCount" | "unreadCount">,
   optimisticMarker?: string,
-): ChatMessagesData => ({
-  ...data,
-  pages: data.pages.map((page) =>
-    page.messages.some((message) => message.id === rootMessageId)
+): ChatMessagesData =>
+  updateMessageSnapshot(data, (snapshot) =>
+    snapshot.messages.some((message) => message.id === rootMessageId)
       ? {
-          ...page,
-          messages: page.messages.map((message) =>
+          ...snapshot,
+          messages: snapshot.messages.map((message) =>
             message.id === rootMessageId
               ? {
                   ...message,
@@ -264,17 +391,15 @@ export const patchRootThreadSummary = (
               : message,
           ),
         }
-      : page,
-  ),
-});
+      : snapshot,
+  );
 
 export const getRootThreadSummary = (
   data: ChatMessagesData | undefined,
   rootMessageId: string,
 ): ChatThreadSummary | undefined =>
-  data?.pages
-    .flatMap((page) => page.messages)
-    .find((message) => message.id === rootMessageId)?.thread;
+  data?.pages[0]?.messages.find((message) => message.id === rootMessageId)
+    ?.thread;
 
 /**
  * Reverts only the summary carrying this mutation's non-serialised marker.
@@ -288,9 +413,9 @@ export const rollbackOptimisticRootThreadSummary = (
   optimisticMarker: RootThreadSummaryMutationMarker,
   previousSummary: ChatThreadSummary | undefined,
 ): ChatMessagesData => {
-  let changed = false;
-  const pages = data.pages.map((page) => {
-    const messages = page.messages.map((message) => {
+  return updateMessageSnapshot(data, (snapshot) => {
+    let changed = false;
+    const messages = snapshot.messages.map((message) => {
       if (
         message.id !== rootMessageId ||
         !message.thread ||
@@ -304,11 +429,8 @@ export const rollbackOptimisticRootThreadSummary = (
       changed = true;
       return { ...message, thread: previousSummary };
     });
-    return messages.some((message, index) => message !== page.messages[index])
-      ? { ...page, messages }
-      : page;
+    return changed ? { ...snapshot, messages } : snapshot;
   });
-  return changed ? { ...data, pages } : data;
 };
 
 /**
@@ -319,13 +441,12 @@ export const mergeRootThreadSummary = (
   data: ChatMessagesData,
   rootMessageId: string,
   thread: Pick<ChatThread, "id" | "replyCount" | "unreadCount">,
-): ChatMessagesData => ({
-  ...data,
-  pages: data.pages.map((page) =>
-    page.messages.some((message) => message.id === rootMessageId)
+): ChatMessagesData =>
+  updateMessageSnapshot(data, (snapshot) =>
+    snapshot.messages.some((message) => message.id === rootMessageId)
       ? {
-          ...page,
-          messages: page.messages.map((message) =>
+          ...snapshot,
+          messages: snapshot.messages.map((message) =>
             message.id === rootMessageId
               ? {
                   ...message,
@@ -344,9 +465,8 @@ export const mergeRootThreadSummary = (
               : message,
           ),
         }
-      : page,
-  ),
-});
+      : snapshot,
+  );
 
 export const appendThreadMessage = (
   detail: ChatThreadDetail,

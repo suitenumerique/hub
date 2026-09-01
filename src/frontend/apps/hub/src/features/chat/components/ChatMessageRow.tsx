@@ -1,4 +1,4 @@
-import { memo, type ReactNode, type Ref } from "react";
+import { memo, type ReactNode } from "react";
 
 import type {
   ChatMessage,
@@ -7,27 +7,23 @@ import type {
 } from "@/features/drivers/types";
 
 import { ChatBubble } from "./ChatBubble";
-import { UnreadSeparator } from "./UnreadSeparator";
-
 type ChatMessageRowProps = {
   message: ChatMessage;
   chatRef: ChatRef;
   prev: ChatMessage | undefined;
   next: ChatMessage | undefined;
   authorsById: Map<string, ChatMessageAuthor>;
-  showUnreadSeparator: boolean;
-  unreadSeparatorRef?: Ref<HTMLDivElement>;
+  rowIndex: number;
 };
 
-/** One memoized Virtuoso row, including grouping around the unread boundary. */
+/** One memoized message row. The unread marker is its own Virtuoso row. */
 export const ChatMessageRow = memo(function ChatMessageRow({
   message,
   chatRef,
   prev,
   next,
   authorsById,
-  showUnreadSeparator,
-  unreadSeparatorRef,
+  rowIndex,
 }: ChatMessageRowProps) {
   const isSent = message.authorId === "me";
   const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
@@ -35,11 +31,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
 
   if (isSent) {
     return (
-      <RowShell
-        messageId={message.id}
-        separator={showUnreadSeparator}
-        unreadSeparatorRef={unreadSeparatorRef}
-      >
+      <RowShell messageId={message.id} rowIndex={rowIndex}>
         <ChatBubble
           variant="sent"
           chatRef={chatRef}
@@ -63,11 +55,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
     return null;
   }
   return (
-    <RowShell
-      messageId={message.id}
-      separator={showUnreadSeparator}
-      unreadSeparatorRef={unreadSeparatorRef}
-    >
+    <RowShell messageId={message.id} rowIndex={rowIndex}>
       <ChatBubble
         variant="received"
         chatRef={chatRef}
@@ -91,18 +79,18 @@ export const ChatMessageRow = memo(function ChatMessageRow({
 const RowShell = ({
   children,
   messageId,
-  separator,
-  unreadSeparatorRef,
+  rowIndex,
 }: {
   children: ReactNode;
   messageId: string;
-  separator: boolean;
-  unreadSeparatorRef?: Ref<HTMLDivElement>;
+  rowIndex: number;
 }) => (
-  <div className="hub__chat-conversation__row" data-chat-message-id={messageId}>
-    <div className="hub__chat-conversation__row-inner">
-      {separator ? <UnreadSeparator ref={unreadSeparatorRef} /> : null}
-      {children}
-    </div>
+  <div
+    className="hub__chat-conversation__row"
+    data-chat-timeline-row
+    data-chat-row-index={rowIndex}
+    data-chat-message-id={messageId}
+  >
+    <div className="hub__chat-conversation__row-inner">{children}</div>
   </div>
 );

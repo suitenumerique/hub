@@ -299,17 +299,9 @@ const computeThreadUnread = (
 export const roomUnread = (
   room: Room,
   selfUserId: string | undefined,
-  mainTimelineReadBoundaryId: string | null,
-  projectedMainTimelineCount?: number,
+  mainTimelineReadMarkerId: string | null,
 ): ChatUnread => {
-  const mainTimelineCount =
-    projectedMainTimelineCount ??
-    room.getRoomUnreadNotificationCount(NotificationCountType.Total);
-  const mainTimelineUnread = computeRoomUnread(
-    room,
-    selfUserId,
-    mainTimelineCount,
-  );
+  const mainTimelineUnread = computeRoomUnread(room, selfUserId);
   return {
     unread:
       room.getUnreadNotificationCount(NotificationCountType.Total) > 0 ||
@@ -320,11 +312,11 @@ export const roomUnread = (
     // Unlike getRoomUnreadNotificationCount, this includes thread mentions.
     highlight:
       room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0,
-    mainTimelineUnread,
-    // Receipt-based detection can find unread messages before Matrix exposes a
-    // notification count. Keep the button numeric in that short-lived case.
-    mainTimelineCount: mainTimelineUnread ? Math.max(1, mainTimelineCount) : 0,
-    mainTimelineReadBoundaryId,
+    // A persistent marker is only actionable while the main timeline is
+    // actually unread; thread-only unread state must not expose its jump UI.
+    mainTimelineReadMarkerId: mainTimelineUnread
+      ? mainTimelineReadMarkerId
+      : null,
   };
 };
 

@@ -41,53 +41,58 @@ type ReadContext = {
 };
 
 /**
- * Clears the unread badge of the matching threads' root messages across every
- * loaded page, producing fresh `ChatMessage` objects only for the touched rows
+ * Clears the unread badge of the matching threads' root messages in the cached
+ * snapshot, producing fresh `ChatMessage` objects only for the touched rows
  * so the memoized virtual-list bubbles re-render their thread button.
  */
 const clearThreadBadges = (
   data: ChatMessagesData,
   matches: ThreadMatcher,
   marker: ThreadUnreadMutationMarker,
-): ChatMessagesData => ({
-  ...data,
-  pages: data.pages.map((page) => {
-    const touched = page.messages.some((message) => {
-      const thread = message.thread;
-      return (
-        thread !== undefined &&
-        matches(thread.id) &&
-        (thread.unreadCount !== 0 ||
-          getOptimisticRootThreadUnreadMarker(thread) !== undefined)
-      );
-    });
-    if (!touched) {
-      return page;
-    }
-    return {
-      ...page,
-      messages: page.messages.map((message) =>
-        message.thread !== undefined &&
-        matches(message.thread.id) &&
-        (message.thread.unreadCount !== 0 ||
-          getOptimisticRootThreadUnreadMarker(message.thread) !== undefined)
-          ? {
-              ...message,
-              thread: markOptimisticRootThreadUnread(message.thread, marker),
-            }
-          : message,
-      ),
-    };
-  }),
-});
+): ChatMessagesData => {
+  const snapshot = data.pages[0];
+  const touched = snapshot?.messages.some((message) => {
+    const thread = message.thread;
+    return (
+      thread !== undefined &&
+      matches(thread.id) &&
+      (thread.unreadCount !== 0 ||
+        getOptimisticRootThreadUnreadMarker(thread) !== undefined)
+    );
+  });
+  if (!snapshot || !touched) {
+    return data;
+  }
+  return {
+    ...data,
+    pages: [
+      {
+        ...snapshot,
+        messages: snapshot.messages.map((message) =>
+          message.thread !== undefined &&
+          matches(message.thread.id) &&
+          (message.thread.unreadCount !== 0 ||
+            getOptimisticRootThreadUnreadMarker(message.thread) !== undefined)
+            ? {
+                ...message,
+                thread: markOptimisticRootThreadUnread(
+                  message.thread,
+                  marker,
+                ),
+              }
+            : message,
+        ),
+      },
+    ],
+  };
+};
 
 const rootUnreadStateByThreadId = (
   data: ChatMessagesData | undefined,
   matches: ThreadMatcher,
 ): Record<string, PreviousUnreadState> =>
   Object.fromEntries(
-    (data?.pages ?? [])
-      .flatMap((page) => page.messages)
+    (data?.pages[0]?.messages ?? [])
       .flatMap((message) => (message.thread ? [message.thread] : []))
       .filter(
         (thread) =>
@@ -112,30 +117,35 @@ const restoreThreadBadges = (
   data: ChatMessagesData,
   previousUnread: Record<string, PreviousUnreadState>,
   marker: ThreadUnreadMutationMarker,
-): ChatMessagesData => ({
-  ...data,
-  pages: data.pages.map((page) => ({
-    ...page,
-    messages: page.messages.map((message) => {
-      const thread = message.thread;
-      const previous = thread ? previousUnread[thread.id] : undefined;
-      if (
-        !thread ||
-        !hasOptimisticRootThreadUnreadMutation(thread, marker) ||
-        !previous
-      ) {
-        return message;
-      }
-      const restored = { ...thread, unreadCount: previous.unreadCount };
-      return {
-        ...message,
-        thread: previous.marker
-          ? markOptimisticRootThreadUnread(restored, previous.marker)
-          : restored,
-      };
-    }),
-  })),
-});
+): ChatMessagesData => {
+  const snapshot = data.pages[0];
+  if (!snapshot) {
+    return data;
+  }
+  let changed = false;
+  const messages = snapshot.messages.map((message) => {
+    const thread = message.thread;
+    const previous = thread ? previousUnread[thread.id] : undefined;
+    if (
+      !thread ||
+      !hasOptimisticRootThreadUnreadMutation(thread, marker) ||
+      !previous
+    ) {
+      return message;
+    }
+    changed = true;
+    const restored = { ...thread, unreadCount: previous.unreadCount };
+    return {
+      ...message,
+      thread: previous.marker
+        ? markOptimisticRootThreadUnread(restored, previous.marker)
+        : restored,
+    };
+  });
+  return changed
+    ? { ...data, pages: [{ ...snapshot, messages }] }
+    : data;
+};
 
 export type UseChatThreadActionsResult = {
   /** Marks every reply of a single thread as read. */
@@ -146,7 +156,7 @@ export type UseChatThreadActionsResult = {
 
 /**
  * Mutations that clear thread unread state through the driver. Each mutation
- * optimistically updates the thread list and both main-timeline windows. A
+ * optimistically updates the thread list and main-timeline snapshot. A
  * failed receipt is retried, then only badges still carrying this mutation's
  * marker are restored, so a concurrent reply or receipt always wins.
  */

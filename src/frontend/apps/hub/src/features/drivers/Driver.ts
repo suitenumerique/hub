@@ -22,25 +22,22 @@ export type ChatUserFilters = {
   excludeIds?: string[];
 };
 
-export type GetChatMessagesParams = {
+export type OpenChatMessageWindowParams = {
   chatId: string;
-  /** Maximum number of messages to return. Drivers may clamp to a server cap. */
+  /** Omit for the live end; otherwise open context around this raw event. */
+  anchorEventId?: string;
+  /** Persistent marker to place in the returned, message-only snapshot. */
+  readMarkerEventId: string | null;
+  /** Initial raw-event window size. Drivers may clamp to a server cap. */
   limit?: number;
-} & (
-  | {
-      /** Timeline position used to open a new message window. */
-      anchor: "first-unread" | "latest";
-      cursor?: never;
-      direction?: never;
-    }
-  | {
-      /** Cursor returned by one side of the previous message window. */
-      cursor: string;
-      /** Side of the existing window to extend. */
-      direction: "older" | "newer";
-      anchor?: never;
-    }
-);
+};
+
+export type PaginateChatMessageWindowParams = {
+  chatId: string;
+  windowId: string;
+  direction: "older" | "newer";
+  limit?: number;
+};
 
 export type ToggleChatReactionParams = {
   chatId: string;
@@ -67,13 +64,13 @@ export type MarkChatThreadReadParams = {
   threadId: string;
 };
 
-export type MarkChatReadParams = {
+export type AdvanceMainReadParams = {
   chatId: string;
-  /** Last visible main-timeline message genuinely read; omit to mark live. */
+  /** Last visible main-timeline message; omit for the live end. */
   messageId?: string;
 };
 
-/** Outcome of a monotonic main-timeline read-marker attempt. */
+/** Outcome of a monotonic main-timeline read-state update. */
 export type MarkChatReadResult =
   | { status: "updated" }
   | { status: "unchanged" }
@@ -225,9 +222,13 @@ export abstract class Driver {
   abstract getChatForUsers(userIds: string[]): Promise<LocalChat | null>;
   /** Single conversation, fetched by id. */
   abstract getChat(chatId: string): Promise<LocalChat>;
-  abstract getChatMessages(
-    params: GetChatMessagesParams,
+  abstract openChatMessageWindow(
+    params: OpenChatMessageWindowParams,
   ): Promise<ChatMessageWindow>;
+  /** Extends the active window, or returns `null` when it was superseded. */
+  abstract paginateChatMessageWindow(
+    params: PaginateChatMessageWindowParams,
+  ): Promise<ChatMessageWindow | null>;
   /**
    * Toggles the current user's reaction with `emoji` on a message and resolves
    * with the updated message. Adding when absent, removing when already
@@ -250,9 +251,13 @@ export abstract class Driver {
   abstract markChatThreadRead(params: MarkChatThreadReadParams): Promise<void>;
   /** Marks every thread of a conversation as read for the current user. */
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
-  /** Advances the main timeline through a genuinely read visible message. */
-  abstract markChatRead(
-    params: MarkChatReadParams,
+  /** Advances the public `m.read` receipt independently of `m.fully_read`. */
+  abstract advanceMainReadReceipt(
+    params: AdvanceMainReadParams,
+  ): Promise<MarkChatReadResult>;
+  /** Advances the persistent `m.fully_read` marker independently of `m.read`. */
+  abstract advanceMainFullyRead(
+    params: AdvanceMainReadParams,
   ): Promise<MarkChatReadResult>;
   /** Initial per-conversation read state; live changes use `unread:changed`. */
   abstract getUnread(): Promise<Record<string, ChatUnread>>;

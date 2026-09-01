@@ -217,7 +217,9 @@ export const ThreadDetail = ({
 
             return (
               <Fragment key={message.id}>
-                {index === thread.firstUnreadIndex && <UnreadSeparator />}
+                {index === thread.firstUnreadIndex && (
+                  <UnreadSeparator inline />
+                )}
                 {isSent ? (
                   <ChatBubble
                     variant="sent"

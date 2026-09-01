@@ -1,51 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ListRange } from "react-virtuoso";
+import { useTranslation } from "react-i18next";
 
-import type { MarkChatReadResult } from "@/features/drivers/Driver";
-import type { ChatMessage } from "@/features/drivers/types";
+import { notify } from "@/features/ui/components/toast";
 
-import type { OpenFirstUnreadResult } from "./useChatMessages";
+import type { MainTimelineReadActions } from "./useMarkChatRead";
+import type { OpenReadMarkerResult } from "./useChatMessages";
 
-const MARK_READ_DEBOUNCE_MS = 400;
+const READ_RECEIPT_DEBOUNCE_MS = 500;
+
+type ReadMarkerPosition = "absent" | "above" | "visible" | "below" | "unknown";
+
+export type MainTimelineViewportState = {
+  readMarkerPosition: ReadMarkerPosition;
+  readReceiptCandidateId: string | null;
+  fullyReadCandidateId: string | null;
+};
 
 export type MainTimelineUnreadNavigation = {
-  count: number;
   isOpening: boolean;
   isMarkingRead: boolean;
   open: () => void;
   markRead: () => void;
 };
 
-type ReadingSession = {
-  active: boolean;
-  atBottom: boolean;
-  baselineEndIndex: number;
-  jumpPending: boolean;
-  lastRange: ListRange | null;
-  movingDown: boolean;
-  userScrolling: boolean;
-};
-
 type UseMainTimelineUnreadOptions = {
   chatKey: string;
-  messages: ChatMessage[];
-  firstUnreadMessageId: string | null;
-  unreadCount: number;
   enabled: boolean;
-  hasNewer: boolean;
-  openFirstUnread: () => Promise<OpenFirstUnreadResult>;
-  markRead: (messageId?: string) => Promise<MarkChatReadResult>;
+  readMarkerEventId: string | null;
+  readMarkerWindowKey: string | null;
+  openReadMarker: () => Promise<OpenReadMarkerResult>;
+  readActions: MainTimelineReadActions;
 };
 
-const newSession = (): ReadingSession => ({
-  active: false,
-  atBottom: false,
-  baselineEndIndex: -1,
-  jumpPending: false,
-  lastRange: null,
-  movingDown: false,
-  userScrolling: false,
-});
+type FullyReadSession = {
+  chatKey: string;
+  candidateId: string | null;
+};
+
+type PendingFullyReadFlush = {
+  timer: ReturnType<typeof setTimeout>;
+};
+
+const pendingFullyReadFlushes = new Map<string, PendingFullyReadFlush>();
 
 const restoreComposerFocus = (origin: Element | null): void => {
   requestAnimationFrame(() => {
@@ -63,236 +59,329 @@ const restoreComposerFocus = (origin: Element | null): void => {
   });
 };
 
-/** Owns one Matrix-backed main-timeline reading session. */
+/**
+ * Owns the frozen unread marker UI and the two independent Matrix read writes.
+ */
 export const useMainTimelineUnread = ({
   chatKey,
-  messages,
-  firstUnreadMessageId,
-  unreadCount,
   enabled,
-  hasNewer,
-  openFirstUnread,
-  markRead,
+  readMarkerEventId,
+  readMarkerWindowKey,
+  openReadMarker,
+  readActions,
 }: UseMainTimelineUnreadOptions) => {
-  const session = useRef<ReadingSession>(newSession());
-  const opening = useRef(false);
-  const lastSubmittedMessageId = useRef<string | null>(null);
+  const { t } = useTranslation();
   const separatorRef = useRef<HTMLDivElement>(null);
-  const [candidateMessageId, setCandidateMessageId] = useState<string | null>(
-    null,
-  );
+  const receiptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingReceiptId = useRef<string | null>(null);
+  const lastSubmittedReceiptId = useRef<string | null>(null);
+  const activeChatKey = useRef(chatKey);
+  const openingRequestId = useRef(0);
+  const markAllRequestId = useRef(0);
+  const fullyReadSession = useRef<FullyReadSession>({
+    chatKey,
+    candidateId: null,
+  });
+  const [markerState, setMarkerState] = useState<{
+    windowKey: string | null;
+    position: ReadMarkerPosition;
+  }>({
+    windowKey: readMarkerWindowKey,
+    position: readMarkerWindowKey ? "unknown" : "absent",
+  });
+  const [jumpRequest, setJumpRequest] = useState(0);
+  const [jumpDisabled, setJumpDisabled] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
-  const [jump, setJump] = useState({
-    request: 0,
-    targetId: null as string | null,
-  });
 
-  const firstUnreadIndex = useMemo(() => {
-    if (!enabled || !firstUnreadMessageId) {
-      return -1;
+  const { advanceReadReceipt, advanceFullyRead, markAllRead } = readActions;
+
+  const clearReceiptTimer = useCallback(() => {
+    if (receiptTimer.current !== null) {
+      clearTimeout(receiptTimer.current);
+      receiptTimer.current = null;
     }
-    return messages.findIndex((message) => message.id === firstUnreadMessageId);
-  }, [enabled, firstUnreadMessageId, messages]);
+    pendingReceiptId.current = null;
+  }, []);
 
   useEffect(() => {
-    session.current = newSession();
-    opening.current = false;
-    lastSubmittedMessageId.current = null;
-    setCandidateMessageId(null);
+    activeChatKey.current = chatKey;
+    openingRequestId.current += 1;
+    markAllRequestId.current += 1;
+    lastSubmittedReceiptId.current = null;
+    clearReceiptTimer();
+    setJumpDisabled(false);
+    setDismissed(false);
     setIsOpening(false);
     setIsMarkingRead(false);
-    setJump((current) => ({ request: current.request + 1, targetId: null }));
-  }, [chatKey]);
+  }, [chatKey, clearReceiptTimer]);
 
   useEffect(() => {
-    if (enabled) {
-      return;
+    if (!enabled) {
+      clearReceiptTimer();
     }
-    session.current = newSession();
-    setCandidateMessageId(null);
-  }, [enabled]);
+  }, [clearReceiptTimer, enabled]);
+
+  useEffect(
+    () => () => {
+      clearReceiptTimer();
+      activeChatKey.current = "";
+      openingRequestId.current += 1;
+      markAllRequestId.current += 1;
+    },
+    [clearReceiptTimer],
+  );
 
   useEffect(() => {
-    if (!candidateMessageId || !enabled) {
-      return;
+    const pending = pendingFullyReadFlushes.get(chatKey);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingFullyReadFlushes.delete(chatKey);
     }
-    const timer = window.setTimeout(() => {
-      if (lastSubmittedMessageId.current === candidateMessageId) {
+
+    const previousSession = fullyReadSession.current;
+    const session =
+      previousSession.chatKey === chatKey
+        ? previousSession
+        : { chatKey, candidateId: null };
+    fullyReadSession.current = session;
+    const advanceForChat = advanceFullyRead;
+
+    return () => {
+      const candidateId = session.candidateId;
+      if (!candidateId) {
         return;
       }
-      lastSubmittedMessageId.current = candidateMessageId;
-      void markRead(candidateMessageId).catch(() => {
-        if (lastSubmittedMessageId.current === candidateMessageId) {
-          lastSubmittedMessageId.current = null;
+      const previous = pendingFullyReadFlushes.get(chatKey);
+      if (previous) {
+        clearTimeout(previous.timer);
+      }
+      const flush: PendingFullyReadFlush = {
+        timer: setTimeout(() => {
+          if (pendingFullyReadFlushes.get(chatKey) !== flush) {
+            return;
+          }
+          pendingFullyReadFlushes.delete(chatKey);
+          void advanceForChat(candidateId).catch(() => undefined);
+        }, 0),
+      };
+      pendingFullyReadFlushes.set(chatKey, flush);
+    };
+  }, [advanceFullyRead, chatKey]);
+
+  const onViewportMeasured = useCallback(
+    ({
+      readMarkerPosition,
+      readReceiptCandidateId,
+      fullyReadCandidateId,
+    }: MainTimelineViewportState) => {
+      setMarkerState((current) =>
+        current.windowKey === readMarkerWindowKey &&
+        current.position === readMarkerPosition
+          ? current
+          : {
+              windowKey: readMarkerWindowKey,
+              position: readMarkerPosition,
+            },
+      );
+
+      if (!enabled || dismissed) {
+        if (fullyReadSession.current.chatKey === chatKey) {
+          fullyReadSession.current.candidateId = null;
         }
-      });
-    }, MARK_READ_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [candidateMessageId, enabled, markRead]);
-
-  const queueVisibleMessage = useCallback(
-    (index: number) => {
-      const messageId = messages[index]?.id;
-      if (messageId) {
-        setCandidateMessageId(messageId);
-      }
-    },
-    [messages],
-  );
-
-  const onVisibleRangeChanged = useCallback(
-    (range: ListRange, separatorVisible: boolean) => {
-      const current = session.current;
-      const previous = current.lastRange;
-      current.lastRange = range;
-
-      if (!enabled || firstUnreadIndex < 0 || current.jumpPending) {
+        clearReceiptTimer();
         return;
       }
-      if (!current.active) {
-        if (current.userScrolling && separatorVisible) {
-          current.active = true;
-          current.baselineEndIndex = range.endIndex;
-        }
+      if (fullyReadSession.current.chatKey === chatKey) {
+        fullyReadSession.current.candidateId = fullyReadCandidateId;
+      }
+      if (!readReceiptCandidateId) {
+        clearReceiptTimer();
         return;
       }
-      if (!current.userScrolling || !previous) {
+      if (
+        readReceiptCandidateId === lastSubmittedReceiptId.current ||
+        readReceiptCandidateId === pendingReceiptId.current
+      ) {
         return;
       }
 
-      current.movingDown = range.endIndex > previous.endIndex;
-      if (current.movingDown && range.endIndex > current.baselineEndIndex) {
-        current.baselineEndIndex = range.endIndex;
-        queueVisibleMessage(Math.max(firstUnreadIndex, range.endIndex));
-      }
+      clearReceiptTimer();
+      pendingReceiptId.current = readReceiptCandidateId;
+      receiptTimer.current = setTimeout(() => {
+        receiptTimer.current = null;
+        pendingReceiptId.current = null;
+        lastSubmittedReceiptId.current = readReceiptCandidateId;
+        const allowReceiptRetry = () => {
+          if (lastSubmittedReceiptId.current === readReceiptCandidateId) {
+            lastSubmittedReceiptId.current = null;
+          }
+        };
+        void advanceReadReceipt(readReceiptCandidateId)
+          .then(({ status }) => {
+            if (status === "unavailable") {
+              allowReceiptRetry();
+            }
+          })
+          .catch(allowReceiptRetry);
+      }, READ_RECEIPT_DEBOUNCE_MS);
     },
-    [enabled, firstUnreadIndex, queueVisibleMessage],
+    [
+      advanceReadReceipt,
+      chatKey,
+      clearReceiptTimer,
+      dismissed,
+      enabled,
+      readMarkerWindowKey,
+    ],
   );
 
-  const queueLiveEndIfReached = useCallback(() => {
-    const current = session.current;
-    if (
-      current.active &&
-      current.atBottom &&
-      current.movingDown &&
-      !current.jumpPending &&
-      !hasNewer
-    ) {
-      queueVisibleMessage(messages.length - 1);
-    }
-  }, [hasNewer, messages.length, queueVisibleMessage]);
-
-  const onScrolling = useCallback(
-    (isScrolling: boolean) => {
-      const current = session.current;
-      if (current.jumpPending) {
-        return;
-      }
-      if (!isScrolling) {
-        queueLiveEndIfReached();
-        current.userScrolling = false;
-        current.movingDown = false;
-      }
-    },
-    [queueLiveEndIfReached],
-  );
-
-  const onUserScroll = useCallback(() => {
-    const current = session.current;
-    if (!current.jumpPending) {
-      current.userScrolling = true;
-    }
-  }, []);
-
-  const onAtBottomChange = useCallback(
-    (atBottom: boolean) => {
-      session.current.atBottom = atBottom;
-      if (atBottom) {
-        queueLiveEndIfReached();
-      }
-    },
-    [queueLiveEndIfReached],
-  );
+  const failUnreadJump = useCallback(() => {
+    setJumpDisabled(true);
+    notify.error(t("Something bad happens, please retry."));
+  }, [t]);
 
   const open = useCallback(() => {
-    if (!enabled || opening.current) {
+    if (
+      !enabled ||
+      !readMarkerEventId ||
+      jumpDisabled ||
+      dismissed ||
+      isOpening
+    ) {
       return;
     }
-    opening.current = true;
+    if (readMarkerWindowKey) {
+      setJumpRequest((current) => current + 1);
+      return;
+    }
+
+    const requestId = openingRequestId.current + 1;
+    openingRequestId.current = requestId;
     setIsOpening(true);
-    void openFirstUnread()
+    void openReadMarker()
       .then((result) => {
-        if (result.status !== "opened") {
+        if (
+          activeChatKey.current !== chatKey ||
+          openingRequestId.current !== requestId
+        ) {
           return;
         }
-        const current = session.current;
-        current.active = true;
-        current.jumpPending = true;
-        current.lastRange = null;
-        current.movingDown = false;
-        current.userScrolling = false;
-        setCandidateMessageId(null);
-        setJump((previous) => ({
-          request: previous.request + 1,
-          targetId: result.firstUnreadMessageId,
-        }));
+        if (result.status === "opened") {
+          setJumpRequest((current) => current + 1);
+        } else {
+          failUnreadJump();
+        }
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (
+          activeChatKey.current === chatKey &&
+          openingRequestId.current === requestId
+        ) {
+          failUnreadJump();
+        }
+      })
       .finally(() => {
-        opening.current = false;
-        setIsOpening(false);
+        if (
+          activeChatKey.current === chatKey &&
+          openingRequestId.current === requestId
+        ) {
+          setIsOpening(false);
+        }
       });
-  }, [enabled, openFirstUnread]);
+  }, [
+    chatKey,
+    dismissed,
+    enabled,
+    failUnreadJump,
+    isOpening,
+    jumpDisabled,
+    openReadMarker,
+    readMarkerEventId,
+    readMarkerWindowKey,
+  ]);
 
-  const completeJump = useCallback(() => {
-    const current = session.current;
-    current.jumpPending = false;
-    current.baselineEndIndex = current.lastRange?.endIndex ?? -1;
-    requestAnimationFrame(() =>
-      separatorRef.current?.focus({ preventScroll: true }),
-    );
-  }, []);
-
-  const markAllRead = useCallback(() => {
-    if (!enabled || isMarkingRead) {
+  const markRead = useCallback(() => {
+    if (!enabled || dismissed || isMarkingRead) {
       return;
     }
     const focusOrigin = document.activeElement;
+    clearReceiptTimer();
+    fullyReadSession.current.candidateId = null;
+    const requestId = markAllRequestId.current + 1;
+    markAllRequestId.current = requestId;
+    setDismissed(true);
     setIsMarkingRead(true);
-    void markRead()
-      .then((result) => {
-        if (result.status !== "unavailable") {
+    void markAllRead()
+      .then(() => {
+        if (
+          activeChatKey.current === chatKey &&
+          markAllRequestId.current === requestId
+        ) {
           restoreComposerFocus(focusOrigin);
         }
       })
-      .catch(() => undefined)
-      .finally(() => setIsMarkingRead(false));
-  }, [enabled, isMarkingRead, markRead]);
+      .catch(() => {
+        if (
+          activeChatKey.current === chatKey &&
+          markAllRequestId.current === requestId
+        ) {
+          setDismissed(false);
+          notify.error(t("Something bad happens, please retry."));
+          restoreComposerFocus(focusOrigin);
+        }
+      })
+      .finally(() => {
+        if (
+          activeChatKey.current === chatKey &&
+          markAllRequestId.current === requestId
+        ) {
+          setIsMarkingRead(false);
+        }
+      });
+  }, [
+    chatKey,
+    clearReceiptTimer,
+    dismissed,
+    enabled,
+    isMarkingRead,
+    markAllRead,
+    t,
+  ]);
+
+  const markerPosition =
+    markerState.windowKey === readMarkerWindowKey
+      ? markerState.position
+      : readMarkerWindowKey
+        ? "unknown"
+        : "absent";
+  const canJump =
+    enabled &&
+    Boolean(readMarkerEventId) &&
+    !dismissed &&
+    !jumpDisabled &&
+    (markerPosition === "absent" || markerPosition === "above");
 
   const navigation = useMemo<MainTimelineUnreadNavigation | null>(
     () =>
-      enabled && unreadCount > 0
+      canJump
         ? {
-            count: unreadCount,
             isOpening,
             isMarkingRead,
             open,
-            markRead: markAllRead,
+            markRead,
           }
         : null,
-    [enabled, isMarkingRead, isOpening, markAllRead, open, unreadCount],
+    [canJump, isMarkingRead, isOpening, markRead, open],
   );
 
   return {
-    completeJump,
-    firstUnreadIndex,
-    jump,
+    jumpRequest,
     navigation,
-    onAtBottomChange,
-    onVisibleRangeChanged,
-    onScrolling,
-    onUserScroll,
+    onViewportMeasured,
     separatorRef,
+    showReadMarker:
+      Boolean(readMarkerEventId) && Boolean(readMarkerWindowKey) && !dismissed,
   };
 };

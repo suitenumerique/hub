@@ -36,7 +36,7 @@ export const useChat = (ref: ChatRef | null): UseChatResult => {
     // Seed from the already-loaded conversation list so the chat's membership
     // (invite vs join) is known on the first render, before `getChat` resolves.
     // Without it, opening a pending invitation from the list would briefly
-    // render the conversation surface — and fire `getChatMessages` against the
+    // render the conversation surface — and open its message window against the
     // not-yet-joined room — until `getChat` classified it as an invite.
     placeholderData: () => {
       if (!ref) {

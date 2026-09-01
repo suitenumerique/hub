@@ -44,12 +44,8 @@ export type ChatVisual =
 export type ChatUnread = {
   unread: boolean;
   highlight: boolean;
-  /** Whether unread events exist on the main timeline (threads excluded). */
-  mainTimelineUnread: boolean;
-  /** Driver-provided count displayed by the main-timeline unread control. */
-  mainTimelineCount: number;
-  /** Persisted Matrix boundary through which the main timeline was read. */
-  mainTimelineReadBoundaryId: string | null;
+  /** Last event covered by the persistent main-timeline read marker. */
+  mainTimelineReadMarkerId: string | null;
 };
 
 /**
@@ -226,6 +222,8 @@ export type ChatMessage = {
   reactions: ChatReaction[];
   /** Matrix redaction rendered as a stable tombstone rather than a removed row. */
   isDeleted?: boolean;
+  /** Local echo not yet represented by a server event. */
+  isPending?: boolean;
   /** Whether the visible body comes from an `m.replace` relation. */
   isEdited?: boolean;
   /** Server-derived permissions for the connected user. */
@@ -241,27 +239,16 @@ export type ChatTypingUser = {
   name: string;
 };
 
-export type ChatMessagesPage = {
-  messages: ChatMessage[];
-  authors: ChatMessageAuthor[];
-  nextCursor: string | null;
-};
-
-/**
- * A driver-neutral slice of a conversation timeline. Unlike the legacy
- * `ChatMessagesPage`, a window can be extended in both directions and can be
- * opened around the first unread message rather than only at the live end.
- */
+/** A serializable snapshot of a driver's private bidirectional timeline. */
 export type ChatMessageWindow = {
+  /** Opaque generation used to reject pagination for a superseded window. */
+  windowId: string;
   messages: ChatMessage[];
   authors: ChatMessageAuthor[];
-  /** Matrix boundary used when this window was resolved. */
-  readBoundaryId: string | null;
-  /** Visible navigation target derived from the persisted read boundary. */
-  firstUnreadMessageId: string | null;
-  olderCursor: string | null;
-  newerCursor: string | null;
-  anchorStatus: "resolved" | "none" | "unavailable";
+  /** Marker position in `messages`; the separator is inserted at this index. */
+  readMarker: { eventId: string; insertionIndex: number } | null;
+  hasOlder: boolean;
+  hasNewer: boolean;
 };
 
 /**

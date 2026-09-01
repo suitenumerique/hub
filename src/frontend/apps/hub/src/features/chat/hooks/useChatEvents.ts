@@ -16,6 +16,8 @@ import type {
   ChatUnread,
 } from "@/features/drivers/types";
 
+import { bumpChatMessageEventVersion } from "./chatCompositionCache";
+
 type ChatMessagesData = InfiniteData<ChatMessageWindow>;
 
 type ScopedChatEvent = {
@@ -24,43 +26,44 @@ type ScopedChatEvent = {
 };
 
 /**
- * Appends a freshly-received message to the newest page of an infinite-query
- * cache. A contextual window is updated only after it has reached the live end
- * (`newerCursor` is empty); otherwise inserting the event would create a gap.
+ * Appends a freshly-received message to the single infinite-query snapshot.
+ * A contextual window is updated only after it has reached the live end;
+ * otherwise inserting the event would create a gap.
  */
 const appendMessage = (
   data: ChatMessagesData,
   event: Extract<ChatEvent, { type: "message:new" }>,
 ): ChatMessagesData => {
-  const [newest, ...rest] = data.pages;
-  const hasUnloadedNewerMessages = Boolean(newest?.newerCursor);
+  const snapshot = data.pages[0];
   if (
-    !newest ||
-    hasUnloadedNewerMessages ||
-    newest.messages.some((m) => m.id === event.message.id)
+    !snapshot ||
+    snapshot.hasNewer ||
+    snapshot.messages.some((m) => m.id === event.message.id)
   ) {
     return data;
   }
   const authors = event.authors
     ? [
-        ...newest.authors,
+        ...snapshot.authors,
         ...event.authors.filter(
-          (a) => !newest.authors.some((existing) => existing.id === a.id),
+          (a) => !snapshot.authors.some((existing) => existing.id === a.id),
         ),
       ]
-    : newest.authors;
+    : snapshot.authors;
   return {
     ...data,
     pages: [
-      { ...newest, authors, messages: [...newest.messages, event.message] },
-      ...rest,
+      {
+        ...snapshot,
+        authors,
+        messages: [...snapshot.messages, event.message],
+      },
     ],
   };
 };
 
 /**
- * Applies a main-timeline patch to both the permanent live cache and the
- * temporary unread window when each cache is present.
+ * Applies a main-timeline patch to the conversation's current window snapshot.
  */
 const updateMessageWindows = (
   queryClient: QueryClient,
@@ -72,44 +75,68 @@ const updateMessageWindows = (
   );
 };
 
-/** Replaces a message across every loaded page with a fresh object (so the
- * memoized virtual-list row re-renders). No-op for pages without it. */
+/** Replaces a message in the cached snapshot with a fresh object (so the
+ * memoized virtual-list row re-renders). */
 const replaceMessage = (
   data: ChatMessagesData,
   messageId: string,
   update: (
     m: ChatMessageWindow["messages"][number],
   ) => ChatMessageWindow["messages"][number],
-): ChatMessagesData => ({
-  ...data,
-  pages: data.pages.map((page) =>
-    page.messages.some((m) => m.id === messageId)
-      ? {
-          ...page,
-          messages: page.messages.map((m) =>
-            m.id === messageId ? update(m) : m,
-          ),
-        }
-      : page,
-  ),
-});
+): ChatMessagesData => {
+  const snapshot = data.pages[0];
+  if (!snapshot || !snapshot.messages.some((m) => m.id === messageId)) {
+    return data;
+  }
+  return {
+    ...data,
+    pages: [
+      {
+        ...snapshot,
+        messages: snapshot.messages.map((m) =>
+          m.id === messageId ? update(m) : m,
+        ),
+      },
+    ],
+  };
+};
 
 /** Removes a thread reply which the SDK moved onto the room timeline after its
  * redaction stripped the `m.thread` relation. */
 const removeMessage = (
   data: ChatMessagesData,
   messageId: string,
-): ChatMessagesData => ({
-  ...data,
-  pages: data.pages.map((page) =>
-    page.messages.some((message) => message.id === messageId)
-      ? {
-          ...page,
-          messages: page.messages.filter((message) => message.id !== messageId),
-        }
-      : page,
-  ),
-});
+): ChatMessagesData => {
+  const snapshot = data.pages[0];
+  if (
+    !snapshot ||
+    !snapshot.messages.some((message) => message.id === messageId)
+  ) {
+    return data;
+  }
+  const removedIndex = snapshot.messages.findIndex(
+    (message) => message.id === messageId,
+  );
+  const readMarker = snapshot.readMarker;
+  return {
+    ...data,
+    pages: [
+      {
+        ...snapshot,
+        messages: snapshot.messages.filter(
+          (message) => message.id !== messageId,
+        ),
+        readMarker:
+          readMarker && removedIndex < readMarker.insertionIndex
+            ? {
+                ...readMarker,
+                insertionIndex: readMarker.insertionIndex - 1,
+              }
+            : readMarker,
+      },
+    ],
+  };
+};
 
 /**
  * Translates a single backend event into a React Query cache operation. Events
@@ -131,6 +158,7 @@ const applyChatEvent = (
 
   switch (event.type) {
     case "message:new":
+      bumpChatMessageEventVersion(ref);
       updateMessageWindows(queryClient, ref, (data) =>
         appendMessage(data, event),
       );
@@ -149,10 +177,8 @@ const applyChatEvent = (
           if (
             previous?.unread === event.unread.unread &&
             previous.highlight === event.unread.highlight &&
-            previous.mainTimelineUnread === event.unread.mainTimelineUnread &&
-            previous.mainTimelineCount === event.unread.mainTimelineCount &&
-            previous.mainTimelineReadBoundaryId ===
-              event.unread.mainTimelineReadBoundaryId
+            previous.mainTimelineReadMarkerId ===
+              event.unread.mainTimelineReadMarkerId
           ) {
             return current;
           }
@@ -162,6 +188,7 @@ const applyChatEvent = (
       return;
 
     case "message:updated":
+      bumpChatMessageEventVersion(ref);
       updateMessageWindows(queryClient, ref, (data) =>
         event.threadId && event.message.id !== event.threadId
           ? removeMessage(data, event.message.id)
@@ -201,6 +228,7 @@ const applyChatEvent = (
         );
         return;
       }
+      bumpChatMessageEventVersion(ref);
       updateMessageWindows(queryClient, ref, (data) =>
         replaceMessage(data, event.messageId, (m) => ({
           ...m,
@@ -210,10 +238,9 @@ const applyChatEvent = (
       return;
 
     case "chat:changed":
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.messages(ref),
-        exact: true,
-      });
+      // Fine-grained timeline events patch the active window above. Reopening
+      // the query here would call `openChatMessageWindow` and silently replace
+      // a contextual unread view with the live end on unrelated room state.
       void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
       return;
 
