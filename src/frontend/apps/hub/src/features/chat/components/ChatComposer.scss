@@ -2,35 +2,67 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-
-  &:has(.hub__unread-threads-banner, .hub__unread-messages-banner) {
-    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
-    border-radius: var(--c--globals--spacings--xs, 8px);
-    overflow: clip;
-
-    > .hub__unread-threads-banner,
-    > .hub__unread-messages-banner,
-    > .hub__chat-composer {
-      width: calc(100% + 2px);
-      margin-left: -1px;
-    }
-
-    > .hub__unread-threads-banner:first-child,
-    > .hub__unread-messages-banner:first-child {
-      margin-top: -1px;
-    }
-
-    > .hub__chat-composer {
-      margin-bottom: -1px;
-      padding-top: calc(var(--c--globals--spacings--sm, 12px) - 1px);
-      padding-bottom: calc(var(--c--globals--spacings--sm, 12px) - 1px);
-    }
-  }
 }
 
 .hub__chat-composer-stack {
   display: flex;
   flex-direction: column;
+}
+
+// Volatile rows float above the composer so entering or leaving does not
+// resize Virtuoso and move the user's timeline position.
+.hub__chat-composer-overlay-anchor {
+  position: relative;
+  width: 100%;
+}
+
+.hub__chat-composer-floating-stack {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: calc(100% - 1px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hub__chat-composer-floating-banners {
+  &:has(> .hub__unread-threads-banner) {
+    overflow: clip;
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-bottom: 0;
+    border-radius: var(--c--globals--spacings--xs, 8px)
+      var(--c--globals--spacings--xs, 8px) 0 0;
+    background: var(--c--contextuals--background--surface--primary, #ffffff);
+  }
+
+  > .hub__unread-threads-banner,
+  > .hub__unread-messages-banner-transition {
+    width: 100%;
+  }
+
+  > .hub__unread-threads-banner + .hub__unread-messages-banner-transition {
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0;
+    border-top: 1px solid
+      var(--c--contextuals--border--surface--primary, #dfe2ea);
+  }
+}
+
+.hub__chat-composer-overlay-anchor:has(
+  .hub__chat-composer-floating-banners
+    > :is(.hub__unread-threads-banner, .hub__unread-messages-banner-transition)
+) {
+  .hub__chat-composer-edit {
+    border-radius: 0;
+  }
+
+  .hub__chat-composer {
+    border-radius: 0 0 var(--c--globals--spacings--xs, 8px)
+      var(--c--globals--spacings--xs, 8px);
+  }
 }
 
 .hub__chat-composer-edit {
