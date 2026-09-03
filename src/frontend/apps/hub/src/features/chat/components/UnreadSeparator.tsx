@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-export const UnreadSeparator = () => {
+export const UnreadSeparator = ({ visible }: { visible: boolean }) => {
   const { t } = useTranslation();
 
   return (
@@ -8,6 +8,8 @@ export const UnreadSeparator = () => {
       className="hub__unread-separator"
       role="separator"
       aria-label={t("Unread")}
+      aria-hidden={!visible}
+      data-visible={visible}
       data-testid="unread-separator"
     >
       <span aria-hidden="true" />

@@ -25,7 +25,10 @@ import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
-import type { UnreadMessagesBannerProps } from "./UnreadMessagesBanner";
+import {
+  type UnreadMessagesBannerProps,
+  UnreadMessagesBannerTransition,
+} from "./UnreadMessagesBanner";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 import { TypingIndicator } from "./TypingIndicator";
 
@@ -89,6 +92,11 @@ export const ChatView = ({
     useState<EditingChatMessage | null>(null);
   const [unreadMessagesBanner, setUnreadMessagesBanner] =
     useState<UnreadMessagesBannerState | null>(null);
+  const chatKey = chatRef ? `${chatRef.accountId}:${chatRef.chatId}` : null;
+  const activeUnreadMessagesBanner =
+    chatKey && unreadMessagesBanner?.chatKey === chatKey
+      ? unreadMessagesBanner.banner
+      : null;
 
   // The list owns navigation but the banner belongs visually to the composer.
   // Scope lifted props by conversation so an old list unmount cannot clear the
@@ -246,51 +254,48 @@ export const ChatView = ({
                   transition so an in-progress draft and the input focus survive
                   when a conversation resolves. */}
                 <div className="hub__chat-composer-stack">
-                  <TypingIndicator users={typingUsers} />
-                  <ChatComposer
-                    conversationId={
-                      chatRef
-                        ? `${chatRef.accountId}:${chatRef.chatId}`
-                        : undefined
-                    }
-                    placeholder={
-                      chatRef && !isCompositionSupported
-                        ? t(
-                            "Sending messages isn't available on this account yet.",
-                          )
-                        : undefined
-                    }
-                    disabled={
-                      chatRef ? !isCompositionSupported : !canComposeDraft
-                    }
-                    isSubmitting={isSendingMessage || isEditing}
-                    focusSignal={composerFocusSignal}
-                    errorMessage={
-                      editingMessage
-                        ? t(
-                            "Your message could not be edited. Please try again.",
-                          )
-                        : undefined
-                    }
-                    editDraft={editingMessage}
-                    onCancelEdit={() => setEditingMessage(null)}
-                    onTypingActivity={onTypingActivity}
-                    onSubmit={
-                      chatRef || canComposeDraft ? handleSubmit : undefined
-                    }
-                    unreadThreadsBanner={
-                      chatRef ? (
-                        <ConversationUnreadBanner chatRef={chatRef} />
-                      ) : null
-                    }
-                    unreadMessagesBanner={
-                      chatRef &&
-                      unreadMessagesBanner?.chatKey ===
-                        `${chatRef.accountId}:${chatRef.chatId}`
-                        ? unreadMessagesBanner.banner
-                        : null
-                    }
-                  />
+                  <div className="hub__chat-composer-overlay-anchor">
+                    <div className="hub__chat-composer-floating-stack">
+                      <TypingIndicator users={typingUsers} />
+                      <div className="hub__chat-composer-floating-banners">
+                        {chatRef && (
+                          <ConversationUnreadBanner chatRef={chatRef} />
+                        )}
+                        <UnreadMessagesBannerTransition
+                          key={chatKey ?? "draft"}
+                          banner={activeUnreadMessagesBanner}
+                        />
+                      </div>
+                    </div>
+                    <ChatComposer
+                      conversationId={chatKey ?? undefined}
+                      placeholder={
+                        chatRef && !isCompositionSupported
+                          ? t(
+                              "Sending messages isn't available on this account yet.",
+                            )
+                          : undefined
+                      }
+                      disabled={
+                        chatRef ? !isCompositionSupported : !canComposeDraft
+                      }
+                      isSubmitting={isSendingMessage || isEditing}
+                      focusSignal={composerFocusSignal}
+                      errorMessage={
+                        editingMessage
+                          ? t(
+                              "Your message could not be edited. Please try again.",
+                            )
+                          : undefined
+                      }
+                      editDraft={editingMessage}
+                      onCancelEdit={() => setEditingMessage(null)}
+                      onTypingActivity={onTypingActivity}
+                      onSubmit={
+                        chatRef || canComposeDraft ? handleSubmit : undefined
+                      }
+                    />
+                  </div>
                 </div>
               </div>
             )}

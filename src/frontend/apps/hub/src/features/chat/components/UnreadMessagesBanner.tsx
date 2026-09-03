@@ -1,6 +1,8 @@
 import { ArrowUp, CircleCheck } from "@gouvfr-lasuite/ui-components/icons";
-import type { KeyboardEvent } from "react";
+import { type KeyboardEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+const EXIT_TRANSITION_MS = 180;
 
 export type UnreadMessagesBannerProps = {
   count: number | null;
@@ -62,6 +64,49 @@ export const UnreadMessagesBanner = ({
         </span>
         {t("Mark as read")}
       </button>
+    </div>
+  );
+};
+
+export const UnreadMessagesBannerTransition = ({
+  banner,
+}: {
+  banner: UnreadMessagesBannerProps | null;
+}) => {
+  const [retainedBanner, setRetainedBanner] =
+    useState<UnreadMessagesBannerProps | null>(banner);
+
+  // Retain the outgoing callbacks only for the exit transition. The absolute
+  // floating stack keeps this extra lifetime from changing composer height.
+  useEffect(() => {
+    if (banner) {
+      setRetainedBanner(banner);
+      return;
+    }
+    if (!retainedBanner) {
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setRetainedBanner(null),
+      EXIT_TRANSITION_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [banner, retainedBanner]);
+
+  const renderedBanner = banner ?? retainedBanner;
+  if (!renderedBanner) {
+    return null;
+  }
+
+  const isVisible = banner !== null;
+  return (
+    <div
+      className="hub__unread-messages-banner-transition"
+      data-visible={isVisible}
+      aria-hidden={!isVisible}
+      inert={!isVisible}
+    >
+      <UnreadMessagesBanner {...renderedBanner} />
     </div>
   );
 };

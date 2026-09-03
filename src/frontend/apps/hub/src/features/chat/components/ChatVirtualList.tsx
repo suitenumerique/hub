@@ -32,9 +32,21 @@ type ChatVirtualListProps = {
 };
 
 const DEFAULT_ITEM_HEIGHT = 72;
-const VISIBILITY_SETTLE_MS = 250;
+// Debounce viewport checks until Virtuoso scrolling and layout have settled.
+const VISIBILITY_SETTLE_MS = 150;
+// After measuring, require focused visibility before marking a message read.
+const READ_DWELL_MS = 250;
+// A message qualifies as visible only when 60% of its rendered height is shown.
+const MESSAGE_VISIBILITY_RATIO = 0.6;
 
 type SkeletonState = "visible" | "leaving" | "hidden";
+type UnreadViewportState = "unknown" | "all-visible" | "needs-navigation";
+
+type UnreadSeparatorState = {
+  chatKey: string;
+  eventId: string;
+  isVisible: boolean;
+};
 
 export const ChatVirtualList = ({
   chatRef,
@@ -81,41 +93,115 @@ export const ChatVirtualList = ({
   const pendingScrollRaf = useRef<number | null>(null);
   const visibilityRafRef = useRef<number | null>(null);
   const visibilityTimerRef = useRef<number | null>(null);
+  const readDwellTimerRef = useRef<number | null>(null);
+  const [isDocumentFocused, setIsDocumentFocused] = useState(true);
+  const [unreadViewportState, setUnreadViewportState] =
+    useState<UnreadViewportState>("unknown");
+  const [unreadSeparator, setUnreadSeparator] =
+    useState<UnreadSeparatorState | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
+  const unreadSeparatorEventId =
+    unreadSeparator?.chatKey === chatKey ? unreadSeparator.eventId : null;
 
   messagesRef.current = messages;
   isAtLiveEndRef.current = isAtLiveEnd;
 
-  const measureVisibleMessages = useCallback(() => {
+  const cancelReadDwell = useCallback(() => {
+    if (readDwellTimerRef.current !== null) {
+      window.clearTimeout(readDwellTimerRef.current);
+      readDwellTimerRef.current = null;
+    }
+  }, []);
+
+  const releaseHiddenSeparatorOutsideViewport = useCallback(() => {
+    const scroller = scrollerRef.current;
     if (
-      !hasUserInteractedRef.current ||
-      !scrollerRef.current ||
-      (typeof document !== "undefined" && !document.hasFocus())
+      !scroller ||
+      !unreadSeparator ||
+      unreadSeparator.chatKey !== chatKey ||
+      unreadSeparator.isVisible
     ) {
       return;
     }
-    const viewport = scrollerRef.current.getBoundingClientRect();
+    const separatorRow = Array.from(
+      scroller.querySelectorAll<HTMLElement>("[data-chat-message-id]"),
+    ).find((row) => row.dataset.chatMessageId === unreadSeparator.eventId);
+    const viewport = scroller.getBoundingClientRect();
+    const bounds = separatorRow?.getBoundingClientRect();
+    if (!bounds || bounds.top >= viewport.bottom) {
+      setUnreadSeparator((current) =>
+        current?.chatKey === chatKey &&
+        current.eventId === unreadSeparator.eventId &&
+        !current.isVisible
+          ? null
+          : current,
+      );
+    }
+  }, [chatKey, unreadSeparator]);
+
+  const measureVisibleMessages = useCallback(() => {
+    cancelReadDwell();
+    releaseHiddenSeparatorOutsideViewport();
+    const scroller = scrollerRef.current;
+    const isFocused =
+      document.visibilityState === "visible" && document.hasFocus();
+    if (!scroller || unread.isLoading || !unread.hasUnread || !isFocused) {
+      setUnreadViewportState("unknown");
+      return;
+    }
+
+    const viewport = scroller.getBoundingClientRect();
     const visibleIds = new Set<string>();
-    scrollerRef.current
+    scroller
       .querySelectorAll<HTMLElement>("[data-chat-message-id]")
       .forEach((row) => {
         const bounds = row.getBoundingClientRect();
-        if (bounds.bottom > viewport.top && bounds.top < viewport.bottom) {
+        const visibleHeight = Math.max(
+          0,
+          Math.min(bounds.bottom, viewport.bottom) -
+            Math.max(bounds.top, viewport.top),
+        );
+        const requiredHeight =
+          Math.min(bounds.height, viewport.height) * MESSAGE_VISIBILITY_RATIO;
+        if (visibleHeight > 0 && visibleHeight >= requiredHeight) {
           const eventId = row.dataset.chatMessageId;
           if (eventId) {
             visibleIds.add(eventId);
           }
         }
       });
-    if (visibleIds.size > 0) {
-      unread.markVisibleMessages(visibleIds, hasNewer);
-    }
-  }, [hasNewer, unread.markVisibleMessages]);
 
-  const scheduleVisibilityMeasurement = useCallback(() => {
-    if (!hasUserInteractedRef.current) {
+    const areAllUnreadVisible = unread.areAllUnreadVisible(
+      visibleIds,
+      hasNewer,
+    );
+    setUnreadViewportState(
+      areAllUnreadVisible ? "all-visible" : "needs-navigation",
+    );
+    if (visibleIds.size === 0) {
       return;
     }
+
+    // A focused dwell distinguishes content that is actually readable from
+    // rows merely rendered by Virtuoso during navigation or layout settling.
+    readDwellTimerRef.current = window.setTimeout(() => {
+      readDwellTimerRef.current = null;
+      if (document.visibilityState === "visible" && document.hasFocus()) {
+        unread.markVisibleMessages(visibleIds, hasNewer);
+      }
+    }, READ_DWELL_MS);
+  }, [
+    cancelReadDwell,
+    hasNewer,
+    releaseHiddenSeparatorOutsideViewport,
+    unread.areAllUnreadVisible,
+    unread.hasUnread,
+    unread.isLoading,
+    unread.markVisibleMessages,
+  ]);
+
+  const scheduleVisibilityMeasurement = useCallback(() => {
+    cancelReadDwell();
     if (visibilityTimerRef.current !== null) {
       window.clearTimeout(visibilityTimerRef.current);
     }
@@ -129,10 +215,12 @@ export const ChatVirtualList = ({
         measureVisibleMessages();
       });
     }, VISIBILITY_SETTLE_MS);
-  }, [measureVisibleMessages]);
+  }, [cancelReadDwell, measureVisibleMessages]);
 
   useEffect(() => {
     hasUserInteractedRef.current = false;
+    atBottomRef.current = true;
+    setUnreadViewportState("unknown");
     return () => {
       if (visibilityTimerRef.current !== null) {
         window.clearTimeout(visibilityTimerRef.current);
@@ -142,8 +230,72 @@ export const ChatVirtualList = ({
         cancelAnimationFrame(visibilityRafRef.current);
         visibilityRafRef.current = null;
       }
+      cancelReadDwell();
     };
-  }, [chatKey, windowVersion]);
+  }, [cancelReadDwell, chatKey, windowVersion]);
+
+  useEffect(() => {
+    const updateDocumentFocus = () => {
+      const isFocused =
+        document.visibilityState === "visible" && document.hasFocus();
+      setIsDocumentFocused(isFocused);
+      if (isFocused) {
+        scheduleVisibilityMeasurement();
+      } else {
+        cancelReadDwell();
+        setUnreadViewportState("unknown");
+      }
+    };
+
+    updateDocumentFocus();
+    window.addEventListener("focus", updateDocumentFocus);
+    window.addEventListener("blur", updateDocumentFocus);
+    document.addEventListener("visibilitychange", updateDocumentFocus);
+    return () => {
+      window.removeEventListener("focus", updateDocumentFocus);
+      window.removeEventListener("blur", updateDocumentFocus);
+      document.removeEventListener("visibilitychange", updateDocumentFocus);
+    };
+  }, [cancelReadDwell, scheduleVisibilityMeasurement]);
+
+  // Keep the last boundary mounted while it fades. Its slot is released only
+  // when doing so cannot shift the visible rows below it.
+  useEffect(() => {
+    const eventId = unread.isLoading ? null : unread.firstUnreadId;
+    setUnreadSeparator((current) => {
+      if (eventId) {
+        if (
+          current?.chatKey === chatKey &&
+          current.eventId === eventId &&
+          current.isVisible
+        ) {
+          return current;
+        }
+        return { chatKey, eventId, isVisible: true };
+      }
+      if (current?.chatKey !== chatKey) {
+        return null;
+      }
+      return current.isVisible ? { ...current, isVisible: false } : current;
+    });
+  }, [chatKey, unread.firstUnreadId, unread.isLoading]);
+
+  useEffect(() => {
+    setUnreadViewportState("unknown");
+    if (!isInitialLoading) {
+      scheduleVisibilityMeasurement();
+    }
+  }, [
+    chatKey,
+    hasNewer,
+    isInitialLoading,
+    messages.length,
+    scheduleVisibilityMeasurement,
+    unread.firstUnreadId,
+    unread.hasUnread,
+    unread.isLoading,
+    windowVersion,
+  ]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -162,16 +314,14 @@ export const ChatVirtualList = ({
     });
     scroller.addEventListener("keydown", markInteraction);
     scroller.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("focus", scheduleVisibilityMeasurement);
     return () => {
       scroller.removeEventListener("wheel", markInteraction);
       scroller.removeEventListener("touchstart", markInteraction);
       scroller.removeEventListener("pointerdown", markInteraction);
       scroller.removeEventListener("keydown", markInteraction);
       scroller.removeEventListener("scroll", onScroll);
-      window.removeEventListener("focus", scheduleVisibilityMeasurement);
     };
-  }, [scheduleVisibilityMeasurement]);
+  }, [chatKey, scheduleVisibilityMeasurement, windowVersion]);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
     isInitialLoading ? "visible" : "hidden",
@@ -254,10 +404,10 @@ export const ChatVirtualList = ({
     if (!eventId || isNavigating) {
       return;
     }
-    // Navigation exposes the target but does not itself prove that the user has
-    // read it. A subsequent wheel/touch/keyboard interaction enables viewport
-    // measurement, preserving the separator for the one-click arrival.
+    // Programmatic navigation exposes the target, but the focused dwell still
+    // has to confirm that it remained readable in the real viewport.
     hasUserInteractedRef.current = false;
+    setUnreadViewportState("unknown");
     setIsNavigating(true);
     try {
       if (!messagesRef.current.some((message) => message.id === eventId)) {
@@ -273,12 +423,19 @@ export const ChatVirtualList = ({
     void handleNavigateToUnread();
   }, [handleNavigateToUnread]);
 
+  // `unknown` deliberately renders nothing: waiting for Virtuoso to settle
+  // avoids flashing a shortcut before proving whether every unread is visible.
+  const shouldShowUnreadBanner =
+    unread.hasUnread &&
+    isDocumentFocused &&
+    unreadViewportState === "needs-navigation";
+
   // Publish the controls to ChatView because the list owns their callbacks,
   // while Figma places the rendered banner inside the composer stack.
   useEffect(() => {
     onUnreadBannerChange(
       chatKey,
-      unread.hasUnread
+      shouldShowUnreadBanner
         ? {
             count: unread.unreadCount,
             canNavigate: unread.firstUnreadId !== null,
@@ -294,10 +451,10 @@ export const ChatVirtualList = ({
     navigateToUnread,
     onUnreadBannerChange,
     unread.firstUnreadId,
-    unread.hasUnread,
     unread.isResolving,
     unread.markAllRead,
     unread.unreadCount,
+    shouldShowUnreadBanner,
   ]);
 
   useEffect(
@@ -422,19 +579,22 @@ export const ChatVirtualList = ({
           }}
           itemContent={(virtualIndex, message) => {
             const arrayIndex = virtualIndex - firstItemIndex;
-            const hasSeparator = message.id === unread.firstUnreadId;
+            const hasSeparator = message.id === unreadSeparatorEventId;
             return (
               <Row
                 message={message}
                 chatRef={chatRef}
                 prev={hasSeparator ? undefined : messages[arrayIndex - 1]}
                 next={
-                  messages[arrayIndex + 1]?.id === unread.firstUnreadId
+                  messages[arrayIndex + 1]?.id === unreadSeparatorEventId
                     ? undefined
                     : messages[arrayIndex + 1]
                 }
                 authorsById={authorsById}
                 hasUnreadSeparator={hasSeparator}
+                isUnreadSeparatorVisible={
+                  hasSeparator && unreadSeparator?.isVisible === true
+                }
               />
             );
           }}
@@ -461,6 +621,7 @@ type RowProps = {
   next: ChatMessage | undefined;
   authorsById: Map<string, ChatMessageAuthor>;
   hasUnreadSeparator: boolean;
+  isUnreadSeparatorVisible: boolean;
 };
 
 const Row = memo(function Row({
@@ -470,6 +631,7 @@ const Row = memo(function Row({
   next,
   authorsById,
   hasUnreadSeparator,
+  isUnreadSeparatorVisible,
 }: RowProps) {
   const isSent = message.authorId === "me";
   const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
@@ -477,7 +639,11 @@ const Row = memo(function Row({
 
   if (isSent) {
     return (
-      <RowShell messageId={message.id} hasUnreadSeparator={hasUnreadSeparator}>
+      <RowShell
+        messageId={message.id}
+        hasUnreadSeparator={hasUnreadSeparator}
+        isUnreadSeparatorVisible={isUnreadSeparatorVisible}
+      >
         <ChatBubble
           variant="sent"
           chatRef={chatRef}
@@ -501,7 +667,11 @@ const Row = memo(function Row({
     return null;
   }
   return (
-    <RowShell messageId={message.id} hasUnreadSeparator={hasUnreadSeparator}>
+    <RowShell
+      messageId={message.id}
+      hasUnreadSeparator={hasUnreadSeparator}
+      isUnreadSeparatorVisible={isUnreadSeparatorVisible}
+    >
       <ChatBubble
         variant="received"
         chatRef={chatRef}
@@ -526,14 +696,18 @@ const RowShell = ({
   children,
   messageId,
   hasUnreadSeparator,
+  isUnreadSeparatorVisible,
 }: {
   children: React.ReactNode;
   messageId: string;
   hasUnreadSeparator: boolean;
+  isUnreadSeparatorVisible: boolean;
 }) => (
   <div className="hub__chat-conversation__row" data-chat-message-id={messageId}>
     <div className="hub__chat-conversation__row-inner">
-      {hasUnreadSeparator && <UnreadSeparator />}
+      {hasUnreadSeparator && (
+        <UnreadSeparator visible={isUnreadSeparatorVisible} />
+      )}
       {children}
     </div>
   </div>

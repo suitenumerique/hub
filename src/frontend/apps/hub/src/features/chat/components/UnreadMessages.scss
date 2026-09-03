@@ -11,12 +11,6 @@
   background: var(--c--contextuals--background--surface--primary, #ffffff);
   font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
 
-  .hub__unread-threads-banner + & {
-    padding-top: calc(var(--c--globals--spacings--xxxs, 4px) - 1px);
-    border-top: 1px solid
-      var(--c--contextuals--border--surface--primary, #dfe2ea);
-  }
-
   &__open,
   &__mark {
     appearance: none;
@@ -74,6 +68,30 @@
   }
 }
 
+.hub__unread-messages-banner-transition {
+  overflow: clip;
+  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+  border-bottom: 0;
+  border-radius: var(--c--globals--spacings--xs, 8px)
+    var(--c--globals--spacings--xs, 8px) 0 0;
+  background: var(--c--contextuals--background--surface--primary, #ffffff);
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+
+  &[data-visible="false"] {
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  .hub__unread-messages-banner {
+    margin-bottom: 0;
+  }
+}
+
 .hub__unread-separator {
   width: 100%;
   box-sizing: border-box;
@@ -84,6 +102,12 @@
   min-height: 16px;
   color: var(--c--contextuals--content--semantic--brand--secondary, #304ddf);
   font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+  opacity: 1;
+  transition: opacity 180ms ease;
+
+  &[data-visible="false"] {
+    opacity: 0;
+  }
 
   span {
     height: 1px;
@@ -100,6 +124,13 @@
     font-size: 12px;
     font-weight: 500;
     line-height: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__unread-messages-banner-transition,
+  .hub__unread-separator {
+    transition: none;
   }
 }
 

@@ -25,6 +25,10 @@ const isEligibleUnreadMessage = (message: ChatMessage): boolean =>
 export type UseMainTimelineUnreadResult = ChatMainTimelineUnread & {
   isLoading: boolean;
   isResolving: boolean;
+  areAllUnreadVisible: (
+    visibleIds: ReadonlySet<string>,
+    hasNewer: boolean,
+  ) => boolean;
   markVisibleMessages: (
     visibleIds: ReadonlySet<string>,
     hasNewer: boolean,
@@ -35,7 +39,7 @@ export type UseMainTimelineUnreadResult = ChatMainTimelineUnread & {
 /**
  * Owns the monotonic local projection and serialised Matrix writes for the
  * main timeline. Rendering rows never marks them read: the caller must pass
- * identities measured inside the real scroll viewport after user interaction.
+ * identities measured inside a stable, focused scroll viewport.
  */
 export const useMainTimelineUnread = (
   ref: ChatRef,
@@ -157,6 +161,34 @@ export const useMainTimelineUnread = (
 
   const current = projection ?? query.data;
 
+  const areAllUnreadVisible = useCallback(
+    (visibleIds: ReadonlySet<string>, hasNewer: boolean) => {
+      const state = projectionRef.current ?? query.data;
+      if (!state?.hasUnread || !state.firstUnreadId || hasNewer) {
+        return false;
+      }
+      const firstUnreadIndex = messages.findIndex(
+        (message) => message.id === state.firstUnreadId,
+      );
+      if (firstUnreadIndex < 0) {
+        return false;
+      }
+
+      const unreadIds = messages
+        .slice(firstUnreadIndex)
+        .filter(isEligibleUnreadMessage)
+        .map((message) => message.id);
+      if (
+        unreadIds.length === 0 ||
+        (state.unreadCount !== null && unreadIds.length < state.unreadCount)
+      ) {
+        return false;
+      }
+      return unreadIds.every((eventId) => visibleIds.has(eventId));
+    },
+    [messages, query.data],
+  );
+
   const markVisibleMessages = useCallback(
     (visibleIds: ReadonlySet<string>, hasNewer: boolean) => {
       const state = projectionRef.current ?? query.data;
@@ -237,10 +269,12 @@ export const useMainTimelineUnread = (
       liveEndId: query.data?.liveEndId ?? null,
       isLoading: query.isPending,
       isResolving: query.isFetching,
+      areAllUnreadVisible,
       markVisibleMessages,
       markAllRead,
     }),
     [
+      areAllUnreadVisible,
       current,
       markAllRead,
       markVisibleMessages,
