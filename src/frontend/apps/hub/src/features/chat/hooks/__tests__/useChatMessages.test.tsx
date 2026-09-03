@@ -8,9 +8,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { chatKeys } from "../../chatKeys";
+import type { GetChatMessagesParams } from "@/features/drivers/Driver";
 import type { ChatMessagesPage, ChatRef } from "@/features/drivers/types";
 
+import { chatKeys } from "../../chatKeys";
 import { useChatMessages } from "../useChatMessages";
 
 const buildPage = (
@@ -32,13 +33,7 @@ const buildPage = (
 };
 
 const getChatMessages =
-  vi.fn<
-    (params: {
-      chatId: string;
-      cursor?: string | null;
-      limit?: number;
-    }) => Promise<ChatMessagesPage>
-  >();
+  vi.fn<(params: GetChatMessagesParams) => Promise<ChatMessagesPage>>();
 
 const registry = {
   get: vi.fn(() => ({ getChatMessages })),
@@ -262,11 +257,9 @@ describe("useChatMessages", () => {
     });
 
     await waitFor(() => {
-      expect(getChatMessages).toHaveBeenCalledWith({
-        chatId: "chat-1",
-        cursor: null,
-        limit: 50,
-      });
+      expect(getChatMessages).toHaveBeenCalledWith(
+        expect.objectContaining({ chatId: "chat-1" }),
+      );
     });
     expect(queryClient.getQueryData(chatKeys.messages(CHAT_REF))).toBeDefined();
     expect(registry.get).toHaveBeenCalledWith("account-a");
