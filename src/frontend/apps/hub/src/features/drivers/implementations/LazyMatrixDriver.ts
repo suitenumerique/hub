@@ -20,6 +20,7 @@ import {
 } from "../Driver";
 import type {
   AccountId,
+  ChatMainTimelineUnread,
   ChatMessage,
   ChatMessagesPage,
   ChatMembers,
@@ -140,6 +141,10 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.getChatMessages(params));
   }
 
+  async getMainTimelineUnread(chatId: string): Promise<ChatMainTimelineUnread> {
+    return this.withTarget((driver) => driver.getMainTimelineUnread(chatId));
+  }
+
   async toggleChatReaction(
     params: ToggleChatReactionParams,
   ): Promise<ChatMessage> {
@@ -170,6 +175,12 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async markChatRead(chatId: string): Promise<void> {
     return this.withTarget((driver) => driver.markChatRead(chatId));
+  }
+
+  async markChatReadThrough(chatId: string, eventId: string): Promise<void> {
+    return this.withTarget((driver) =>
+      driver.markChatReadThrough(chatId, eventId),
+    );
   }
 
   async getUnread(): Promise<Record<string, ChatUnread>> {
