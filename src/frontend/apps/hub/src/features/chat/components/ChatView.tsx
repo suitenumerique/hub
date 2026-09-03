@@ -1,4 +1,12 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Chat, ChatRef } from "@/features/drivers/types";
@@ -36,6 +44,8 @@ type UnreadMessagesBannerState = {
   chatKey: string;
   banner: UnreadMessagesBannerProps;
 };
+
+const FLOATING_STACK_SAFETY_GAP = 8;
 
 type ChatViewProps = {
   chatRef: ChatRef | null;
@@ -255,18 +265,17 @@ export const ChatView = ({
                   when a conversation resolves. */}
                 <div className="hub__chat-composer-stack">
                   <div className="hub__chat-composer-overlay-anchor">
-                    <div className="hub__chat-composer-floating-stack">
+                    <ComposerFloatingArea key={chatKey ?? "draft"}>
                       <TypingIndicator users={typingUsers} />
                       <div className="hub__chat-composer-floating-banners">
                         {chatRef && (
                           <ConversationUnreadBanner chatRef={chatRef} />
                         )}
                         <UnreadMessagesBannerTransition
-                          key={chatKey ?? "draft"}
                           banner={activeUnreadMessagesBanner}
                         />
                       </div>
-                    </div>
+                    </ComposerFloatingArea>
                     <ChatComposer
                       conversationId={chatKey ?? undefined}
                       placeholder={
@@ -330,5 +339,40 @@ const ConversationUnreadBanner = ({ chatRef }: { chatRef: ChatRef }) => {
 
   return (
     <UnreadThreadsBanner chatRef={chatRef} unreadThreads={unreadThreads} />
+  );
+};
+
+const ComposerFloatingArea = ({ children }: { children: ReactNode }) => {
+  const stackRef = useRef<HTMLDivElement>(null);
+  const [reservedHeight, setReservedHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    const stack = stackRef.current;
+    if (!stack) {
+      return;
+    }
+    const reserveVisibleHeight = () => {
+      const visibleHeight = Math.ceil(stack.getBoundingClientRect().height);
+      // Mirror the current overlay only; its own exit transition keeps the
+      // reserve long enough to disappear without leaving a permanent gap.
+      setReservedHeight(
+        visibleHeight > 0 ? visibleHeight + FLOATING_STACK_SAFETY_GAP : 0,
+      );
+    };
+    const observer = new ResizeObserver(reserveVisibleHeight);
+    observer.observe(stack);
+    reserveVisibleHeight();
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      className="hub__chat-composer-safety-space"
+      style={{ height: reservedHeight }}
+    >
+      <div ref={stackRef} className="hub__chat-composer-floating-stack">
+        {children}
+      </div>
+    </div>
   );
 };
