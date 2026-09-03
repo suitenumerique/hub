@@ -10,146 +10,168 @@ import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import type {
-  ChatRef,
   ChatMessage,
   ChatMessageAuthor,
+  ChatRef,
 } from "@/features/drivers/types";
 
 import { useChatMessages } from "../hooks/useChatMessages";
-import { useChatUnread } from "../hooks/useChatUnread";
-import { useMarkChatRead } from "../hooks/useMarkChatRead";
+import { useMainTimelineUnread } from "../hooks/useMainTimelineUnread";
 
 import { ChatBubble } from "./ChatBubble";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
+import type { UnreadMessagesBannerProps } from "./UnreadMessagesBanner";
+import { UnreadSeparator } from "./UnreadSeparator";
 
 type ChatVirtualListProps = {
   chatRef: ChatRef;
+  onUnreadBannerChange: (
+    chatKey: string,
+    banner: UnreadMessagesBannerProps | null,
+  ) => void;
 };
 
-// Average bubble height. Lets Virtuoso lay out rows without waiting on the
-// first measurement pass — eliminates the visible "flash" before the list
-// snaps to the bottom on chat open / switch.
 const DEFAULT_ITEM_HEIGHT = 72;
+const VISIBILITY_SETTLE_MS = 250;
 
-// Avoid clearing a room merely because it flashed on screen during navigation.
-const MARK_READ_DEBOUNCE_MS = 500;
-const MARK_READ_RETRY_MAX_MS = 8000;
-
-// State machine for the skeleton overlay: it stays mounted (and fully
-// opaque) while messages are loading, then transitions to `leaving` once
-// Virtuoso has had a frame to render — the CSS fade-out runs and the
-// transition-end handler flips it to `hidden`, at which point we unmount it.
 type SkeletonState = "visible" | "leaving" | "hidden";
 
-export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
+export const ChatVirtualList = ({
+  chatRef,
+  onUnreadBannerChange,
+}: ChatVirtualListProps) => {
   const { t } = useTranslation();
   const {
     messages,
     authorsById,
     hasOlder,
+    hasNewer,
+    isAtLiveEnd,
     isFetchingOlder,
+    isFetchingNewer,
     isInitialLoading,
     firstItemIndex,
+    windowVersion,
+    windowAnchorId,
     fetchOlder,
+    fetchNewer,
+    openAround,
   } = useChatMessages(chatRef);
+  const unread = useMainTimelineUnread(chatRef, messages);
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
   const lastMessage = messages[messages.length - 1];
-  const unreadLookup = useChatUnread();
-  const isUnread = unreadLookup(chatRef).unread;
-  const markChatRead = useMarkChatRead(chatRef);
+  const initialWindowIndex = windowAnchorId
+    ? messages.findIndex((message) => message.id === windowAnchorId)
+    : -1;
 
-  // Keep one Virtuoso instance alive across chat switches — remounting it on
-  // every chat change costs ~500ms of measurement + layout, which is what
-  // made switching feel sluggish.
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const scrollerRef = useRef<HTMLElement | null>(null);
+  const messagesRef = useRef(messages);
   const previousChatRef = useRef(chatRef);
   const previousAppendState = useRef({
     chatKey,
+    windowVersion,
     messageCount: messages.length,
     lastMessageId: lastMessage?.id ?? null,
   });
   const atBottomRef = useRef(true);
-  // Set while a freshly appended message should stay pinned to the bottom.
-  // Virtuoso estimates row heights before measuring, so the first scroll can
-  // land a few px short; `totalListHeightChanged` re-pins once the real height
-  // is known. Cleared as soon as the viewport actually reaches the bottom.
+  const isAtLiveEndRef = useRef(isAtLiveEnd);
   const shouldStickToBottomRef = useRef(false);
+  const hasUserInteractedRef = useRef(false);
   const pendingScrollRaf = useRef<number | null>(null);
-  const lastMarkedKeyRef = useRef<string | null>(null);
-  const markReadTimerRef = useRef<number | null>(null);
-  const markReadRetryCountRef = useRef(0);
-  const [markReadRetryTick, setMarkReadRetryTick] = useState(0);
+  const visibilityRafRef = useRef<number | null>(null);
+  const visibilityTimerRef = useRef<number | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
 
-  /**
-   * A room is read only when its latest message is actually visible: the window
-   * is focused, the list is at the bottom, and the initial load has completed.
-   */
-  const maybeMarkRead = useCallback(() => {
-    const latestId = lastMessage?.id;
-    const markerKey = latestId ? `${chatKey}:${latestId}` : null;
-    if (!isUnread) {
-      markReadRetryCountRef.current = 0;
-      return;
-    }
+  messagesRef.current = messages;
+  isAtLiveEndRef.current = isAtLiveEnd;
+
+  const measureVisibleMessages = useCallback(() => {
     if (
-      isInitialLoading ||
-      !atBottomRef.current ||
-      !markerKey ||
-      lastMarkedKeyRef.current === markerKey ||
+      !hasUserInteractedRef.current ||
+      !scrollerRef.current ||
       (typeof document !== "undefined" && !document.hasFocus())
     ) {
       return;
     }
-    if (markReadTimerRef.current !== null) {
-      window.clearTimeout(markReadTimerRef.current);
-    }
-    markReadTimerRef.current = window.setTimeout(() => {
-      markReadTimerRef.current = null;
-      if (!atBottomRef.current || !document.hasFocus()) {
-        return;
-      }
-      lastMarkedKeyRef.current = markerKey;
-      void markChatRead()
-        .then(() => {
-          markReadRetryCountRef.current = 0;
-        })
-        .catch(() => {
-          if (lastMarkedKeyRef.current !== markerKey) {
-            return;
+    const viewport = scrollerRef.current.getBoundingClientRect();
+    const visibleIds = new Set<string>();
+    scrollerRef.current
+      .querySelectorAll<HTMLElement>("[data-chat-message-id]")
+      .forEach((row) => {
+        const bounds = row.getBoundingClientRect();
+        if (bounds.bottom > viewport.top && bounds.top < viewport.bottom) {
+          const eventId = row.dataset.chatMessageId;
+          if (eventId) {
+            visibleIds.add(eventId);
           }
-          lastMarkedKeyRef.current = null;
-          const retryDelay = Math.min(
-            1000 * 2 ** markReadRetryCountRef.current,
-            MARK_READ_RETRY_MAX_MS,
-          );
-          markReadRetryCountRef.current += 1;
-          markReadTimerRef.current = window.setTimeout(() => {
-            markReadTimerRef.current = null;
-            setMarkReadRetryTick((current) => current + 1);
-          }, retryDelay);
-        });
-    }, MARK_READ_DEBOUNCE_MS);
-  }, [chatKey, isInitialLoading, isUnread, lastMessage?.id, markChatRead]);
+        }
+      });
+    if (visibleIds.size > 0) {
+      unread.markVisibleMessages(visibleIds, hasNewer);
+    }
+  }, [hasNewer, unread.markVisibleMessages]);
+
+  const scheduleVisibilityMeasurement = useCallback(() => {
+    if (!hasUserInteractedRef.current) {
+      return;
+    }
+    if (visibilityTimerRef.current !== null) {
+      window.clearTimeout(visibilityTimerRef.current);
+    }
+    visibilityTimerRef.current = window.setTimeout(() => {
+      visibilityTimerRef.current = null;
+      if (visibilityRafRef.current !== null) {
+        cancelAnimationFrame(visibilityRafRef.current);
+      }
+      visibilityRafRef.current = requestAnimationFrame(() => {
+        visibilityRafRef.current = null;
+        measureVisibleMessages();
+      });
+    }, VISIBILITY_SETTLE_MS);
+  }, [measureVisibleMessages]);
 
   useEffect(() => {
-    lastMarkedKeyRef.current = null;
-    markReadRetryCountRef.current = 0;
+    hasUserInteractedRef.current = false;
     return () => {
-      lastMarkedKeyRef.current = null;
-    };
-  }, [chatKey]);
-
-  useEffect(() => {
-    maybeMarkRead();
-    window.addEventListener("focus", maybeMarkRead);
-    return () => {
-      window.removeEventListener("focus", maybeMarkRead);
-      if (markReadTimerRef.current !== null) {
-        window.clearTimeout(markReadTimerRef.current);
-        markReadTimerRef.current = null;
+      if (visibilityTimerRef.current !== null) {
+        window.clearTimeout(visibilityTimerRef.current);
+        visibilityTimerRef.current = null;
+      }
+      if (visibilityRafRef.current !== null) {
+        cancelAnimationFrame(visibilityRafRef.current);
+        visibilityRafRef.current = null;
       }
     };
-  }, [markReadRetryTick, maybeMarkRead]);
+  }, [chatKey, windowVersion]);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) {
+      return;
+    }
+    const markInteraction = () => {
+      hasUserInteractedRef.current = true;
+      scheduleVisibilityMeasurement();
+    };
+    const onScroll = () => scheduleVisibilityMeasurement();
+    scroller.addEventListener("wheel", markInteraction, { passive: true });
+    scroller.addEventListener("touchstart", markInteraction, { passive: true });
+    scroller.addEventListener("pointerdown", markInteraction, {
+      passive: true,
+    });
+    scroller.addEventListener("keydown", markInteraction);
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("focus", scheduleVisibilityMeasurement);
+    return () => {
+      scroller.removeEventListener("wheel", markInteraction);
+      scroller.removeEventListener("touchstart", markInteraction);
+      scroller.removeEventListener("pointerdown", markInteraction);
+      scroller.removeEventListener("keydown", markInteraction);
+      scroller.removeEventListener("scroll", onScroll);
+      window.removeEventListener("focus", scheduleVisibilityMeasurement);
+    };
+  }, [scheduleVisibilityMeasurement]);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
     isInitialLoading ? "visible" : "hidden",
@@ -160,10 +182,6 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
       setSkeletonState("visible");
       return;
     }
-    // Wait one frame so Virtuoso has mounted and painted its first batch of
-    // bubbles before we start fading the skeleton out — without this delay
-    // the skeleton would unmount before Virtuoso lays out, leaving a blank
-    // conversation for one or two frames.
     const raf = requestAnimationFrame(() => {
       setSkeletonState((current) =>
         current === "visible" ? "leaving" : current,
@@ -180,16 +198,13 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
       return;
     }
     previousChatRef.current = chatRef;
-    // Two rAFs: the first lets React commit the new `data` + `firstItemIndex`,
-    // the second lets Virtuoso recompute its internal layout before we ask it
-    // to scroll to the last row.
     pendingScrollRaf.current = requestAnimationFrame(() => {
       pendingScrollRaf.current = requestAnimationFrame(() => {
         pendingScrollRaf.current = null;
         virtuosoRef.current?.scrollToIndex({
           index: "LAST",
           align: "end",
-          behavior: "smooth",
+          behavior: "auto",
         });
       });
     });
@@ -201,10 +216,6 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
     };
   }, [chatRef]);
 
-  // Scroll so the latest message's bottom aligns with the viewport bottom,
-  // through Virtuoso's measurement-aware API rather than touching `scrollTop`
-  // directly — on a virtualised list the scroller's `scrollHeight` is only an
-  // estimate, so manual `scrollTop = scrollHeight` overshoots and janks.
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
       index: "LAST",
@@ -213,73 +224,171 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
     });
   }, []);
 
-  // Stick to the bottom when a new latest message arrives — but only when the
-  // reader is already at the bottom, or it is their own send (they expect to
-  // follow it even from an older scroll position). `followOutput` handles the
-  // "already at bottom" case on its own; this covers "my own send while
-  // scrolled up", which `followOutput` deliberately ignores.
+  const scrollToEvent = useCallback((eventId: string) => {
+    if (pendingScrollRaf.current !== null) {
+      cancelAnimationFrame(pendingScrollRaf.current);
+    }
+    pendingScrollRaf.current = requestAnimationFrame(() => {
+      pendingScrollRaf.current = requestAnimationFrame(() => {
+        pendingScrollRaf.current = null;
+        const arrayIndex = messagesRef.current.findIndex(
+          (message) => message.id === eventId,
+        );
+        if (arrayIndex < 0) {
+          return;
+        }
+        virtuosoRef.current?.scrollToIndex({
+          // Virtuoso's imperative index is relative to `data` even when
+          // `itemContent` receives the offset virtual index. Matrix identity
+          // is resolved first; the array position is only the final UI hop.
+          index: arrayIndex,
+          align: "center",
+          behavior: "auto",
+        });
+      });
+    });
+  }, []);
+
+  const handleNavigateToUnread = useCallback(async () => {
+    const eventId = unread.firstUnreadId;
+    if (!eventId || isNavigating) {
+      return;
+    }
+    // Navigation exposes the target but does not itself prove that the user has
+    // read it. A subsequent wheel/touch/keyboard interaction enables viewport
+    // measurement, preserving the separator for the one-click arrival.
+    hasUserInteractedRef.current = false;
+    setIsNavigating(true);
+    try {
+      if (!messagesRef.current.some((message) => message.id === eventId)) {
+        await openAround(eventId);
+      }
+      scrollToEvent(eventId);
+    } finally {
+      setIsNavigating(false);
+    }
+  }, [isNavigating, openAround, scrollToEvent, unread.firstUnreadId]);
+
+  const navigateToUnread = useCallback(() => {
+    void handleNavigateToUnread();
+  }, [handleNavigateToUnread]);
+
+  // Publish the controls to ChatView because the list owns their callbacks,
+  // while Figma places the rendered banner inside the composer stack.
+  useEffect(() => {
+    onUnreadBannerChange(
+      chatKey,
+      unread.hasUnread
+        ? {
+            count: unread.unreadCount,
+            canNavigate: unread.firstUnreadId !== null,
+            isResolving: unread.isResolving || isNavigating,
+            onNavigate: navigateToUnread,
+            onMarkAllRead: unread.markAllRead,
+          }
+        : null,
+    );
+  }, [
+    chatKey,
+    isNavigating,
+    navigateToUnread,
+    onUnreadBannerChange,
+    unread.firstUnreadId,
+    unread.hasUnread,
+    unread.isResolving,
+    unread.markAllRead,
+    unread.unreadCount,
+  ]);
+
+  useEffect(
+    () => () => onUnreadBannerChange(chatKey, null),
+    [chatKey, onUnreadBannerChange],
+  );
+
+  const handleAtTopStateChange = useCallback(
+    (atTop: boolean) => {
+      if (atTop && hasOlder && hasUserInteractedRef.current) {
+        fetchOlder();
+      }
+    },
+    [fetchOlder, hasOlder],
+  );
+
+  const handleEndReached = useCallback(() => {
+    if (hasUserInteractedRef.current) {
+      fetchNewer();
+    }
+  }, [fetchNewer]);
+
   useLayoutEffect(() => {
     const previous = previousAppendState.current;
-    const isSameChat = previous.chatKey === chatKey;
+    const isSameWindow =
+      previous.chatKey === chatKey && previous.windowVersion === windowVersion;
     const didAppendLatest =
       messages.length > previous.messageCount &&
       lastMessage?.id !== previous.lastMessageId;
     const shouldFollowAppend =
-      atBottomRef.current || lastMessage?.authorId === "me";
+      isAtLiveEnd && (atBottomRef.current || lastMessage?.authorId === "me");
     previousAppendState.current = {
       chatKey,
+      windowVersion,
       messageCount: messages.length,
       lastMessageId: lastMessage?.id ?? null,
     };
 
-    if (!isSameChat || !didAppendLatest || !shouldFollowAppend) {
+    if (!isSameWindow || !didAppendLatest || !shouldFollowAppend) {
       return;
     }
-
     shouldStickToBottomRef.current = true;
     scrollToBottom();
   }, [
     chatKey,
+    isAtLiveEnd,
     lastMessage?.authorId,
     lastMessage?.id,
     messages.length,
     scrollToBottom,
+    windowVersion,
   ]);
 
   return (
     <div className="hub__chat-conversation__list">
       {!isInitialLoading && (
         <Virtuoso
+          key={`${chatKey}:${windowVersion}`}
           ref={virtuosoRef}
+          scrollerRef={(element) => {
+            scrollerRef.current =
+              element instanceof HTMLElement ? element : null;
+          }}
           data={messages}
           firstItemIndex={firstItemIndex}
           computeItemKey={(_index, message) => message.id}
           defaultItemHeight={DEFAULT_ITEM_HEIGHT}
-          // Honoured only on the very first mount; subsequent chat switches
-          // rely on the imperative scrollToIndex above.
-          initialTopMostItemIndex={Math.max(0, messages.length - 1)}
-          followOutput="auto"
+          initialTopMostItemIndex={
+            initialWindowIndex >= 0
+              ? { index: initialWindowIndex, align: "center" }
+              : Math.max(0, messages.length - 1)
+          }
+          followOutput={isAtLiveEnd ? "auto" : false}
+          atTopStateChange={handleAtTopStateChange}
           atBottomStateChange={(atBottom) => {
             atBottomRef.current = atBottom;
-            if (atBottom) {
+            if (atBottom && isAtLiveEndRef.current) {
               shouldStickToBottomRef.current = false;
-              maybeMarkRead();
             }
+            scheduleVisibilityMeasurement();
           }}
+          rangeChanged={scheduleVisibilityMeasurement}
           totalListHeightChanged={() => {
-            // Re-pin to the bottom while a stick is pending: the just-appended
-            // row's real height differs from the initial estimate, and that
-            // height change would otherwise leave a gap below the last message.
-            if (shouldStickToBottomRef.current) {
+            if (shouldStickToBottomRef.current && isAtLiveEndRef.current) {
               scrollToBottom();
             }
+            scheduleVisibilityMeasurement();
           }}
-          startReached={hasOlder ? fetchOlder : undefined}
+          endReached={hasNewer ? handleEndReached : undefined}
           increaseViewportBy={{ top: 400, bottom: 0 }}
           components={{
-            // Always render enough space for the floating header and the
-            // topmost message's hover toolbar. The top-loader takes over the
-            // spacer's contents while fetching older pages.
             Header: () => (
               <div className="hub__chat-conversation__top-spacer">
                 {isFetchingOlder && (
@@ -295,16 +404,37 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
                 )}
               </div>
             ),
+            Footer: () => (
+              <div className="hub__chat-conversation__bottom-spacer">
+                {isFetchingNewer && (
+                  <div
+                    className="hub__chat-conversation__bottom-loader"
+                    role="status"
+                  >
+                    <span className="material-icons" aria-hidden="true">
+                      sync
+                    </span>
+                    {t("Loading newer messages…")}
+                  </div>
+                )}
+              </div>
+            ),
           }}
           itemContent={(virtualIndex, message) => {
             const arrayIndex = virtualIndex - firstItemIndex;
+            const hasSeparator = message.id === unread.firstUnreadId;
             return (
               <Row
                 message={message}
                 chatRef={chatRef}
-                prev={messages[arrayIndex - 1]}
-                next={messages[arrayIndex + 1]}
+                prev={hasSeparator ? undefined : messages[arrayIndex - 1]}
+                next={
+                  messages[arrayIndex + 1]?.id === unread.firstUnreadId
+                    ? undefined
+                    : messages[arrayIndex + 1]
+                }
                 authorsById={authorsById}
+                hasUnreadSeparator={hasSeparator}
               />
             );
           }}
@@ -313,9 +443,6 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
       {skeletonState !== "hidden" && (
         <ChatConversationSkeleton
           leaving={skeletonState === "leaving"}
-          // Guard against a late `transitionend` from a previous leave: if the
-          // user re-loaded the chat in the meantime, the state is back to
-          // "visible" and we must not flip it to "hidden".
           onLeaveEnd={() =>
             setSkeletonState((current) =>
               current === "leaving" ? "hidden" : current,
@@ -329,11 +456,11 @@ export const ChatVirtualList = ({ chatRef }: ChatVirtualListProps) => {
 
 type RowProps = {
   message: ChatMessage;
-  /** Stable for the whole list — does not invalidate the row memo. */
   chatRef: ChatRef;
   prev: ChatMessage | undefined;
   next: ChatMessage | undefined;
   authorsById: Map<string, ChatMessageAuthor>;
+  hasUnreadSeparator: boolean;
 };
 
 const Row = memo(function Row({
@@ -342,6 +469,7 @@ const Row = memo(function Row({
   prev,
   next,
   authorsById,
+  hasUnreadSeparator,
 }: RowProps) {
   const isSent = message.authorId === "me";
   const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
@@ -349,7 +477,7 @@ const Row = memo(function Row({
 
   if (isSent) {
     return (
-      <RowShell>
+      <RowShell messageId={message.id} hasUnreadSeparator={hasUnreadSeparator}>
         <ChatBubble
           variant="sent"
           chatRef={chatRef}
@@ -373,7 +501,7 @@ const Row = memo(function Row({
     return null;
   }
   return (
-    <RowShell>
+    <RowShell messageId={message.id} hasUnreadSeparator={hasUnreadSeparator}>
       <ChatBubble
         variant="received"
         chatRef={chatRef}
@@ -394,8 +522,19 @@ const Row = memo(function Row({
   );
 });
 
-const RowShell = ({ children }: { children: React.ReactNode }) => (
-  <div className="hub__chat-conversation__row">
-    <div className="hub__chat-conversation__row-inner">{children}</div>
+const RowShell = ({
+  children,
+  messageId,
+  hasUnreadSeparator,
+}: {
+  children: React.ReactNode;
+  messageId: string;
+  hasUnreadSeparator: boolean;
+}) => (
+  <div className="hub__chat-conversation__row" data-chat-message-id={messageId}>
+    <div className="hub__chat-conversation__row-inner">
+      {hasUnreadSeparator && <UnreadSeparator />}
+      {children}
+    </div>
   </div>
 );

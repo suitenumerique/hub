@@ -1,4 +1,6 @@
-.hub__unread-threads-banner {
+.hub__unread-messages-banner {
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6,7 +8,14 @@
   min-height: 32px;
   padding: var(--c--globals--spacings--xxxs, 4px);
   margin-bottom: -1px;
+  background: var(--c--contextuals--background--surface--primary, #ffffff);
   font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+
+  .hub__unread-threads-banner + & {
+    padding-top: calc(var(--c--globals--spacings--xxxs, 4px) - 1px);
+    border-top: 1px solid
+      var(--c--contextuals--border--surface--primary, #dfe2ea);
+  }
 
   &__open,
   &__mark {
@@ -17,7 +26,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--c--globals--spacings--xxxs, 4px);
-    height: 24px;
+    min-height: 24px;
     padding: 0 var(--c--globals--spacings--xxxs, 4px);
     border-radius: 4px;
     font-family: inherit;
@@ -25,7 +34,7 @@
     font-weight: 500;
     line-height: 16px;
 
-    &:hover {
+    &:hover:not(:disabled) {
       background: var(
         --c--contextuals--background--semantic--overlay--primary,
         rgba(24, 27, 36, 0.05)
@@ -36,6 +45,11 @@
       outline: 2px solid
         var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
       outline-offset: 2px;
+    }
+
+    &:disabled {
+      cursor: progress;
+      opacity: 0.72;
     }
   }
 
@@ -56,6 +70,44 @@
     svg {
       width: 16px;
       height: 16px;
+    }
+  }
+}
+
+.hub__unread-separator {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--c--globals--spacings--xs, 8px);
+  padding: 0 var(--c--globals--spacings--xs, 8px);
+  min-height: 16px;
+  color: var(--c--contextuals--content--semantic--brand--secondary, #304ddf);
+  font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+
+  span {
+    height: 1px;
+    flex: 1 1 auto;
+    border-radius: 3px;
+    background: var(
+      --c--contextuals--border--semantic--brand--primary,
+      #3e5de7
+    );
+  }
+
+  strong {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hub__unread-messages-banner {
+    &__open,
+    &__mark {
+      min-height: 32px;
     }
   }
 }

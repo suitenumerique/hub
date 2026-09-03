@@ -1,68 +1,113 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef } from "react";
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
-  ChatRef,
   ChatMessage,
   ChatMessageAuthor,
+  ChatMessagesPage,
+  ChatRef,
 } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
 
-export const CHAT_PAGE_SIZE = 50;
-
-// Virtuoso uses a virtual index space. We start from a high anchor so that
-// prepending older messages stays in positive territory; `firstItemIndex` is
-// the anchor minus the number of currently loaded messages, and Virtuoso uses
-// it to keep the visible scroll position stable across prepends.
+export const CHAT_PAGE_SIZE = 100;
 const VIRTUOSO_INDEX_ANCHOR = 1_000_000;
+
+type MessagePageParam = {
+  cursor: string | null;
+  direction: "older" | "newer";
+  anchorId?: string;
+};
 
 type FirstItemIndexState = {
   chatKey: string | null;
-  newestPageSizeBaseline: number | null;
+  windowVersion: number;
+  firstMessageId: string | null;
+  firstItemIndex: number;
 };
 
 export type UseChatMessagesResult = {
   messages: ChatMessage[];
   authorsById: Map<string, ChatMessageAuthor>;
   hasOlder: boolean;
+  hasNewer: boolean;
+  isAtLiveEnd: boolean;
   isFetchingOlder: boolean;
+  isFetchingNewer: boolean;
   isInitialLoading: boolean;
   isError: boolean;
-  /** First virtual item index for Virtuoso. See `VIRTUOSO_INDEX_ANCHOR`. */
   firstItemIndex: number;
+  windowVersion: number;
+  windowAnchorId: string | null;
   fetchOlder: () => void;
+  fetchNewer: () => void;
+  openAround: (eventId: string) => Promise<void>;
 };
 
 export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
+  const queryClient = useQueryClient();
+  const [windowVersion, setWindowVersion] = useState(0);
+  const [windowAnchor, setWindowAnchor] = useState<{
+    chatKey: string;
+    eventId: string;
+  } | null>(null);
   const firstItemIndexState = useRef<FirstItemIndexState>({
     chatKey: null,
-    newestPageSizeBaseline: null,
+    windowVersion: 0,
+    firstMessageId: null,
+    firstItemIndex: VIRTUOSO_INDEX_ANCHOR,
   });
+  const queryKey = useMemo(
+    () => chatKeys.messages(ref),
+    [ref.accountId, ref.chatId],
+  );
 
   const query = useInfiniteQuery({
-    queryKey: chatKeys.messages(ref),
+    queryKey,
     queryFn: ({ pageParam }) =>
       getRegistry().get(ref.accountId).getChatMessages({
         chatId: ref.chatId,
-        cursor: pageParam,
+        cursor: pageParam.cursor,
+        direction: pageParam.direction,
+        anchorId: pageParam.anchorId,
         limit: CHAT_PAGE_SIZE,
       }),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: {
+      cursor: null,
+      direction: "older",
+    } as MessagePageParam,
+    getNextPageParam: (lastPage): MessagePageParam | undefined =>
+      lastPage.nextCursor
+        ? { cursor: lastPage.nextCursor, direction: "older" }
+        : undefined,
+    getPreviousPageParam: (firstPage): MessagePageParam | undefined =>
+      firstPage.newerCursor
+        ? { cursor: firstPage.newerCursor, direction: "newer" }
+        : undefined,
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });
 
+  // React Query keeps the live/newest page first and appends older pages after
+  // it. Reverse that page order for display, then de-duplicate on Matrix event
+  // identity because two adjacent contextual windows can overlap.
   const messages = useMemo(() => {
-    if (!query.data) {
-      return [];
-    }
-    // pages are ordered [newest-fetch-first, ..., oldest-fetch-last]; each page
-    // already holds messages in chronological ASC order. Older pages must come
-    // first in the flat array, so iterate pages in reverse.
-    return [...query.data.pages].reverse().flatMap((page) => page.messages);
+    const seen = new Set<string>();
+    return [...(query.data?.pages ?? [])]
+      .reverse()
+      .flatMap((page) => page.messages)
+      .filter((message) => {
+        if (seen.has(message.id)) {
+          return false;
+        }
+        seen.add(message.id);
+        return true;
+      });
   }, [query.data]);
 
   const authorsById = useMemo(() => {
@@ -79,57 +124,91 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     }
   }, [query]);
 
-  // Invariant: `newestPageSizeBaseline` is the *smallest* size ever observed for
-  // the newest page (pages[0]) within the current chat. `firstItemIndex` is then
-  // `ANCHOR - baseline - olderMessagesCount`, which keeps Virtuoso's virtual
-  // index space stable across the two mutations we expect:
-  //   - appending to the newest page (a sent/received message): its size only
-  //     grows, so it stays ≥ the baseline → the baseline (and firstItemIndex)
-  //     does not move, and the new row lands at the bottom without a jump;
-  //   - prepending an older page: `olderMessagesCount` grows → firstItemIndex
-  //     drops by exactly the prepend count, which is how Virtuoso anchors scroll.
-  // Fragility: this assumes the newest page never *shrinks*. If a message were
-  // removed from it, `newestPageSize` would dip below the baseline, lower it, and
-  // shift every virtual index — causing a visible scroll jump. Deletion would
-  // need an explicit re-baseline; today nothing removes messages.
+  const fetchNewer = useCallback(() => {
+    if (query.hasPreviousPage && !query.isFetchingPreviousPage) {
+      void query.fetchPreviousPage();
+    }
+  }, [query]);
+
+  const openAround = useCallback(
+    async (eventId: string) => {
+      await queryClient.cancelQueries({ queryKey, exact: true });
+      const page = await getRegistry().get(ref.accountId).getChatMessages({
+        chatId: ref.chatId,
+        anchorId: eventId,
+        direction: "older",
+        limit: CHAT_PAGE_SIZE,
+      });
+      queryClient.setQueryData<
+        InfiniteData<ChatMessagesPage, MessagePageParam>
+      >(queryKey, {
+        pages: [page],
+        pageParams: [{ cursor: null, direction: "older", anchorId: eventId }],
+      });
+      setWindowAnchor({
+        chatKey: `${ref.accountId}:${ref.chatId}`,
+        eventId,
+      });
+      setWindowVersion((version) => version + 1);
+    },
+    [queryClient, queryKey, ref.accountId, ref.chatId],
+  );
+
+  // Virtuoso indexes are derived from Matrix identities. When older messages
+  // are prepended, find the former first event and move the virtual origin by
+  // exactly that many rows. Appends and counter updates leave it untouched.
   const firstItemIndex = useMemo(() => {
     const chatKey = `${ref.accountId}:${ref.chatId}`;
     const state = firstItemIndexState.current;
-    if (state.chatKey !== chatKey) {
+    const firstMessageId = messages[0]?.id ?? null;
+    if (state.chatKey !== chatKey || state.windowVersion !== windowVersion) {
       state.chatKey = chatKey;
-      state.newestPageSizeBaseline = null;
+      state.windowVersion = windowVersion;
+      state.firstMessageId = firstMessageId;
+      state.firstItemIndex = VIRTUOSO_INDEX_ANCHOR - messages.length;
+      return state.firstItemIndex;
     }
 
-    const pages = query.data?.pages ?? [];
-    const newestPageSize = pages[0]?.messages.length;
-    if (newestPageSize === undefined) {
-      return VIRTUOSO_INDEX_ANCHOR;
+    if (!state.firstMessageId && firstMessageId) {
+      // A cold query first renders without data. Capture the real initial page
+      // once it arrives so Virtuoso can offset every subsequent prepend.
+      state.firstMessageId = firstMessageId;
+      state.firstItemIndex = VIRTUOSO_INDEX_ANCHOR - messages.length;
+      return state.firstItemIndex;
     }
 
-    if (
-      state.newestPageSizeBaseline === null ||
-      newestPageSize < state.newestPageSizeBaseline
-    ) {
-      state.newestPageSizeBaseline = newestPageSize;
+    if (state.firstMessageId && firstMessageId !== state.firstMessageId) {
+      const previousFirstIndex = messages.findIndex(
+        (message) => message.id === state.firstMessageId,
+      );
+      if (previousFirstIndex >= 0) {
+        state.firstItemIndex -= previousFirstIndex;
+      } else {
+        state.firstItemIndex = VIRTUOSO_INDEX_ANCHOR - messages.length;
+      }
+      state.firstMessageId = firstMessageId;
     }
-
-    const olderMessagesCount = pages
-      .slice(1)
-      .reduce((total, page) => total + page.messages.length, 0);
-
-    return (
-      VIRTUOSO_INDEX_ANCHOR - state.newestPageSizeBaseline - olderMessagesCount
-    );
-  }, [query.data?.pages, ref.accountId, ref.chatId]);
+    return state.firstItemIndex;
+  }, [messages, ref.accountId, ref.chatId, windowVersion]);
 
   return {
     messages,
     authorsById,
     hasOlder: Boolean(query.hasNextPage),
+    hasNewer: Boolean(query.hasPreviousPage),
+    isAtLiveEnd: query.data?.pages[0]?.isAtLiveEnd === true,
     isFetchingOlder: query.isFetchingNextPage,
+    isFetchingNewer: query.isFetchingPreviousPage,
     isInitialLoading: query.isPending,
     isError: query.isError,
     firstItemIndex,
+    windowVersion,
+    windowAnchorId:
+      windowAnchor?.chatKey === `${ref.accountId}:${ref.chatId}`
+        ? windowAnchor.eventId
+        : null,
     fetchOlder,
+    fetchNewer,
+    openAround,
   };
 };

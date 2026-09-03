@@ -1,6 +1,7 @@
 import { ArrowUp, Edit, XMark } from "@gouvfr-lasuite/ui-components/icons";
 import {
   FormEvent,
+  ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -10,6 +11,11 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { notify } from "@/features/ui/components/toast";
+
+import {
+  UnreadMessagesBanner,
+  type UnreadMessagesBannerProps,
+} from "./UnreadMessagesBanner";
 
 const TYPING_STOP_WAIT_MS = 400;
 
@@ -42,6 +48,9 @@ type ChatComposerProps = {
   onCancelEdit?: () => void;
   /** Reports real keyboard input for volatile typing notifications. */
   onTypingActivity?: (hasText: boolean) => Promise<unknown> | unknown;
+  /** Optional conversation-level rows displayed as part of the composer. */
+  unreadThreadsBanner?: ReactNode;
+  unreadMessagesBanner?: UnreadMessagesBannerProps | null;
 };
 
 export const ChatComposer = ({
@@ -57,6 +66,8 @@ export const ChatComposer = ({
   editDraft,
   onCancelEdit,
   onTypingActivity,
+  unreadThreadsBanner,
+  unreadMessagesBanner,
 }: ChatComposerProps) => {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -181,6 +192,10 @@ export const ChatComposer = ({
 
   return (
     <div className="hub__chat-composer-container">
+      {unreadThreadsBanner}
+      {unreadMessagesBanner && (
+        <UnreadMessagesBanner {...unreadMessagesBanner} />
+      )}
       {editDraft && (
         <div className="hub__chat-composer-edit" role="status">
           <span className="hub__chat-composer-edit__label">

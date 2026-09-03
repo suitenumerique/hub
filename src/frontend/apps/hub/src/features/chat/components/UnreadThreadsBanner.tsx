@@ -14,7 +14,7 @@ type UnreadThreadsBannerProps = {
 
 /**
  * The strip shown above the composer when the conversation has unread threads
- * (Figma node 1222:193104). Opening jumps straight to the thread when there is
+ * (Figma node 2785:13300). Opening jumps straight to the thread when there is
  * only one unread, otherwise it opens the thread list.
  */
 export const UnreadThreadsBanner = ({
@@ -57,7 +57,7 @@ export const UnreadThreadsBanner = ({
         <span className="hub__unread-threads-banner__icon" aria-hidden="true">
           <CircleCheck />
         </span>
-        {t("Mark all as read")}
+        {t("Mark as read")}
       </button>
     </div>
   );

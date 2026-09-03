@@ -25,8 +25,14 @@ import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
+import type { UnreadMessagesBannerProps } from "./UnreadMessagesBanner";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 import { TypingIndicator } from "./TypingIndicator";
+
+type UnreadMessagesBannerState = {
+  chatKey: string;
+  banner: UnreadMessagesBannerProps;
+};
 
 type ChatViewProps = {
   chatRef: ChatRef | null;
@@ -81,6 +87,23 @@ export const ChatView = ({
   const { users: typingUsers, onTypingActivity } = useChatTyping(chatRef);
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
+  const [unreadMessagesBanner, setUnreadMessagesBanner] =
+    useState<UnreadMessagesBannerState | null>(null);
+
+  // The list owns navigation but the banner belongs visually to the composer.
+  // Scope lifted props by conversation so an old list unmount cannot clear the
+  // banner already published by the newly selected conversation.
+  const handleUnreadBannerChange = useCallback(
+    (chatKey: string, banner: UnreadMessagesBannerProps | null) => {
+      setUnreadMessagesBanner((current) => {
+        if (banner) {
+          return { chatKey, banner };
+        }
+        return current?.chatKey === chatKey ? null : current;
+      });
+    },
+    [],
+  );
 
   // The same composer submits either a new event or an in-place edit. Notify
   // `onSent` only for new messages so editing never changes navigation state.
@@ -208,7 +231,10 @@ export const ChatView = ({
               {invitationChat && chatRef ? (
                 <ChatInvitationView chatRef={chatRef} chat={invitationChat} />
               ) : chatRef ? (
-                <ChatConversation chatRef={chatRef} />
+                <ChatConversation
+                  chatRef={chatRef}
+                  onUnreadBannerChange={handleUnreadBannerChange}
+                />
               ) : (
                 renderEmpty?.()
               )}
@@ -220,9 +246,6 @@ export const ChatView = ({
                   transition so an in-progress draft and the input focus survive
                   when a conversation resolves. */}
                 <div className="hub__chat-composer-stack">
-                  {chatRef ? (
-                    <ConversationUnreadBanner chatRef={chatRef} />
-                  ) : null}
                   <TypingIndicator users={typingUsers} />
                   <ChatComposer
                     conversationId={
@@ -254,6 +277,18 @@ export const ChatView = ({
                     onTypingActivity={onTypingActivity}
                     onSubmit={
                       chatRef || canComposeDraft ? handleSubmit : undefined
+                    }
+                    unreadThreadsBanner={
+                      chatRef ? (
+                        <ConversationUnreadBanner chatRef={chatRef} />
+                      ) : null
+                    }
+                    unreadMessagesBanner={
+                      chatRef &&
+                      unreadMessagesBanner?.chatKey ===
+                        `${chatRef.accountId}:${chatRef.chatId}`
+                        ? unreadMessagesBanner.banner
+                        : null
                     }
                   />
                 </div>
