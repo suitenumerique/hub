@@ -33,7 +33,13 @@ const appendMessage = (
   event: Extract<ChatEvent, { type: "message:new" }>,
 ): ChatMessagesData => {
   const [newest, ...rest] = data.pages;
-  if (!newest || newest.messages.some((m) => m.id === event.message.id)) {
+  // A contextual cache intentionally ends before the live timeline. Appending
+  // a live event there would create an artificial gap and corrupt its cursors.
+  if (
+    !newest ||
+    newest.isAtLiveEnd === false ||
+    newest.messages.some((m) => m.id === event.message.id)
+  ) {
     return data;
   }
   const authors = event.authors
@@ -44,12 +50,25 @@ const appendMessage = (
         ),
       ]
     : newest.authors;
+  const firstTimestamp = newest.messages[0]?.timestamp;
+  // A warm Matrix start may replay events which predate the latest page while
+  // the network sync catches up from IndexedDB. They belong to backward
+  // pagination and must not be appended after the live end.
+  if (firstTimestamp && event.message.timestamp < firstTimestamp) {
+    return data;
+  }
+  const insertionIndex = newest.messages.findIndex(
+    (message) => message.timestamp > event.message.timestamp,
+  );
+  const messages = [...newest.messages];
+  if (insertionIndex < 0) {
+    messages.push(event.message);
+  } else {
+    messages.splice(insertionIndex, 0, event.message);
+  }
   return {
     ...data,
-    pages: [
-      { ...newest, authors, messages: [...newest.messages, event.message] },
-      ...rest,
-    ],
+    pages: [{ ...newest, authors, messages }, ...rest],
   };
 };
 
@@ -137,6 +156,12 @@ const applyChatEvent = (
           return { ...(current ?? {}), [event.chatId]: event.unread };
         },
       );
+      return;
+
+    case "main-timeline-unread:changed":
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.mainTimelineUnread(ref),
+      });
       return;
 
     case "message:updated":

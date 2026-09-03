@@ -8,6 +8,7 @@ import {
   RoomNameType,
   SyncState,
   type RoomNameState,
+  type SyncStateData,
   type TokenRefreshFunction,
 } from "matrix-js-sdk/lib/matrix";
 
@@ -177,12 +178,25 @@ const INITIAL_SYNC_LIMIT = 50;
  */
 const waitForInitialSync = (mx: MatrixClient): Promise<void> => {
   const current = mx.getSyncState();
-  if (current === SyncState.Syncing) {
+  const currentData = mx.getSyncStateData();
+  if (
+    current === SyncState.Syncing &&
+    currentData?.fromCache !== true &&
+    currentData?.catchingUp !== true
+  ) {
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
-    const onSync = (state: SyncState) => {
-      if (state === SyncState.Syncing) {
+    const onSync = (
+      state: SyncState,
+      _previousState: SyncState | null,
+      data?: SyncStateData,
+    ) => {
+      if (
+        state === SyncState.Syncing &&
+        data?.fromCache !== true &&
+        data?.catchingUp !== true
+      ) {
         mx.off(ClientEvent.Sync, onSync);
         resolve();
       } else if (state === SyncState.Error || state === SyncState.Stopped) {

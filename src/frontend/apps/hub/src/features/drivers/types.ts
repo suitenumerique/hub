@@ -238,7 +238,26 @@ export type ChatTypingUser = {
 export type ChatMessagesPage = {
   messages: ChatMessage[];
   authors: ChatMessageAuthor[];
+  /** Cursor for the page immediately older than this one. */
   nextCursor: string | null;
+  /** Cursor for the page immediately newer than this one. */
+  newerCursor?: string | null;
+  /** True only when this page reaches the genuine live end of the room. */
+  isAtLiveEnd?: boolean;
+};
+
+/** Persistent read boundary for one room's Matrix main timeline. */
+export type ChatMainTimelineUnread = {
+  /** Reliable boolean even when the global numeric count is unavailable. */
+  hasUnread: boolean;
+  /** Last persisted or locally-confirmed event before the unread boundary. */
+  readUpToId: string | null;
+  /** First eligible remote message after the boundary. */
+  firstUnreadId: string | null;
+  /** Exact global count, or null when Matrix cannot prove it. */
+  unreadCount: number | null;
+  /** Last main-timeline message at the genuine live end. */
+  liveEndId: string | null;
 };
 
 /**

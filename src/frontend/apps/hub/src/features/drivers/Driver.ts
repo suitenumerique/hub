@@ -1,6 +1,7 @@
 import {
   AccountId,
   ChatLocalUser,
+  ChatMainTimelineUnread,
   ChatMessage,
   ChatMessageAuthor,
   ChatMessagesPage,
@@ -30,6 +31,10 @@ export type GetChatMessagesParams = {
    * `null` or omitted means "fetch the latest page".
    */
   cursor?: string | null;
+  /** Resolve a fresh contextual window around this stable Matrix event id. */
+  anchorId?: string;
+  /** Direction used when continuing a contextual window from `cursor`. */
+  direction?: "older" | "newer";
   /** Maximum number of messages to return. Drivers may clamp to a server cap. */
   limit?: number;
 };
@@ -164,6 +169,7 @@ export type ChatEvent =
       threadId?: string;
     }
   | { type: "unread:changed"; chatId: string; unread: ChatUnread }
+  | { type: "main-timeline-unread:changed"; chatId: string }
   // --- Coarse: only name what changed; the bridge invalidates & refetches -
   | { type: "chat:changed"; chatId: string }
   | {
@@ -208,6 +214,10 @@ export abstract class Driver {
   abstract getChatMessages(
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;
+  /** Exact main-timeline boundary/count and the first unread event identity. */
+  abstract getMainTimelineUnread(
+    chatId: string,
+  ): Promise<ChatMainTimelineUnread>;
   /**
    * Toggles the current user's reaction with `emoji` on a message and resolves
    * with the updated message. Adding when absent, removing when already
@@ -232,6 +242,8 @@ export abstract class Driver {
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
   /** Marks the main timeline read once it is genuinely visible to the user. */
   abstract markChatRead(chatId: string): Promise<void>;
+  /** Advances the main boundary through one genuinely visible Matrix event. */
+  abstract markChatReadThrough(chatId: string, eventId: string): Promise<void>;
   /** Initial per-conversation read state; live changes use `unread:changed`. */
   abstract getUnread(): Promise<Record<string, ChatUnread>>;
 
