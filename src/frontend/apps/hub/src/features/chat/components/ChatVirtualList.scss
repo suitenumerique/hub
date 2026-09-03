@@ -7,7 +7,8 @@
   }
 
   &__loading,
-  &__top-loader {
+  &__top-loader,
+  &__bottom-loader {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -42,6 +43,23 @@
     }
   }
 
+  &__bottom-spacer {
+    min-height: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__bottom-loader {
+    padding: var(--c--globals--spacings--xxs, 6px)
+      var(--c--globals--spacings--sm, 12px);
+
+    .material-icons {
+      font-size: 16px;
+      animation: hub-chat-spin 1.2s linear infinite;
+    }
+  }
+
   &__row {
     display: flex;
     justify-content: center;
@@ -63,7 +81,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hub__chat-conversation__top-loader .material-icons {
+  .hub__chat-conversation__top-loader .material-icons,
+  .hub__chat-conversation__bottom-loader .material-icons {
     animation: none;
   }
 }
