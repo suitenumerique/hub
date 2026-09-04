@@ -49,6 +49,7 @@ and this project adheres to
 - 🐛(frontend) Keep modals above chat headers and messages below them
 - 🐛(frontend) Show an error toast when a chat message fails to send
 - 🐛(frontend) Reset the composer draft when switching conversation
+- 🐛(frontend) Reuse pending direct invitations when starting a conversation
 - 🌐(frontend) Translate the current user's optimistic thread author
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main
