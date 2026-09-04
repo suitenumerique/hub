@@ -43,6 +43,7 @@ and this project adheres to
 - ♻️(frontend) Show Documents as unavailable until Matrix media support lands
 - ♻️(frontend) Simplify the conversation auto-scroll onto the Virtuoso API
 - 💄(frontend) Use the brand color for the current user's message bubbles
+- 🔥(frontend) Remove the meeting entry from the side panel quick actions
 
 ### Fixed
 
