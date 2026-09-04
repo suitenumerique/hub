@@ -1,7 +1,6 @@
 import { Button } from "@gouvfr-lasuite/ui-components";
 import {
   ArrowDropDown,
-  Meet,
   Plus,
   QuestionMark,
 } from "@gouvfr-lasuite/ui-components/icons";
@@ -44,11 +43,6 @@ export const LeftPanel = () => {
       href: "/chat/new",
       icon: <Plus size={16} />,
       label: t("New"),
-    },
-    {
-      id: "meeting",
-      icon: <Meet size={16} />,
-      label: t("Start a meeting"),
     },
   ];
 
