@@ -7,7 +7,7 @@ import type { ChatReaction } from "@/features/drivers/types";
 
 import { emojiToCodepoints } from "../fluentEmoji";
 
-import { EmojiPickerPopover } from "./EmojiPickerPopover";
+import { EmojiPickerPopover, preloadEmojiPicker } from "./EmojiPickerPopover";
 import { FluentEmoji } from "./FluentEmoji";
 import { Button, ButtonElement } from "@gouvfr-lasuite/ui-components";
 
@@ -27,11 +27,16 @@ export const MessageReactions = ({
   reactions,
   onReact,
 }: MessageReactionsProps) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = i18n.resolvedLanguage ?? i18n.language;
   const addButtonRef = useRef<ButtonElement>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const closePicker = useCallback(() => setIsPickerOpen(false), []);
+  const preloadPicker = useCallback(
+    () => preloadEmojiPicker(language),
+    [language],
+  );
 
   const handlePick = useCallback(
     (emoji: string) => {
@@ -73,7 +78,12 @@ export const MessageReactions = ({
             }
             onClick={() => onReact(reaction.emoji)}
           >
-            <FluentEmoji emoji={reaction.emoji} size="xs" decorative />
+            <FluentEmoji
+              emoji={reaction.emoji}
+              size="xs"
+              emojiStyle="flat"
+              decorative
+            />
             <span className="hub__message-reactions__count">
               {reaction.count}
             </span>
@@ -89,6 +99,8 @@ export const MessageReactions = ({
           aria-label={t("Add a reaction")}
           aria-haspopup="dialog"
           aria-expanded={isPickerOpen}
+          onPointerEnter={preloadPicker}
+          onFocus={preloadPicker}
           onClick={() => setIsPickerOpen((open) => !open)}
         >
           <EmojiAdd size={16} /> <Plus size={16} />

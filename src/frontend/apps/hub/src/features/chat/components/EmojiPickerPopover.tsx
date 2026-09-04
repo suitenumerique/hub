@@ -2,7 +2,17 @@ import { Suspense, lazy, useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
-const EmojiPickerPanel = lazy(() => import("./EmojiPickerPanel"));
+const loadEmojiPickerPanel = () => import("./EmojiPickerPanel");
+const EmojiPickerPanel = lazy(loadEmojiPickerPanel);
+
+/** Preload both the component chunk and its remote emoji datasets. */
+export const preloadEmojiPicker = (language: string): void => {
+  void loadEmojiPickerPanel()
+    .then(({ preloadEmojiData }) => preloadEmojiData(language))
+    .catch(() => {
+      // Opening the picker keeps the normal lazy-load and Frimousse retry path.
+    });
+};
 
 type EmojiPickerPopoverProps = {
   /** The trigger element the popover is positioned against. */

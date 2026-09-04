@@ -7,6 +7,10 @@ type EmojiPickerPanelProps = {
   onSelect: (emoji: string) => void;
 };
 
+// Keep the warm-up requests and Frimousse on the exact same URLs so the
+// browser can serve the picker fetches from its HTTP cache on first open.
+const EMOJIBASE_URL = "https://cdn.jsdelivr.net/npm/emojibase-data@latest";
+
 // Locales supported by both the app and Frimousse.
 const FRIMOUSSE_LOCALES = ["en", "fr", "de", "nl"] as const;
 type FrimousseLocale = (typeof FRIMOUSSE_LOCALES)[number];
@@ -16,6 +20,37 @@ const toFrimousseLocale = (language: string): FrimousseLocale => {
   return (FRIMOUSSE_LOCALES as readonly string[]).includes(lang)
     ? (lang as FrimousseLocale)
     : "en";
+};
+
+const dataPreloads = new Map<FrimousseLocale, Promise<void>>();
+
+/** Warm the two datasets Frimousse needs without mounting the whole picker. */
+export const preloadEmojiData = (language: string): Promise<void> => {
+  const locale = toFrimousseLocale(language);
+  const existing = dataPreloads.get(locale);
+  if (existing) {
+    return existing;
+  }
+
+  const preload = Promise.all(
+    ["data", "messages"].map(async (file) => {
+      const response = await fetch(`${EMOJIBASE_URL}/${locale}/${file}.json`, {
+        cache: "force-cache",
+      });
+      if (!response.ok) {
+        throw new Error(`Could not preload Frimousse ${file}.`);
+      }
+      await response.arrayBuffer();
+    }),
+  )
+    .then(() => undefined)
+    .catch(() => {
+      // Frimousse will retry normally when opened; allow a future warm-up too.
+      dataPreloads.delete(locale);
+    });
+
+  dataPreloads.set(locale, preload);
+  return preload;
 };
 
 /**
@@ -32,6 +67,7 @@ const EmojiPickerPanel = ({ onSelect }: EmojiPickerPanelProps) => {
     <EmojiPicker.Root
       className="hub__emoji-picker"
       locale={locale}
+      emojibaseUrl={EMOJIBASE_URL}
       onEmojiSelect={({ emoji }) => onSelect(emoji)}
     >
       <EmojiPicker.Search
