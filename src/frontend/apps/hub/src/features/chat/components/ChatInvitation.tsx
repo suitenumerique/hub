@@ -1,3 +1,4 @@
+import { Button } from "@gouvfr-lasuite/ui-components";
 import { useTranslation } from "react-i18next";
 
 import type { Chat } from "@/features/drivers/types";
@@ -31,38 +32,60 @@ export const ChatInvitation = ({
   const isBusy = isAccepting || isRefusing;
 
   return (
-    <section className="hub__chat-invitation" aria-label={t("Invitation")}>
-      <div className="hub__chat-invitation__illustration" aria-hidden>
-        <span className="material-icons hub__chat-invitation__envelope">
-          mail
-        </span>
-        <span className="hub__chat-invitation__badge">
-          <span className="material-icons">check</span>
-        </span>
+    <section
+      className="hub__chat-invitation"
+      aria-labelledby="hub-chat-invitation-title"
+    >
+      <div className="hub__chat-invitation__content">
+        <div className="hub__chat-invitation__illustration" aria-hidden>
+          <img
+            className="hub__chat-invitation__illustration-mail"
+            src="/assets/invitation-mail.svg"
+            alt=""
+          />
+          <img
+            className="hub__chat-invitation__illustration-status"
+            src="/assets/invitation-mail-status.svg"
+            alt=""
+          />
+        </div>
+        <h1
+          id="hub-chat-invitation-title"
+          className="hub__chat-invitation__title"
+        >
+          {t("New invitation")}
+        </h1>
+        <p className="hub__chat-invitation__text">
+          {t("{{name}} wants to chat with you. Do you accept the invitation?", {
+            name: inviter,
+          })}
+        </p>
       </div>
-      <h1 className="hub__chat-invitation__title">{t("New invitation")}</h1>
-      <p className="hub__chat-invitation__text">
-        {t("{{name}} wants to chat with you. Do you accept the invitation?", {
-          name: inviter,
-        })}
-      </p>
       <div className="hub__chat-invitation__actions">
-        <button
+        <Button
           type="button"
-          className="hub__chat-invitation__button hub__chat-invitation__button--accept"
+          variant="secondary"
+          color="success"
+          size="nano"
+          className="hub__chat-invitation__button"
           onClick={onAccept}
           disabled={isBusy}
+          aria-busy={isAccepting}
         >
-          {isAccepting ? t("Accepting…") : t("Accept")}
-        </button>
-        <button
+          {t("Accept")}
+        </Button>
+        <Button
           type="button"
-          className="hub__chat-invitation__button hub__chat-invitation__button--dismiss"
+          variant="secondary"
+          color="neutral"
+          size="nano"
+          className="hub__chat-invitation__button"
           onClick={onRefuse}
           disabled={isBusy}
+          aria-busy={isRefusing}
         >
-          {isRefusing ? t("Dismissing…") : t("Dismiss")}
-        </button>
+          {t("Dismiss")}
+        </Button>
       </div>
     </section>
   );
