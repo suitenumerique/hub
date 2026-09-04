@@ -22,6 +22,9 @@ export const formatChatTime = (
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
+const capitalizeLocalizedLabel = (label: string, locale?: string): string =>
+  label.charAt(0).toLocaleUpperCase(locale) + label.slice(1);
+
 const getCalendarDay = (date: Date, timeZone?: string): number => {
   const parts = new Intl.DateTimeFormat("en", {
     year: "numeric",
@@ -53,7 +56,8 @@ export const isSameChatDay = (
 /**
  * Format the timestamp shown beside the author of a received-message group:
  * time only today, a localized "Yesterday" plus time for the previous day,
- * and the complete numeric date plus time for older messages.
+ * a localized weekday plus time from two to six days ago, and the complete
+ * numeric date plus time for older messages.
  */
 export const formatChatGroupTimestamp = (
   iso: string,
@@ -79,9 +83,16 @@ export const formatChatGroupTimestamp = (
     const yesterday = new Intl.RelativeTimeFormat(locale, {
       numeric: "auto",
     }).format(-1, "day");
-    const localizedYesterday =
-      yesterday.charAt(0).toLocaleUpperCase(locale) + yesterday.slice(1);
+    const localizedYesterday = capitalizeLocalizedLabel(yesterday, locale);
     return `${localizedYesterday} · ${time}`;
+  }
+
+  if (dayDifference >= 2 && dayDifference <= 6) {
+    const weekday = new Intl.DateTimeFormat(locale, {
+      weekday: "long",
+      timeZone,
+    }).format(date);
+    return `${capitalizeLocalizedLabel(weekday, locale)} · ${time}`;
   }
 
   const fullDate = new Intl.DateTimeFormat(locale, {
