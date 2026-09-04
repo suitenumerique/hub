@@ -15,6 +15,7 @@ import type {
   ChatRef,
 } from "@/features/drivers/types";
 
+import { isSameChatDay } from "../formatTimestamp";
 import { useChatMessages } from "../hooks/useChatMessages";
 import { useMainTimelineUnread } from "../hooks/useMainTimelineUnread";
 
@@ -633,8 +634,14 @@ const Row = memo(function Row({
   isUnreadSeparatorVisible,
 }: RowProps) {
   const isSent = message.authorId === "me";
-  const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
-  const isLastOfGroup = !next || next.authorId !== message.authorId;
+  const isFirstOfGroup =
+    !prev ||
+    prev.authorId !== message.authorId ||
+    !isSameChatDay(prev.timestamp, message.timestamp);
+  const isLastOfGroup =
+    !next ||
+    next.authorId !== message.authorId ||
+    !isSameChatDay(message.timestamp, next.timestamp);
 
   if (isSent) {
     return (

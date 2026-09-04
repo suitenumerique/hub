@@ -33,6 +33,7 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Improve message dates and bubble readability
 - 💄(frontend) Align the sidebar branding and account controls with Tchap
 - ♻️(frontend) Streamline the new-chat conversation flow
 - ⬆️(frontend) Migrate to ui-components 1.0.0

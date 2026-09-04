@@ -14,7 +14,7 @@ import { Avatar } from "@/features/ui/components/avatar/Avatar";
 import { useChatPanel } from "../ChatPanelContext";
 import { useChatMessageEdit } from "../ChatMessageEditContext";
 import { copyTextToClipboard } from "../copyTextToClipboard";
-import { formatChatTime } from "../formatTimestamp";
+import { formatChatGroupTimestamp } from "../formatTimestamp";
 import { isOptimisticThreadId } from "../hooks/chatCompositionCache";
 import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
 import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
@@ -102,7 +102,8 @@ const ChatBubbleFooter = ({
 };
 
 export const ChatBubble = (props: ChatBubbleProps) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const { chatRef, messageId, reactions, thread, threadId } = props;
   const { openThread, openDraftThread } = useChatPanel();
   const { startEditing } = useChatMessageEdit();
@@ -239,7 +240,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         />
         {props.showTimestamp && (
           <div className="hub__chat-bubble__timestamp">
-            {formatChatTime(props.timestamp)}
+            {formatChatGroupTimestamp(props.timestamp, locale)}
           </div>
         )}
       </div>
@@ -260,7 +261,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
             •
           </span>
           <span className="hub__chat-bubble__timestamp">
-            {formatChatTime(timestamp)}
+            {formatChatGroupTimestamp(timestamp, locale)}
           </span>
         </div>
       )}

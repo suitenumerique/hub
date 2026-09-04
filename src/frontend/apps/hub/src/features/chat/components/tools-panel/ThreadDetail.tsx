@@ -16,6 +16,7 @@ import {
   ChatMessageEditProvider,
   type EditingChatMessage,
 } from "../../ChatMessageEditContext";
+import { isSameChatDay } from "../../formatTimestamp";
 import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
 import { useEditChatMessage } from "../../hooks/useEditChatMessage";
@@ -210,8 +211,14 @@ export const ThreadDetail = ({
             const prev = thread.messages[index - 1];
             const next = thread.messages[index + 1];
             const isSent = message.authorId === "me";
-            const isFirstOfGroup = !prev || prev.authorId !== message.authorId;
-            const isLastOfGroup = !next || next.authorId !== message.authorId;
+            const isFirstOfGroup =
+              !prev ||
+              prev.authorId !== message.authorId ||
+              !isSameChatDay(prev.timestamp, message.timestamp);
+            const isLastOfGroup =
+              !next ||
+              next.authorId !== message.authorId ||
+              !isSameChatDay(message.timestamp, next.timestamp);
             const author = authorsById.get(message.authorId);
 
             return (
