@@ -14,7 +14,7 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { EmojiPickerPopover } from "./EmojiPickerPopover";
+import { EmojiPickerPopover, preloadEmojiPicker } from "./EmojiPickerPopover";
 import { FluentEmoji } from "./FluentEmoji";
 
 type MessageHoverToolbarProps = {
@@ -34,15 +34,8 @@ type MessageHoverToolbarProps = {
 
 type QuickReaction = {
   emoji: string;
-  /** i18n key for the button's accessible label. */
-  labelKey: string;
+  label: string;
 };
-
-// Matches the Figma toolbar (emoji-thumbs-up, emoji-face-with-tears-of-joy).
-const QUICK_REACTIONS: QuickReaction[] = [
-  { emoji: "👍", labelKey: "React with a thumbs up" },
-  { emoji: "😂", labelKey: "React with a laughing face" },
-];
 
 /**
  * Per-bubble hover/focus toolbar (Figma node 13242:2334): quick reactions, an
@@ -60,7 +53,8 @@ export const MessageHoverToolbar = ({
   onDelete,
   compact = false,
 }: MessageHoverToolbarProps) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = i18n.resolvedLanguage ?? i18n.language;
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const actionsMenu = useDropdownMenu();
@@ -69,6 +63,18 @@ export const MessageHoverToolbar = ({
   const [areActionsPinned, setAreActionsPinned] = useState(false);
 
   const closePicker = useCallback(() => setIsPickerOpen(false), []);
+  const preloadPicker = useCallback(
+    () => preloadEmojiPicker(language),
+    [language],
+  );
+  const quickReactions = useMemo<QuickReaction[]>(
+    () => [
+      { emoji: "👍", label: t("React with a thumbs up") },
+      { emoji: "😂", label: t("React with a laughing face") },
+      { emoji: "✅", label: t("React with a check mark") },
+    ],
+    [t],
+  );
 
   const handlePick = useCallback(
     (emoji: string) => {
@@ -129,15 +135,15 @@ export const MessageHoverToolbar = ({
       data-actions-pinned={areActionsPinned || undefined}
     >
       <div className="hub__message-toolbar__bar">
-        {QUICK_REACTIONS.map(({ emoji, labelKey }) => (
+        {quickReactions.map(({ emoji, label }) => (
           <button
             key={emoji}
             type="button"
             className="hub__message-toolbar__button"
-            aria-label={t(labelKey)}
+            aria-label={label}
             onClick={() => onReact(emoji)}
           >
-            <FluentEmoji emoji={emoji} decorative />
+            <FluentEmoji emoji={emoji} emojiStyle="flat" decorative />
           </button>
         ))}
 
@@ -148,6 +154,8 @@ export const MessageHoverToolbar = ({
           aria-label={t("Add a reaction")}
           aria-haspopup="dialog"
           aria-expanded={isPickerOpen}
+          onPointerEnter={preloadPicker}
+          onFocus={preloadPicker}
           onClick={() => setIsPickerOpen((open) => !open)}
         >
           <EmojiAdd size={16} />
