@@ -262,6 +262,13 @@ export class MatrixDriver extends Driver {
    */
   private joinedRoomIds: Set<string> | null = null;
   /**
+   * Coalesces concurrent creation requests for the same participant set in
+   * this driver instance. The Matrix API does not provide an atomic
+   * get-or-create operation, so the driver must at least prevent local callers
+   * from racing each other.
+   */
+  private chatCreations = new Map<string, Promise<LocalChat>>();
+  /**
    * Successful local writes stay authoritative until `/sync` catches the
    * room account-data marker up. This prevents a delayed server echo from
    * moving the UI boundary backwards after the user has read farther.
@@ -470,12 +477,12 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * Starts a brand-new conversation for the given participants: a private room
-   * with each one invited (a direct chat for a single participant, a group for
-   * several). Idempotent — a joined room already matching the set is returned
-   * instead of creating a duplicate. Waits until the SDK knows the new room so
-   * the returned chat id is immediately usable for the first send and the
-   * navigation that follows.
+   * Resolves a conversation for the given participants, creating a private room
+   * only when no joined conversation exists. Starting a direct conversation
+   * also implicitly accepts a pending direct invitation from that person: both
+   * users have expressed the intent to chat, so reusing the invited room avoids
+   * creating a second one. Concurrent local calls for the same participant set
+   * share one promise.
    */
   async createChatForUsers(userIds: string[]): Promise<LocalChat> {
     const mx = this.requireClient("createChatForUsers");
@@ -485,9 +492,73 @@ export class MatrixDriver extends Driver {
         "MatrixDriver.createChatForUsers: at least one participant is required.",
       );
     }
+
+    const creationKey = participantSetKey(participantIds);
+    const inFlight = this.chatCreations.get(creationKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const creation = this.resolveOrCreateChatForUsers(mx, participantIds);
+    this.chatCreations.set(creationKey, creation);
+    try {
+      return await creation;
+    } finally {
+      if (this.chatCreations.get(creationKey) === creation) {
+        this.chatCreations.delete(creationKey);
+      }
+    }
+  }
+
+  private async resolveOrCreateChatForUsers(
+    mx: MatrixClient,
+    participantIds: string[],
+  ): Promise<LocalChat> {
+    // Creation is rare and duplicate rooms are permanent, so bypass the cached
+    // joined set for this last-chance check against the homeserver.
+    await this.refreshJoinedRoomIds(mx);
     const existing = await this.getChatForUsers(participantIds);
     if (existing) {
       return existing;
+    }
+
+    if (participantIds.length === 1) {
+      const invitation = this.findIncomingDirectInvitation(
+        mx,
+        participantIds[0],
+      );
+      if (invitation) {
+        const accepted = await this.acceptChatInvitation(invitation.id);
+        const room = mx.getRoom(accepted.id);
+        if (!room) {
+          throw new Error(
+            `MatrixDriver.createChatForUsers: room "${accepted.id}" not found after join.`,
+          );
+        }
+        // `is_direct` is only an invitation marker. Read the complete current
+        // state from the homeserver after joining and verify the real active
+        // participant set before allowing the caller to send its first message.
+        const selfUserId = mx.getUserId() ?? undefined;
+        const roomState = await mx.roomState(room.roomId);
+        const actualParticipants = roomState
+          .filter(
+            (event) =>
+              event.type === EventType.RoomMember &&
+              event.state_key !== selfUserId &&
+              (event.content.membership === KnownMembership.Join ||
+                event.content.membership === KnownMembership.Invite),
+          )
+          .map((event) => event.state_key);
+        if (
+          participantSetKey(actualParticipants) ===
+          participantSetKey(participantIds)
+        ) {
+          return accepted;
+        }
+        // The invitation was not the requested private conversation. Leave it
+        // before creating the exact room so no draft can reach extra members.
+        await this.removeChatFromHistory(accepted.id);
+      }
     }
 
     const selfUserId = mx.getUserId() ?? undefined;
@@ -515,6 +586,33 @@ export class MatrixDriver extends Driver {
         ? { kind: "initials" }
         : { kind: "icon", icon: "groups" },
     };
+  }
+
+  /**
+   * Finds a pending incoming 1:1 invitation from `participantId`. Invite rooms
+   * are intentionally excluded from `getChatForUsers`, because ordinary
+   * participant lookup must not turn a new-chat placeholder into an invitation
+   * view. Creation uses this narrower lookup to reuse the invitation safely.
+   */
+  private findIncomingDirectInvitation(
+    mx: MatrixClient,
+    participantId: string,
+  ): LocalChat | null {
+    const selfUserId = mx.getUserId() ?? undefined;
+    for (const room of mx.getVisibleRooms()) {
+      if (room.getMyMembership() !== KnownMembership.Invite) {
+        continue;
+      }
+      const chat = matrixRoomToLocalChat(room, selfUserId);
+      if (
+        chat.kind === "direct" &&
+        chat.invitation?.isDirect === true &&
+        chat.invitation.inviterId === participantId
+      ) {
+        return chat;
+      }
+    }
+    return null;
   }
 
   /**
