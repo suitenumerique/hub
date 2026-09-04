@@ -182,6 +182,28 @@ export type ChatMembers = {
   pendingInvites: ChatMember[];
 };
 
+export type ChatSearchSection = "joined" | "invitation";
+
+export type ChatSearchInvitationDirection = "incoming" | "outgoing";
+
+/** One account-local conversation matched by its name or current members. */
+export type LocalChatSearchResult = {
+  chat: LocalChat;
+  /** Current counterparts shown in the result; historical members are excluded. */
+  members: ChatMember[];
+  /** 0 exact, 1 prefix, 2 partial. Used to merge account results stably. */
+  matchRank: number;
+  /** Active conversations are rendered before pending invitations. */
+  searchSection: ChatSearchSection;
+  /** Present only for results in the pending-invitations section. */
+  invitationDirection?: ChatSearchInvitationDirection;
+};
+
+/** Search result decorated with the account identity used by navigation. */
+export type ChatSearchResult = Omit<LocalChatSearchResult, "chat"> & {
+  chat: Chat;
+};
+
 /**
  * One emoji's worth of reactions on a message, aggregated across users. The UI
  * only needs the count and whether the current user is part of it — no per-user

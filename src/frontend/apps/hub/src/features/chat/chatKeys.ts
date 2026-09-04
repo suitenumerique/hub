@@ -3,6 +3,11 @@ import type { AccountId, ChatRef } from "@/features/drivers/types";
 export const chatKeys = {
   chatsAll: () => ["chats"] as const,
   chatsOf: (accountId: AccountId) => ["chats", accountId] as const,
+  searchesOf: (accountId: AccountId) => ["chat-search", accountId] as const,
+  search: (accountId: AccountId, query: string) =>
+    ["chat-search", accountId, query] as const,
+  searchIndexStatus: (accountId: AccountId) =>
+    ["chat-search-index", accountId] as const,
   unreadOf: (accountId: AccountId) => ["chat-unread", accountId] as const,
   noChat: () => ["chat", "none"] as const,
 

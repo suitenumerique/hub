@@ -30,6 +30,7 @@ and this project adheres to
 - ✨(frontend) Add read-only chat members and conversation favourites
 - ✨(frontend) Leave and forget conversations from the chat header
 - ✨(frontend) Add Matrix first-unread separator and anchored navigation
+- ✨(frontend) Search existing conversations by room and member name
 
 ### Changed
 

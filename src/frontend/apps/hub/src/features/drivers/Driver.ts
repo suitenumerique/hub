@@ -14,6 +14,7 @@ import {
   ChatUnread,
   ChatUser,
   LocalChat,
+  LocalChatSearchResult,
   LocalChatSections,
   User,
 } from "./types";
@@ -21,6 +22,24 @@ import {
 export type ChatUserFilters = {
   q?: string;
   excludeIds?: string[];
+};
+
+export type ChatSearchFilters = {
+  q?: string;
+};
+
+export type ChatSearchIndexStatus = {
+  phase: "loading" | "indexing" | "catching-up" | "ready" | "error";
+  indexedRooms: number;
+  totalRooms: number;
+  failedRooms: number;
+};
+
+export const READY_CHAT_SEARCH_INDEX_STATUS: ChatSearchIndexStatus = {
+  phase: "ready",
+  indexedRooms: 0,
+  totalRooms: 0,
+  failedRooms: 0,
 };
 
 export type GetChatMessagesParams = {
@@ -181,6 +200,12 @@ export type ChatEvent =
     }
   | { type: "members:changed"; chatId: string }
   | { type: "tags:changed"; chatId: string }
+  | {
+      type: "search-index:changed";
+      status: ChatSearchIndexStatus;
+      /** Whether active local-search queries should be recomputed. */
+      resultsChanged: boolean;
+    }
   | { type: "chats:changed" };
 
 export type ChatEventListener = (event: ChatEvent) => void;
@@ -203,6 +228,19 @@ export abstract class Driver {
   }
 
   abstract getChats(): Promise<LocalChatSections>;
+  /** Conversations matched by their name or currently active members. */
+  async searchChats(
+    _filters?: ChatSearchFilters,
+  ): Promise<LocalChatSearchResult[]> {
+    void _filters;
+    return [];
+  }
+  /** Current progress of the driver's local conversation-search projection. */
+  async getChatSearchIndexStatus(): Promise<ChatSearchIndexStatus> {
+    return { ...READY_CHAT_SEARCH_INDEX_STATUS };
+  }
+  /** Best-effort retry hook used on reconnect and when search is reopened. */
+  resumeChatSearchIndex(): void {}
   /** People available when composing a new chat. */
   abstract getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]>;
   /** Joined members and pending invitees of one conversation. */

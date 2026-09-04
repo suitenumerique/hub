@@ -4,6 +4,7 @@ import {
   Meet,
   Plus,
   QuestionMark,
+  Zoom,
 } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import Link from "next/link";
@@ -12,6 +13,7 @@ import { ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
+import { ChatSearchModal } from "@/features/chat/components/ChatSearchModal";
 import {
   type ChatUnreadLookup,
   useChatUnread,
@@ -24,14 +26,20 @@ import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { TchapLogo } from "./TchapLogo";
 
-type ActionItem =
-  | { id: string; href: string; icon: ReactNode; label: string }
-  | { id: string; href?: undefined; icon: ReactNode; label: string };
+type ActionItem = {
+  id: string;
+  href?: string;
+  icon: ReactNode;
+  label: string;
+  onClick?: () => void;
+  opensDialog?: boolean;
+};
 
 export const LeftPanel = () => {
   const { t } = useTranslation();
   const chats = useChats();
   const unreadLookup = useChatUnread();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const entries = useDriverEntries();
   const accountLabels = new Map(
     entries.map((entry) => [entry.accountId, entry.label]),
@@ -49,6 +57,13 @@ export const LeftPanel = () => {
       id: "meeting",
       icon: <Meet size={16} />,
       label: t("Start a meeting"),
+    },
+    {
+      id: "search",
+      icon: <Zoom size={16} />,
+      label: t("Search"),
+      onClick: () => setIsSearchOpen(true),
+      opensDialog: true,
     },
   ];
 
@@ -97,6 +112,7 @@ export const LeftPanel = () => {
           aria-label={t("Help")}
         />
       </div>
+      <ChatSearchModal isOpen={isSearchOpen} onOpenChange={setIsSearchOpen} />
     </aside>
   );
 };
@@ -119,7 +135,12 @@ const ActionRow = ({ action }: { action: ActionItem }) => {
     );
   }
   return (
-    <button type="button" className="hub__left-panel__action">
+    <button
+      type="button"
+      className="hub__left-panel__action"
+      aria-haspopup={action.opensDialog ? "dialog" : undefined}
+      onClick={action.onClick}
+    >
       {body}
     </button>
   );

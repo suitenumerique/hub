@@ -67,7 +67,7 @@ export const participantSetKey = (userIds: string[]): string =>
   [...new Set(userIds)].sort().join(" ");
 
 /** The room's explicit `m.room.name`, when set to a non-empty value. */
-const explicitRoomName = (room: Room): string | undefined => {
+export const explicitRoomName = (room: Room): string | undefined => {
   const name = room.currentState
     ?.getStateEvents(EventType.RoomName, "")
     ?.getContent<{ name?: string }>()?.name;

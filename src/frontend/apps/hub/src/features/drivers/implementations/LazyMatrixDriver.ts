@@ -2,6 +2,8 @@ import {
   Driver as BaseDriver,
   type ChatConnectionState,
   type ChatEventListener,
+  type ChatSearchIndexStatus,
+  type ChatSearchFilters,
   type ChatTypingListener,
   type ChatUserFilters,
   type DeleteChatMessageParams,
@@ -30,6 +32,7 @@ import type {
   ChatUnread,
   ChatUser,
   LocalChat,
+  LocalChatSearchResult,
   LocalChatSections,
   User,
 } from "../types";
@@ -105,6 +108,24 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async getChats(): Promise<LocalChatSections> {
     return this.withTarget((driver) => driver.getChats());
+  }
+
+  override async searchChats(
+    filters?: ChatSearchFilters,
+  ): Promise<LocalChatSearchResult[]> {
+    return this.withTarget((driver) => driver.searchChats(filters));
+  }
+
+  override async getChatSearchIndexStatus(): Promise<ChatSearchIndexStatus> {
+    return this.withTarget((driver) => driver.getChatSearchIndexStatus());
+  }
+
+  override resumeChatSearchIndex(): void {
+    if (this.target) {
+      this.target.resumeChatSearchIndex();
+      return;
+    }
+    void this.load().then((driver) => driver.resumeChatSearchIndex());
   }
 
   async getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]> {

@@ -7,7 +7,10 @@ import { useEffect } from "react";
 
 import { chatKeys } from "@/features/chat/chatKeys";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
-import type { ChatEvent } from "@/features/drivers/Driver";
+import type {
+  ChatEvent,
+  ChatSearchIndexStatus,
+} from "@/features/drivers/Driver";
 import type {
   AccountId,
   ChatRef,
@@ -245,6 +248,19 @@ const applyChatEvent = (
         queryKey: chatKeys.chatsOf(accountId),
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      return;
+
+    case "search-index:changed":
+      queryClient.setQueryData<ChatSearchIndexStatus>(
+        chatKeys.searchIndexStatus(accountId),
+        event.status,
+      );
+      if (event.resultsChanged) {
+        void queryClient.invalidateQueries({
+          queryKey: chatKeys.searchesOf(accountId),
+          refetchType: "active",
+        });
+      }
       return;
 
     case "tags:changed":

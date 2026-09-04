@@ -38,6 +38,8 @@ import {
   parseMatrixDriverSettings,
 } from "@/features/matrix/config";
 import { initClient, startClient } from "@/features/matrix/initMatrix";
+import { MatrixConversationSearchIndex } from "@/features/matrix/search/MatrixConversationSearchIndex";
+import { MatrixConversationSearchStore } from "@/features/matrix/search/MatrixConversationSearchStore";
 import { MatrixUserInterface } from "@/features/matrix/types";
 import {
   buildOidcTokenRefreshFunction,
@@ -49,6 +51,8 @@ import {
   ChatConnectionState,
   ChatEvent,
   ChatEventListener,
+  ChatSearchIndexStatus,
+  ChatSearchFilters,
   ChatTypingListener,
   ChatUserFilters,
   DeleteChatMessageParams,
@@ -80,6 +84,7 @@ import {
   ChatUnread,
   ChatUser,
   LocalChat,
+  LocalChatSearchResult,
   LocalChatSections,
   User,
 } from "../types";
@@ -152,6 +157,7 @@ type StoredOidc = {
 };
 const SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const CRYPTO_STORE_DB_NAME = "crypto-store";
+const CONVERSATION_SEARCH_STORE_DB_NAME = "matrix-conversation-search";
 
 const storageKey = (
   accountId: AccountId,
@@ -279,6 +285,8 @@ export class MatrixDriver extends Driver {
    * browser, so credentials must not be keyed only by account id.
    */
   private storageOwner: string | null = null;
+  /** Account-local persistent search projection; never shared across clients. */
+  private conversationSearchIndex: MatrixConversationSearchIndex | null = null;
 
   constructor(
     accountId: AccountId = "matrix-local",
@@ -330,6 +338,28 @@ export class MatrixDriver extends Driver {
       favourites: localChats.filter((chat) => chat.section === "favourites"),
       all: localChats.filter((chat) => chat.section === "all"),
     };
+  }
+
+  /** Searches only the session's in-memory projection; no Matrix I/O occurs. */
+  override async searchChats(
+    filters?: ChatSearchFilters,
+  ): Promise<LocalChatSearchResult[]> {
+    return this.conversationSearchIndex?.search(filters?.q ?? "") ?? [];
+  }
+
+  override async getChatSearchIndexStatus(): Promise<ChatSearchIndexStatus> {
+    return (
+      this.conversationSearchIndex?.getStatus() ?? {
+        phase: "loading",
+        indexedRooms: 0,
+        totalRooms: 0,
+        failedRooms: 0,
+      }
+    );
+  }
+
+  override resumeChatSearchIndex(): void {
+    this.conversationSearchIndex?.resume();
   }
 
   /** Initial read-state snapshot for server-confirmed joined rooms. */
@@ -1994,6 +2024,9 @@ export class MatrixDriver extends Driver {
     if (this.mx && this.mx.getUserId() === user.mxId) {
       return;
     }
+    if (this.mx) {
+      await this.teardownClient();
+    }
     const mx = await initClient(user, {
       syncStoreDbName: this.key(SYNC_STORE_DB_NAME),
       cryptoStoreDbName: this.cryptoStoreDbName(user),
@@ -2418,6 +2451,7 @@ export class MatrixDriver extends Driver {
       _state: unknown,
       member: RoomMember,
     ) => {
+      this.conversationSearchIndex?.handleMember(member);
       this.emit({ type: "members:changed", chatId: member.roomId });
     };
     // Membership events are applied before the SDK recalculates `room.name`.
@@ -2425,6 +2459,7 @@ export class MatrixDriver extends Driver {
     // otherwise a remote leave can leave the header/sidebar on the old DM name
     // until an unrelated event triggers another read.
     const onName = (room: Room) => {
+      this.conversationSearchIndex?.handleName(room);
       this.emit({ type: "chat:changed", chatId: room.roomId });
       this.emit({ type: "chats:changed" });
     };
@@ -2477,6 +2512,7 @@ export class MatrixDriver extends Driver {
     // cached joined-room set so `getChats` re-reads it.
     const onRoom = (room: Room) => {
       attachThreadListeners(room);
+      this.conversationSearchIndex?.handleRoom(room);
       if (this.typingListeners.has(room.roomId)) {
         this.prepareTypingRoom(room);
       }
@@ -2504,6 +2540,7 @@ export class MatrixDriver extends Driver {
         return;
       }
       this.joinedRoomIds = null;
+      this.conversationSearchIndex?.reconcile();
       for (const room of mx.getVisibleRooms()) {
         this.emit({ type: "chat:changed", chatId: room.roomId });
         emitUnread(room);
@@ -2517,8 +2554,12 @@ export class MatrixDriver extends Driver {
     // fires neither `ClientEvent.Room` (the room is not brand-new) nor `onSync`
     // (steady-state `Syncing`). Drop the cached joined set and refresh the list
     // here so a left room does not linger. `onRoom` handles brand-new joins.
-    const onMyMembership = (room: Room) => {
+    const onMyMembership = (
+      room: Room,
+      membership: RoomMember["membership"],
+    ) => {
       this.joinedRoomIds = null;
+      this.conversationSearchIndex?.handleMyMembership(room, membership);
       emitUnread(room);
       emitMainTimelineUnread(room);
       this.emit({ type: "chats:changed" });
@@ -2564,6 +2605,7 @@ export class MatrixDriver extends Driver {
       pendingLiveThreadReplies.clear();
       pendingTypingRoomIds.clear();
     };
+    this.startConversationSearchIndex(mx, user);
   }
 
   private async startClientOrFailOnLogout(mx: MatrixClient): Promise<void> {
@@ -2619,12 +2661,45 @@ export class MatrixDriver extends Driver {
     window.history.replaceState({}, "", url.toString());
   }
 
+  private startConversationSearchIndex(
+    mx: MatrixClient,
+    user: MatrixUserInterface,
+  ): void {
+    const index = new MatrixConversationSearchIndex({
+      client: mx,
+      databaseName: this.conversationSearchStoreDbName(user),
+      getJoinedRoomIds: async () => {
+        if (this.mx !== mx) {
+          throw new Error("Matrix conversation search client changed.");
+        }
+        return this.refreshJoinedRoomIds(mx);
+      },
+      onStatusChanged: (status, resultsChanged) => {
+        if (this.mx === mx && this.conversationSearchIndex === index) {
+          this.emit({
+            type: "search-index:changed",
+            status,
+            resultsChanged,
+          });
+        }
+      },
+    });
+    this.conversationSearchIndex = index;
+    // Opening IndexedDB, reconciling `/joined_rooms`, and hydrating room
+    // members are intentionally detached from `connect()`. Search status and
+    // persisted partial results become observable while this continues.
+    void index.start();
+  }
+
   /**
    * Detaches the `/sync` bridge and drops every client-scoped cache. Safe to run
    * with no client. Subscribers are left alone: `clearStoredSession` reconnects
    * afterwards, and only {@link destroy} ends the stream for good.
    */
-  private teardownClient(): void {
+  private teardownClient(): Promise<void> {
+    const searchIndex = this.conversationSearchIndex;
+    searchIndex?.stop();
+    this.conversationSearchIndex = null;
     this.detachSync();
     this.detachSync = () => {};
     this.typingListeners.forEach((listeners) => {
@@ -2639,10 +2714,11 @@ export class MatrixDriver extends Driver {
     this.redactedThreadReplies.clear();
     this.confirmedMainReadBoundaries.clear();
     this.mainTimelineUnreadModes.clear();
+    return searchIndex?.whenStopped() ?? Promise.resolve();
   }
 
   destroy(): void {
-    this.teardownClient();
+    void this.teardownClient();
     this.eventListeners.clear();
     this.typingListeners.clear();
   }
@@ -2764,7 +2840,10 @@ export class MatrixDriver extends Driver {
   }
 
   private async clearStoredSession(user?: MatrixUserInterface): Promise<void> {
-    this.teardownClient();
+    const conversationSearchStoreDbName = user
+      ? this.conversationSearchStoreDbName(user)
+      : null;
+    await this.teardownClient();
 
     localStorage.removeItem(this.key(STORAGE.user));
     localStorage.removeItem(this.key(STORAGE.oidc));
@@ -2775,6 +2854,13 @@ export class MatrixDriver extends Driver {
       this.deleteIndexedDb(this.key(SYNC_STORE_DB_NAME)),
       this.deleteIndexedDb(this.key(CRYPTO_STORE_DB_NAME)),
       ...(user ? [this.deleteIndexedDb(this.cryptoStoreDbName(user))] : []),
+      ...(conversationSearchStoreDbName
+        ? [
+            MatrixConversationSearchStore.deleteDatabase(
+              conversationSearchStoreDbName,
+            ),
+          ]
+        : []),
     ]);
   }
 
@@ -2786,11 +2872,11 @@ export class MatrixDriver extends Driver {
       const request = indexedDB.deleteDatabase(dbName);
       request.onsuccess = () => resolve();
       request.onerror = () => {
-        console.warn("MatrixDriver: failed to delete IndexedDB", dbName);
+        console.warn("MatrixDriver: failed to delete an IndexedDB store");
         resolve();
       };
       request.onblocked = () => {
-        console.warn("MatrixDriver: IndexedDB deletion blocked", dbName);
+        console.warn("MatrixDriver: IndexedDB store deletion blocked");
         resolve();
       };
     });
@@ -2808,6 +2894,20 @@ export class MatrixDriver extends Driver {
   private cryptoStoreDbName(user: MatrixUserInterface): string {
     return this.key(
       `${CRYPTO_STORE_DB_NAME}:${user.mxId}:${user.deviceId ?? "no-device"}`,
+    );
+  }
+
+  private conversationSearchStoreDbName(user: MatrixUserInterface): string {
+    let homeserver = user.homeserverUrl;
+    try {
+      homeserver = new URL(user.homeserverUrl).origin;
+    } catch {
+      // The configured URL itself remains a stable namespace if parsing fails.
+    }
+    return this.key(
+      `${CONVERSATION_SEARCH_STORE_DB_NAME}:${encodeURIComponent(
+        homeserver,
+      )}:${encodeURIComponent(user.mxId)}`,
     );
   }
 

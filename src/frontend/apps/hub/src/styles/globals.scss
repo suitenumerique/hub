@@ -17,6 +17,7 @@
 @use "./../features/chat/components/ChatVirtualList.scss";
 @use "./../features/chat/components/ChatView.scss";
 @use "./../features/chat/components/NewChatView.scss";
+@use "./../features/chat/components/ChatSearchModal.scss";
 @use "./../features/chat/components/ChatInvitation.scss";
 @use "./../features/chat/components/FluentEmoji.scss";
 @use "./../features/chat/components/MessageHoverToolbar.scss";
@@ -51,7 +52,9 @@ body {
 }
 
 .c__modal__backdrop {
-  z-index: 10;
+  // App headers and floating controls use their own stacking levels. Keep the
+  // whole page visible but uniformly dimmed below every modal.
+  z-index: 1100;
 }
 
 .c__modal__backdrop:has(.file-preview__container) {
