@@ -33,6 +33,7 @@ and this project adheres to
 
 ### Changed
 
+- ✨(frontend) Expand the message composer up to eight lines
 - ⚡(frontend) Speed up the emoji picker and align reaction artwork
 - 💄(frontend) Improve message dates and bubble readability
 - 💄(frontend) Align the sidebar branding and account controls with Tchap

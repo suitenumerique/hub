@@ -3,6 +3,7 @@ import {
   FormEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -59,7 +60,7 @@ export const ChatComposer = ({
   onTypingActivity,
 }: ChatComposerProps) => {
   const { t } = useTranslation();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState("");
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
   const lastConcreteConversationId = useRef(conversationId);
@@ -68,6 +69,17 @@ export const ChatComposer = ({
   const isBusy = isSubmitting || isSubmittingDraft;
   const canSubmit =
     Boolean(onSubmit) && !disabled && !isBusy && trimmedDraft.length > 0;
+
+  // Grow with wrapped and explicit lines until CSS caps the field at eight
+  // rows. Resetting to auto first also lets it shrink when content is removed.
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input) {
+      return;
+    }
+    input.style.height = "auto";
+    input.style.height = `${input.scrollHeight}px`;
+  }, [draft]);
 
   // Drop the draft when the conversation identity changes to a DIFFERENT
   // concrete one, so a message typed for conversation A can never be sent to
@@ -199,12 +211,13 @@ export const ChatComposer = ({
       )}
       <form className="hub__chat-composer" onSubmit={handleSubmit}>
         <div className="hub__chat-composer__field">
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
+            rows={1}
             className="hub__chat-composer__input"
             placeholder={placeholder ?? t("Your message")}
             aria-label={inputLabel ?? t("Message")}
+            enterKeyHint="send"
             value={draft}
             disabled={disabled}
             readOnly={isBusy}
@@ -218,6 +231,15 @@ export const ChatComposer = ({
               if (event.key === "Escape" && editDraft) {
                 event.preventDefault();
                 cancelEdit();
+                return;
+              }
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
               }
             }}
           />
