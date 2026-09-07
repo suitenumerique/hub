@@ -48,6 +48,7 @@ and this project adheres to
 ### Fixed
 
 - 🐛(frontend) Restore unread navigation in conversations without a read marker
+- 🐛(frontend) Keep the thread root message toolbar fully accessible
 - 🐛(frontend) Follow Matrix timeline and count updates for deleted thread replies
 - 🐛(frontend) Focus the thread composer whenever Reply is clicked
 - 🐛(frontend) Keep the thread composer compact when opening the tools panel
