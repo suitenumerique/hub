@@ -12,8 +12,8 @@ type ThreadsToolProps = {
   chatRef: ChatRef;
   /** Thread whose detail view is open, or `null` for the thread list. */
   threadId: string | null;
-  /** Whether a freshly opened thread detail should focus its composer. */
-  focusThreadComposer: boolean;
+  /** Incremented whenever a Reply action requests focus in the composer. */
+  threadComposerFocusSignal: number;
   /** Root message for a thread draft that has not been created yet. */
   draftThreadRoot: DraftThreadRoot | null;
   isOpen: boolean;
@@ -30,7 +30,7 @@ type ThreadsToolProps = {
 export const ThreadsTool = ({
   chatRef,
   threadId,
-  focusThreadComposer,
+  threadComposerFocusSignal,
   draftThreadRoot,
   isOpen,
   onClose,
@@ -42,7 +42,7 @@ export const ThreadsTool = ({
       <ThreadDetail
         chatRef={chatRef}
         threadId={threadId}
-        autoFocusComposer={focusThreadComposer}
+        composerFocusSignal={threadComposerFocusSignal}
         isOpen={isOpen}
         onClose={onClose}
         onBack={onCloseThread}
@@ -55,6 +55,7 @@ export const ThreadsTool = ({
       <DraftThreadDetail
         chatRef={chatRef}
         root={draftThreadRoot}
+        composerFocusSignal={threadComposerFocusSignal}
         isOpen={isOpen}
         onClose={onClose}
         onBack={onCloseThread}

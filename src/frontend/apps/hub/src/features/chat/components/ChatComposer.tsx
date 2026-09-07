@@ -70,16 +70,41 @@ export const ChatComposer = ({
   const canSubmit =
     Boolean(onSubmit) && !disabled && !isBusy && trimmedDraft.length > 0;
 
-  // Grow with wrapped and explicit lines until CSS caps the field at eight
-  // rows. Resetting to auto first also lets it shrink when content is removed.
+  const resizeInput = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) {
+      return;
+    }
+    // Reset before measuring so removed text and wider layouts can shrink the
+    // field. An empty draft keeps rows={1}: the placeholder can wrap while the
+    // tools panel animates from zero width and must not determine its height.
+    input.style.height = "auto";
+    if (input.value) {
+      input.style.height = `${input.scrollHeight}px`;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    resizeInput();
+  }, [draft, resizeInput]);
+
   useLayoutEffect(() => {
     const input = inputRef.current;
     if (!input) {
       return;
     }
-    input.style.height = "auto";
-    input.style.height = `${input.scrollHeight}px`;
-  }, [draft]);
+    let previousWidth: number | undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry || entry.contentRect.width === previousWidth) {
+        return;
+      }
+      // Ignore height changes caused by our own measurement.
+      previousWidth = entry.contentRect.width;
+      resizeInput();
+    });
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [resizeInput]);
 
   // Drop the draft when the conversation identity changes to a DIFFERENT
   // concrete one, so a message typed for conversation A can never be sent to
@@ -138,10 +163,11 @@ export const ChatComposer = ({
     if (disabled || handledFocusSignalRef.current === focusSignal) {
       return;
     }
-    handledFocusSignalRef.current = focusSignal;
-
     const raf = requestAnimationFrame(() => {
       inputRef.current?.focus();
+      // Only consume the request after focusing: effect cleanup can cancel the
+      // frame before it runs, including during React Strict Mode's first mount.
+      handledFocusSignalRef.current = focusSignal;
     });
 
     return () => cancelAnimationFrame(raf);
