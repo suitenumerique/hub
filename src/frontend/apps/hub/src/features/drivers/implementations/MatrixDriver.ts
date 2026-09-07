@@ -4,12 +4,14 @@ import {
   EventType,
   type IRoomTimelineData,
   KnownMembership,
+  MAIN_ROOM_TIMELINE,
   MatrixError,
   type MatrixClient,
   type MatrixEvent,
   MatrixEventEvent,
   MsgType,
   Preset,
+  ReceiptType,
   RelationType,
   type Room,
   RoomEvent,
@@ -275,11 +277,10 @@ export class MatrixDriver extends Driver {
    */
   private confirmedMainReadBoundaries = new Map<string, string>();
   /**
-   * Once selected, the label mode stays stable for the whole client session.
-   * A transient context failure must not make the button alternate between an
-   * exact number and the generic fallback as pages enter or leave memory.
+   * Once an exact state has been resolved, failed refreshes retain the previous
+   * query data. A generic fallback must still be allowed to recover later.
    */
-  private mainTimelineUnreadModes = new Map<string, "exact" | "generic">();
+  private exactMainTimelineUnreadRooms = new Set<string>();
   /**
    * Storage namespace for the Hub/Matrix login context currently being
    * connected. `matrix-local` may be used by several seeded users in the same
@@ -1129,20 +1130,31 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * Resolves every event after one persistent boundary through the genuine
-   * live end. The result is exact only when forward pagination is exhausted;
-   * a loaded contextual bottom is never treated as the room's live bottom.
+   * Resolves every event after a persistent boundary through the live end.
+   * Without a boundary, first load all accessible history: the initial sync
+   * window alone cannot tell us which message is the first unread one.
    */
   private async unreadAfterBoundary(
     mx: MatrixClient,
     room: Room,
-    boundaryId: string,
+    boundaryId: string | null,
     selfUserId: string,
   ): Promise<ChatMainTimelineUnread | null> {
     const { window, dispose } = this.scopedTimelineWindow(mx, room);
     try {
       try {
-        await window.load(boundaryId, 1);
+        await window.load(boundaryId ?? undefined, 1);
+        if (boundaryId === null) {
+          await this.extendTimelineWindow(
+            window,
+            EventTimeline.BACKWARDS,
+            DEFAULT_CHAT_PAGE_SIZE,
+            () => false,
+          );
+          if (window.canPaginate(EventTimeline.BACKWARDS)) {
+            return null;
+          }
+        }
         await this.extendTimelineWindow(
           window,
           EventTimeline.FORWARDS,
@@ -1157,7 +1169,10 @@ export class MatrixDriver extends Driver {
       const boundaryIndex = events.findIndex(
         (event) => event.getId() === boundaryId,
       );
-      if (boundaryIndex < 0 || window.canPaginate(EventTimeline.FORWARDS)) {
+      if (
+        (boundaryId !== null && boundaryIndex < 0) ||
+        window.canPaginate(EventTimeline.FORWARDS)
+      ) {
         return null;
       }
 
@@ -1215,17 +1230,32 @@ export class MatrixDriver extends Driver {
     const fullyReadContent = room
       .getAccountData(EventType.FullyRead)
       ?.getContent<{ event_id?: unknown }>();
+    // getEventReadUpTo discards receipts whose event is not loaded. Keep their
+    // real IDs so contextual loading can resolve them, rather than treating
+    // an older receipt as if the user had never read this conversation.
+    const receiptIds = [ReceiptType.Read, ReceiptType.ReadPrivate]
+      .map((type) => room.getReadReceiptForUserId(selfUserId, true, type))
+      .filter(
+        (receipt) =>
+          receipt &&
+          (!receipt.data.thread_id ||
+            receipt.data.thread_id === MAIN_ROOM_TIMELINE),
+      )
+      .map((receipt) => receipt?.eventId);
     const candidates = [
       this.confirmedMainReadBoundaries.get(chatId),
       typeof fullyReadContent?.event_id === "string"
         ? fullyReadContent.event_id
         : undefined,
-      room.getEventReadUpTo(selfUserId, true) ?? undefined,
+      ...receiptIds,
     ].filter((eventId): eventId is string => Boolean(eventId));
     const uniqueCandidates = [...new Set(candidates)];
+    // An absent marker is a first-read case. An existing but inaccessible
+    // marker must not fall back to counting the entire room as unread.
+    const boundaries = uniqueCandidates.length > 0 ? uniqueCandidates : [null];
     const scans = (
       await Promise.all(
-        uniqueCandidates.map((eventId) =>
+        boundaries.map((eventId) =>
           this.unreadAfterBoundary(mx, room, eventId, selfUserId),
         ),
       )
@@ -1238,14 +1268,13 @@ export class MatrixDriver extends Driver {
         (right.unreadCount ?? Number.MAX_SAFE_INTEGER),
     )[0];
 
-    const establishedMode = this.mainTimelineUnreadModes.get(chatId);
-    if (furthest && establishedMode !== "generic") {
-      this.mainTimelineUnreadModes.set(chatId, "exact");
+    if (furthest) {
+      this.exactMainTimelineUnreadRooms.add(chatId);
       return furthest;
     }
 
     const hasUnread = computeRoomUnread(room, selfUserId);
-    if (establishedMode === "exact") {
+    if (this.exactMainTimelineUnreadRooms.has(chatId)) {
       if (!hasUnread) {
         return {
           hasUnread: false,
@@ -1261,7 +1290,6 @@ export class MatrixDriver extends Driver {
       );
     }
 
-    this.mainTimelineUnreadModes.set(chatId, "generic");
     return {
       hasUnread,
       readUpToId: null,
@@ -2736,7 +2764,7 @@ export class MatrixDriver extends Driver {
     this.sentThreadReplyEventIds.clear();
     this.redactedThreadReplies.clear();
     this.confirmedMainReadBoundaries.clear();
-    this.mainTimelineUnreadModes.clear();
+    this.exactMainTimelineUnreadRooms.clear();
   }
 
   destroy(): void {

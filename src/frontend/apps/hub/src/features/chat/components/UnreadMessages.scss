@@ -42,8 +42,12 @@
     }
 
     &:disabled {
-      cursor: progress;
+      cursor: not-allowed;
       opacity: 0.72;
+    }
+
+    &[aria-busy="true"] {
+      cursor: progress;
     }
   }
 
