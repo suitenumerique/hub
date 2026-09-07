@@ -99,9 +99,11 @@ export const replaceMessageInPages = (
   ),
 });
 
-const optimisticMessageMutationMarker = Symbol("optimistic-message-mutation");
+// Structural sharing copies string keys and would discard a symbol key. The
+// symbol value stays unique across mutations and is omitted by JSON.stringify.
+const optimisticMessageMutationMarker = "__optimisticMessageMutation";
 
-export type MessageMutationMarker = object;
+export type MessageMutationMarker = symbol;
 
 type OptimisticMessage = ChatMessage & {
   [optimisticMessageMutationMarker]?: MessageMutationMarker;

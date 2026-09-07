@@ -103,7 +103,6 @@ import {
   reconcileMessageReactions,
   rememberThreadReplyCount,
   roomUnread,
-  SELF_AUTHOR_ID,
   sendResponseToChatMessage,
   sortedThreadReplyEvents,
   threadReplyCount,
@@ -1322,22 +1321,40 @@ export class MatrixDriver extends Driver {
   }
 
   /** Resolves an active message on the main timeline or inside one thread. */
-  private requireMessage(
+  private async requireMessage(
     method: "editChatMessage" | "deleteChatMessage",
     {
       chatId,
       messageId,
       threadId,
     }: Pick<EditChatMessageParams, "chatId" | "messageId" | "threadId">,
-  ): { mx: MatrixClient; room: Room; event: MatrixEvent } {
+  ): Promise<{ mx: MatrixClient; room: Room; event: MatrixEvent }> {
     const { mx, room } = this.requireRoom(method, chatId);
     const thread = threadId ? room.getThread(threadId) : undefined;
-    const event = thread
-      ? (thread.findEventById(messageId) ??
-        (messageId === thread.id ? thread.rootEvent : undefined))
-      : room.findEventById(messageId);
+    let event =
+      thread?.findEventById(messageId) ??
+      (messageId === thread?.id ? thread.rootEvent : undefined) ??
+      room.findEventById(messageId) ??
+      room.getPendingEvent(messageId);
+    // The send response can reach our cache before the SDK has indexed the
+    // reply in its thread. A local echo can also still have SENT status, which
+    // the SDK rejects for redaction. Resolve the confirmed server event then.
+    if ((!event || event.status !== null) && messageId.startsWith("$")) {
+      const rawEvent = await mx.fetchRoomEvent(chatId, messageId);
+      event = mx.getEventMapper({ decrypt: false })({
+        ...rawEvent,
+        room_id: chatId,
+      });
+    }
+    if (event) {
+      await mx.decryptEventIfNeeded(event);
+    }
     const validTarget = threadId
-      ? Boolean(event && isMessageEvent(event))
+      ? Boolean(
+          event &&
+          isMessageEvent(event) &&
+          (event.getId() === threadId || event.threadRootId === threadId),
+        )
       : Boolean(event && isMainTimelineMessage(event));
     if (!event || !validTarget) {
       throw new Error(
@@ -1813,7 +1830,7 @@ export class MatrixDriver extends Driver {
     threadId,
     content,
   }: EditChatMessageParams): Promise<ChatMessage> {
-    const { mx, room, event } = this.requireMessage("editChatMessage", {
+    const { mx, room, event } = await this.requireMessage("editChatMessage", {
       chatId,
       messageId,
       threadId,
@@ -1857,7 +1874,7 @@ export class MatrixDriver extends Driver {
     messageId,
     threadId,
   }: DeleteChatMessageParams): Promise<ChatMessage> {
-    const { mx, room, event } = this.requireMessage("deleteChatMessage", {
+    const { mx, room, event } = await this.requireMessage("deleteChatMessage", {
       chatId,
       messageId,
       threadId,
@@ -1954,14 +1971,7 @@ export class MatrixDriver extends Driver {
     content: string,
   ): ChatThreadMutationResult {
     const selfUserId = mx.getUserId() ?? undefined;
-    const now = new Date().toISOString();
-    const message: ChatMessage = {
-      id: replyEventId,
-      authorId: SELF_AUTHOR_ID,
-      content,
-      timestamp: now,
-      reactions: [],
-    };
+    const message = sendResponseToChatMessage(replyEventId, content);
     const liveThread = room.getThread(rootMessageId);
     const rootEvent =
       liveThread?.rootEvent ?? room.findEventById(rootMessageId);
@@ -2008,7 +2018,7 @@ export class MatrixDriver extends Driver {
       id: rootMessageId,
       rootMessageId,
       author: authorForSender(room, mx.getUserId() ?? "", selfUserId),
-      lastReplyAt: now,
+      lastReplyAt: message.timestamp,
       lastReplyPreview: content,
       replyCount,
       unreadCount: 0,

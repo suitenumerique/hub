@@ -100,7 +100,7 @@ export const useEditChatMessage = (
       const previousThreadMessage = thread?.messages.find(
         (message) => message.id === messageId,
       );
-      const marker: MessageMutationMarker = {};
+      const marker: MessageMutationMarker = Symbol();
 
       const patchMessage = (message: ChatMessage): ChatMessage => ({
         ...markOptimisticMessageMutation(message, marker),
