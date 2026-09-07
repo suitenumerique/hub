@@ -18,8 +18,8 @@ type ChatToolsPanelProps = {
   chatRef: ChatRef;
   /** Thread whose detail view is open, or `null` for the thread list. */
   threadId: string | null;
-  /** Whether a freshly opened thread detail should focus its composer. */
-  focusThreadComposer: boolean;
+  /** Incremented whenever a Reply action requests focus in the composer. */
+  threadComposerFocusSignal: number;
   /** Root message for a not-yet-created thread draft. */
   draftThreadRoot: DraftThreadRoot | null;
   onClose: () => void;
@@ -32,7 +32,7 @@ export const ChatToolsPanel = ({
   isOpen,
   chatRef,
   threadId,
-  focusThreadComposer,
+  threadComposerFocusSignal,
   draftThreadRoot,
   onClose,
   onOpenThread,
@@ -60,7 +60,7 @@ export const ChatToolsPanel = ({
         <ThreadsTool
           chatRef={chatRef}
           threadId={threadId}
-          focusThreadComposer={focusThreadComposer}
+          threadComposerFocusSignal={threadComposerFocusSignal}
           draftThreadRoot={draftThreadRoot}
           isOpen={isOpen}
           onClose={onClose}

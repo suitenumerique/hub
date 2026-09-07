@@ -16,6 +16,7 @@ import { ToolsPanelHeader } from "./ToolsPanelHeader";
 type DraftThreadDetailProps = {
   chatRef: ChatRef;
   root: DraftThreadRoot;
+  composerFocusSignal: number;
   isOpen: boolean;
   onClose: () => void;
   onBack: () => void;
@@ -25,6 +26,7 @@ type DraftThreadDetailProps = {
 export const DraftThreadDetail = ({
   chatRef,
   root,
+  composerFocusSignal,
   isOpen,
   onClose,
   onBack,
@@ -106,7 +108,7 @@ export const DraftThreadDetail = ({
             inputLabel={t("Answer")}
             disabled={!isSupported}
             isSubmitting={isStarting}
-            autoFocus
+            focusSignal={isOpen ? composerFocusSignal : undefined}
             onSubmit={handleSubmit}
           />
         </div>

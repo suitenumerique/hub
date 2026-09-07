@@ -172,7 +172,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     (!thread && isCompositionSupported);
   const onReply = useCallback(() => {
     if (thread && !isOptimisticThreadId(thread.id)) {
-      openThread(thread.id);
+      openThread(thread.id, { focusComposer: true });
       return;
     }
     if (thread) {

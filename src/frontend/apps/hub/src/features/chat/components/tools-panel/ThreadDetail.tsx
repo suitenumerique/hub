@@ -32,7 +32,7 @@ type ThreadDetailProps = {
   isOpen: boolean;
   onClose: () => void;
   onBack: () => void;
-  autoFocusComposer?: boolean;
+  composerFocusSignal?: number;
 };
 
 /** Threads panel detail view — a single thread's root message and replies. */
@@ -42,7 +42,7 @@ export const ThreadDetail = ({
   isOpen,
   onClose,
   onBack,
-  autoFocusComposer = false,
+  composerFocusSignal,
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
   const { thread, isInitialLoading, refetch } = useChatThread(
@@ -278,7 +278,7 @@ export const ThreadDetail = ({
             inputLabel={t("Answer")}
             disabled={!isSupported}
             isSubmitting={isSending || isEditing}
-            autoFocus={autoFocusComposer}
+            focusSignal={isOpen ? composerFocusSignal : undefined}
             errorMessage={
               editingMessage
                 ? t("Your message could not be edited. Please try again.")

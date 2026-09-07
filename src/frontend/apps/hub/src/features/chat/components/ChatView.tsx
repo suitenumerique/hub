@@ -150,7 +150,7 @@ export const ChatView = ({
   // Thread whose detail view is open; `null` keeps the threads tool on its
   // list view.
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [focusThreadComposer, setFocusThreadComposer] = useState(false);
+  const [threadComposerFocusSignal, setThreadComposerFocusSignal] = useState(0);
   const [draftThreadRoot, setDraftThreadRoot] =
     useState<DraftThreadRoot | null>(null);
   useEffect(() => {
@@ -162,7 +162,7 @@ export const ChatView = ({
   // A thread id belongs to a single conversation — reset panel state on switch.
   useEffect(() => {
     setActiveThreadId(null);
-    setFocusThreadComposer(false);
+    setThreadComposerFocusSignal(0);
     setDraftThreadRoot(null);
     setEditingMessage(null);
   }, [chatRef?.accountId, chatRef?.chatId]);
@@ -175,7 +175,7 @@ export const ChatView = ({
     // back to the list during the slide-out animation.
     if (willOpen && tool === "threads") {
       setActiveThreadId(null);
-      setFocusThreadComposer(false);
+      setThreadComposerFocusSignal(0);
     }
   };
 
@@ -185,7 +185,9 @@ export const ChatView = ({
     (threadId: string, options?: OpenThreadOptions) => {
       setActiveTool("threads");
       setActiveThreadId(threadId);
-      setFocusThreadComposer(Boolean(options?.focusComposer));
+      setThreadComposerFocusSignal((signal) =>
+        options?.focusComposer ? signal + 1 : 0,
+      );
       setDraftThreadRoot(null);
     },
     [],
@@ -194,20 +196,20 @@ export const ChatView = ({
   const openThreadList = useCallback(() => {
     setActiveTool("threads");
     setActiveThreadId(null);
-    setFocusThreadComposer(false);
+    setThreadComposerFocusSignal(0);
     setDraftThreadRoot(null);
   }, []);
 
   const openDraftThread = useCallback((root: DraftThreadRoot) => {
     setActiveTool("threads");
     setActiveThreadId(null);
-    setFocusThreadComposer(false);
+    setThreadComposerFocusSignal((signal) => signal + 1);
     setDraftThreadRoot(root);
   }, []);
 
   const closeThread = useCallback(() => {
     setActiveThreadId(null);
-    setFocusThreadComposer(false);
+    setThreadComposerFocusSignal(0);
     setDraftThreadRoot(null);
   }, []);
 
@@ -316,7 +318,7 @@ export const ChatView = ({
                 isOpen={activeTool !== null}
                 chatRef={chatRef}
                 threadId={activeThreadId}
-                focusThreadComposer={focusThreadComposer}
+                threadComposerFocusSignal={threadComposerFocusSignal}
                 draftThreadRoot={draftThreadRoot}
                 onClose={closePanel}
                 onOpenThread={openThread}
