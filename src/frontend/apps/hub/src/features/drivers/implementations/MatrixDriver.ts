@@ -140,7 +140,6 @@ const STORAGE = {
   // Everything needed to refresh the OIDC access token on a later page load.
   oidc: "matrixOidc",
   oidcState: "oidc_state",
-  redactedThreads: "matrixRedactedThreads",
 } as const;
 
 /** OIDC session data persisted so tokens can be refreshed after a reload. */
@@ -200,21 +199,6 @@ const sortChatMembers = (
     return left.name.localeCompare(right.name);
   });
 
-type RedactedThreadReply = {
-  chatId: string;
-  threadId: string;
-  eventId: string;
-  rootEvent: MatrixEvent;
-  event: MatrixEvent;
-  /** Filled once RoomEvent.Redaction has applied the tombstone shape. */
-  message?: ChatMessage;
-};
-
-type PersistedRedactedThreadReply = Pick<
-  RedactedThreadReply,
-  "chatId" | "threadId" | "eventId"
-> & { rootEventId: string };
-
 type RoomTimelineListener = (
   event: MatrixEvent,
   room: Room | undefined,
@@ -246,13 +230,6 @@ export class MatrixDriver extends Driver {
   private typingRoomPreparations = new Map<string, Promise<void>>();
   /** Server ids sent by this driver, used to pair local and remote echoes. */
   private sentThreadReplyEventIds = new Set<string>();
-  /**
-   * Matrix redaction strips `m.thread`, so the SDK moves a deleted reply onto
-   * the main timeline and can delete the Thread object entirely. Preserve the
-   * association for this client session: it keeps the tombstone in an already
-   * opened thread and prevents it leaking into the room timeline.
-   */
-  private redactedThreadReplies = new Map<string, RedactedThreadReply>();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
   /** Parsed per-account config; source of truth for the fixed server and OIDC. */
@@ -718,151 +695,8 @@ export class MatrixDriver extends Driver {
     }
   }
 
-  private redactedThreadReplyKey(chatId: string, eventId: string): string {
-    return `${chatId}\u0000${eventId}`;
-  }
-
-  private isRedactedThreadReply(chatId: string, event: MatrixEvent): boolean {
-    const eventId = event.getId();
-    return Boolean(
-      eventId &&
-      this.redactedThreadReplies.has(
-        this.redactedThreadReplyKey(chatId, eventId),
-      ),
-    );
-  }
-
-  private redactedRepliesForThread(
-    chatId: string,
-    threadId: string,
-  ): Array<RedactedThreadReply & { message: ChatMessage }> {
-    return [...this.redactedThreadReplies.values()].filter(
-      (
-        reply,
-      ): reply is RedactedThreadReply & {
-        message: ChatMessage;
-      } =>
-        reply.chatId === chatId &&
-        reply.threadId === threadId &&
-        reply.message !== undefined,
-    );
-  }
-
-  private persistRedactedThreadReplies(removed?: {
-    chatId: string;
-    eventId: string;
-  }): void {
-    // Some persisted replies may not be hydrated in the SDK's current timeline
-    // window yet. Merge instead of rebuilding from the in-memory overlay so a
-    // later redaction cannot silently discard those older associations.
-    const stored = this.readStoredJson<PersistedRedactedThreadReply[]>(
-      STORAGE.redactedThreads,
-    );
-    const entriesByKey = new Map<string, PersistedRedactedThreadReply>();
-    if (Array.isArray(stored)) {
-      stored.forEach((entry) => {
-        if (
-          typeof entry?.chatId === "string" &&
-          typeof entry.threadId === "string" &&
-          typeof entry.eventId === "string" &&
-          typeof entry.rootEventId === "string"
-        ) {
-          entriesByKey.set(
-            this.redactedThreadReplyKey(entry.chatId, entry.eventId),
-            entry,
-          );
-        }
-      });
-    }
-    if (removed) {
-      entriesByKey.delete(
-        this.redactedThreadReplyKey(removed.chatId, removed.eventId),
-      );
-    }
-    this.redactedThreadReplies.forEach((reply) => {
-      entriesByKey.set(
-        this.redactedThreadReplyKey(reply.chatId, reply.eventId),
-        {
-          chatId: reply.chatId,
-          threadId: reply.threadId,
-          eventId: reply.eventId,
-          rootEventId: reply.rootEvent.getId() ?? reply.threadId,
-        },
-      );
-    });
-    this.writeStoredJson(STORAGE.redactedThreads, [...entriesByKey.values()]);
-  }
-
-  private restoreRedactedThreadReplies(mx: MatrixClient): void {
-    const entries = this.readStoredJson<PersistedRedactedThreadReply[]>(
-      STORAGE.redactedThreads,
-    );
-    if (!Array.isArray(entries)) {
-      return;
-    }
-    const selfUserId = mx.getUserId() ?? undefined;
-    entries.forEach((entry) => {
-      const room = mx.getRoom(entry.chatId);
-      const event = room?.findEventById(entry.eventId);
-      const rootEvent = room?.findEventById(entry.rootEventId);
-      if (!room || !event || !rootEvent) {
-        return;
-      }
-      this.redactedThreadReplies.set(
-        this.redactedThreadReplyKey(entry.chatId, entry.eventId),
-        {
-          ...entry,
-          rootEvent,
-          event,
-          message: matrixEventToChatMessage(event, room, selfUserId),
-        },
-      );
-    });
-  }
-
-  private messageWithThreadOverlay(
-    room: Room,
-    event: MatrixEvent,
-    selfUserId: string | undefined,
-  ): ChatMessage {
-    const message = matrixEventToChatMessage(event, room, selfUserId);
-    const eventId = event.getId();
-    if (!eventId) {
-      return message;
-    }
-    const redactedReplies = this.redactedRepliesForThread(room.roomId, eventId);
-    if (redactedReplies.length === 0) {
-      return message;
-    }
-    const activeThread = room.getThread(eventId);
-    const activeReplyIds = new Set(
-      activeThread
-        ? sortedThreadReplyEvents(activeThread).map((reply) => reply.getId())
-        : [],
-    );
-    const missingTombstones = redactedReplies.filter(
-      ({ eventId: replyId }) => !activeReplyIds.has(replyId),
-    ).length;
-    return {
-      ...message,
-      thread: {
-        id: eventId,
-        replyCount:
-          (activeThread ? threadReplyCount(activeThread) : 0) +
-          missingTombstones,
-        unreadCount: message.thread?.unreadCount ?? 0,
-      },
-    };
-  }
-
-  private mainTimelineEvents(chatId: string, window: TimelineWindow) {
-    return window
-      .getEvents()
-      .filter(
-        (event) =>
-          isMainTimelineMessage(event) &&
-          !this.isRedactedThreadReply(chatId, event),
-      );
+  private mainTimelineEvents(window: TimelineWindow) {
+    return window.getEvents().filter(isMainTimelineMessage);
   }
 
   /**
@@ -944,7 +778,7 @@ export class MatrixDriver extends Driver {
     const mx = this.requireClient("mapMainTimelinePage");
     const selfUserId = mx.getUserId() ?? undefined;
     const mappedMessages = pageEvents.map((event) =>
-      this.messageWithThreadOverlay(room, event, selfUserId),
+      matrixEventToChatMessage(event, room, selfUserId),
     );
     const messages = await Promise.all(
       mappedMessages.map((message, index) =>
@@ -991,7 +825,6 @@ export class MatrixDriver extends Driver {
         `MatrixDriver.getChatMessages: room "${chatId}" not found.`,
       );
     }
-    this.restoreRedactedThreadReplies(mx);
     const targetId = anchorId ?? cursor ?? undefined;
     const { window, dispose } = this.scopedTimelineWindow(mx, room);
     try {
@@ -999,7 +832,7 @@ export class MatrixDriver extends Driver {
 
       const targetIndex = () =>
         targetId
-          ? this.mainTimelineEvents(chatId, window).findIndex(
+          ? this.mainTimelineEvents(window).findIndex(
               (event) => event.getId() === targetId,
             )
           : -1;
@@ -1029,13 +862,11 @@ export class MatrixDriver extends Driver {
             const index = targetIndex();
             return (
               index >= 0 &&
-              this.mainTimelineEvents(chatId, window).length - index - 1 >=
-                newerTarget
+              this.mainTimelineEvents(window).length - index - 1 >= newerTarget
             );
           },
         );
-        this.restoreRedactedThreadReplies(mx);
-        const events = this.mainTimelineEvents(chatId, window);
+        const events = this.mainTimelineEvents(window);
         const index = events.findIndex((event) => event.getId() === anchorId);
         const startIndex = Math.max(
           0,
@@ -1064,12 +895,11 @@ export class MatrixDriver extends Driver {
           EventTimeline.FORWARDS,
           limit,
           () => {
-            const events = this.mainTimelineEvents(chatId, window);
+            const events = this.mainTimelineEvents(window);
             return events.length - targetIndex() - 1 >= limit;
           },
         );
-        this.restoreRedactedThreadReplies(mx);
-        const events = this.mainTimelineEvents(chatId, window);
+        const events = this.mainTimelineEvents(window);
         const startIndex = targetIndex() + 1;
         const available = events.slice(startIndex);
         const pageEvents = available.slice(0, limit);
@@ -1092,12 +922,11 @@ export class MatrixDriver extends Driver {
         EventTimeline.BACKWARDS,
         limit,
         () => {
-          const events = this.mainTimelineEvents(chatId, window);
+          const events = this.mainTimelineEvents(window);
           return cursor ? targetIndex() >= limit : events.length >= limit;
         },
       );
-      this.restoreRedactedThreadReplies(mx);
-      const events = this.mainTimelineEvents(chatId, window);
+      const events = this.mainTimelineEvents(window);
       const endIndex = cursor ? targetIndex() : events.length;
       const startIndex = Math.max(0, endIndex - limit);
       const pageEvents = events.slice(startIndex, endIndex);
@@ -1116,13 +945,11 @@ export class MatrixDriver extends Driver {
   }
 
   private isEligibleMainTimelineUnread(
-    chatId: string,
     event: MatrixEvent,
     selfUserId: string,
   ): boolean {
     return (
       isMainTimelineMessage(event) &&
-      !this.isRedactedThreadReply(chatId, event) &&
       !event.isRedacted() &&
       event.getSender() !== selfUserId
     );
@@ -1181,7 +1008,7 @@ export class MatrixDriver extends Driver {
         if (
           !eventId ||
           seen.has(eventId) ||
-          !this.isEligibleMainTimelineUnread(room.roomId, event, selfUserId)
+          !this.isEligibleMainTimelineUnread(event, selfUserId)
         ) {
           return false;
         }
@@ -1556,79 +1383,11 @@ export class MatrixDriver extends Driver {
     // Idempotent in the SDK and required even when one thread arrived via sync:
     // otherwise `getThreads()` can be a partial list.
     await this.loadAllRoomThreads(mx, room);
-    this.restoreRedactedThreadReplies(mx);
     const selfUserId = mx.getUserId() ?? undefined;
-    const overlaysByThreadId = new Map<
-      string,
-      Array<RedactedThreadReply & { message: ChatMessage }>
-    >();
-    for (const reply of this.redactedThreadReplies.values()) {
-      if (reply.chatId !== chatId || !reply.message) {
-        continue;
-      }
-      const replies = overlaysByThreadId.get(reply.threadId) ?? [];
-      replies.push({ ...reply, message: reply.message });
-      overlaysByThreadId.set(reply.threadId, replies);
-    }
-
-    const liveThreadIds = new Set<string>();
-    const threads = room.getThreads().map((thread) => {
-      liveThreadIds.add(thread.id);
-      const summary = threadToChatThread(room, thread, selfUserId);
-      const activeIds = new Set(
-        sortedThreadReplyEvents(thread).map((event) => event.getId()),
-      );
-      const missingTombstones = (
-        overlaysByThreadId.get(thread.id) ?? []
-      ).filter(({ eventId }) => !activeIds.has(eventId));
-      const latestTombstone = missingTombstones.sort((left, right) =>
-        right.message.timestamp.localeCompare(left.message.timestamp),
-      )[0];
-      return {
-        ...summary,
-        ...(latestTombstone &&
-        latestTombstone.message.timestamp > summary.lastReplyAt
-          ? {
-              author: authorForSender(
-                room,
-                latestTombstone.event.getSender() ?? "",
-                selfUserId,
-              ),
-              lastReplyAt: latestTombstone.message.timestamp,
-              lastReplyPreview: "",
-              lastReplyDeleted: true,
-            }
-          : {}),
-        replyCount: summary.replyCount + missingTombstones.length,
-      };
-    });
-
-    for (const [threadId, replies] of overlaysByThreadId) {
-      if (liveThreadIds.has(threadId) || replies.length === 0) {
-        continue;
-      }
-      const latest = [...replies].sort((left, right) =>
-        right.message.timestamp.localeCompare(left.message.timestamp),
-      )[0];
-      threads.push({
-        id: threadId,
-        rootMessageId: threadId,
-        author: authorForSender(
-          room,
-          latest.event.getSender() ?? "",
-          selfUserId,
-        ),
-        lastReplyAt: latest.message.timestamp,
-        lastReplyPreview: "",
-        lastReplyDeleted: true,
-        replyCount: replies.length,
-        unreadCount: 0,
-      });
-    }
-
-    return threads.sort((left, right) =>
-      right.lastReplyAt.localeCompare(left.lastReplyAt),
-    );
+    return room
+      .getThreads()
+      .map((thread) => threadToChatThread(room, thread, selfUserId))
+      .sort((left, right) => right.lastReplyAt.localeCompare(left.lastReplyAt));
   }
 
   /** Root + every reply, with a receipt-derived first-unread boundary. */
@@ -1638,90 +1397,35 @@ export class MatrixDriver extends Driver {
   }: GetChatThreadParams): Promise<ChatThreadDetail> {
     const { mx, room } = this.requireRoom("getChatThread", chatId);
     await this.loadAllRoomThreads(mx, room);
-    this.restoreRedactedThreadReplies(mx);
     const thread = room.getThread(threadId);
     const selfUserId = mx.getUserId() ?? undefined;
-    const redactedReplies = this.redactedRepliesForThread(chatId, threadId);
     if (!thread) {
-      const rootEvent =
-        room.findEventById(threadId) ?? redactedReplies[0]?.rootEvent;
-      if (!rootEvent || redactedReplies.length === 0) {
+      // The SDK removes a thread when its last reply is redacted. Keep the
+      // opened composer usable with its root, without restoring deleted replies.
+      const rootEvent = room.findEventById(threadId);
+      if (!rootEvent || !isMainTimelineMessage(rootEvent)) {
         throw new Error(
           `MatrixDriver.getChatThread: thread "${threadId}" not found in room "${chatId}".`,
         );
       }
-      const overlayEvents = redactedReplies.map(({ event }) => event);
       return {
         id: threadId,
         rootMessageId: threadId,
-        messages: [
-          this.messageWithThreadOverlay(room, rootEvent, selfUserId),
-          ...redactedReplies
-            .map(({ message }) => message)
-            .sort((left, right) =>
-              left.timestamp.localeCompare(right.timestamp),
-            ),
-        ],
-        authors: buildAuthors(room, [rootEvent, ...overlayEvents], selfUserId),
+        messages: [matrixEventToChatMessage(rootEvent, room, selfUserId)],
+        authors: buildAuthors(room, [rootEvent], selfUserId),
         firstUnreadIndex: null,
       };
     }
     await this.loadAllThreadReplies(mx, thread);
-    this.restoreRedactedThreadReplies(mx);
     const detail = threadToChatThreadDetail(room, thread, selfUserId);
-    const firstUnreadMessageId =
-      detail.firstUnreadIndex === null
-        ? null
-        : (detail.messages[detail.firstUnreadIndex]?.id ?? null);
     const replies = sortedThreadReplyEvents(thread);
     const events = thread.rootEvent ? [thread.rootEvent, ...replies] : replies;
-    const activeMessages = await Promise.all(
-      detail.messages.map((message, index) => {
-        const event = events[index];
-        const projectedMessage =
-          event?.getId() === threadId
-            ? this.messageWithThreadOverlay(room, event, selfUserId)
-            : message;
-        return reconcileMessageReactions(
-          mx,
-          room,
-          event,
-          projectedMessage,
-          selfUserId,
-        );
-      }),
-    );
-    const activeIds = new Set(activeMessages.map(({ id }) => id));
-    const rootMessage = activeMessages.find(({ id }) => id === threadId);
-    const messages = [
-      ...(rootMessage ? [rootMessage] : []),
-      ...[
-        ...activeMessages.filter(({ id }) => id !== threadId),
-        ...redactedReplies
-          .map(({ message }) => message)
-          .filter(({ id }) => !activeIds.has(id)),
-      ].sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
-    ];
-    const overlayAuthors = buildAuthors(
-      room,
-      redactedReplies.map(({ event }) => event),
-      selfUserId,
-    );
-    const authors = [
-      ...detail.authors,
-      ...overlayAuthors.filter(
-        (author) => !detail.authors.some((current) => current.id === author.id),
+    const messages = await Promise.all(
+      detail.messages.map((message, index) =>
+        reconcileMessageReactions(mx, room, events[index], message, selfUserId),
       ),
-    ];
-    const firstUnreadIndex = firstUnreadMessageId
-      ? messages.findIndex(({ id }) => id === firstUnreadMessageId)
-      : -1;
-    return {
-      ...detail,
-      messages,
-      authors,
-      firstUnreadIndex: firstUnreadIndex >= 0 ? firstUnreadIndex : null,
-    };
+    );
+    return { ...detail, messages };
   }
 
   /** Advances only this thread's receipt to its latest reply. */
@@ -1769,11 +1473,7 @@ export class MatrixDriver extends Driver {
       await mx.getEventTimeline(room.getUnfilteredTimelineSet(), eventId);
       event = room.findEventById(eventId);
     }
-    if (
-      !event ||
-      !isMainTimelineMessage(event) ||
-      this.isRedactedThreadReply(chatId, event)
-    ) {
+    if (!event || !isMainTimelineMessage(event)) {
       throw new Error(
         `MatrixDriver.markChatReadThrough: event "${eventId}" is not a main-timeline message in room "${chatId}".`,
       );
@@ -1892,7 +1592,7 @@ export class MatrixDriver extends Driver {
     await (threadId
       ? mx.redactEvent(chatId, threadId, messageId)
       : mx.redactEvent(chatId, messageId));
-    return {
+    const message: ChatMessage = {
       ...matrixEventToChatMessage(event, room, selfUserId),
       content: "",
       reactions: [],
@@ -1901,6 +1601,7 @@ export class MatrixDriver extends Driver {
       canEdit: false,
       canDelete: false,
     };
+    return message;
   }
 
   async sendChatTyping({
@@ -2136,9 +1837,9 @@ export class MatrixDriver extends Driver {
       tokenRefreshFunction: this.buildTokenRefreshFunction(user),
     });
     this.mx = mx;
+    localStorage.removeItem(this.key("matrixRedactedThreads"));
     await this.startClientOrFailOnLogout(mx);
     await this.refreshJoinedRoomIds(mx);
-    this.restoreRedactedThreadReplies(mx);
 
     // Bridge Matrix `/sync` onto the generic event stream, once, for the
     // client's lifetime. The handlers fan out to whatever subscribers exist at
@@ -2168,9 +1869,9 @@ export class MatrixDriver extends Driver {
       this.emit({
         type: "message:updated",
         chatId: thread.room.roomId,
-        message: this.messageWithThreadOverlay(
-          thread.room,
+        message: matrixEventToChatMessage(
           thread.rootEvent,
+          thread.room,
           selfUserId,
         ),
       });
@@ -2251,9 +1952,6 @@ export class MatrixDriver extends Driver {
       // Backward-pagination history is served by `getChatMessages`, not the
       // live stream.
       if (!room || removed) {
-        return;
-      }
-      if (this.isRedactedThreadReply(room.roomId, event)) {
         return;
       }
       if (
@@ -2355,7 +2053,7 @@ export class MatrixDriver extends Driver {
       this.emit({
         type: "message:updated",
         chatId: room.roomId,
-        message: this.messageWithThreadOverlay(room, event, selfUserId),
+        message: matrixEventToChatMessage(event, room, selfUserId),
         ...(threadId ? { threadId } : {}),
       });
       if (threadId) {
@@ -2368,38 +2066,15 @@ export class MatrixDriver extends Driver {
       emitMainTimelineUnread(room);
     };
     const onBeforeRedaction = (target: MatrixEvent, redaction: MatrixEvent) => {
-      const threadId = target.isThreadRoot
-        ? target.getId()
-        : target.threadRootId;
+      const eventId = target.getId();
       const targetRoomId = target.getRoomId();
+      const threadId = target.isThreadRoot ? eventId : target.threadRootId;
       const thread =
         threadId && targetRoomId
-          ? (mx.getRoom(targetRoomId)?.getThread(threadId) ?? undefined)
+          ? mx.getRoom(targetRoomId)?.getThread(threadId)
           : undefined;
-      // The local redaction echo has a sending status and can still fail. Only
-      // mutate the durable projection when the server-confirmed echo arrives,
-      // matching matrix-js-sdk's own Thread.onBeforeRedaction guard.
-      if (thread && target.getId() !== thread.id && !redaction.status) {
+      if (thread && eventId !== threadId && !redaction.status) {
         forgetThreadReply(thread, target);
-        const eventId = target.getId();
-        const rootEvent =
-          thread.rootEvent ??
-          (targetRoomId
-            ? mx.getRoom(targetRoomId)?.findEventById(thread.id)
-            : null);
-        if (eventId && targetRoomId && rootEvent && isMessageEvent(target)) {
-          this.redactedThreadReplies.set(
-            this.redactedThreadReplyKey(targetRoomId, eventId),
-            {
-              chatId: targetRoomId,
-              threadId: thread.id,
-              eventId,
-              rootEvent,
-              event: target,
-            },
-          );
-          this.persistRedactedThreadReplies();
-        }
       }
       pendingRedactions.set(redaction, {
         target,
@@ -2419,48 +2094,33 @@ export class MatrixDriver extends Driver {
         pending?.target ?? (targetId ? room.findEventById(targetId) : null);
       const threadId = pending?.threadId ?? emittedThreadId;
       if (target?.getType() === EventType.RoomMessage) {
-        const message = matrixEventToChatMessage(target, room, selfUserId);
-        const redactedTargetId = target.getId();
-        if (threadId && redactedTargetId && redactedTargetId !== threadId) {
-          const overlay = this.redactedThreadReplies.get(
-            this.redactedThreadReplyKey(room.roomId, redactedTargetId),
-          );
-          if (overlay) {
-            overlay.message = message;
+        // Route by the event's current SDK timeline. Confirmed reply redactions
+        // have lost m.thread and now belong to the main timeline.
+        const currentThreadId = target.isThreadRoot
+          ? target.getId()
+          : target.threadRootId;
+        this.emit({
+          type: "message:updated",
+          chatId: room.roomId,
+          message: matrixEventToChatMessage(target, room, selfUserId),
+          ...(currentThreadId ? { threadId: currentThreadId } : {}),
+        });
+        queueMicrotask(() => {
+          if (this.mx !== mx) {
+            return;
           }
-        }
-        const emitMessageUpdate = () =>
-          this.emit({
-            type: "message:updated",
-            chatId: room.roomId,
-            message,
-            ...(threadId ? { threadId } : {}),
-          });
-        // makeRedacted() strips m.thread and the SDK repartitions the event
-        // after RoomEvent.Redaction. Publish a reply tombstone one microtask
-        // later so the cache removal wins over that transient main-timeline
-        // insertion instead of racing it.
-        if (threadId && redactedTargetId && redactedTargetId !== threadId) {
-          queueMicrotask(() => {
-            if (this.mx === mx) {
-              emitMessageUpdate();
-            }
-          });
-        } else {
-          emitMessageUpdate();
-        }
-        if (threadId || target.isThreadRoot) {
+          // Let Thread.Delete finish before mapping its root or reloading the
+          // detail. A moved own echo also needs to be loaded in the main cache.
           if (pending?.thread) {
             emitThreadRootUpdate(pending.thread);
           }
-          this.emit({
-            type: "threads:changed",
-            chatId: room.roomId,
-            invalidateDetails: false,
-          });
-        }
-        emitUnread(room);
-        emitMainTimelineUnread(room);
+          this.emit({ type: "chat:changed", chatId: room.roomId });
+          if (threadId) {
+            this.emit({ type: "threads:changed", chatId: room.roomId });
+          }
+          emitUnread(room);
+          emitMainTimelineUnread(room);
+        });
         return;
       }
       if (
@@ -2500,18 +2160,7 @@ export class MatrixDriver extends Driver {
         this.emit({ type: "threads:changed", chatId: room.roomId });
       }
     };
-    const onRedactionCancelled = (event: MatrixEvent, room: Room) => {
-      const pending = pendingRedactions.get(event);
-      const targetId = pending?.target.getId();
-      if (targetId) {
-        this.redactedThreadReplies.delete(
-          this.redactedThreadReplyKey(room.roomId, targetId),
-        );
-        this.persistRedactedThreadReplies({
-          chatId: room.roomId,
-          eventId: targetId,
-        });
-      }
+    const onRedactionCancelled = (_event: MatrixEvent, room: Room) => {
       this.emit({ type: "chat:changed", chatId: room.roomId });
       this.emit({ type: "threads:changed", chatId: room.roomId });
       emitMainTimelineUnread(room);
@@ -2772,7 +2421,6 @@ export class MatrixDriver extends Driver {
     this.mx = null;
     this.joinedRoomIds = null;
     this.sentThreadReplyEventIds.clear();
-    this.redactedThreadReplies.clear();
     this.confirmedMainReadBoundaries.clear();
     this.exactMainTimelineUnreadRooms.clear();
   }
@@ -2904,7 +2552,6 @@ export class MatrixDriver extends Driver {
 
     localStorage.removeItem(this.key(STORAGE.user));
     localStorage.removeItem(this.key(STORAGE.oidc));
-    localStorage.removeItem(this.key(STORAGE.redactedThreads));
     sessionStorage.removeItem(this.key(STORAGE.oidcState));
 
     await Promise.all([

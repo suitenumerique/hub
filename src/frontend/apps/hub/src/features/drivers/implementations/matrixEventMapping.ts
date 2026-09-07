@@ -130,6 +130,7 @@ const threadReplyEvents = (thread: Thread): MatrixEvent[] =>
 type ThreadReplyCounter = {
   count: number;
   observedEventKeys: Set<string>;
+  redactedEventIds: Set<string>;
 };
 
 /**
@@ -162,6 +163,7 @@ export const getThreadReplyCounter = (thread: Thread): ThreadReplyCounter => {
   }
   const counter: ThreadReplyCounter = {
     count: snapshot,
+    redactedEventIds: new Set(),
     observedEventKeys: new Set(
       [
         ...threadReplyEvents(thread),
@@ -230,9 +232,16 @@ export const forgetThreadReply = (
     return false;
   }
   const eventKey = threadReplyEventKey(event);
+  const eventId = event.getId();
   const counter = getThreadReplyCounter(thread);
-  if (!eventKey || !counter.observedEventKeys.delete(eventKey)) {
+  if (!eventId || counter.redactedEventIds.has(eventId)) {
     return false;
+  }
+  // Own replies are counted by the send result while their echoes are skipped,
+  // so they need not be in observedEventKeys. Deduplicate redactions separately.
+  counter.redactedEventIds.add(eventId);
+  if (eventKey) {
+    counter.observedEventKeys.delete(eventKey);
   }
   counter.count = Math.max(0, counter.count - 1);
   return true;

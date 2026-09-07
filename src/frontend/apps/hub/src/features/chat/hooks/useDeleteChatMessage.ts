@@ -161,6 +161,9 @@ export const useDeleteChatMessage = (
           context.threadKey,
           (detail) => (detail ? patchThreadMessage(detail, message) : detail),
         );
+        // Reload the SDK timeline: a confirmed reply redaction moves the event
+        // out of its thread, while a deleted root remains in place.
+        void queryClient.invalidateQueries({ queryKey: context.threadKey });
       }
       void queryClient.invalidateQueries({ queryKey: chatKeys.threads(ref) });
       void queryClient.invalidateQueries({
