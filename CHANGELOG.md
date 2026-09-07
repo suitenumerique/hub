@@ -47,6 +47,7 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Restore unread navigation in conversations without a read marker
 - 🐛(frontend) Keep modals above chat headers and messages below them
 - 🐛(frontend) Show an error toast when a chat message fails to send
 - 🐛(frontend) Reset the composer draft when switching conversation
