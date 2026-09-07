@@ -48,6 +48,7 @@ and this project adheres to
 ### Fixed
 
 - 🐛(frontend) Restore unread navigation in conversations without a read marker
+- 🐛(frontend) Follow Matrix timeline and count updates for deleted thread replies
 - 🐛(frontend) Restore edit and delete actions on newly sent thread replies
 - 🐛(frontend) Resolve newly sent messages before editing or deleting them
 - 🐛(frontend) Restore message content when an optimistic edit or deletion fails
