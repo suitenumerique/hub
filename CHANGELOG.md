@@ -48,6 +48,9 @@ and this project adheres to
 ### Fixed
 
 - 🐛(frontend) Restore unread navigation in conversations without a read marker
+- 🐛(frontend) Restore edit and delete actions on newly sent thread replies
+- 🐛(frontend) Resolve newly sent messages before editing or deleting them
+- 🐛(frontend) Restore message content when an optimistic edit or deletion fails
 - 🐛(frontend) Keep modals above chat headers and messages below them
 - 🐛(frontend) Show an error toast when a chat message fails to send
 - 🐛(frontend) Reset the composer draft when switching conversation

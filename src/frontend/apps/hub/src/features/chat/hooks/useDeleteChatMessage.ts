@@ -124,7 +124,7 @@ export const useDeleteChatMessage = (
       const previousThreadMessage = thread?.messages.find(
         (current) => current.id === message.id,
       );
-      const marker: MessageMutationMarker = {};
+      const marker: MessageMutationMarker = Symbol();
       const tombstone = markOptimisticMessageMutation(
         toTombstone(message),
         marker,
