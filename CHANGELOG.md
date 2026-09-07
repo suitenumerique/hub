@@ -49,12 +49,14 @@ and this project adheres to
 
 - 🐛(frontend) Restore unread navigation in conversations without a read marker
 - 🐛(frontend) Keep the thread root message toolbar fully accessible
-- 🐛(frontend) Follow Matrix timeline and count updates for deleted thread replies
+- 🐛(frontend) Follow Matrix timeline and count updates for deleted thread
+  replies
 - 🐛(frontend) Focus the thread composer whenever Reply is clicked
 - 🐛(frontend) Keep the thread composer compact when opening the tools panel
 - 🐛(frontend) Restore edit and delete actions on newly sent thread replies
 - 🐛(frontend) Resolve newly sent messages before editing or deleting them
-- 🐛(frontend) Restore message content when an optimistic edit or deletion fails
+- 🐛(frontend) Restore message content when an optimistic edit or deletion
+  fails
 - 🐛(frontend) Keep modals above chat headers and messages below them
 - 🐛(frontend) Show an error toast when a chat message fails to send
 - 🐛(frontend) Reset the composer draft when switching conversation
