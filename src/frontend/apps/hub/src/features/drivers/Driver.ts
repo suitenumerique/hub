@@ -145,6 +145,19 @@ export type ChatConnectionState = {
  * (or none, for list-level changes) so the bridge can target the right cache.
  */
 export type ChatEvent =
+  // Delivery signals are independent from timeline/cache patches.
+  | {
+      type: "message:received";
+      chatId: string;
+      chatName: string;
+      content: string;
+    }
+  | {
+      type: "invitation:received";
+      chatId: string;
+      chatName: string;
+      inviterName?: string;
+    }
   // --- Fine-grained: carry enough data for a direct cache patch ----------
   | {
       type: "message:new";
