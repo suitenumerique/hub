@@ -112,6 +112,7 @@ import {
   timelineEventToChatEvent,
 } from "./matrixEventMapping";
 import { matrixDirectoryUserToChatUser } from "./matrixIdentity";
+import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
 import {
   isFavouriteRoom,
   MATRIX_FAVOURITE_TAG,
@@ -1849,6 +1850,9 @@ export class MatrixDriver extends Driver {
     // server before their targeted patch; list membership changes and
     // reconnects stay coarse (`chats:changed`, per-room `chat:changed`).
     this.detachSync();
+    const detachIncomingEvents = subscribeToIncomingMatrixEvents(mx, (event) =>
+      this.emit(event),
+    );
     const selfUserId = mx.getUserId() ?? undefined;
     const emitUnread = (room: Room) =>
       this.emit({
@@ -2330,6 +2334,7 @@ export class MatrixDriver extends Driver {
       }
     });
     this.detachSync = () => {
+      detachIncomingEvents();
       mx.off(RoomEvent.Timeline, onTimeline);
       mx.off(RoomEvent.Receipt, onReceipt);
       mx.off(RoomEvent.Redaction, onRedaction);

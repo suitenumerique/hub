@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { useChatEvents } from "@/features/chat/hooks/useChatEvents";
+import { useChatNotifications } from "@/features/chat/notifications/useChatNotifications";
 
 import { LeftPanel } from "./LeftPanel/LeftPanel";
 
@@ -24,6 +25,7 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
   // reflects activity in any conversation (not just the open one) into the
   // React Query cache. No-op for drivers without real-time support.
   useChatEvents();
+  useChatNotifications(user?.id);
 
   if (requireAuth && !user) {
     return null;
