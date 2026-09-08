@@ -11,6 +11,7 @@ and this project adheres to
 - ✨(frontend) Notify incoming messages, thread replies and invitations.
   Play sound on receipt and show browser notifications when Hub is unfocused.
   Request permission on incoming activity with a user-gesture fallback.
+  Preload audio on arrival without replaying missed alerts.
 - 🏗️(frontend) Initialize the Hub frontend project
 - 🏗️(frontend) Initialize unit tests setup
 - 🏗️(frontend) Initialize end-to-end (e2e) tests setup
