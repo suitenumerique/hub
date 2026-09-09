@@ -1,7 +1,7 @@
 # Django hub
 
 # ---- base image to inherit from ----
-FROM python:3.14.4-alpine AS base
+FROM python:3.14.6-alpine AS base
 
 # Upgrade system packages to install security updates
 RUN apk update && apk upgrade --no-cache
