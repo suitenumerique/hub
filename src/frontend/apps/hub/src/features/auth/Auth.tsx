@@ -14,8 +14,15 @@ import { ChatLocalUser } from "../drivers/types";
 import { authUrl } from "./authUrl";
 import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
 
-export const logout = () => {
-  getRegistry().destroyAll();
+export const logout = async () => {
+  const registry = getRegistry();
+  // Démarrer l'effacement avant destroyAll(), qui détache les drivers Matrix.
+  const cleanup = registry.getSnapshot().map(async ({ driver }) => {
+    await driver.clearConversationSearch();
+  });
+  registry.destroyAll();
+  // Un stockage indisponible ne doit pas empêcher la déconnexion de Hub.
+  await Promise.allSettled(cleanup);
   window.location.replace(new URL("logout/", baseApiUrl()).href);
   posthog.reset();
 };

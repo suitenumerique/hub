@@ -24,6 +24,8 @@ type InitClientOptions = {
    * the SDK cannot refresh OIDC tokens and treats the 401 as a hard logout.
    */
   tokenRefreshFunction?: TokenRefreshFunction;
+  /** Optional local projections attach after cache repair, before sync starts. */
+  onSyncStoreReady?: (mx: MatrixClient) => Promise<void>;
 };
 
 type MatrixClientStores = {
@@ -147,8 +149,9 @@ export const initClient = async (
   options: InitClientOptions = {},
 ): Promise<MatrixClient> => {
   const client = buildClient(user, options);
+  let mx: MatrixClient;
   try {
-    return await startupClient(client);
+    mx = await startupClient(client);
   } catch (error) {
     // A homeserver response cannot be repaired by deleting IndexedDB. In
     // particular, let M_UNKNOWN_TOKEN/401 reach MatrixDriver so it can clear
@@ -165,8 +168,11 @@ export const initClient = async (
     await client.mx.clearStores({
       cryptoDatabasePrefix: client.cryptoStoreDbName,
     });
-    return startupClient(buildClient(user, options));
+    mx = await startupClient(buildClient(user, options));
   }
+  // A projection failure must not enter the sync/crypto repair catch above.
+  await options.onSyncStoreReady?.(mx);
+  return mx;
 };
 
 const INITIAL_SYNC_LIMIT = 50;

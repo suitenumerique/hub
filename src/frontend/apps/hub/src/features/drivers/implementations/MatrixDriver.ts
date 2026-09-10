@@ -35,6 +35,11 @@ import { type IdTokenClaims } from "oidc-client-ts";
 import { emojiToCodepoints } from "@/features/chat/fluentEmoji";
 import { toggleReaction } from "@/features/chat/reactions";
 import {
+  searchDatabaseName,
+  SearchStorage,
+} from "@/features/chat/search/storage";
+import type { ConversationSearchRequest } from "@/features/chat/search/types";
+import {
   MATRIX_LOCAL_SETTINGS,
   type MatrixDriverSettings,
   parseMatrixDriverSettings,
@@ -113,6 +118,13 @@ import {
 } from "./matrixEventMapping";
 import { matrixDirectoryUserToChatUser } from "./matrixIdentity";
 import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
+import { MatrixConversationSearch } from "./MatrixConversationSearch";
+import {
+  clearStoredConversationSearch,
+  MATRIX_USER_STORAGE_KEY,
+  matrixStorageKey,
+  matrixStorageOwner,
+} from "./matrixStorage";
 import {
   isFavouriteRoom,
   MATRIX_FAVOURITE_TAG,
@@ -137,7 +149,7 @@ const PEOPLE_SEARCH_DISPLAY_LIMIT = 8;
 // driver itself — there is no separate store module; everything else flows
 // through React Query.
 const STORAGE = {
-  user: "matrixUser",
+  user: MATRIX_USER_STORAGE_KEY,
   // Everything needed to refresh the OIDC access token on a later page load.
   oidc: "matrixOidc",
   oidcState: "oidc_state",
@@ -153,15 +165,6 @@ type StoredOidc = {
 };
 const SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const CRYPTO_STORE_DB_NAME = "crypto-store";
-
-const storageKey = (
-  accountId: AccountId,
-  key: string,
-  owner?: string | null,
-): string => {
-  const ownedKey = owner ? `${key}:${owner}` : key;
-  return accountId === "default" ? ownedKey : `${ownedKey}:${accountId}`;
-};
 
 const isMatrixSessionInvalidError = (error: unknown): boolean => {
   if (!(error instanceof MatrixError)) {
@@ -217,6 +220,41 @@ type RoomTimelineListener = (
  * while `/sync` is bridged onto the generic real-time event stream.
  */
 export class MatrixDriver extends Driver {
+  override readonly supportsConversationSearch = true;
+  private conversationSearch: MatrixConversationSearch | null = null;
+  private conversationSearchStart: Promise<void> | null = null;
+  private conversationSearchDatabase: string | null = null;
+  private clientGeneration = 0;
+
+  override searchConversations(request: ConversationSearchRequest) {
+    return (
+      this.conversationSearch?.search(request) ??
+      super.searchConversations(request)
+    );
+  }
+
+  override getConversationSearchStatus() {
+    return (
+      this.conversationSearch?.getStatus() ??
+      super.getConversationSearchStatus()
+    );
+  }
+
+  override retryConversationSearch(): void {
+    const mx = this.mx;
+    if (!mx) return;
+    void this.startConversationSearch(mx).then(() => {
+      if (this.mx === mx) this.conversationSearch?.retry();
+    });
+  }
+
+  override async clearConversationSearch(): Promise<void> {
+    const search = this.conversationSearch;
+    this.conversationSearch = null;
+    this.conversationSearchDatabase = null;
+    if (search) await search.remove();
+    else await clearStoredConversationSearch(this.accountId, this.storageOwner);
+  }
   override readonly supportsComposition: boolean = true;
   override readonly supportsThreadComposition: boolean = true;
   override readonly supportsConversationHistoryRemoval: boolean = true;
@@ -240,6 +278,9 @@ export class MatrixDriver extends Driver {
    * restored from IndexedDB after the local homeserver was reset.
    */
   private joinedRoomIds: Set<string> | null = null;
+  // Seule la dernière réconciliation peut publier une nouvelle liste de rooms.
+  private joinedRoomRevision = 0;
+  private joinedRoomRefresh: Promise<Set<string>> | null = null;
   /**
    * Coalesces concurrent creation requests for the same participant set in
    * this driver instance. The Matrix API does not provide an atomic
@@ -1828,18 +1869,65 @@ export class MatrixDriver extends Driver {
     return matrixUser;
   }
 
+  /** Shares startup work and lets a failed projection be recreated on retry. */
+  private async startConversationSearch(mx: MatrixClient): Promise<void> {
+    if (this.conversationSearchStart) return this.conversationSearchStart;
+    const database = this.conversationSearchDatabase;
+    if (this.mx !== mx || !database || this.conversationSearch) return;
+    const work = Promise.resolve().then(async () => {
+      if (this.mx !== mx || this.conversationSearchDatabase !== database)
+        return;
+      let search: MatrixConversationSearch | undefined;
+      try {
+        search = new MatrixConversationSearch(
+          mx,
+          this.accountId,
+          database,
+          () => this.emit({ type: "search:changed" }),
+          () => this.refreshJoinedRoomIds(mx),
+        );
+        this.conversationSearch = search;
+        await search.start();
+      } catch {
+        if (this.conversationSearch === search) this.conversationSearch = null;
+        search?.close();
+      }
+    });
+    this.conversationSearchStart = work;
+    try {
+      await work;
+    } finally {
+      if (this.conversationSearchStart === work)
+        this.conversationSearchStart = null;
+    }
+  }
+
   private async bootstrapClient(user: MatrixUserInterface): Promise<void> {
     if (this.mx && this.mx.getUserId() === user.mxId) {
+      await this.startConversationSearch(this.mx);
       return;
     }
+    this.teardownClient();
+    const generation = this.clientGeneration;
     const mx = await initClient(user, {
       syncStoreDbName: this.key(SYNC_STORE_DB_NAME),
       cryptoStoreDbName: this.cryptoStoreDbName(user),
       tokenRefreshFunction: this.buildTokenRefreshFunction(user),
+      onSyncStoreReady: async (client) => {
+        if (generation !== this.clientGeneration) return;
+        this.mx = client;
+        this.conversationSearchDatabase = this.searchStoreDbName(user);
+        await this.startConversationSearch(client);
+      },
     });
+    if (generation !== this.clientGeneration) {
+      mx.stopClient();
+      return;
+    }
     this.mx = mx;
     localStorage.removeItem(this.key("matrixRedactedThreads"));
     await this.startClientOrFailOnLogout(mx);
+    if (generation !== this.clientGeneration) return;
     await this.refreshJoinedRoomIds(mx);
 
     // Bridge Matrix `/sync` onto the generic event stream, once, for the
@@ -2293,6 +2381,7 @@ export class MatrixDriver extends Driver {
         return;
       }
       this.joinedRoomIds = null;
+      if (!this.conversationSearch) this.retryConversationSearch();
       for (const room of mx.getVisibleRooms()) {
         this.emit({ type: "chat:changed", chatId: room.roomId });
         emitUnread(room);
@@ -2308,6 +2397,7 @@ export class MatrixDriver extends Driver {
     // here so a left room does not linger. `onRoom` handles brand-new joins.
     const onMyMembership = (room: Room) => {
       this.joinedRoomIds = null;
+      void this.conversationSearch?.reconcile();
       emitUnread(room);
       emitMainTimelineUnread(room);
       this.emit({ type: "chats:changed" });
@@ -2415,6 +2505,13 @@ export class MatrixDriver extends Driver {
    * afterwards, and only {@link destroy} ends the stream for good.
    */
   private teardownClient(): void {
+    this.joinedRoomRevision++;
+    this.joinedRoomRefresh = null;
+    this.clientGeneration++;
+    this.conversationSearch?.close();
+    this.conversationSearch = null;
+    this.conversationSearchStart = null;
+    this.conversationSearchDatabase = null;
     this.detachSync();
     this.detachSync = () => {};
     this.typingListeners.forEach((listeners) => {
@@ -2553,13 +2650,22 @@ export class MatrixDriver extends Driver {
   }
 
   private async clearStoredSession(user?: MatrixUserInterface): Promise<void> {
+    const search = this.conversationSearch;
     this.teardownClient();
 
     localStorage.removeItem(this.key(STORAGE.user));
     localStorage.removeItem(this.key(STORAGE.oidc));
     sessionStorage.removeItem(this.key(STORAGE.oidcState));
 
+    let searchCleanup: Promise<void> | undefined;
+    if (search) {
+      searchCleanup = search.remove();
+    } else if (user) {
+      searchCleanup = SearchStorage.remove(this.searchStoreDbName(user));
+    }
+
     await Promise.all([
+      searchCleanup,
       this.deleteIndexedDb(this.key(SYNC_STORE_DB_NAME)),
       this.deleteIndexedDb(this.key(CRYPTO_STORE_DB_NAME)),
       ...(user ? [this.deleteIndexedDb(this.cryptoStoreDbName(user))] : []),
@@ -2585,12 +2691,11 @@ export class MatrixDriver extends Driver {
   }
 
   private setStorageOwner(user: User | null | undefined): void {
-    const owner = this.resolveLoginHint(user).trim();
-    this.storageOwner = owner || null;
+    this.storageOwner = matrixStorageOwner(this.settings, user);
   }
 
   private key(key: string): string {
-    return storageKey(this.accountId, key, this.storageOwner);
+    return matrixStorageKey(this.accountId, key, this.storageOwner);
   }
 
   private cryptoStoreDbName(user: MatrixUserInterface): string {
@@ -2599,14 +2704,44 @@ export class MatrixDriver extends Driver {
     );
   }
 
+  private searchStoreDbName(user: MatrixUserInterface): string {
+    return searchDatabaseName(
+      this.storageOwner ?? "",
+      this.accountId,
+      user.homeserverUrl,
+      user.mxId,
+    );
+  }
+
   private async getJoinedRoomIds(mx: MatrixClient): Promise<Set<string>> {
     return this.joinedRoomIds ?? this.refreshJoinedRoomIds(mx);
   }
 
   private async refreshJoinedRoomIds(mx: MatrixClient): Promise<Set<string>> {
-    const { joined_rooms: joinedRooms } = await mx.getJoinedRooms();
-    const joinedRoomIds = new Set(joinedRooms);
-    this.joinedRoomIds = joinedRoomIds;
-    return joinedRoomIds;
+    const revision = ++this.joinedRoomRevision;
+    const refresh = (async () => {
+      try {
+        const { joined_rooms: joinedRooms } = await mx.getJoinedRooms();
+        if (this.mx !== mx) throw new Error("Matrix client has been replaced.");
+        if (revision !== this.joinedRoomRevision && this.joinedRoomRefresh)
+          return this.joinedRoomRefresh;
+        const ids = new Set(joinedRooms);
+        this.joinedRoomIds = ids;
+        this.conversationSearch?.setJoinedRooms(ids);
+        return ids;
+      } catch (error) {
+        // A superseded caller awaits the latest roster, including its failure.
+        // Never turn an unknown membership state into a successful empty list.
+        if (
+          this.mx === mx &&
+          revision !== this.joinedRoomRevision &&
+          this.joinedRoomRefresh
+        )
+          return this.joinedRoomRefresh;
+        throw error;
+      }
+    })();
+    this.joinedRoomRefresh = refresh;
+    return refresh;
   }
 }
