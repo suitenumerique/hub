@@ -21,7 +21,8 @@
 .hub__new-chat-search {
   position: absolute;
   inset: 0 0 auto;
-  z-index: 200;
+  // Match the conversation header and stay below the modal backdrop (10).
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: var(--c--globals--spacings--xs, 8px);

@@ -1,0 +1,186 @@
+@use "sass:map";
+@use "@/styles/cunningham-tokens-sass" as *;
+
+$tablet: map.get($themes, "default", "globals", "breakpoints", "tablet");
+
+// Figma 1300:54071. Scope adjustments to this composition of UI kit primitives.
+.c__modal:has(.hub__conversation-search) {
+  // Like Drive's search, grow downwards from a stable viewport offset.
+  --hub-search-modal-top: 100px;
+  top: var(--hub-search-modal-top);
+  transform: translate(-50%, 0);
+  max-height: calc(100dvh - var(--hub-search-modal-top) - 2rem);
+  width: min(450px, calc(100vw - 32px));
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 18 / 10%);
+
+  @media (max-width: $tablet) {
+    --hub-search-modal-top: 1rem;
+  }
+
+  .c__modal__scroller--compact {
+    padding: 16px !important;
+    gap: 12px;
+  }
+
+  .c__modal__header--compact {
+    padding: 0;
+    margin: 0;
+  }
+
+  .c__modal__title--compact {
+    padding: 0;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 20px;
+  }
+
+  .c__modal__content {
+    padding: 0;
+    margin: 0;
+  }
+}
+
+.hub__conversation-search {
+  [cmdk-root] {
+    overflow: visible;
+  }
+
+  .c__separator--horizontal.with-padding {
+    width: calc(100% + 32px);
+    margin: 16px -16px 0;
+  }
+
+  .quick-search-input-container {
+    padding: 0;
+    min-height: 28px;
+    gap: 8px;
+  }
+
+  .quick-search-input {
+    font-size: 16px;
+    line-height: 24px;
+    min-width: 0;
+  }
+
+  [cmdk-list] {
+    max-height: min(500px, calc(100dvh - var(--hub-search-modal-top) - 180px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  [cmdk-item] {
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+
+    &[aria-selected="true"] {
+      background: var(
+        --c--contextuals--background--semantic--neutral--tertiary
+      );
+    }
+  }
+
+  .c__quick-search-item-template {
+    padding: 0;
+    width: 100%;
+    gap: 8px;
+    min-height: 38px;
+  }
+
+  .c__quick-search-item-template__left {
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .c__quick-search-item-template__right.always-show-right {
+    opacity: 0 !important;
+    flex-shrink: 0;
+  }
+
+  [cmdk-item][data-selected="true"],
+  [cmdk-item]:hover {
+    .c__quick-search-item-template__right.always-show-right {
+      opacity: 1 !important;
+    }
+  }
+
+  .hub__avatar {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+    flex-shrink: 0;
+
+    .material-icons {
+      font-size: 16px;
+    }
+  }
+
+  &__heading {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 20px;
+    margin: 12px 0;
+  }
+
+  &__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__name,
+  &__subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__name {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+  }
+
+  &__subtitle {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
+  }
+
+  &__open {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--c--contextuals--content--semantic--brand--primary);
+
+    .material-icons {
+      font-size: 16px;
+    }
+  }
+
+  &__status {
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
+
+    &:not(:empty) {
+      margin-top: 12px;
+    }
+    p {
+      margin: 4px 0;
+    }
+  }
+
+  &__retry {
+    font: inherit;
+    color: var(--c--contextuals--content--semantic--brand--primary);
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+}
