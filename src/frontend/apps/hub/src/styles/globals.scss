@@ -26,6 +26,7 @@
 @use "./../features/chat/components/UnreadThreadsBanner.scss";
 @use "./../features/chat/components/UnreadMessages.scss";
 @use "./../features/chat/components/EmojiPicker.scss";
+@use "./../features/chat/search/ConversationSearchModal.scss";
 @use "./../features/chat/components/tools-panel/ChatToolsPanel.scss";
 @use "./../features/chat/components/tools-panel/ThreadsTool.scss";
 @use "./toast.scss";

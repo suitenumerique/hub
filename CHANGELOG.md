@@ -8,6 +8,10 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Search joined conversations by name and current participants.
+  Persist the search index separately and prepare small rooms progressively.
+  Add a QuickSearch modal with local results across connected accounts.
+  Open search from any page with Cmd+K or Ctrl+K.
 - ✨(frontend) Notify incoming messages, thread replies and invitations.
   Play sound on receipt and show browser notifications when Hub is unfocused.
   Request permission on incoming activity with a user-gesture fallback.

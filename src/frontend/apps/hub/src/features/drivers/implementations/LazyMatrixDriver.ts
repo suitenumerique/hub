@@ -1,3 +1,5 @@
+import type { ConversationSearchRequest } from "@/features/chat/search/types";
+
 import {
   Driver as BaseDriver,
   type ChatConnectionState,
@@ -34,12 +36,41 @@ import type {
   User,
 } from "../types";
 
+import {
+  clearStoredConversationSearch,
+  matrixStorageOwner,
+} from "./matrixStorage";
+
 /**
  * Keeps `matrix-js-sdk` out of the main Next.js bundle. The real Matrix driver
  * is imported only when a Matrix account is active, then this class becomes a
  * thin proxy.
  */
 export class LazyMatrixDriver extends BaseDriver {
+  override readonly supportsConversationSearch = true;
+
+  override searchConversations(request: ConversationSearchRequest) {
+    return (
+      this.target?.searchConversations(request) ??
+      super.searchConversations(request)
+    );
+  }
+
+  override getConversationSearchStatus() {
+    return (
+      this.target?.getConversationSearchStatus() ??
+      super.getConversationSearchStatus()
+    );
+  }
+
+  override retryConversationSearch(): void {
+    this.target?.retryConversationSearch();
+  }
+
+  override async clearConversationSearch(): Promise<void> {
+    if (this.target) await this.target.clearConversationSearch();
+    else await clearStoredConversationSearch(this.accountId, this.storageOwner);
+  }
   // Static capability the UI reads synchronously (see `useChatCompositionSupport`),
   // before the SDK lazy-loads. It must mirror the real `MatrixDriver`; the actual
   // `sendChatMessage` still routes through `withTarget`, loading the driver on demand.
@@ -60,12 +91,14 @@ export class LazyMatrixDriver extends BaseDriver {
     unsubscribe: () => void;
   }>();
   private disposed = false;
+  private storageOwner: string | null;
 
   constructor(
     accountId: AccountId = "default",
     private readonly settings: Record<string, unknown> = {},
   ) {
     super(accountId);
+    this.storageOwner = matrixStorageOwner(settings);
   }
 
   private async load(): Promise<Driver> {
@@ -100,7 +133,9 @@ export class LazyMatrixDriver extends BaseDriver {
   }
 
   private async withTarget<T>(run: (driver: Driver) => Promise<T>): Promise<T> {
-    return run(await this.load());
+    const driver = await this.load();
+    if (this.disposed) throw new Error("Matrix driver has been destroyed.");
+    return run(driver);
   }
 
   async getChats(): Promise<LocalChatSections> {
@@ -230,6 +265,8 @@ export class LazyMatrixDriver extends BaseDriver {
   }
 
   async connect(user: User | null | undefined): Promise<ChatConnectionState> {
+    // Logout must know the namespace even if the module import is still pending.
+    this.storageOwner = matrixStorageOwner(this.settings, user);
     return this.withTarget((driver) => driver.connect(user));
   }
 

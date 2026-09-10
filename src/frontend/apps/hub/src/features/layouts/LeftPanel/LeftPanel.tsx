@@ -25,9 +25,16 @@ import { TchapLogo } from "./TchapLogo";
 
 type ActionItem =
   | { id: string; href: string; icon: ReactNode; label: string }
-  | { id: string; href?: undefined; icon: ReactNode; label: string };
+  | {
+      id: string;
+      href?: undefined;
+      icon: ReactNode;
+      label: string;
+      keyShortcuts?: string;
+      onClick: () => void;
+    };
 
-export const LeftPanel = () => {
+export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const { t } = useTranslation();
   const chats = useChats();
   const unreadLookup = useChatUnread();
@@ -45,6 +52,19 @@ export const LeftPanel = () => {
       label: t("New"),
     },
   ];
+  if (entries.some(({ driver }) => driver.supportsConversationSearch)) {
+    actions.push({
+      id: "search",
+      icon: (
+        <span className="material-icons" aria-hidden="true">
+          search
+        </span>
+      ),
+      label: t("Search"),
+      keyShortcuts: "Meta+K Control+K",
+      onClick: onSearch,
+    });
+  }
 
   return (
     <aside className="hub__left-panel" aria-label={t("Side panel")}>
@@ -113,7 +133,14 @@ const ActionRow = ({ action }: { action: ActionItem }) => {
     );
   }
   return (
-    <button type="button" className="hub__left-panel__action">
+    <button
+      type="button"
+      className="hub__left-panel__action"
+      onClick={"onClick" in action ? action.onClick : undefined}
+      aria-keyshortcuts={
+        "keyShortcuts" in action ? action.keyShortcuts : undefined
+      }
+    >
       {body}
     </button>
   );

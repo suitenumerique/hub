@@ -1,4 +1,11 @@
 import {
+  EMPTY_SEARCH_STATUS,
+  type ConversationSearchRequest,
+  type ConversationSearchPage,
+  type ConversationSearchStatus,
+} from "@/features/chat/search/types";
+
+import {
   AccountId,
   ChatLocalUser,
   ChatMainTimelineUnread,
@@ -145,6 +152,7 @@ export type ChatConnectionState = {
  * (or none, for list-level changes) so the bridge can target the right cache.
  */
 export type ChatEvent =
+  | { type: "search:changed" }
   // Delivery signals are independent from timeline/cache patches.
   | {
       type: "message:received";
@@ -200,6 +208,27 @@ export type ChatEventListener = (event: ChatEvent) => void;
 
 export abstract class Driver {
   readonly accountId: AccountId;
+  readonly supportsConversationSearch: boolean = false;
+
+  /** Local-only reads. Connection and preparation belong to the lifecycle. */
+  async searchConversations(
+    _request: ConversationSearchRequest,
+  ): Promise<ConversationSearchPage> {
+    void _request;
+    return {
+      results: [],
+      total: 0,
+    };
+  }
+
+  getConversationSearchStatus(): ConversationSearchStatus {
+    return EMPTY_SEARCH_STATUS;
+  }
+
+  retryConversationSearch(): void {}
+
+  /** Explicit Hub logout erases search; an ordinary destroy preserves it. */
+  async clearConversationSearch(): Promise<void> {}
   readonly supportsComposition: boolean = false;
   readonly supportsThreadComposition: boolean = false;
   /** Whether the driver can leave and forget a conversation for this account. */
