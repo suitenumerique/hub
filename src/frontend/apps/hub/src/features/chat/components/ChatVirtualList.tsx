@@ -194,11 +194,13 @@ export const ChatVirtualList = ({
     const scroller = scrollerRef.current;
     const isFocused =
       document.visibilityState === "visible" && document.hasFocus();
-    if (!scroller || unread.isLoading || !unread.hasUnread) {
+    if (!unread.hasUnread) {
       setUnreadViewportState("unknown");
       return;
     }
-    if (!isFocused) {
+    // Keep the last visibility decision while the viewport is unavailable or
+    // unread data is loading; neither means the shortcut is no longer useful.
+    if (!scroller || unread.isLoading || !isFocused) {
       return;
     }
 
@@ -274,7 +276,8 @@ export const ChatVirtualList = ({
     canReanchorAtBottomRef.current = false;
     pendingBottomArrivalRef.current = false;
     atBottomRef.current = true;
-    setUnreadViewportState("unknown");
+    // A new message window keeps the current banner until it can be measured.
+    // Switching conversation already resets state by remounting this component.
     return () => {
       if (visibilityTimerRef.current !== null) {
         window.clearTimeout(visibilityTimerRef.current);
@@ -432,7 +435,6 @@ export const ChatVirtualList = ({
     // Programmatic navigation exposes the target, but the focused dwell still
     // has to confirm that it remained readable in the real viewport.
     hasUserInteractedRef.current = false;
-    setUnreadViewportState("unknown");
     canReanchorAtBottomRef.current = false;
     pendingBottomArrivalRef.current = false;
     shouldStickToBottomRef.current = false;
@@ -458,10 +460,10 @@ export const ChatVirtualList = ({
     void handleNavigateToUnread();
   }, [handleNavigateToUnread]);
 
-  // `unknown` deliberately renders nothing: waiting for Virtuoso to settle
-  // avoids flashing a shortcut before proving whether every unread is visible.
+  // Show known unread messages immediately. The settled viewport check can then
+  // hide the shortcut when every unread message is already visible.
   const shouldShowUnreadBanner =
-    unread.hasUnread && unreadViewportState === "needs-navigation";
+    unread.hasUnread && unreadViewportState !== "all-visible";
 
   // Publish the controls to ChatView because the list owns their callbacks,
   // while Figma places the rendered banner inside the composer stack.
