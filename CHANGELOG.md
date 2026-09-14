@@ -55,9 +55,11 @@ and this project adheres to
 
 ### Fixed
 
-- 🐛(frontend) Reopen conversations at the latest message after unread navigation
-  and resume forward pagination from contextual history
-- 🐛(frontend) Keep the unread button visible while navigating to unread messages
+- 🐛(docker) Pull MinIO images from quay.io for development and CI
+- 🐛(frontend) Reopen conversations at the latest message after unread
+  navigation and resume forward pagination from contextual history
+- 🐛(frontend) Keep the unread button visible while navigating to unread
+  messages
 - 🐛(frontend) Show the unread button before the initial viewport check
 - 🐛(frontend) Keep the unread separator stable while reading messages
 - 🐛(frontend) Restore unread navigation in conversations without a read marker
