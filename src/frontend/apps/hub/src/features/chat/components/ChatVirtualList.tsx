@@ -80,7 +80,6 @@ export const ChatVirtualList = ({
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
   const messagesRef = useRef(messages);
-  const previousChatRef = useRef(chatRef);
   const previousAppendState = useRef({
     chatKey,
     windowVersion,
@@ -91,6 +90,7 @@ export const ChatVirtualList = ({
   const isAtLiveEndRef = useRef(isAtLiveEnd);
   const shouldStickToBottomRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
+  const navigationRef = useRef<symbol | null>(null);
   const pendingScrollRaf = useRef<number | null>(null);
   const visibilityRafRef = useRef<number | null>(null);
   const visibilityTimerRef = useRef<number | null>(null);
@@ -306,6 +306,11 @@ export const ChatVirtualList = ({
     }
     const markInteraction = () => {
       hasUserInteractedRef.current = true;
+      // endReached can fire before the first interaction at a contextual end.
+      // A new interaction there must still be able to request the next page.
+      if (atBottomRef.current) {
+        fetchNewer();
+      }
       scheduleVisibilityMeasurement();
     };
     const onScroll = () => scheduleVisibilityMeasurement();
@@ -323,7 +328,7 @@ export const ChatVirtualList = ({
       scroller.removeEventListener("keydown", markInteraction);
       scroller.removeEventListener("scroll", onScroll);
     };
-  }, [chatKey, scheduleVisibilityMeasurement, windowVersion]);
+  }, [chatKey, fetchNewer, scheduleVisibilityMeasurement, windowVersion]);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
     isInitialLoading ? "visible" : "hidden",
@@ -342,31 +347,16 @@ export const ChatVirtualList = ({
     return () => cancelAnimationFrame(raf);
   }, [isInitialLoading]);
 
-  useEffect(() => {
-    if (
-      previousChatRef.current.accountId === chatRef.accountId &&
-      previousChatRef.current.chatId === chatRef.chatId
-    ) {
-      return;
-    }
-    previousChatRef.current = chatRef;
-    pendingScrollRaf.current = requestAnimationFrame(() => {
-      pendingScrollRaf.current = requestAnimationFrame(() => {
-        pendingScrollRaf.current = null;
-        virtuosoRef.current?.scrollToIndex({
-          index: "LAST",
-          align: "end",
-          behavior: "auto",
-        });
-      });
-    });
-    return () => {
+  useEffect(
+    () => () => {
+      navigationRef.current = null;
       if (pendingScrollRaf.current !== null) {
         cancelAnimationFrame(pendingScrollRaf.current);
         pendingScrollRaf.current = null;
       }
-    };
-  }, [chatRef]);
+    },
+    [],
+  );
 
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
@@ -403,9 +393,11 @@ export const ChatVirtualList = ({
 
   const handleNavigateToUnread = useCallback(async () => {
     const eventId = unread.firstUnreadId;
-    if (!eventId || isNavigating) {
+    if (!eventId || navigationRef.current) {
       return;
     }
+    const navigation = Symbol();
+    navigationRef.current = navigation;
     // Programmatic navigation exposes the target, but the focused dwell still
     // has to confirm that it remained readable in the real viewport.
     hasUserInteractedRef.current = false;
@@ -415,11 +407,17 @@ export const ChatVirtualList = ({
       if (!messagesRef.current.some((message) => message.id === eventId)) {
         await openAround(eventId);
       }
+      if (navigationRef.current !== navigation) {
+        return;
+      }
       scrollToEvent(eventId);
     } finally {
-      setIsNavigating(false);
+      if (navigationRef.current === navigation) {
+        navigationRef.current = null;
+        setIsNavigating(false);
+      }
     }
-  }, [isNavigating, openAround, scrollToEvent, unread.firstUnreadId]);
+  }, [openAround, scrollToEvent, unread.firstUnreadId]);
 
   const navigateToUnread = useCallback(() => {
     void handleNavigateToUnread();
