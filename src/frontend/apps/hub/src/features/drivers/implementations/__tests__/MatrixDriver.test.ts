@@ -1,8 +1,10 @@
 import {
+  createClient,
+  EventType,
   KnownMembership,
+  MatrixEvent,
+  Room,
   type MatrixClient,
-  type MatrixEvent,
-  type Room,
   type Thread,
 } from "matrix-js-sdk/lib/matrix";
 import { describe, expect, it, vi } from "vitest";
@@ -345,6 +347,7 @@ describe("MatrixDriver room metadata", () => {
           membership: KnownMembership.Join,
         },
       ],
+      getInvitedAndJoinedMemberCount: () => 2,
       getLastActiveTimestamp: () => 0,
       currentState: { getStateEvents: () => undefined },
     } as unknown as Room;
@@ -353,6 +356,53 @@ describe("MatrixDriver room metadata", () => {
       "favourites",
     );
   });
+
+  it.each([
+    { joined: 2, invited: 0, kind: "direct", name: "Alice" },
+    { joined: 3, invited: 0, kind: "group", name: "QA group" },
+    { joined: 2, invited: 1, kind: "group", name: "QA group" },
+  ])(
+    "maps a room with $joined joined and $invited invited members when only Alice is known",
+    ({ joined, invited, kind, name }) => {
+      const client = createClient({
+        baseUrl: "https://matrix.example.org",
+        userId: SELF_ID,
+      });
+      const room = new Room(ROOM_ID, client, SELF_ID, {
+        lazyLoadMembers: true,
+      });
+      room.currentState.setStateEvents([
+        new MatrixEvent({
+          room_id: ROOM_ID,
+          type: EventType.RoomName,
+          state_key: "",
+          content: { name: "QA group" },
+        }),
+        ...[
+          { id: SELF_ID, name: "Me" },
+          { id: OTHER_ID, name: "Alice" },
+        ].map(
+          (member) =>
+            new MatrixEvent({
+              room_id: ROOM_ID,
+              type: EventType.RoomMember,
+              state_key: member.id,
+              content: {
+                membership: KnownMembership.Join,
+                displayname: member.name,
+              },
+            }),
+        ),
+      ]);
+      room.currentState.setJoinedMemberCount(joined);
+      room.currentState.setInvitedMemberCount(invited);
+
+      expect(matrixJoinedRoomToLocalChat(room, SELF_ID)).toMatchObject({
+        kind,
+        name,
+      });
+    },
+  );
 
   it("sets and deletes the Matrix favourite tag", async () => {
     const room = {

@@ -57,6 +57,8 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Preserve group names in conversation search and lists when
+  Matrix participants are only partially loaded
 - 🐛(docker) Pull MinIO images from quay.io for development and CI
 - 🐛(frontend) Reopen conversations at the latest message after unread
   navigation and resume forward pagination from contextual history
