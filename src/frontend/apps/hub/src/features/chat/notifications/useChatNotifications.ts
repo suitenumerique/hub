@@ -110,7 +110,7 @@ export const useChatNotifications = (
 
             const notification = new Notification(event.chatName, {
               body,
-              icon: "/assets/favicon.png",
+              icon: "/assets/tchap-notification-icon.png",
               silent: true,
             });
             current.notifications.set(notification, ref);

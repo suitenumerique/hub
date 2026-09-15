@@ -15,6 +15,7 @@ and this project adheres to
 - ✨(frontend) Notify incoming messages, thread replies and invitations.
   Play sound when Hub is unfocused or another conversation is displayed.
   Show browser notifications only when Hub is unfocused.
+  Use the sidebar's Tchap symbol for notification icons.
   Request permission on incoming activity with a user-gesture fallback.
   Preload audio on arrival without replaying missed alerts.
 - 🏗️(frontend) Initialize the Hub frontend project
