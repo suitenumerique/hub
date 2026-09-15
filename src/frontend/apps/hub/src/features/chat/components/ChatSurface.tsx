@@ -4,6 +4,7 @@ import { useCallback, useRef } from "react";
 import { chatHref } from "@/features/chat/chatRefs";
 import type { ChatRef } from "@/features/drivers/types";
 
+import { useReportActiveChat } from "../ActiveChatContext";
 import { useComposerFocusSignal } from "../hooks/useComposerFocusSignal";
 import { useNewChatConversation } from "../hooks/useNewChatConversation";
 
@@ -52,6 +53,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     lastChatRef.current = resolvedChatRef;
   }
   const chatRef = resolvedChatRef ?? (isNew ? null : lastChatRef.current);
+  useReportActiveChat(chatRef);
 
   const renderNewChatHeader = useCallback(
     ({

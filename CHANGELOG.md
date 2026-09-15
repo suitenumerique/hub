@@ -13,7 +13,8 @@ and this project adheres to
   Add a QuickSearch modal with local results across connected accounts.
   Open search from any page with Cmd+K or Ctrl+K.
 - ✨(frontend) Notify incoming messages, thread replies and invitations.
-  Play sound on receipt and show browser notifications when Hub is unfocused.
+  Play sound when Hub is unfocused or another conversation is displayed.
+  Show browser notifications only when Hub is unfocused.
   Request permission on incoming activity with a user-gesture fallback.
   Preload audio on arrival without replaying missed alerts.
 - 🏗️(frontend) Initialize the Hub frontend project

@@ -1,11 +1,11 @@
 import { useRouter } from "next/router";
-import { useEffect, useRef } from "react";
+import { type RefObject, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { ChatRef } from "@/features/drivers/types";
 
-import { chatHref } from "../chatRefs";
+import { chatHref, sameChatRef } from "../chatRefs";
 
 import { NotificationSound } from "./NotificationSound";
 import { NotificationPermission } from "./notificationPermission";
@@ -24,8 +24,11 @@ const preview = (content: string): string => {
     : characters.join("");
 };
 
-/** Play incoming activity; show a browser notification only without focus. */
-export const useChatNotifications = (userId?: string): void => {
+/** Sound outside the focused chat; browser notifications only without focus. */
+export const useChatNotifications = (
+  userId: string | undefined,
+  activeChatRef: RefObject<ChatRef | null>,
+): void => {
   const entries = useDriverEntries();
   const hasAccounts = entries.length > 0;
   const router = useRouter();
@@ -82,7 +85,10 @@ export const useChatNotifications = (userId?: string): void => {
         // Capture focus before a permission prompt can change it.
         const focused =
           document.visibilityState === "visible" && document.hasFocus();
-        current.sound.play();
+        const ref: ChatRef = { accountId, chatId: event.chatId };
+        if (!focused || !sameChatRef(ref, activeChatRef.current)) {
+          current.sound.play();
+        }
         try {
           if (
             !focused &&
@@ -102,7 +108,6 @@ export const useChatNotifications = (userId?: string): void => {
               body = t("You have been invited to join this conversation.");
             }
 
-            const ref: ChatRef = { accountId, chatId: event.chatId };
             const notification = new Notification(event.chatName, {
               body,
               icon: "/assets/favicon.png",
@@ -133,5 +138,5 @@ export const useChatNotifications = (userId?: string): void => {
       active = false;
       unsubscribes.forEach((unsubscribe) => unsubscribe());
     };
-  }, [entries, userId]);
+  }, [activeChatRef, entries, userId]);
 };
