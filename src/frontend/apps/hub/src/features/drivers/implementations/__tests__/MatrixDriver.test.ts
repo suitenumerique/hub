@@ -491,6 +491,7 @@ describe("MatrixDriver.toggleChatReaction", () => {
     const mx = {
       getRoom: () => room,
       getUserId: () => SELF_ID,
+      decryptEventIfNeeded: vi.fn().mockResolvedValue(undefined),
       relations: vi.fn(async () => ({ events: [] })),
       sendEvent,
       redactEvent,
@@ -534,6 +535,7 @@ describe("MatrixDriver.toggleChatReaction", () => {
     const mx = {
       getRoom: () => room,
       getUserId: () => SELF_ID,
+      decryptEventIfNeeded: vi.fn().mockResolvedValue(undefined),
       relations: vi.fn(async () => ({ events: [ownReaction] })),
       redactEvent,
     } as unknown as MatrixClient;
@@ -569,6 +571,7 @@ describe("MatrixDriver.toggleChatReaction", () => {
     const mx = {
       getRoom: () => room,
       getUserId: () => SELF_ID,
+      decryptEventIfNeeded: vi.fn().mockResolvedValue(undefined),
       relations: vi.fn(async () => ({ events: [] })),
       sendEvent,
     } as unknown as MatrixClient;
