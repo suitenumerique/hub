@@ -103,6 +103,29 @@
   right: 0;
 }
 
+// Once the bubble is hovered, keep a path to the whole toolbar alongside short
+// messages. The bridge sits outside the body so text selection stays intact.
+// It cannot trigger hover itself while inactive, and stops at the body's bottom
+// so reactions and adjacent messages keep their own pointer targets.
+.hub__chat-bubble__body::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: max(0px, calc(var(--hub-message-toolbar-width, 0px) - 100%));
+  pointer-events: none;
+}
+
+.hub__chat-bubble--sent .hub__chat-bubble__body::after {
+  left: auto;
+  right: 100%;
+}
+
+.hub__chat-bubble__body:hover:not([data-deleted="true"])::after {
+  pointer-events: auto;
+}
+
 // Scoped to the bubble body — not the whole bubble — so hovering or focusing
 // the reactions bar (a sibling of the row, outside the body) does not reveal
 // the toolbar. The toolbar lives inside `__body`, and its `padding-bottom`

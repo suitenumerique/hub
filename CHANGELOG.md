@@ -58,6 +58,8 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Keep the toolbar open beside short messages after hovering
+  the bubble, without revealing it from the surrounding empty space
 - 🐛(frontend) Reserve enough space for the thread root reaction toolbar
 - 🐛(frontend) Update root reactions while drafting the first thread reply
 - 🐛(frontend) Allow reactions on newly sent messages before Matrix sync
