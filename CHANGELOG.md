@@ -43,6 +43,7 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Hide the unavailable thread follow control
 - ✨(frontend) Expand the message composer up to eight lines
 - ⚡(frontend) Speed up the emoji picker and align reaction artwork
 - 💄(frontend) Improve message dates and bubble readability
