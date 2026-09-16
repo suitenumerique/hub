@@ -1191,7 +1191,11 @@ export class MatrixDriver extends Driver {
 
   /** Resolves an active message on the main timeline or inside one thread. */
   private async requireMessage(
-    method: "editChatMessage" | "deleteChatMessage",
+    method:
+      | "editChatMessage"
+      | "deleteChatMessage"
+      | "toggleChatReaction"
+      | "toggleChatThreadReaction",
     {
       chatId,
       messageId,
@@ -1248,31 +1252,18 @@ export class MatrixDriver extends Driver {
     emoji: string,
     threadId?: string,
   ): Promise<ChatMessage> {
-    const { mx, room } = this.requireRoom(method, chatId);
+    const {
+      mx,
+      room,
+      event: target,
+    } = await this.requireMessage(method, {
+      chatId,
+      messageId,
+      threadId,
+    });
     const selfUserId = mx.getUserId();
     if (!selfUserId) {
       throw new Error(`MatrixDriver.${method}: connected user is not known.`);
-    }
-
-    const thread = threadId ? room.getThread(threadId) : undefined;
-    if (threadId && !thread) {
-      throw new Error(
-        `MatrixDriver.${method}: thread "${threadId}" not found in room "${chatId}".`,
-      );
-    }
-    const target = thread
-      ? (thread.findEventById(messageId) ??
-        (messageId === thread.id ? thread.rootEvent : undefined))
-      : room.findEventById(messageId);
-    const validTarget = threadId
-      ? Boolean(target && isMessageEvent(target))
-      : Boolean(target && isMainTimelineMessage(target));
-    if (!target || !validTarget) {
-      throw new Error(
-        `MatrixDriver.${method}: message "${messageId}" not found${
-          threadId ? ` in thread "${threadId}"` : " on the main timeline"
-        }.`,
-      );
     }
 
     const snapshot = await fetchReactionSnapshot(
