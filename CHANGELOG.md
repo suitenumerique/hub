@@ -59,6 +59,7 @@ and this project adheres to
 ### Fixed
 
 - 🐛(frontend) Reserve enough space for the thread root reaction toolbar
+- 🐛(frontend) Update root reactions while drafting the first thread reply
 - 🐛(frontend) Allow reactions on newly sent messages before Matrix sync
   indexes them in the conversation or thread timeline
 - 🐛(frontend) Preserve group names in conversation search and lists when
