@@ -58,6 +58,7 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Reserve enough space for the thread root reaction toolbar
 - 🐛(frontend) Preserve group names in conversation search and lists when
   Matrix participants are only partially loaded
 - 🐛(docker) Pull MinIO images from quay.io for development and CI
