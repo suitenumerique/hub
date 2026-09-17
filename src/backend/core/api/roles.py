@@ -5,6 +5,7 @@ import unicodedata
 from django.conf import settings
 from django.core.exceptions import ValidationError as ModelValidationError
 from django.db import IntegrityError, transaction
+from django.views.decorators.debug import sensitive_variables
 
 import requests
 from drf_spectacular.types import OpenApiTypes
@@ -62,8 +63,14 @@ class ChatUnavailable(APIException):
     default_detail = "Chat is temporarily unavailable."
 
 
+@sensitive_variables("token")
 def verify_chat_identity(token):
-    """Check a current token on the configured homeserver without storing it."""
+    """Check a current token on the configured homeserver without storing it.
+
+    The proof is a live credential, so it must not survive the request: it is
+    never stored, never returned, and the decorator keeps it out of the
+    technical 500 page, which prints every frame local verbatim under DEBUG.
+    """
     if not token:
         raise serializers.ValidationError("Connect to chat before updating your role.")
     try:

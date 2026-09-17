@@ -1,7 +1,11 @@
 .hub__role-badge {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 1 auto;
+  // A block container, not a flex one: `text-overflow` applies to block
+  // containers only, so as `inline-flex` the ellipsis below did nothing and a
+  // long label was cut mid-word with no sign it had been.
+  display: inline-block;
+  // Never shrink to make room for a name: a label is short, a name is not, and
+  // a badge that borrows the name's width makes both unreadable.
+  flex: 0 0 auto;
   max-width: 180px;
   padding: 2px 7px;
   border-radius: 5px;
@@ -59,11 +63,17 @@
   input {
     width: 100%;
     padding: 12px;
-    border: 1px solid #a6adba;
+    // A form control's boundary needs 3:1 against its background (RGAA 3.3).
+    // The previous #a6adba gave 2.26:1; this gives 4.14:1.
+    border: 1px solid
+      var(--c--contextuals--border--semantic--neutral--primary, #767d8a);
     border-radius: 6px;
     font: inherit;
     color: inherit;
-    background: #fff;
+    background: var(
+      --c--contextuals--background--semantic--overlay--secondary,
+      #fff
+    );
   }
   input:focus-visible,
   button:focus-visible {
@@ -77,9 +87,14 @@
     margin-bottom: 8px;
   }
   &__presets button {
-    border: 1px solid #d5dae2;
+    // Same rule as the input: #d5dae2 was 1.40:1 against white.
+    border: 1px solid
+      var(--c--contextuals--border--semantic--neutral--primary, #767d8a);
     border-radius: 8px;
-    background: #fff;
+    background: var(
+      --c--contextuals--background--semantic--overlay--secondary,
+      #fff
+    );
     padding: 8px;
     cursor: pointer;
   }

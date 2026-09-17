@@ -502,3 +502,49 @@
     padding-inline: var(--c--globals--spacings--md, 24px);
   }
 }
+
+// The encryption choice sits in the search header, next to the people field:
+// it is read before the room exists and disappears once it does, because the
+// choice is spent and Matrix offers no way back. Its consequences live in the
+// title attribute - the header is one centred row and a paragraph crowded it.
+.hub__new-chat-search__encryption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--c--contextuals--content--semantic--neutral--primary, #16161a);
+
+  input {
+    cursor: pointer;
+  }
+
+  // Imposed rather than chosen: stated, not offered, so it must not look
+  // clickable.
+  &--forced {
+    cursor: default;
+    color: var(
+      --c--contextuals--content--semantic--neutral--secondary,
+      #626a80
+    );
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+}
+
+// Below the field the header stacks, so the choice keeps its own line rather
+// than competing with the search for a few pixels.
+@media (max-width: 900px) {
+  .hub__new-chat-search {
+    flex-wrap: wrap;
+  }
+
+  .hub__new-chat-search__encryption {
+    flex-basis: 100%;
+  }
+}

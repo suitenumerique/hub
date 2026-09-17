@@ -19,11 +19,22 @@ export const chatKeys = {
   spacesOf: (accountId: AccountId) => ["spaces", accountId] as const,
   noChat: () => ["chat", "none"] as const,
 
-  /** Existing conversation resolved from a participant set (New Chat search). */
+  /**
+   * Existing conversation resolved from a participant set (New Chat search).
+   * Keyed by the encryption asked for: a clear room and an encrypted one with
+   * the same people are different conversations.
+   */
   chatForUsers: (
     accountId: AccountId | null,
     participantIds: readonly string[],
-  ) => ["chat-for-users", accountId ?? "none", participantIds] as const,
+    encrypted?: boolean,
+  ) =>
+    [
+      "chat-for-users",
+      accountId ?? "none",
+      participantIds,
+      encrypted ?? "any",
+    ] as const,
   /** Prefix matching every participant-set resolution of an account (for bulk
    * invalidation when the account's room list changes). */
   chatForUsersOf: (accountId: AccountId | null) =>

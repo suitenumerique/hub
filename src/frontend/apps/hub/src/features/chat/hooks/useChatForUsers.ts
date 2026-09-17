@@ -3,7 +3,7 @@ import { useMemo } from "react";
 
 import { decorateChat } from "@/features/chat/chatRefs";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
-import type { Chat } from "@/features/drivers/types";
+import type { Chat, ChatLookupOptions } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
 
@@ -18,22 +18,29 @@ export type UseChatForUsersResult = {
 export const normalizeChatParticipantIds = (userIds: string[]) =>
   [...new Set(userIds)].sort();
 
-export const useChatForUsers = (userIds: string[]): UseChatForUsersResult => {
+export const useChatForUsers = (
+  userIds: string[],
+  options?: ChatLookupOptions,
+): UseChatForUsersResult => {
   const accountId = useComposerAccountId();
   const participantIds = useMemo(
     () => normalizeChatParticipantIds(userIds),
     [userIds],
   );
+  const encrypted = options?.encrypted;
 
   const query = useQuery({
-    queryKey: chatKeys.chatForUsers(accountId, participantIds),
+    queryKey: chatKeys.chatForUsers(accountId, participantIds, encrypted),
     queryFn: async () => {
       if (!accountId) {
         return null;
       }
       const localChat = await getRegistry()
         .get(accountId)
-        .getChatForUsers(participantIds);
+        .getChatForUsers(
+          participantIds,
+          encrypted === undefined ? undefined : { encrypted },
+        );
       return localChat ? decorateChat(accountId, localChat) : null;
     },
     enabled: participantIds.length > 0 && accountId !== null,

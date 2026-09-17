@@ -44,6 +44,10 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     canUseChatTools,
     canComposeDraft,
     submitDraft,
+    encrypted,
+    setEncrypted,
+    canChooseEncryption,
+    isEncryptionForced,
   } = useNewChatConversation({ isNew, focusComposer, onSent: handleSent });
 
   const resolvedChatRef = isNew ? newChatRef : urlChatRef;
@@ -72,6 +76,9 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
         onRemoveUser={removeUser}
         onConfirm={confirmSelection}
         onToggleTool={onToggleTool}
+        encrypted={encrypted}
+        onEncryptedChange={canChooseEncryption ? setEncrypted : undefined}
+        encryptionForced={isEncryptionForced}
       />
     ),
     [

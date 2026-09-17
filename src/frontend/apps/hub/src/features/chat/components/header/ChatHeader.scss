@@ -70,6 +70,16 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      // The name is what identifies the conversation, so it takes the room
+      // that is left once the avatar, the badge and the caret have theirs.
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    // A role is an aside next to the name, never a rival for its width: the
+    // full label stays available in the button's accessible name.
+    .hub__role-badge {
+      max-width: 9ch;
     }
 
     &__chevron {
@@ -196,4 +206,11 @@
   .hub__chat-header__breadcrumb__name-skeleton {
     animation: none;
   }
+}
+
+// Same marker as the conversation list, at the header's own scale.
+.hub__chat-header__encrypted {
+  width: 16px;
+  height: 16px;
+  color: var(--c--contextuals--content--semantic--neutral--secondary, #626a80);
 }

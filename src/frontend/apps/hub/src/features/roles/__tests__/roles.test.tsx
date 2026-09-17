@@ -159,6 +159,49 @@ describe("Role editor", () => {
     expect(defaults.onRetry).toHaveBeenCalledOnce();
   });
 
+  it("announces the length limit and the failure with the field itself", () => {
+    const view = render(<RoleEditor {...defaults} initialRole="PO" />);
+    const input = screen.getByLabelText("Role or custom title");
+    const described = (id: string) =>
+      (input.getAttribute("aria-describedby") ?? "").split(" ").includes(id);
+    const hint = screen.getByText(
+      "40 characters maximum. Leave blank to show no role.",
+    );
+
+    expect(described(hint.id)).toBe(true);
+    expect(input.getAttribute("aria-invalid")).toBeNull();
+
+    view.rerender(<RoleEditor {...defaults} initialRole="PO" saveError />);
+    const alert = screen.getByRole("alert");
+
+    expect(described(alert.id)).toBe(true);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("moves focus to the failure instead of dropping it on the document", () => {
+    const view = render(<RoleEditor {...defaults} initialRole="PO" />);
+    view.rerender(<RoleEditor {...defaults} initialRole="PO" saveError />);
+
+    expect(document.activeElement).toBe(screen.getByRole("alert"));
+  });
+
+  it("never takes a control away from the focus that just used it", () => {
+    const view = render(<RoleEditor {...defaults} initialRole="PO" saving />);
+    const save = screen.getByRole("button", { name: "Saving…" });
+
+    // Still focusable, so the keyboard does not fall back to the document.
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+    expect(save.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(save);
+    expect(defaults.onSave).not.toHaveBeenCalled();
+
+    // And the removal control stays put once the field is empty.
+    view.rerender(<RoleEditor {...defaults} initialRole="" />);
+    expect(
+      screen.getByRole("button", { name: "Remove my role" }),
+    ).not.toBeNull();
+  });
+
   it("uses an asynchronously loaded role without overwriting an edited draft", () => {
     const view = render(<RoleEditor {...defaults} loading />);
     view.rerender(<RoleEditor {...defaults} initialRole="PO" />);

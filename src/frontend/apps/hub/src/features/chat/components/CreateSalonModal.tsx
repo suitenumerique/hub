@@ -95,10 +95,13 @@ export const CreateSalonModal = ({
     if (!canCreate) return;
     createChatForUsers(
       selectedUsers.map((user) => user.id),
-      trimmedName,
-      spaceId ?? undefined,
-      true, // forceNew: a named salon is always a genuinely new room, even
-      // if the same people already share an unrelated chat elsewhere.
+      {
+        name: trimmedName,
+        ...(spaceId ? { spaceId } : {}),
+        // A named salon is always a genuinely new room, even if the same
+        // people already share an unrelated chat elsewhere.
+        forceNew: true,
+      },
     )
       .then((ref) => {
         reset();

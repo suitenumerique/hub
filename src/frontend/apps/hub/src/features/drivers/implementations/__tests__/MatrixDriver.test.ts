@@ -100,6 +100,9 @@ const makeRoom = (
   ({
     roomId: ROOM_ID,
     getMember: (id: string) => ({ name: id === SELF_ID ? "Me" : id }),
+    // Read by the room mapper on every joined room; a fixture without it
+    // throws instead of describing a clear room.
+    hasEncryptionStateEvent: () => false,
     currentState: { maySendRedactionForEvent: () => false },
     getThread: (threadId: string) => threadsById[threadId] ?? null,
     findEventById: (eventId: string) => eventsById[eventId],
@@ -130,6 +133,36 @@ const makeThread = (
       relations: { getChildEventsForEvent: () => undefined },
     },
   }) as unknown as Thread;
+
+/**
+ * A joined room with the fields the room mapper reads, for lookup tests: who
+ * else is in it and whether it is encrypted are the two facts that matter.
+ */
+const makeJoinedRoom = (
+  roomId: string,
+  otherIds: string[],
+  encrypted: boolean,
+): Room =>
+  ({
+    roomId,
+    tags: {},
+    // Read by the joined-room filter: a space is not a conversation.
+    isSpaceRoom: () => false,
+    getMyMembership: () => KnownMembership.Join,
+    getMember: (id: string) => ({ name: id }),
+    getMembers: () =>
+      otherIds.map((userId) => ({
+        userId,
+        name: userId,
+        membership: KnownMembership.Join,
+        getMxcAvatarUrl: () => undefined,
+      })),
+    getLastActiveTimestamp: () => 0,
+    currentState: { getStateEvents: () => undefined },
+    getLiveTimeline: () => ({ getEvents: () => [] }),
+    getMxcAvatarUrl: () => null,
+    hasEncryptionStateEvent: () => encrypted,
+  }) as unknown as Room;
 
 /** Injects a live client without driving the OIDC/`connect` flow. */
 const driverWithClient = (mx: MatrixClient | null): MatrixDriver => {
@@ -530,6 +563,7 @@ describe("MatrixDriver room metadata", () => {
       currentState: { getStateEvents: () => undefined },
       getLiveTimeline: () => ({ getEvents: () => [] }),
       getMxcAvatarUrl: () => null,
+      hasEncryptionStateEvent: () => false,
     } as unknown as Room;
 
     expect(matrixJoinedRoomToLocalChat(room, SELF_ID).section).toBe(
@@ -1141,5 +1175,163 @@ describe("MatrixDriver.startChatMeeting permissions", () => {
         },
       }),
     );
+  });
+});
+
+describe("createChatForUsers (encryption)", () => {
+  const BOB = "@bob:localhost";
+  const CAROL = "@carol:localhost";
+
+  /**
+   * The narrowest client that lets `createChatForUsers` run to the end. No
+   * existing room ever matches, so every call reaches `createRoom` - the one
+   * method whose arguments these tests are about. `getRoom` stays empty so
+   * `waitForRoom` falls back on its timer, which fake timers then skip.
+   */
+  const clientFor = (rooms: Room[] = []) => {
+    // The signature is given so `mock.calls[0][0]` is typed: an untyped
+    // `vi.fn` records its calls as an empty tuple, and the assertions below
+    // read the arguments `createRoom` was given.
+    const createRoom = vi.fn<
+      (opts: Record<string, unknown>) => Promise<{ room_id: string }>
+    >(async () => ({ room_id: "!new:localhost" }));
+    const mx = {
+      getUserId: () => SELF_ID,
+      getJoinedRooms: vi.fn(async () => ({
+        joined_rooms: rooms.map((room) => room.roomId),
+      })),
+      getVisibleRooms: () => rooms,
+      getRoom: (roomId: string) =>
+        rooms.find((room) => room.roomId === roomId) ?? null,
+      on: vi.fn(),
+      off: vi.fn(),
+      createRoom,
+    } as unknown as MatrixClient;
+    return { mx, createRoom };
+  };
+
+  const create = async (
+    userIds: string[],
+    options?: Parameters<MatrixDriver["createChatForUsers"]>[1],
+  ) => {
+    const { mx, createRoom } = clientFor();
+    vi.useFakeTimers();
+    try {
+      const pending = driverWithClient(mx).createChatForUsers(userIds, options);
+      await vi.advanceTimersByTimeAsync(5000);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+    return createRoom.mock.calls[0][0] as {
+      is_direct?: boolean;
+      invite?: string[];
+      initial_state?: { type: string }[];
+    };
+  };
+
+  type StateEvent = {
+    type: string;
+    state_key?: string;
+    content?: { algorithm?: string };
+  };
+  const encryptionEvent = (opts: { initial_state?: StateEvent[] }) =>
+    opts.initial_state?.find((s) => s.type === "m.room.encryption");
+  const encryptionOf = (opts: { initial_state?: StateEvent[] }) =>
+    encryptionEvent(opts) !== undefined;
+  // The only room algorithm the spec defines; a different one, or a non-empty
+  // state key, would be silently ignored by the homeserver.
+  const MEGOLM = "m.megolm.v1.aes-sha2";
+
+  it("always encrypts a one-to-one conversation", async () => {
+    const opts = await create([BOB]);
+    expect(opts.is_direct).toBe(true);
+    expect(opts.invite).toEqual([BOB]);
+    expect(encryptionEvent(opts)).toEqual({
+      type: "m.room.encryption",
+      state_key: "",
+      content: { algorithm: MEGOLM },
+    });
+  });
+
+  it("leaves a group room clear unless asked otherwise", async () => {
+    const opts = await create([BOB, CAROL]);
+    expect(opts.is_direct).toBe(false);
+    expect(opts.invite).toEqual([BOB, CAROL]);
+    expect(encryptionOf(opts)).toBe(false);
+  });
+
+  it("encrypts a group room on request", async () => {
+    const opts = await create([BOB, CAROL], { encrypted: true });
+    expect(opts.invite).toEqual([BOB, CAROL]);
+    expect(encryptionEvent(opts)?.content?.algorithm).toBe(MEGOLM);
+  });
+
+  it("reuses the encrypted one-to-one instead of creating a twin", async () => {
+    // Every private message created before encryption existed is a clear
+    // room; the encrypted one next to it is the conversation being asked for.
+    const clear = makeJoinedRoom("!clear:localhost", [BOB], false);
+    const e2ee = makeJoinedRoom("!e2ee:localhost", [BOB], true);
+    const { mx, createRoom } = clientFor([clear, e2ee]);
+
+    const chat = await driverWithClient(mx).createChatForUsers([BOB]);
+
+    expect(chat.id).toBe("!e2ee:localhost");
+    expect(chat.encrypted).toBe(true);
+    expect(createRoom).not.toHaveBeenCalled();
+  });
+
+  it("reuses the clear group and ignores its encrypted twin", async () => {
+    const e2ee = makeJoinedRoom("!e2ee:localhost", [BOB, CAROL], true);
+    const clear = makeJoinedRoom("!clear:localhost", [BOB, CAROL], false);
+    const { mx, createRoom } = clientFor([e2ee, clear]);
+
+    const chat = await driverWithClient(mx).createChatForUsers([BOB, CAROL]);
+
+    expect(chat.id).toBe("!clear:localhost");
+    expect(chat.encrypted).toBeUndefined();
+    expect(createRoom).not.toHaveBeenCalled();
+  });
+});
+
+describe("getChatForUsers (encryption-aware lookup)", () => {
+  const BOB = "@bob:localhost";
+  const clear = makeJoinedRoom("!clear:localhost", [BOB], false);
+  const e2ee = makeJoinedRoom("!e2ee:localhost", [BOB], true);
+  const mx = {
+    getUserId: () => SELF_ID,
+    getJoinedRooms: async () => ({
+      joined_rooms: [clear.roomId, e2ee.roomId],
+    }),
+    getVisibleRooms: () => [clear, e2ee],
+  } as unknown as MatrixClient;
+
+  it("returns the room in the requested encryption state", async () => {
+    const driver = driverWithClient(mx);
+    expect((await driver.getChatForUsers([BOB], { encrypted: true }))?.id).toBe(
+      "!e2ee:localhost",
+    );
+    expect(
+      (await driver.getChatForUsers([BOB], { encrypted: false }))?.id,
+    ).toBe("!clear:localhost");
+  });
+
+  it("takes the first match when no state is requested", async () => {
+    expect((await driverWithClient(mx).getChatForUsers([BOB]))?.id).toBe(
+      "!clear:localhost",
+    );
+  });
+
+  it("finds nothing when only the other state exists", async () => {
+    const onlyClear = {
+      ...mx,
+      getJoinedRooms: async () => ({ joined_rooms: [clear.roomId] }),
+      getVisibleRooms: () => [clear],
+    } as unknown as MatrixClient;
+    expect(
+      await driverWithClient(onlyClear).getChatForUsers([BOB], {
+        encrypted: true,
+      }),
+    ).toBeNull();
   });
 });

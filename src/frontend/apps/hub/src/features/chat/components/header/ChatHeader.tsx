@@ -11,6 +11,7 @@ import {
   File,
   ImageAdd,
   Leave,
+  Lock,
   Shared,
   Star,
   StarSlash,
@@ -258,8 +259,12 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       className="hub__chat-header__breadcrumb"
       disabled={isInvitation}
       // An explicit label replaces the button's content for assistive
-      // technology, so the role is spoken with the name rather than lost.
-      aria-label={accessibleName}
+      // technology, so the role and the lock are spoken here or not at all.
+      aria-label={
+        chat.encrypted
+          ? `${accessibleName}, ${t("End-to-end encrypted")}`
+          : accessibleName
+      }
       aria-haspopup={isInvitation ? undefined : "menu"}
       aria-expanded={isInvitation ? undefined : menu.isOpen}
       onClick={() => menu.setIsOpen((open) => !open)}
@@ -267,6 +272,11 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       <ChatPresenceAvatar chat={chat} />
       <span className="hub__chat-header__breadcrumb__name">{chat.name}</span>
       <RoleBadge role={role ?? ""} />
+      {chat.encrypted && (
+        // Whether a conversation is encrypted changes what can be said in it,
+        // so it is announced - through the button's label - and drawn here.
+        <Lock className="hub__chat-header__encrypted" aria-hidden="true" />
+      )}
       {!isInvitation && <ArrowDropDown aria-hidden="true" />}
     </Button>
   );

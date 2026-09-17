@@ -1,6 +1,7 @@
 import { Button } from "@gouvfr-lasuite/ui-components";
 import {
   ArrowDropDown,
+  Lock,
   Plus,
   QuestionMark,
 } from "@gouvfr-lasuite/ui-components/icons";
@@ -403,16 +404,20 @@ const ChatRow = ({
     ? formatChatListTimestamp(chat.lastActivityAt, locale)
     : null;
   const previewText = formatPreview(t, chat);
+  // An explicit label replaces the link's content for assistive technology,
+  // so the lock is spoken here or not at all.
+  const linkLabel = [
+    showAccountLabel && accountLabel
+      ? `${chat.name} ${accountLabel}`
+      : chat.name,
+    ...(chat.encrypted ? [t("End-to-end encrypted")] : []),
+  ].join(", ");
 
   return (
     <Link
       href={chatHref(chat.ref, spaceId)}
       shallow
-      aria-label={
-        showAccountLabel && accountLabel
-          ? `${chat.name} ${accountLabel}`
-          : chat.name
-      }
+      aria-label={linkLabel}
       aria-current={isActive ? "page" : undefined}
       className={clsx(
         "hub__left-panel__chat",
@@ -429,6 +434,15 @@ const ChatRow = ({
             )}
           >
             {chat.name}
+            {chat.encrypted && (
+              // Two conversations with the same person, one clear and one
+              // encrypted, are otherwise indistinguishable in this list. The
+              // link's label already says it; the icon is for the eye.
+              <Lock
+                className="hub__left-panel__chat__encrypted"
+                aria-hidden="true"
+              />
+            )}
             {showAccountLabel && accountLabel && (
               <span className="hub__left-panel__chat__account">
                 {" "}

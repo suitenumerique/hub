@@ -97,6 +97,15 @@ const resolveChatVisual = (
   return mxcUrl ? { kind: "image", url: mxcUrl } : fallback;
 };
 
+/**
+ * Whether the room carries an `m.room.encryption` state event.
+ *
+ * `Room.hasEncryptionStateEvent()` asks the room state, not the crypto module,
+ * so it answers correctly even before the client has any keys - which is the
+ * case the UI cares about: telling the user this conversation is encrypted.
+ */
+const isRoomEncrypted = (room: Room): boolean => room.hasEncryptionStateEvent();
+
 /** Maps a joined room to a normal conversation row. */
 export const matrixJoinedRoomToLocalChat = (
   room: Room,
@@ -151,6 +160,10 @@ export const matrixJoinedRoomToLocalChat = (
       isDirect ? { kind: "initials" } : { kind: "icon", icon: "groups" },
     ),
     membership: "join",
+    // Read from room state rather than tracked separately: encryption can be
+    // turned on by anyone with the rights, at any time, and the room is the
+    // only thing that knows.
+    ...(isRoomEncrypted(room) ? { encrypted: true } : {}),
     ...(rowPreview ? { preview: rowPreview } : {}),
   };
 };
@@ -221,6 +234,10 @@ const matrixInviteRoomToLocalChat = (
     visual: { kind: "icon", icon: "mail" },
     membership: "invite",
     invitation,
+    // The stripped state an invite arrives with carries `m.room.encryption`,
+    // so the invitee can tell before joining - and the driver can tell whether
+    // an invitation is the private conversation it is looking for.
+    ...(isRoomEncrypted(room) ? { encrypted: true } : {}),
   };
 };
 

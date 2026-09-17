@@ -136,6 +136,14 @@ export type LocalChat = {
    * chats always set it.
    */
   membership?: ChatMembership;
+  /**
+   * Whether the conversation is end-to-end encrypted.
+   *
+   * Carried on the chat rather than read from the room on demand because the
+   * consequences are user-visible and permanent: only the participants can
+   * read these messages, and the state can never be turned back off.
+   */
+  encrypted?: boolean;
   /** Invitation metadata; present only when `membership === "invite"`. */
   invitation?: ChatInvitation;
   /** Last main-timeline message, for the conversation list row's preview line. */
@@ -287,6 +295,40 @@ export type ChatMember = {
   id: string;
   name: string;
   secondaryText: string;
+};
+
+/**
+ * How a conversation should be created.
+ *
+ * `encrypted` is opt-in and decided once, at creation: Matrix has no way back.
+ * Turning `m.room.encryption` on is a one-way door - the state event can be
+ * added but never removed, and every later message in the room is encrypted for
+ * good.
+ */
+export type CreateChatOptions = {
+  /** Name of the new room, applied only when one is actually created. */
+  name?: string;
+  /** Espace to attach the new room to, as an `m.space.child` of it. */
+  spaceId?: string;
+  /**
+   * Skip the reuse check and create a room even when these people already
+   * share one: naming a salon and picking its espace is a request for a new
+   * room, not for whatever conversation happens to exist.
+   */
+  forceNew?: boolean;
+  /** Enable end-to-end encryption on the new room. */
+  encrypted?: boolean;
+};
+
+/**
+ * Which existing conversation to look for.
+ *
+ * The same people can share a clear room and an encrypted one, and the two
+ * are not interchangeable. `encrypted` says which one is wanted; when omitted,
+ * either will do.
+ */
+export type ChatLookupOptions = {
+  encrypted?: boolean;
 };
 
 /** Read-only membership snapshot used by the conversation members modal. */

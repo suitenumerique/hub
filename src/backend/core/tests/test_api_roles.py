@@ -1,5 +1,7 @@
 """Professional roles are optional display labels, owned by the signed-in user."""
 
+import json
+
 from django.conf import settings
 
 import pytest
@@ -8,6 +10,7 @@ import responses
 from rest_framework.test import APIClient
 
 from core import factories
+from core.api import roles
 
 pytestmark = pytest.mark.django_db
 
@@ -192,3 +195,29 @@ def test_regular_user_api_cannot_replace_the_identity_or_role(client_user):
     user.refresh_from_db()
     assert user.matrix_id is None
     assert user.professional_role == ""
+
+
+def test_the_identity_proof_is_kept_out_of_tracebacks():
+    """A live credential must not be printed by the technical 500 page.
+
+    Django shows every frame local verbatim under DEBUG unless the function is
+    marked, and this one holds a token that grants full control of a chat
+    account.
+    """
+    assert roles.verify_chat_identity.sensitive_variables == ("token",)
+
+
+@responses.activate
+def test_the_identity_proof_is_neither_stored_nor_returned(client_user):
+    """The proof buys one answer - the Matrix id - and nothing of it survives."""
+    client, user = client_user
+    whoami()
+
+    body = save(client, "DEV").json()
+
+    assert "matrix_access_token" not in body
+    assert "proof" not in json.dumps(body)
+    user.refresh_from_db()
+    assert "proof" not in json.dumps(
+        {"role": user.professional_role, "matrix_id": user.matrix_id}
+    )

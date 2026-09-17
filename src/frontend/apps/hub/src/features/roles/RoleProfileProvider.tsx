@@ -3,7 +3,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useContext,
+  useEffect,
   useId,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -103,9 +105,18 @@ export const RoleEditor = ({
   const { t } = useTranslation();
   const inputId = useId();
   const helpId = useId();
+  const hintId = useId();
+  const errorId = useId();
   const [draft, setDraft] = useState<string | null>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
   const role = draft ?? initialRole;
   const pending = loading || saving;
+  // A failed save leaves nothing worth keeping focus on, and the alert is what
+  // the person now has to read. Send them there rather than to the top of the
+  // document.
+  useEffect(() => {
+    if (saveError) errorRef.current?.focus();
+  }, [saveError]);
   return (
     <Modal
       isOpen
@@ -127,10 +138,15 @@ export const RoleEditor = ({
           >
             {t("Cancel")}
           </Button>
+          {/* Disabled before the profile is there, but never while saving:
+              that is the control the person just activated, and disabling it
+              under them drops focus to the document body. The submit handler
+              is what refuses a second send. */}
           <Button
             type="submit"
             form={`${inputId}-form`}
-            disabled={pending || loadError}
+            disabled={loading || loadError}
+            aria-disabled={saving || undefined}
           >
             {saving ? t("Saving…") : t("Save")}
           </Button>
@@ -165,7 +181,10 @@ export const RoleEditor = ({
           </div>
         )}
         {loading && <p role="status">{t("Loading your role…")}</p>}
-        <fieldset disabled={pending || loadError}>
+        <fieldset
+          disabled={loading || loadError}
+          aria-busy={saving || undefined}
+        >
           <legend>{t("Choose a role")}</legend>
           <div className="hub__role-editor__presets">
             {["PO", "PM", "DEV", "Design", "QA", "Ops"].map((value) => (
@@ -173,7 +192,10 @@ export const RoleEditor = ({
                 key={value}
                 type="button"
                 aria-pressed={role === value}
-                onClick={() => setDraft(value)}
+                aria-disabled={saving || undefined}
+                onClick={() => {
+                  if (!saving) setDraft(value);
+                }}
               >
                 <RoleBadge role={value} />
               </button>
@@ -184,28 +206,38 @@ export const RoleEditor = ({
             id={inputId}
             value={role}
             maxLength={40}
+            readOnly={saving}
             onChange={(event) => setDraft(event.target.value)}
-            aria-describedby={helpId}
+            // The length limit and the failure are conditions of this field,
+            // so they are announced with it rather than left as loose text on
+            // the page (RGAA 11.10).
+            aria-describedby={[helpId, hintId, saveError ? errorId : null]
+              .filter(Boolean)
+              .join(" ")}
+            aria-invalid={saveError || undefined}
             placeholder={t("E.g. DEV, Product Owner, Support…")}
             autoComplete="organization-title"
           />
-          <span className="hub__role-editor__hint">
+          <span id={hintId} className="hub__role-editor__hint">
             {t("40 characters maximum. Leave blank to show no role.")}
           </span>
-          {role && (
-            <Button
-              type="button"
-              variant="tertiary"
-              color="neutral"
-              size="small"
-              onClick={() => setDraft("")}
-            >
-              {t("Remove my role")}
-            </Button>
-          )}
+          {/* Always rendered: a control that disappears under the focus that
+              just used it leaves the keyboard back at the top of the page. */}
+          <Button
+            type="button"
+            variant="tertiary"
+            color="neutral"
+            size="small"
+            aria-disabled={!role || saving || undefined}
+            onClick={() => {
+              if (role && !saving) setDraft("");
+            }}
+          >
+            {t("Remove my role")}
+          </Button>
         </fieldset>
         {saveError && (
-          <p role="alert">
+          <p id={errorId} role="alert" tabIndex={-1} ref={errorRef}>
             {t("Your role could not be saved. Please try again.")}
           </p>
         )}

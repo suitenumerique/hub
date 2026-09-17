@@ -1,5 +1,6 @@
 import {
   File,
+  Lock,
   Meet,
   Thread,
   UserSearch,
@@ -29,6 +30,18 @@ export type NewChatSearchBarProps = {
   /** Called on Enter with an empty search and at least one selected participant. */
   onConfirm?: () => void;
   onToggleTool?: (tool: ChatTool) => void;
+  /** Whether the conversation about to be created will be encrypted. */
+  encrypted?: boolean;
+  /**
+   * Changes that choice. Left out when the choice is not available - the driver
+   * cannot encrypt, or the room already exists and Matrix offers no way back.
+   */
+  onEncryptedChange?: (encrypted: boolean) => void;
+  /**
+   * Whether encryption is imposed rather than chosen. A one-to-one is always
+   * encrypted: there is nothing to decide, but it still has to be said.
+   */
+  encryptionForced?: boolean;
 };
 
 export const NewChatSearchBar = ({
@@ -42,6 +55,9 @@ export const NewChatSearchBar = ({
   onRemoveUser,
   onConfirm,
   onToggleTool,
+  encrypted = false,
+  onEncryptedChange,
+  encryptionForced = false,
 }: NewChatSearchBarProps) => {
   const { t } = useTranslation();
   const [armedUserId, setArmedUserId] = useState<string | null>(null);
@@ -223,6 +239,30 @@ export const NewChatSearchBar = ({
           </div>
         )}
       </div>
+      {encryptionForced && (
+        <span className="hub__new-chat-search__encryption hub__new-chat-search__encryption--forced">
+          <Lock aria-hidden="true" />
+          <span>{t("Private messages are always encrypted")}</span>
+        </span>
+      )}
+      {onEncryptedChange && (
+        // The consequence is permanent - no way back - so it stays one hover
+        // away rather than disappearing entirely. The header is a single row
+        // and the paragraph crowded it.
+        <label
+          className="hub__new-chat-search__encryption"
+          title={t(
+            "Messages will be readable only by the participants. This cannot be undone later.",
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={encrypted}
+            onChange={(event) => onEncryptedChange(event.target.checked)}
+          />
+          <span>{t("Encrypt this conversation")}</span>
+        </label>
+      )}
     </header>
   );
 };

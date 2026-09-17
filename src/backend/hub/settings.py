@@ -788,6 +788,11 @@ class Base(Configuration):
                 environment=cls.__name__.lower(),
                 release=get_release(),
                 integrations=[DjangoIntegration()],
+                # Request bodies are attached regardless of `send_default_pii`,
+                # and the default scrubber only matches a fixed list of key
+                # names - so a body carrying a credential would be shipped
+                # verbatim on any 500. Nothing here needs them.
+                max_request_body_size="never",
             )
             sentry_sdk.set_tag("application", "backend")
 

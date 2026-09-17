@@ -699,3 +699,14 @@
     transition: none;
   }
 }
+
+// The encryption marker sits inline with the conversation name. Small enough
+// to read as a property of the row rather than an action, and never the only
+// difference between two rows: it carries an accessible label.
+.hub__left-panel__chat__encrypted {
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  vertical-align: -2px;
+  color: var(--c--contextuals--content--semantic--neutral--secondary, #626a80);
+}

@@ -26,8 +26,10 @@ import {
   ChatTypingUser,
   ChatUnread,
   ChatUser,
+  ChatLookupOptions,
   ChatUserPresence,
   ChatSelfPresencePreference,
+  CreateChatOptions,
   LocalChat,
   LocalChatSections,
   LocalSpace,
@@ -349,8 +351,14 @@ export abstract class Driver {
   }
   /** Joined members and pending invitees of one conversation. */
   abstract getChatMembers(chatId: string): Promise<ChatMembers>;
-  /** Existing conversation for exactly these participants, or `null`. */
-  abstract getChatForUsers(userIds: string[]): Promise<LocalChat | null>;
+  /**
+   * Existing conversation for exactly these participants, or `null`. With
+   * `options.encrypted`, only a room in that state counts.
+   */
+  abstract getChatForUsers(
+    userIds: string[],
+    options?: ChatLookupOptions,
+  ): Promise<LocalChat | null>;
   /** Single conversation, fetched by id. */
   abstract getChat(chatId: string): Promise<LocalChat>;
   abstract getChatMessages(
@@ -565,11 +573,12 @@ export abstract class Driver {
    * Creates a brand-new conversation for exactly these participants (a direct
    * chat for one, a group for several) and resolves with it. Idempotent by
    * default where it can be: a driver that already has a conversation for the
-   * set SHOULD return it rather than create a duplicate — `name` and `spaceId`
-   * are only applied on that actual-creation path, so they're silently ignored
-   * when an existing conversation is reused. `spaceId` attaches the new
-   * conversation as that espace's child (the Salon creation flow), so it
-   * actually shows up under it. Set `forceNew` to skip the reuse check
+   * set SHOULD return it rather than create a duplicate — `options.name` and
+   * `options.spaceId` are only applied on that actual-creation path, so they're
+   * silently ignored when an existing conversation is reused. `spaceId`
+   * attaches the new conversation as that espace's child (the Salon creation
+   * flow), so it actually shows up under it. Set `options.forceNew` to skip
+   * the reuse check
    * entirely — the Salon flow does this: naming a salon and picking its espace
    * is an explicit request for a new room, even if the same people already
    * share an unrelated chat elsewhere; silently redirecting into that chat
@@ -580,14 +589,10 @@ export abstract class Driver {
    */
   async createChatForUsers(
     _userIds: string[],
-    _name?: string,
-    _spaceId?: string,
-    _forceNew?: boolean,
+    _options?: CreateChatOptions,
   ): Promise<LocalChat> {
     void _userIds;
-    void _name;
-    void _spaceId;
-    void _forceNew;
+    void _options;
     throw new Error(
       `${this.constructor.name}.createChatForUsers: creating a conversation is not supported by this driver.`,
     );
@@ -605,6 +610,14 @@ export abstract class Driver {
   async getProfileIdentityToken(): Promise<string> {
     throw new Error("Profile identity is not supported by this driver.");
   }
+
+  /**
+   * Whether this driver can create end-to-end encrypted conversations.
+   *
+   * Off by default so drivers opt in; gates the encryption toggle in the New
+   * Chat screen. A driver that cannot encrypt must not be offered the choice.
+   */
+  readonly supportsEncryption: boolean = false;
 
   // --- Avatars -------------------------------------------------------------
   // Unsupported by default so drivers opt in; gates the photo-change actions
