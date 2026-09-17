@@ -264,6 +264,7 @@ class ConfigView(drf.views.APIView):
             "FRONTEND_SILENT_LOGIN_ENABLED",
             "FRONTEND_THEME",
             "MEDIA_BASE_URL",
+            "MEETING_BOARD_BASE_URL",
             "POSTHOG_KEY",
             "LANGUAGES",
             "LANGUAGE_CODE",

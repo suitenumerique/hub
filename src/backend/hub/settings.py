@@ -496,6 +496,12 @@ class Base(Configuration):
         10, environ_name="MEET_API_TIMEOUT", environ_prefix=None
     )
 
+    # Whiteboard shown next to the call, as a self-hosted Excalidraw. Without
+    # this setting the meeting window shows the call alone.
+    MEETING_BOARD_BASE_URL = values.Value(
+        None, environ_name="MEETING_BOARD_BASE_URL", environ_prefix=None
+    )
+
     OIDC_AUTHENTICATE_CLASS = values.Value(
         "lasuite.oidc_login.views.OIDCAuthenticationRequestView",
         environ_name="OIDC_AUTHENTICATE_CLASS",
