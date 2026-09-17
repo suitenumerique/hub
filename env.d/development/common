@@ -32,6 +32,9 @@ AWS_S3_ACCESS_KEY_ID=hub
 AWS_S3_SECRET_ACCESS_KEY=password
 MEDIA_BASE_URL=http://localhost:9803
 
+# Meeting whiteboard (self-hosted Excalidraw, see compose.yml)
+MEETING_BOARD_BASE_URL=http://localhost:9814
+
 # OIDC
 OIDC_OP_JWKS_ENDPOINT=http://nginx:9803/realms/hub/protocol/openid-connect/certs
 OIDC_OP_AUTHORIZATION_ENDPOINT=http://localhost:9803/realms/hub/protocol/openid-connect/auth
