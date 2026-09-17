@@ -108,15 +108,19 @@ const MeetingWindow = ({
   const isOrganizer =
     meeting !== undefined && meeting.organizerId === chatUser?.userId;
 
-  // Closed by its organizer (here or on another device): leave the call.
+  // Closed by its organizer (here or on another device), or by the server
+  // once it was over and empty: leave the call.
   useEffect(() => {
-    if (meeting?.endedAt) {
-      if (!isOrganizer) {
-        notify.brand(t("The meeting was closed by its organizer."));
-      }
-      onLeave();
+    if (!meeting?.endedAt) {
+      return;
     }
-  }, [meeting?.endedAt, isOrganizer, onLeave, t]);
+    if (meeting.endedBy === "auto") {
+      notify.brand(t("The meeting was closed automatically."));
+    } else if (!isOrganizer) {
+      notify.brand(t("The meeting was closed by its organizer."));
+    }
+    onLeave();
+  }, [meeting?.endedAt, meeting?.endedBy, isOrganizer, onLeave, t]);
 
   const title =
     meeting?.title ?? (isMinimized ? t("Meeting in progress") : t("Meeting"));
@@ -241,7 +245,10 @@ const MeetingWindow = ({
                   data-danger="true"
                   disabled={isPending}
                   onClick={() => {
-                    void endMeeting(meeting.id).catch(() => {
+                    void endMeeting(
+                      meeting.id,
+                      meeting.title ?? t("Meeting"),
+                    ).catch(() => {
                       // useChatMeetingActions already surfaces a toast.
                     });
                   }}

@@ -12,6 +12,28 @@ and this project adheres to
   Excalidraw room is derived from the meeting, so every participant lands on
   the same board, and it is self-hosted alongside its collaboration server
   (`MEETING_BOARD_BASE_URL`); without that setting the call is shown alone.
+- ✨(profile) Add optional global role labels (PO, PM, DEV or a custom title),
+  editable or removable at any time from the account menu and displayed beside
+  people in conversations. Verify chat identity when saving a role.
+- ✨(bots) Answer `@Ariane` in the chat of a meeting call, from what was said
+  and written in the call since the person asking arrived.
+- ✨(meetings) Close a meeting on its own once its planned end has passed
+  and nobody is left in the call, and let every member of the conversation
+  download the archive of a closed meeting: agenda, participants, documents,
+  transcript and call chat.
+- ✨(meetings) Save the transcript of a meeting in Docs when its organizer
+  closes it, and list it in the meeting documents. A scribe service relays
+  the live subtitles of the Hub meetings to the backend.
+- ✨(frontend) Add real-time Matrix presence and availability controls
+- ✨(frontend) Create a new Espace or Salon from the left panel, alongside
+  direct messages: a round "+" next to the espace switcher, and one next
+  to the Direct messages/Rooms section titles, Discord-style. Naming a
+  salon always creates a fresh room, even if the same people already
+  share an unrelated chat elsewhere. Add a "scroll to most recent
+  message" button in the conversation view.
+- ✨(search) Show a matching message's own conversation (avatar and name)
+  in its search result row, and use the app's own design tokens instead
+  of a temporary placeholder style.
 - ✨(frontend) Name a meeting, plan its duration or schedule it ahead,
   follow its progress in the meeting window, and let its organizer rename,
   extend or close it.

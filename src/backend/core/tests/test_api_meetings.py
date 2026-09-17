@@ -16,7 +16,7 @@ from rest_framework.status import (
 )
 from rest_framework.test import APIClient
 
-from core import factories
+from core import factories, models
 
 pytestmark = pytest.mark.django_db
 
@@ -82,6 +82,12 @@ def test_api_meetings_create_success():
         "url": "https://meet.test/abc-defg-hij",
         "slug": "abc-defg-hij",
     }
+    # Kept for the transcript: the LiveKit room is the Meet room id.
+    meeting = models.Meeting.objects.get()
+    assert meeting.slug == "abc-defg-hij"
+    assert meeting.livekit_room == "5d8f2c1e-7b1a-4b4e-9a53-1f0e8c7d6b5a"
+    assert meeting.organizer.email == "jane@example.com"
+    assert meeting.closed_at is None
 
     assert len(responses.calls) == 2
     assert json.loads(responses.calls[0].request.body) == {
@@ -105,6 +111,7 @@ def test_api_meetings_create_token_refused():
     assert response.status_code == HTTP_502_BAD_GATEWAY
     assert response.json() == {"detail": "Meet could not create the room."}
     assert len(responses.calls) == 1
+    assert not models.Meeting.objects.exists()
 
 
 @override_settings(**MEET_SETTINGS)

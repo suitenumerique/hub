@@ -256,7 +256,7 @@ describe("ActiveMeetingProvider", () => {
     fireEvent.click(screen.getByText("Close the meeting"));
 
     expect(extendMeeting).toHaveBeenCalledWith("abc-defg-hij", 15);
-    expect(endMeeting).toHaveBeenCalledWith("abc-defg-hij");
+    expect(endMeeting).toHaveBeenCalledWith("abc-defg-hij", "Point hebdo");
   });
 
   it("lets the organizer rename the meeting", () => {
@@ -294,6 +294,21 @@ describe("ActiveMeetingProvider", () => {
     expect(screen.queryByLabelText("Rename the meeting")).toBeNull();
     expect(screen.queryByText("+15 min")).toBeNull();
     expect(screen.queryByText("Close the meeting")).toBeNull();
+  });
+
+  it("tells everyone when the meeting closed on its own", () => {
+    const { rerender } = render(app());
+    fireEvent.click(screen.getByText("open A"));
+
+    state.meetings = [
+      meetingA({ endedAt: new Date().toISOString(), endedBy: "auto" }),
+    ];
+    act(() => rerender(app()));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(notifyBrand).toHaveBeenCalledWith(
+      "The meeting was closed automatically.",
+    );
   });
 
   it("closes the window when the organizer closes the meeting", () => {

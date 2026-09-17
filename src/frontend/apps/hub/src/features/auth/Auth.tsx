@@ -4,6 +4,7 @@ import React, { PropsWithChildren, useEffect, useState } from "react";
 
 import { fetchAPI } from "@/features/api/fetchApi";
 import { User } from "@/features/auth/types";
+import { RoleProfileProvider } from "@/features/roles/RoleProfileProvider";
 import { APIError } from "../api/APIError";
 import { baseApiUrl } from "../api/utils";
 import { useChatAccountsBootstrap } from "../chat/hooks/useChatAccounts";
@@ -121,7 +122,9 @@ export const Auth = ({ children }: PropsWithChildren) => {
         chatUser,
       }}
     >
-      {children}
+      <RoleProfileProvider key={user?.id ?? "anonymous"}>
+        {children}
+      </RoleProfileProvider>
     </AuthContext.Provider>
   );
 };

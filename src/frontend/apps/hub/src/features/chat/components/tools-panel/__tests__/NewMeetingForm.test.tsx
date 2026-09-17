@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NewMeetingForm } from "../NewMeetingForm";
@@ -31,10 +37,15 @@ const renderForm = () =>
     />,
   );
 
-const pick = (testId: string, ...files: File[]) =>
-  fireEvent.change(screen.getByTestId(testId), { target: { files } });
+/** Picks files, and waits until FileReader has answered for them. */
+const pick = async (testId: string, ...files: File[]) => {
+  await act(async () => {
+    fireEvent.change(screen.getByTestId(testId), { target: { files } });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+};
 
-const text = (name: string) => new File(["contenu"], name);
+const text = (name: string, content = "contenu") => new File([content], name);
 
 describe("NewMeetingForm files", () => {
   let nextUrl = 0;
@@ -61,10 +72,10 @@ describe("NewMeetingForm files", () => {
     }
   });
 
-  it("attaches a markdown agenda with a download link", () => {
+  it("attaches a markdown agenda with a download link", async () => {
     renderForm();
 
-    pick("agenda-file-input", text("ordre-du-jour.md"));
+    await pick("agenda-file-input", text("ordre-du-jour.md"));
 
     const link = screen.getByLabelText("Download {{name}}|ordre-du-jour.md");
     expect(link.getAttribute("href")).toBe("blob:file-0");
@@ -72,20 +83,20 @@ describe("NewMeetingForm files", () => {
     expect(notifyError).not.toHaveBeenCalled();
   });
 
-  it("refuses an agenda of another type", () => {
+  it("refuses an agenda of another type", async () => {
     renderForm();
 
-    pick("agenda-file-input", text("ordre-du-jour.pdf"));
+    await pick("agenda-file-input", text("ordre-du-jour.pdf"));
 
     expect(notifyError).toHaveBeenCalledWith(REFUSED);
     expect(screen.queryByText("ordre-du-jour.pdf")).toBeNull();
     expect(createObjectURL).not.toHaveBeenCalled();
   });
 
-  it("releases the agenda file when it is replaced or removed", () => {
+  it("releases the agenda file when it is replaced or removed", async () => {
     renderForm();
-    pick("agenda-file-input", text("v1.txt"));
-    pick("agenda-file-input", text("v2.txt"));
+    await pick("agenda-file-input", text("v1.txt"));
+    await pick("agenda-file-input", text("v2.txt"));
 
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-0");
     expect(screen.queryByText("v1.txt")).toBeNull();
@@ -96,10 +107,10 @@ describe("NewMeetingForm files", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-1");
   });
 
-  it("attaches several document files and skips the others", () => {
+  it("attaches several document files and skips the others", async () => {
     renderForm();
 
-    pick(
+    await pick(
       "document-file-input",
       text("support.md"),
       text("photo.png"),
@@ -115,6 +126,17 @@ describe("NewMeetingForm files", () => {
 
     expect(screen.queryByText("support.md")).toBeNull();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-0");
+  });
+
+  it("refuses a file too large to be kept", async () => {
+    renderForm();
+
+    await pick("document-file-input", text("gros.md", "x".repeat(100_001)));
+
+    expect(notifyError).toHaveBeenCalledWith(
+      "A file is too large to be attached (100 KB at most).",
+    );
+    expect(screen.queryByText("gros.md")).toBeNull();
   });
 
   it("adds a document by link from the Docs button", () => {
@@ -174,7 +196,50 @@ describe("NewMeetingForm start and schedule", () => {
     expect(onStartNow).toHaveBeenCalledWith({
       title: "Point hebdo",
       plannedDurationMinutes: 30,
+      agenda: undefined,
+      attachments: [],
+      documents: [],
     });
+  });
+
+  it("passes the agenda, the picked files and the links", async () => {
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => "blob:file"),
+      revokeObjectURL: vi.fn(),
+    });
+    const { onStartNow } = renderWithHandlers();
+
+    fireEvent.change(screen.getByLabelText("Agenda"), {
+      target: { value: "  1. Tour de table  " },
+    });
+    await pick("agenda-file-input", text("odj.md", "# Ordre du jour"));
+    await pick("document-file-input", text("notes.txt", "Notes"));
+    fireEvent.click(screen.getByRole("button", { name: "Add a Docs link" }));
+    fireEvent.change(screen.getByLabelText("Document name"), {
+      target: { value: "Compte rendu" },
+    });
+    fireEvent.change(screen.getByLabelText("Link"), {
+      target: { value: "https://docs.example.org/docs/1/" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start now" }));
+
+    expect(onStartNow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agenda: "1. Tour de table",
+        attachments: [
+          { name: "odj.md", content: "# Ordre du jour" },
+          { name: "notes.txt", content: "Notes" },
+        ],
+        documents: [
+          {
+            id: expect.any(String),
+            title: "Compte rendu",
+            url: "https://docs.example.org/docs/1/",
+          },
+        ],
+      }),
+    );
   });
 
   it("needs a date and a future time to schedule", () => {
@@ -212,6 +277,9 @@ describe("NewMeetingForm start and schedule", () => {
     expect(onSchedule).toHaveBeenCalledWith({
       title: undefined,
       plannedDurationMinutes: 60,
+      agenda: undefined,
+      attachments: [],
+      documents: [],
       startsAt: start,
     });
   });

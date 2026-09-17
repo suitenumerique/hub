@@ -113,6 +113,13 @@ const applyChatEvent = (
         };
 
   switch (event.type) {
+    case "user:presence-changed":
+      queryClient.setQueryData(
+        chatKeys.userPresence(accountId, event.presence.userId),
+        event.presence,
+      );
+      return;
+
     case "message:new":
       queryClient.setQueryData<ChatMessagesData>(
         chatKeys.messages(ref),

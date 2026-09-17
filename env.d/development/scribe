@@ -1,0 +1,10 @@
+# Meeting scribe (src/scribe): relays the live subtitles of Hub meetings.
+# Started with `docker compose --profile transcript up -d meeting-scribe`.
+#
+# Secrets go in env.d/development/scribe.local (git-ignored):
+#   LIVEKIT_URL=wss://livekit.example.com
+#   LIVEKIT_API_KEY=...
+#   LIVEKIT_API_SECRET=...
+#   MEETING_SCRIBE_TOKEN=...   (the same value as in common.local)
+# Without them, the scribe idles and no transcript is kept.
+HUB_API_URL=http://app-dev:8000/api/v1.0

@@ -114,6 +114,9 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
 
     email = models.EmailField(_("identity email address"), blank=True, null=True)
 
+    matrix_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    professional_role = models.CharField(max_length=40, blank=True, default="")
+
     # Unlike the "email" field which stores the email coming from the OIDC token, this field
     # stores the email used by staff users to login to the admin site
     admin_email = models.EmailField(
@@ -166,3 +169,190 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
 
     def __str__(self):
         return self.email or self.admin_email or str(self.id)
+
+
+class Meeting(BaseModel):
+    """
+    A Meet room created by the Hub for one of its users.
+
+    The Matrix room state is what members see (title, schedule, documents).
+    The Hub keeps what the server needs on its own: which LiveKit room to
+    follow, when the meeting should end, who may close it, and what goes in its
+    archive (agenda, attached files, participants, transcript, call chat).
+    """
+
+    slug = models.CharField(_("slug"), max_length=64, unique=True)
+    livekit_room = models.CharField(
+        _("LiveKit room"),
+        max_length=64,
+        unique=True,
+        help_text=_("Identifier of the Meet room, used as the LiveKit room name."),
+    )
+    organizer = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="meetings"
+    )
+    chat_id = models.CharField(
+        _("conversation"),
+        max_length=255,
+        blank=True,
+        help_text=_("Matrix room the meeting belongs to."),
+    )
+    title = models.CharField(_("title"), max_length=200, blank=True)
+    starts_at = models.DateTimeField(_("starts on"), null=True, blank=True)
+    planned_end_at = models.DateTimeField(
+        _("planned end"),
+        null=True,
+        blank=True,
+        help_text=_("Past this time, the meeting closes once nobody is in it."),
+    )
+    agenda = models.TextField(_("agenda"), blank=True)
+    time_zone = models.CharField(
+        _("time zone"),
+        max_length=64,
+        default="UTC",
+        help_text=_("Of the organizer's browser: times in the archive use it."),
+    )
+    last_occupied_at = models.DateTimeField(
+        _("last occupied on"), null=True, blank=True
+    )
+    closed_at = models.DateTimeField(_("closed on"), null=True, blank=True)
+    auto_closed = models.BooleanField(_("closed automatically"), default=False)
+    transcript_document_id = models.CharField(
+        _("transcript document"), max_length=64, null=True, blank=True
+    )
+
+    class Meta:
+        db_table = "hub_meeting"
+        verbose_name = _("meeting")
+        verbose_name_plural = _("meetings")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.slug
+
+
+class MeetingAttachment(BaseModel):
+    """A text file (agenda or document) attached when the meeting was planned."""
+
+    meeting = models.ForeignKey(
+        Meeting, on_delete=models.CASCADE, related_name="attachments"
+    )
+    name = models.CharField(_("name"), max_length=255)
+    content = models.TextField(_("content"))
+
+    class Meta:
+        db_table = "hub_meeting_attachment"
+        verbose_name = _("meeting attachment")
+        verbose_name_plural = _("meeting attachments")
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return self.name
+
+
+class MeetingParticipant(BaseModel):
+    """Someone who was in the call, as the scribe saw them."""
+
+    meeting = models.ForeignKey(
+        Meeting, on_delete=models.CASCADE, related_name="participants"
+    )
+    identity = models.CharField(_("identity"), max_length=255)
+    name = models.CharField(_("name"), max_length=255, blank=True)
+    first_seen_at = models.DateTimeField(_("first seen on"))
+    last_seen_at = models.DateTimeField(_("last seen on"))
+
+    class Meta:
+        db_table = "hub_meeting_participant"
+        verbose_name = _("meeting participant")
+        verbose_name_plural = _("meeting participants")
+        ordering = ["first_seen_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meeting", "identity"],
+                name="unique_participant_per_meeting",
+            )
+        ]
+
+    def __str__(self):
+        return self.name or self.identity
+
+
+class MeetingTranscriptSegment(BaseModel):
+    """
+    One final sentence of the live transcript, as the Meet transcriber agent
+    publishes it in the LiveKit room and the Hub scribe relays it.
+    """
+
+    meeting = models.ForeignKey(
+        Meeting, on_delete=models.CASCADE, related_name="transcript_segments"
+    )
+    segment_id = models.CharField(_("segment id"), max_length=128)
+    speaker_identity = models.CharField(_("speaker identity"), max_length=255)
+    speaker_name = models.CharField(_("speaker name"), max_length=255, blank=True)
+    text = models.TextField(_("text"))
+    spoken_at = models.DateTimeField(
+        _("spoken on"), help_text=_("When the scribe received the sentence.")
+    )
+
+    class Meta:
+        db_table = "hub_meeting_transcript_segment"
+        verbose_name = _("meeting transcript segment")
+        verbose_name_plural = _("meeting transcript segments")
+        ordering = ["spoken_at", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meeting", "segment_id"],
+                name="unique_segment_per_meeting",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.speaker_name or self.speaker_identity}: {self.text[:40]}"
+
+
+class MeetingChatMessage(BaseModel):
+    """A message written in the chat of the call, relayed by the scribe."""
+
+    meeting = models.ForeignKey(
+        Meeting, on_delete=models.CASCADE, related_name="chat_messages"
+    )
+    message_id = models.CharField(_("message id"), max_length=128)
+    sender_identity = models.CharField(_("sender identity"), max_length=255)
+    sender_name = models.CharField(_("sender name"), max_length=255, blank=True)
+    text = models.TextField(_("text"))
+    sent_at = models.DateTimeField(
+        _("sent on"), help_text=_("When the scribe received the message.")
+    )
+    from_assistant = models.BooleanField(
+        _("from the assistant"),
+        default=False,
+        help_text=_("Written by Ariane, for the scribe to post in the call."),
+    )
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replies",
+    )
+    delivered_at = models.DateTimeField(
+        _("delivered on"),
+        null=True,
+        blank=True,
+        help_text=_("When the scribe took an assistant message to post it."),
+    )
+
+    class Meta:
+        db_table = "hub_meeting_chat_message"
+        verbose_name = _("meeting chat message")
+        verbose_name_plural = _("meeting chat messages")
+        ordering = ["sent_at", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meeting", "message_id"],
+                name="unique_chat_message_per_meeting",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.sender_name or self.sender_identity}: {self.text[:40]}"

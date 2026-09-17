@@ -149,3 +149,105 @@ msgstr " LaSuite, votre espace collaboratif. "
 msgid " Brought to you by %(brandname)s "
 msgstr " Proposé par %(brandname)s "
 
+
+#: core/transcripts.py:40
+#, python-format
+msgid "Meeting of %(date)s"
+msgstr "Réunion du %(date)s"
+
+#: core/transcripts.py:42
+msgid ""
+"Transcribed automatically from the live subtitles: it may contain mistakes."
+msgstr ""
+"Transcription automatique des sous-titres en direct : elle peut contenir des "
+"erreurs."
+
+#: core/transcripts.py:51
+#, python-format
+msgid "Transcript: %(title)s"
+msgstr "Transcription : %(title)s"
+
+#: core/archives.py
+#: core/meeting_closing.py
+msgid "Meeting"
+msgstr "Réunion"
+
+#: core/archives.py
+msgid "Closed automatically at the end of the meeting."
+msgstr "Clôturée automatiquement à la fin de la réunion."
+
+#: core/archives.py
+msgid "Closed by its organizer."
+msgstr "Clôturée par son organisateur."
+
+#: core/archives.py
+#, python-format
+msgid "Start: %(time)s"
+msgstr "Début : %(time)s"
+
+#: core/archives.py
+#, python-format
+msgid "End: %(time)s"
+msgstr "Fin : %(time)s"
+
+#: core/archives.py
+#, python-format
+msgid "Organizer: %(name)s"
+msgstr "Organisateur : %(name)s"
+
+#: core/archives.py
+msgid "Participants"
+msgstr "Participants"
+
+#: core/archives.py
+msgid "Nobody was seen in the call."
+msgstr "Personne n'a été vu dans l'appel."
+
+#: core/archives.py
+msgid "Agenda"
+msgstr "Ordre du jour"
+
+#: core/archives.py
+msgid "No agenda."
+msgstr "Pas d'ordre du jour."
+
+#: core/archives.py
+msgid "Documents"
+msgstr "Documents"
+
+#: core/archives.py
+msgid "files"
+msgstr "fichiers"
+
+#: core/archives.py
+msgid "No document."
+msgstr "Aucun document."
+
+#: core/archives.py
+msgid "Chat of the call"
+msgstr "Discussion de l'appel"
+
+#: core/archives.py
+msgid "meeting.md"
+msgstr "reunion.md"
+
+#: core/archives.py
+msgid "agenda.md"
+msgstr "ordre-du-jour.md"
+
+#: core/archives.py
+msgid "transcript.md"
+msgstr "transcription.md"
+
+#: core/archives.py
+msgid "chat.md"
+msgstr "discussion.md"
+
+#: core/archives.py
+msgctxt "archive file name"
+msgid "meeting"
+msgstr "reunion"
+
+#: core/archives.py
+msgid "(automatic assistant)"
+msgstr "(assistant automatique)"

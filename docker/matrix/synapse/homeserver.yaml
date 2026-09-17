@@ -19,7 +19,9 @@ listeners:
     type: http
     x_forwarded: true
     resources:
-      - names: [client]
+      # `openid` lets the Hub backend check which Matrix user a browser is,
+      # from a short-lived OpenID token (meeting archives).
+      - names: [client, openid]
         compress: false
 
 database:

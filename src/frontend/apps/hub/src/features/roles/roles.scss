@@ -1,0 +1,113 @@
+.hub__role-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  max-width: 180px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #40516a;
+  background: #edf0f5;
+
+  &--po {
+    color: #623c88;
+    background: #f1e9fb;
+  }
+  &--pm {
+    color: #2858a4;
+    background: #eaf0fc;
+  }
+  &--dev {
+    color: #18634a;
+    background: #e4f3eb;
+  }
+}
+
+.hub__role-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+  color: var(--c--contextuals--content--semantic--neutral--primary, #243047);
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+  }
+  legend,
+  label {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #a6adba;
+    border-radius: 6px;
+    font: inherit;
+    color: inherit;
+    background: #fff;
+  }
+  input:focus-visible,
+  button:focus-visible {
+    outline: 2px solid #2858a4;
+    outline-offset: 3px;
+  }
+  &__presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  &__presets button {
+    border: 1px solid #d5dae2;
+    border-radius: 8px;
+    background: #fff;
+    padding: 8px;
+    cursor: pointer;
+  }
+  &__presets button[aria-pressed="true"] {
+    border-color: #2858a4;
+    box-shadow: 0 0 0 1px #2858a4;
+  }
+  &__presets button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+  &__hint {
+    color: #626a80;
+    font-size: 12px;
+  }
+  &__notice {
+    padding: 12px;
+    border-radius: 8px;
+    background: #f1f4f9;
+  }
+  [role="alert"] {
+    color: #a32b32;
+  }
+}
+
+.hub__chat-bubble__header {
+  flex-wrap: wrap;
+}
+.hub__new-chat-dropdown__user-name .hub__role-badge {
+  margin-left: 6px;
+}

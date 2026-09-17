@@ -18,6 +18,7 @@ import {
   type RoomMember,
   RoomMemberEvent,
   RoomStateEvent,
+  SetPresence,
   SyncState,
   type SyncStateData,
   type Thread,
@@ -79,9 +80,11 @@ import {
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMeeting,
+  ChatMeetingDocument,
   ChatMessage,
   ChatMember,
   ChatMembers,
+  ChatSelfPresencePreference,
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
@@ -89,10 +92,12 @@ import {
   ChatTypingUser,
   ChatUnread,
   ChatUser,
+  ChatUserPresence,
   LocalChat,
   LocalChatSections,
   LocalSpace,
   MeetRoom,
+  MeetRoomSchedule,
   StartMeetingOptions,
   User,
 } from "../types";
@@ -126,6 +131,11 @@ import {
 } from "./matrixEventMapping";
 import { matrixDirectoryUserToChatUser } from "./matrixIdentity";
 import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
+import {
+  readChatSelfPresencePreference,
+  writeChatSelfPresencePreference,
+} from "../presencePreference";
+import { matrixUserToChatUserPresence } from "./matrixPresence";
 import { MatrixConversationSearch } from "./MatrixConversationSearch";
 import { MatrixMessageSearch } from "./MatrixMessageSearch";
 import {
@@ -243,6 +253,9 @@ export class MatrixDriver extends Driver {
   private messageSearchDatabase: string | null = null;
 
   private clientGeneration = 0;
+  private syncPresence: SetPresence | undefined;
+  /** True only for a client initially started with `disablePresence`. */
+  private presenceSyncDisabled = false;
 
   override searchConversations(request: ConversationSearchRequest) {
     return (
@@ -304,6 +317,7 @@ export class MatrixDriver extends Driver {
   override readonly supportsConversationHistoryRemoval: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
   override readonly supportsSpaces: boolean = true;
+  override readonly supportsSpaceCreation: boolean = true;
   override readonly supportsMeetings: boolean = true;
 
   private mx: MatrixClient | null = null;
@@ -422,6 +436,22 @@ export class MatrixDriver extends Driver {
       .map((room) => matrixRoomToLocalSpace(room));
   }
 
+  async createSpace(name: string): Promise<LocalSpace> {
+    const mx = this.requireClient("createSpace");
+    const { room_id: roomId } = await mx.createRoom({
+      name,
+      preset: Preset.PrivateChat,
+      creation_content: { type: "m.space" },
+    });
+    const room = await this.waitForRoom(mx, roomId);
+    if (!room) {
+      throw new Error(
+        `MatrixDriver.createSpace: room "${roomId}" not found after creation.`,
+      );
+    }
+    return matrixRoomToLocalSpace(room);
+  }
+
   /** Room ids listed as children of `spaceId`'s `m.space.child` state, if joined. */
   private getSpaceChildRoomIds(mx: MatrixClient, spaceId: string): Set<string> {
     const spaceRoom = mx.getRoom(spaceId);
@@ -514,7 +544,7 @@ export class MatrixDriver extends Driver {
 
   async startChatMeeting(
     chatId: string,
-    createRoom: () => Promise<MeetRoom>,
+    createRoom: (schedule: MeetRoomSchedule) => Promise<MeetRoom>,
     options: StartMeetingOptions = {},
   ): Promise<ChatMeeting> {
     const { mx, room } = this.requireRoom("startChatMeeting", chatId);
@@ -537,16 +567,23 @@ export class MatrixDriver extends Driver {
     }
     const selfUserId = this.requireMeetingOrganizerRights(mx, room, chatId);
     // The Meet slug is unique per room: it doubles as the state key.
-    const { slug: meetingId, url } = await createRoom();
+    const startedAt = isScheduled ? scheduledStart : now;
+    const planned = options.plannedDurationMinutes;
+    const { slug: meetingId, url } = await createRoom({
+      startsAt: new Date(startedAt),
+      ...(planned
+        ? { plannedEndAt: new Date(startedAt + planned * 60_000) }
+        : {}),
+    });
     const title = options.title?.trim() || undefined;
+    const documents = options.documents ?? [];
     const content: MeetingStateEventContent = {
       meetingUrl: url,
-      startedAt: isScheduled ? scheduledStart : now,
+      startedAt,
       organizerId: selfUserId,
       ...(title ? { title } : {}),
-      ...(options.plannedDurationMinutes
-        ? { plannedDurationMinutes: options.plannedDurationMinutes }
-        : {}),
+      ...(planned ? { plannedDurationMinutes: planned } : {}),
+      ...(documents.length > 0 ? { documents } : {}),
     };
     await mx.sendStateEvent(chatId, MEETING_EVENT_TYPE, content, meetingId);
     return {
@@ -558,13 +595,14 @@ export class MatrixDriver extends Driver {
       ...(content.plannedDurationMinutes
         ? { plannedDurationMinutes: content.plannedDurationMinutes }
         : {}),
-      documents: [],
+      documents,
     };
   }
 
   async endChatMeeting(chatId: string, meetingId: string): Promise<void> {
     await this.updateOwnMeeting("endChatMeeting", chatId, meetingId, () => ({
       endedAt: Date.now(),
+      endedBy: "organizer",
     }));
   }
 
@@ -586,6 +624,37 @@ export class MatrixDriver extends Driver {
           plannedDurationMinutes:
             (content.plannedDurationMinutes ?? elapsedMinutes) + minutes,
         };
+      },
+    );
+  }
+
+  async getOpenIdToken(): Promise<string> {
+    const mx = this.requireClient("getOpenIdToken");
+    const { access_token: token } = await mx.getOpenIdToken();
+    return token;
+  }
+
+  async addChatMeetingDocument(
+    chatId: string,
+    meetingId: string,
+    document: ChatMeetingDocument,
+  ): Promise<void> {
+    await this.updateOwnMeeting(
+      "addChatMeetingDocument",
+      chatId,
+      meetingId,
+      (content) => {
+        // Unknown entries are kept as they are; the same document replaces
+        // its older version.
+        const others = Array.isArray(content.documents)
+          ? content.documents.filter(
+              (entry) =>
+                typeof entry !== "object" ||
+                entry === null ||
+                (entry as { id?: unknown }).id !== document.id,
+            )
+          : [];
+        return { documents: [...others, document] };
       },
     );
   }
@@ -623,7 +692,11 @@ export class MatrixDriver extends Driver {
 
   /** Rewrites one meeting's state, only for its organizer. */
   private async updateOwnMeeting(
-    method: "endChatMeeting" | "extendChatMeeting" | "renameChatMeeting",
+    method:
+      | "addChatMeetingDocument"
+      | "endChatMeeting"
+      | "extendChatMeeting"
+      | "renameChatMeeting",
     chatId: string,
     meetingId: string,
     change: (
@@ -675,6 +748,66 @@ export class MatrixDriver extends Driver {
       .map(matrixDirectoryUserToChatUser);
   }
 
+  getUserPresence(userId: string): ChatUserPresence | null {
+    return matrixUserToChatUserPresence(this.mx?.getUser(userId) ?? null);
+  }
+
+  override readonly supportsPresence = true;
+
+  getCurrentUserId(): string | null {
+    return this.mx?.getUserId() ?? null;
+  }
+
+  getSelfPresencePreference(): ChatSelfPresencePreference {
+    return readChatSelfPresencePreference(this.accountId);
+  }
+
+  async setSelfPresencePreference(
+    preference: ChatSelfPresencePreference,
+  ): Promise<void> {
+    const previous = this.getSelfPresencePreference();
+    if (previous === preference && this.syncPresence === preference) return;
+
+    await this.setUserPresence(preference);
+    writeChatSelfPresencePreference(this.accountId, preference);
+
+    // The sync presence is authoritative. This best-effort PUT only shortens
+    // the visible delay and must never roll back a correct sync intention.
+    try {
+      await this.requireClient("setSelfPresencePreference").setPresence({
+        presence: preference,
+      });
+    } catch (error) {
+      console.info(
+        "MatrixDriver: immediate presence update failed; /sync will apply it",
+        error,
+      );
+    }
+  }
+
+  async setUserPresence(state: ChatUserPresence["state"]): Promise<void> {
+    if (!["online", "unavailable", "offline"].includes(state)) {
+      throw new Error(
+        `MatrixDriver.setUserPresence: invalid state "${state}".`,
+      );
+    }
+    const mx = this.requireClient("setUserPresence");
+    const syncPresence = state as SetPresence;
+    if (this.syncPresence === syncPresence) return;
+
+    // `disablePresence` wins over setSyncPresence for the lifetime of SyncApi.
+    // It is used only to keep a persisted offline preference offline from the
+    // very first request, then removed once the user explicitly returns online.
+    if (this.presenceSyncDisabled && syncPresence !== SetPresence.Offline) {
+      mx.stopClient();
+      await this.startClientOrFailOnLogout(mx);
+      this.presenceSyncDisabled = false;
+    }
+
+    await mx.setSyncPresence(syncPresence);
+    this.syncPresence = syncPresence;
+  }
+
   /**
    * The existing conversation for exactly this participant set, or `null`. A
    * joined room matches when its members (excluding the connected user) equal
@@ -697,6 +830,12 @@ export class MatrixDriver extends Driver {
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     const match = mx
       .getVisibleRooms()
+      // Espaces are a separate hierarchy level (see `getSpaces`), never a
+      // conversation — without this, an espace whose invite list happens to
+      // match `userIds` (e.g. every seeded espace shares the same invitees)
+      // gets misread as "the existing chat for these participants" and
+      // hijacked instead of creating a real room for them.
+      .filter((room) => !room.isSpaceRoom())
       .filter((room) => joinedRoomIds.has(room.roomId))
       .find(
         (room) =>
@@ -715,7 +854,12 @@ export class MatrixDriver extends Driver {
    * creating a second one. Concurrent local calls for the same participant set
    * share one promise.
    */
-  async createChatForUsers(userIds: string[]): Promise<LocalChat> {
+  async createChatForUsers(
+    userIds: string[],
+    name?: string,
+    spaceId?: string,
+    forceNew?: boolean,
+  ): Promise<LocalChat> {
     const mx = this.requireClient("createChatForUsers");
     const participantIds = [...new Set(userIds)].filter(Boolean);
     if (participantIds.length === 0) {
@@ -724,13 +868,22 @@ export class MatrixDriver extends Driver {
       );
     }
 
-    const creationKey = participantSetKey(participantIds);
+    // `forceNew` calls (Salon creation) never share an in-flight promise with
+    // a reuse-eligible one for the same participants — each is asking a
+    // different question ("the existing chat, if any" vs. "a brand-new one").
+    const creationKey = `${forceNew ? "new:" : ""}${participantSetKey(participantIds)}`;
     const inFlight = this.chatCreations.get(creationKey);
     if (inFlight) {
       return inFlight;
     }
 
-    const creation = this.resolveOrCreateChatForUsers(mx, participantIds);
+    const creation = this.resolveOrCreateChatForUsers(
+      mx,
+      participantIds,
+      name,
+      spaceId,
+      forceNew,
+    );
     this.chatCreations.set(creationKey, creation);
     try {
       return await creation;
@@ -742,6 +895,16 @@ export class MatrixDriver extends Driver {
   }
 
   override readonly supportsAvatarUpload: boolean = true;
+
+  override readonly supportsProfileRoles = true;
+
+  override async getProfileIdentityToken(): Promise<string> {
+    const token = this.requireClient(
+      "getProfileIdentityToken",
+    ).getAccessToken();
+    if (!token) throw new Error("The chat account is not connected.");
+    return token;
+  }
 
   async setUserAvatar(file: File): Promise<string> {
     const mx = this.requireClient("setUserAvatar");
@@ -795,13 +958,18 @@ export class MatrixDriver extends Driver {
   private async resolveOrCreateChatForUsers(
     mx: MatrixClient,
     participantIds: string[],
+    name?: string,
+    spaceId?: string,
+    forceNew?: boolean,
   ): Promise<LocalChat> {
-    // Creation is rare and duplicate rooms are permanent, so bypass the cached
-    // joined set for this last-chance check against the homeserver.
-    await this.refreshJoinedRoomIds(mx);
-    const existing = await this.getChatForUsers(participantIds);
-    if (existing) {
-      return existing;
+    if (!forceNew) {
+      // Creation is rare and duplicate rooms are permanent, so bypass the
+      // cached joined set for this last-chance check against the homeserver.
+      await this.refreshJoinedRoomIds(mx);
+      const existing = await this.getChatForUsers(participantIds);
+      if (existing) {
+        return existing;
+      }
     }
 
     if (participantIds.length === 1) {
@@ -849,10 +1017,21 @@ export class MatrixDriver extends Driver {
       preset: Preset.PrivateChat,
       is_direct: isDirect,
       invite: participantIds,
+      ...(name ? { name } : {}),
       // Every member may start a meeting, which is recorded as room state
       // (moderator-only by default).
       power_level_content_override: { events: { [MEETING_EVENT_TYPE]: 0 } },
     });
+
+    if (spaceId) {
+      const domain = mx.getDomain();
+      await mx.sendStateEvent(
+        spaceId,
+        EventType.SpaceChild,
+        { via: domain ? [domain] : [] },
+        roomId,
+      );
+    }
 
     const room = await this.waitForRoom(mx, roomId);
     if (room) {
@@ -863,7 +1042,7 @@ export class MatrixDriver extends Driver {
     // real name/kind firm up once `getChat` reads the synced room.
     return {
       id: roomId,
-      name: participantIds[0],
+      name: name ?? participantIds[0],
       section: "all",
       kind: isDirect ? "direct" : "group",
       participantIds,
@@ -2143,7 +2322,10 @@ export class MatrixDriver extends Driver {
     }
     this.mx = mx;
     localStorage.removeItem(this.key("matrixRedactedThreads"));
-    await this.startClientOrFailOnLogout(mx);
+    const preference = this.getSelfPresencePreference();
+    this.syncPresence = preference as SetPresence;
+    this.presenceSyncDisabled = preference === "offline";
+    await this.startClientOrFailOnLogout(mx, this.presenceSyncDisabled);
     if (generation !== this.clientGeneration) return;
     await this.refreshJoinedRoomIds(mx);
 
@@ -2675,7 +2857,10 @@ export class MatrixDriver extends Driver {
     };
   }
 
-  private async startClientOrFailOnLogout(mx: MatrixClient): Promise<void> {
+  private async startClientOrFailOnLogout(
+    mx: MatrixClient,
+    disablePresence = false,
+  ): Promise<void> {
     let cleanup = () => {};
     const loggedOut = new Promise<never>((_, reject) => {
       const onLoggedOut = (error: MatrixError) => {
@@ -2687,7 +2872,7 @@ export class MatrixDriver extends Driver {
     });
 
     try {
-      await Promise.race([startClient(mx), loggedOut]);
+      await Promise.race([startClient(mx, { disablePresence }), loggedOut]);
     } finally {
       cleanup();
     }
@@ -2754,6 +2939,8 @@ export class MatrixDriver extends Driver {
     this.typingRoomPreparations.clear();
     this.mx?.stopClient();
     this.mx = null;
+    this.syncPresence = undefined;
+    this.presenceSyncDisabled = false;
     this.joinedRoomIds = null;
     this.sentThreadReplyEventIds.clear();
     this.confirmedMainReadBoundaries.clear();

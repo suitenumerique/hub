@@ -1,14 +1,17 @@
 """API endpoints"""
 
+import io
 import json
 import logging
 
 from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models.expressions import RawSQL
 from django.db.models.functions import Greatest
-from django.http import Http404
+from django.http import FileResponse, Http404
+from django.utils import timezone
 from django.utils.text import slugify
 
 import rest_framework as drf
@@ -16,7 +19,8 @@ from lasuite.tools.email import get_domain_from_email
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
-from core import meet, models
+from bots import matrix
+from core import archives, docs, meet, meeting_closing, models, transcripts
 from core.api.filters import remove_accents
 
 from . import permissions, serializers
@@ -343,8 +347,14 @@ class MeetingView(drf.views.APIView):
         """
         POST /api/v1.0/meetings/
             Create a Meet room owned by the authenticated user and return its
-            `url` and `slug`.
+            `url` and `slug`. The optional body describes the meeting (see
+            `MeetingCreateSerializer`): the Hub keeps it for the automatic
+            closing and the archive.
         """
+        serializer = serializers.MeetingCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        details = serializer.validated_data
+
         if not meet.is_meet_configured():
             return drf.response.Response(
                 {"detail": "Meet is not configured."},
@@ -359,4 +369,161 @@ class MeetingView(drf.views.APIView):
                 status=drf.status.HTTP_502_BAD_GATEWAY,
             )
 
-        return drf.response.Response(room, status=drf.status.HTTP_201_CREATED)
+        with transaction.atomic():
+            meeting = models.Meeting.objects.create(
+                slug=room["slug"],
+                livekit_room=room["id"],
+                organizer=request.user,
+                chat_id=details["chat_id"],
+                title=details["title"],
+                starts_at=details.get("starts_at"),
+                planned_end_at=details.get("planned_end_at"),
+                agenda=details["agenda"],
+                time_zone=details["time_zone"],
+            )
+            models.MeetingAttachment.objects.bulk_create(
+                models.MeetingAttachment(meeting=meeting, **attachment)
+                for attachment in details["attachments"]
+            )
+        return drf.response.Response(
+            {"url": room["url"], "slug": room["slug"]},
+            status=drf.status.HTTP_201_CREATED,
+        )
+
+
+def _organized_meeting(request, slug):
+    """The meeting, if the user organizes it; the same 404 otherwise."""
+    meeting = models.Meeting.objects.filter(slug=slug, organizer=request.user).first()
+    if meeting is None:
+        raise Http404
+    return meeting
+
+
+class MeetingDetailView(drf.views.APIView):
+    """API view keeping the Hub's copy of a meeting in step with its state."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "meeting_transcript"
+
+    def patch(self, request, slug):
+        """
+        PATCH /api/v1.0/meetings/<slug>/
+            Rename the meeting (`title`) or push its planned end back
+            (`extend_minutes`). Organizer only.
+        """
+        serializer = serializers.MeetingUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        meeting = _organized_meeting(request, slug)
+
+        if "title" in serializer.validated_data:
+            meeting.title = serializer.validated_data["title"].strip()
+            meeting.save(update_fields=["title", "updated_at"])
+        if "extend_minutes" in serializer.validated_data:
+            meeting_closing.extend(meeting, serializer.validated_data["extend_minutes"])
+        return drf.response.Response(status=drf.status.HTTP_204_NO_CONTENT)
+
+
+class MeetingTranscriptView(drf.views.APIView):
+    """API view closing a meeting and saving its transcript, for its organizer."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "meeting_transcript"
+
+    def post(self, request, slug):
+        """
+        POST /api/v1.0/meetings/<slug>/transcript/
+            Close the meeting and save what was said in a Docs document owned
+            by the organizer. Answers the document (`id`, `title`, `url`),
+            or 204 when nothing was transcribed.
+        """
+        serializer = serializers.MeetingTranscriptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        title = serializer.validated_data["title"]
+
+        # Only the organizer may close it: anyone else gets the same 404 as
+        # for an unknown meeting.
+        meeting = _organized_meeting(request, slug)
+        if meeting.title != title:
+            meeting.title = title
+            meeting.save(update_fields=["title", "updated_at"])
+        meeting_closing.close(meeting)
+
+        if not docs.is_docs_configured():
+            return drf.response.Response(
+                {"detail": "Docs is not configured."},
+                status=drf.status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            document = transcripts.transcript_document(meeting, title)
+        except transcripts.NoTranscriptError:
+            return drf.response.Response(status=drf.status.HTTP_204_NO_CONTENT)
+        except docs.DocsError:
+            return drf.response.Response(
+                {"detail": "Docs could not save the transcript."},
+                status=drf.status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return drf.response.Response(document, status=drf.status.HTTP_201_CREATED)
+
+
+class MeetingArchiveView(drf.views.APIView):
+    """API view downloading the archive of a closed meeting."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "meeting_archive"
+
+    @staticmethod
+    def _may_download(request, meeting, openid_token):
+        """The organizer, or a member of the meeting's conversation."""
+        if meeting.organizer_id == request.user.pk:
+            return True
+        if not openid_token or not meeting.chat_id or not matrix.can_write_rooms():
+            return False
+        user_id = matrix.openid_user_id(openid_token)
+        return bool(user_id) and user_id in matrix.joined_members(meeting.chat_id)
+
+    def post(self, request, slug):
+        """
+        POST /api/v1.0/meetings/<slug>/archive/
+            Answer the ZIP archive of a closed meeting: agenda, participants,
+            documents, transcript and call chat. Members prove their Matrix
+            account with `openid_token`; anyone else gets a 404.
+        """
+        serializer = serializers.MeetingArchiveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        meeting = (
+            models.Meeting.objects.select_related("organizer").filter(slug=slug).first()
+        )
+        if meeting is None:
+            raise Http404
+
+        try:
+            allowed = self._may_download(
+                request, meeting, serializer.validated_data["openid_token"]
+            )
+        except matrix.MatrixError:
+            return drf.response.Response(
+                {"detail": "Matrix could not confirm the membership."},
+                status=drf.status.HTTP_502_BAD_GATEWAY,
+            )
+        if not allowed:
+            raise Http404
+
+        if meeting.closed_at is None:
+            return drf.response.Response(
+                {"detail": "The meeting is not closed yet."},
+                status=drf.status.HTTP_409_CONFLICT,
+            )
+
+        with timezone.override(meeting.time_zone):
+            content = archives.build_archive(
+                meeting, serializer.validated_data["documents"]
+            )
+            file_name = archives.archive_file_name(meeting)
+        return FileResponse(
+            io.BytesIO(content),
+            as_attachment=True,
+            filename=file_name,
+            content_type="application/zip",
+        )

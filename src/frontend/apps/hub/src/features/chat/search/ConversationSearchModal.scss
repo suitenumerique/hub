@@ -182,5 +182,21 @@ $tablet: map.get($themes, "default", "globals", "breakpoints", "tablet");
     background: none;
     cursor: pointer;
     text-decoration: underline;
+
+    &:disabled {
+      cursor: default;
+      color: var(--c--contextuals--content--semantic--neutral--tertiary);
+      text-decoration: none;
+    }
+  }
+
+  // One retry chip per room still awaiting backfill.
+  &__pending-rooms {
+    list-style: none;
+    margin: 4px 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
   }
 }

@@ -91,3 +91,34 @@ class UserAdmin(auth_admin.UserAdmin):
         "updated_at",
     )
     search_fields = ("id", "sub", "admin_email", "email", "full_name")
+
+
+class MeetingParticipantInline(admin.TabularInline):
+    """Who was seen in the call, read-only."""
+
+    model = models.MeetingParticipant
+    extra = 0
+    fields = ("name", "identity", "first_seen_at", "last_seen_at")
+    readonly_fields = fields
+    can_delete = False
+
+
+class MeetingTranscriptSegmentInline(admin.TabularInline):
+    """The sentences relayed for a meeting, read-only."""
+
+    model = models.MeetingTranscriptSegment
+    extra = 0
+    fields = ("spoken_at", "speaker_name", "text")
+    readonly_fields = fields
+    can_delete = False
+
+
+@admin.register(models.Meeting)
+class MeetingAdmin(admin.ModelAdmin):
+    """Admin class for the meetings created from the Hub."""
+
+    list_display = ("slug", "title", "organizer", "created_at", "closed_at")
+    list_filter = ("auto_closed",)
+    search_fields = ("slug", "livekit_room", "organizer__email")
+    readonly_fields = ("id", "slug", "livekit_room", "created_at", "updated_at")
+    inlines = [MeetingParticipantInline, MeetingTranscriptSegmentInline]

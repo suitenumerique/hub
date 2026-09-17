@@ -303,6 +303,16 @@ class Base(Configuration):
                 environ_name="API_MEETING_CREATION_THROTTLE_RATE",
                 environ_prefix=None,
             ),
+            "meeting_transcript": values.Value(
+                default="30/minute",
+                environ_name="API_MEETING_TRANSCRIPT_THROTTLE_RATE",
+                environ_prefix=None,
+            ),
+            "meeting_archive": values.Value(
+                default="20/minute",
+                environ_name="API_MEETING_ARCHIVE_THROTTLE_RATE",
+                environ_prefix=None,
+            ),
         },
     }
     MONITORED_THROTTLE_FAILURE_CALLBACK = (
@@ -494,6 +504,27 @@ class Base(Configuration):
     )
     MEET_API_TIMEOUT = values.PositiveIntegerValue(
         10, environ_name="MEET_API_TIMEOUT", environ_prefix=None
+    )
+
+    # Meeting transcripts: the scribe service relays the live subtitles of Hub
+    # meetings with this token, and the transcript is saved in Docs when the
+    # organizer closes the meeting. Without these settings, nothing is kept.
+    MEETING_SCRIBE_TOKEN = SecretFileValue(
+        None, environ_name="MEETING_SCRIBE_TOKEN", environ_prefix=None
+    )
+    # How long after its creation a meeting is still followed by the scribe.
+    MEETING_SCRIBE_MAX_AGE_HOURS = values.PositiveIntegerValue(
+        24, environ_name="MEETING_SCRIBE_MAX_AGE_HOURS", environ_prefix=None
+    )
+    DOCS_BASE_URL = values.Value(
+        None, environ_name="DOCS_BASE_URL", environ_prefix=None
+    )
+    DOCS_SERVER_TO_SERVER_API_TOKEN = SecretFileValue(
+        None, environ_name="DOCS_SERVER_TO_SERVER_API_TOKEN", environ_prefix=None
+    )
+    # Docs converts the markdown before answering: allow it some time.
+    DOCS_API_TIMEOUT = values.PositiveIntegerValue(
+        60, environ_name="DOCS_API_TIMEOUT", environ_prefix=None
     )
 
     # Whiteboard shown next to the call, as a self-hosted Excalidraw. Without

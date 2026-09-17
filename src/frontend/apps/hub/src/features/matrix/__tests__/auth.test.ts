@@ -55,7 +55,7 @@ describe("getOIDCAuthUrl", () => {
     vi.mocked(createClient).mockReturnValue({
       getAuthMetadata: vi.fn(async () => OIDC_METADATA),
     } as never);
-    vi.mocked(generateOidcAuthorizationUrl).mockReturnValue(
+    vi.mocked(generateOidcAuthorizationUrl).mockResolvedValue(
       "http://localhost:9810/authorize",
     );
 

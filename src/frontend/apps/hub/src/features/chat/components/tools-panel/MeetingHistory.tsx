@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatMeeting } from "@/features/drivers/types";
+import { useMeetingArchive } from "@/features/chat/hooks/useMeetingArchive";
+import type { ChatMeeting, ChatRef } from "@/features/drivers/types";
 
 import { Download } from "./MeetingIcons";
 import { formatMeetingLabel } from "./meetingLabels";
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
 type MeetingHistoryProps = {
+  chatRef: ChatRef;
   /** Meetings that have ended, newest first. */
   meetings: ChatMeeting[];
   isInitialLoading: boolean;
@@ -19,9 +21,12 @@ type MeetingHistoryProps = {
 /**
  * Past meetings and their documents. Selecting a meeting in the top list
  * swaps the block below to that meeting's documents; the first one is selected
- * by default, as in the mockup.
+ * by default, as in the mockup. Each meeting downloads as an archive prepared
+ * by the Hub (agenda, participants, documents, transcript, call chat); the
+ * header button downloads the selected one.
  */
 export const MeetingHistory = ({
+  chatRef,
   meetings,
   isInitialLoading,
   isOpen,
@@ -47,31 +52,7 @@ export const MeetingHistory = ({
 
   const tabIndex = isOpen ? 0 : -1;
 
-  /**
-   * "Download everything" of the mockup, for one meeting or for all of them.
-   * There is no server-side archive endpoint yet, so the panel serialises what
-   * it already holds into the JSON manifest the archive step expects: one
-   * entry per meeting with its call URL and the links to its documents.
-   */
-  const downloadManifest = (archived: ChatMeeting[], filename: string) => {
-    const manifest = archived.map((meeting) => ({
-      id: meeting.id,
-      startedAt: meeting.startedAt,
-      organizerId: meeting.organizerId,
-      url: meeting.url,
-      summary: meeting.summary ?? null,
-      documents: meeting.documents,
-    }));
-    const blob = new Blob([JSON.stringify(manifest, null, 2)], {
-      type: "application/json",
-    });
-    const href = URL.createObjectURL(blob);
-    const link = window.document.createElement("a");
-    link.href = href;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(href);
-  };
+  const { downloadArchive, pendingMeetingId } = useMeetingArchive(chatRef);
 
   const documents = selected
     ? [...(selected.summary ? [selected.summary] : []), ...selected.documents]
@@ -89,9 +70,10 @@ export const MeetingHistory = ({
           <button
             type="button"
             className="hub__chat-meetings__action"
-            disabled={meetings.length === 0}
+            disabled={!selected || pendingMeetingId !== null}
+            aria-busy={pendingMeetingId !== null || undefined}
             tabIndex={tabIndex}
-            onClick={() => downloadManifest(meetings, "meetings.json")}
+            onClick={() => selected && void downloadArchive(selected)}
           >
             {t("Download")}
           </button>
@@ -138,14 +120,15 @@ export const MeetingHistory = ({
                         <button
                           type="button"
                           className="hub__chat-meetings__icon-button"
-                          aria-label={t("Download {{name}}", { name: label })}
-                          tabIndex={tabIndex}
-                          onClick={() =>
-                            downloadManifest(
-                              [meeting],
-                              `meeting-${meeting.id}.json`,
-                            )
+                          aria-label={t("Download the archive of {{name}}", {
+                            name: label,
+                          })}
+                          disabled={pendingMeetingId !== null}
+                          aria-busy={
+                            pendingMeetingId === meeting.id || undefined
                           }
+                          tabIndex={tabIndex}
+                          onClick={() => void downloadArchive(meeting)}
                         >
                           <Download />
                         </button>

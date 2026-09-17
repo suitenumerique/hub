@@ -127,6 +127,7 @@ export const MeetingsTool = ({
       )}
       {view === "history" && (
         <MeetingHistory
+          chatRef={chatRef}
           meetings={past}
           isInitialLoading={isInitialLoading}
           isOpen={isOpen}

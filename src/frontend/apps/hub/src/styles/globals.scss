@@ -8,7 +8,9 @@
 @use "./../features/layouts/LeftPanel/TchapLogo.scss";
 @use "./../features/layouts/components/AccountSelector/AccountSelector.scss";
 @use "./../features/ui/components/avatar/Avatar.scss";
+@use "./../features/ui/components/presence/UserPresenceIndicator.scss";
 @use "./../features/ui/components/user-profile/UserProfile.scss";
+@use "./../features/roles/roles.scss";
 @use "./../features/ui/components/toast/Toast.scss";
 @use "./../features/chat/components/header/ChatHeader.scss";
 @use "./../features/chat/components/ChatBubble.scss";
@@ -18,6 +20,7 @@
 @use "./../features/chat/components/ChatVirtualList.scss";
 @use "./../features/chat/components/ChatView.scss";
 @use "./../features/chat/components/NewChatView.scss";
+@use "./../features/chat/components/CreateSalonModal.scss";
 @use "./../features/chat/components/ChatInvitation.scss";
 @use "./../features/chat/components/FluentEmoji.scss";
 @use "./../features/chat/components/MessageHoverToolbar.scss";
@@ -28,7 +31,7 @@
 @use "./../features/chat/components/UnreadMessages.scss";
 @use "./../features/chat/components/EmojiPicker.scss";
 @use "./../features/chat/search/ConversationSearchModal.scss";
-@use "./../features/chat/search/messageSearchScaffold.scss";
+@use "./../features/chat/search/MessageSearchSection.scss";
 @use "./../features/chat/search/MessageSearchResultRow.scss";
 @use "./../features/chat/search/messageSearchHighlight.scss";
 @use "./../features/chat/components/tools-panel/ChatToolsPanel.scss";

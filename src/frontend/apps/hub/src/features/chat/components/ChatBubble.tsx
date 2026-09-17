@@ -1,4 +1,5 @@
 import { Trash } from "@gouvfr-lasuite/ui-components/icons";
+import { UserRoleBadge } from "@/features/roles/RoleBadge";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -257,6 +258,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       {showHeader && (
         <div className="hub__chat-bubble__header">
           <span className="hub__chat-bubble__author">{author.name}</span>
+          <UserRoleBadge userId={author.id} />
           <span className="hub__chat-bubble__header-dot" aria-hidden="true">
             •
           </span>

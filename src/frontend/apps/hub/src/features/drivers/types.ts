@@ -17,6 +17,19 @@ export type MeetRoom = {
   slug: string;
 };
 
+/** When the call of a new Meet room takes place, as the driver records it. */
+export type MeetRoomSchedule = {
+  startsAt: Date;
+  /** Past it, the server closes the meeting once nobody is in the call. */
+  plannedEndAt?: Date;
+};
+
+/** A text file attached to a meeting when it is planned. */
+export type MeetingAttachment = {
+  name: string;
+  content: string;
+};
+
 export type ChatAccountConfig = {
   accountId: AccountId;
   label: string;
@@ -168,8 +181,10 @@ export type ChatMeeting = {
   startedAt: string;
   /** Planned length. The call stays joinable past it until it is closed. */
   plannedDurationMinutes?: number;
-  /** ISO 8601 time the organizer closed the meeting. */
+  /** ISO 8601 time the meeting was closed. */
   endedAt?: string;
+  /** Who closed it: its organizer, or the server once it was over and empty. */
+  endedBy?: "organizer" | "auto";
   /** Documents shared for this meeting (agenda, support…), newest first. */
   documents: ChatMeetingDocument[];
   /** Recap/summary document, once attached. */
@@ -182,6 +197,12 @@ export type StartMeetingOptions = {
   plannedDurationMinutes?: number;
   /** Future start of a scheduled meeting; omitted to start the call now. */
   startsAt?: Date;
+  /** Agenda typed in the form, kept by the Hub for the archive. */
+  agenda?: string;
+  /** Text files picked in the form, kept by the Hub for the archive. */
+  attachments?: MeetingAttachment[];
+  /** Links shown to every member in the meeting documents. */
+  documents?: ChatMeetingDocument[];
 };
 
 export type LocalChatSections = {
@@ -243,6 +264,18 @@ export type ChatUser = ChatMessageAuthor & {
   email: string;
   /** Secondary line shown in people search results. */
   subtitle: string;
+};
+
+/** Presence values exposed by chat backends, kept separate from product labels. */
+export type ChatUserPresenceState = "online" | "unavailable" | "offline";
+
+/** User choice for this client; `online` enables automatic idle handling. */
+export type ChatSelfPresencePreference = "online" | "offline";
+
+/** Current transport-level presence for one chat user. */
+export type ChatUserPresence = {
+  userId: string;
+  state: ChatUserPresenceState;
 };
 
 /**

@@ -4,8 +4,10 @@ import {
 } from "@gouvfr-lasuite/ui-components";
 import { useTranslation } from "react-i18next";
 
-import type { Chat, ChatVisual } from "@/features/drivers/types";
+import type { Chat } from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
+
+import { renderChatAvatarContent } from "./chatAvatarContent";
 
 type ConversationSearchResultRowProps = {
   id: string;
@@ -13,21 +15,6 @@ type ConversationSearchResultRowProps = {
   subtitle: string;
   accountLabel?: string;
   onSelect: () => void;
-};
-
-const renderAvatarContent = (visual: ChatVisual) => {
-  switch (visual.kind) {
-    case "emoji":
-      return visual.emoji;
-    case "icon":
-      return (
-        <span className="material-icons" aria-hidden="true">
-          {visual.icon}
-        </span>
-      );
-    default:
-      return null;
-  }
 };
 
 export const ConversationSearchResultRow = ({
@@ -51,7 +38,7 @@ export const ConversationSearchResultRow = ({
               decorative
               variant={chat.visual.kind === "emoji" ? "soft" : "solid"}
             >
-              {renderAvatarContent(chat.visual)}
+              {renderChatAvatarContent(chat.visual)}
             </Avatar>
             <span className="hub__conversation-search__text">
               <span className="hub__conversation-search__name">

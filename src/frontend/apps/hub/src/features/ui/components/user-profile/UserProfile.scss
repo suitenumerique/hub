@@ -1,4 +1,4 @@
-// Both of our `actions` items (change-photo, logout) land inside the
+// Our profile actions (photo, role, logout) land inside the
 // library's `.user-menu__actions__left` wrapper, which is a row flexbox
 // by default (`display: flex; align-items: center`) — that's what puts
 // them side by side, not the outer `.user-menu__actions` container. The
@@ -24,5 +24,32 @@
     border-radius: 50%;
     object-fit: cover;
     pointer-events: none;
+  }
+
+  &__presence-control {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    z-index: 2;
+    display: grid;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    place-items: center;
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+
+    .hub__user-presence {
+      width: 13px;
+      height: 13px;
+      margin: 0;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--c--contextuals--border--semantic--brand--primary);
+      outline-offset: 1px;
+    }
   }
 }

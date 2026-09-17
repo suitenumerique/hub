@@ -27,18 +27,22 @@ import type {
   AccountId,
   ChatMainTimelineUnread,
   ChatMeeting,
+  ChatMeetingDocument,
   ChatMessage,
   ChatMessagesPage,
   ChatMembers,
+  ChatSelfPresencePreference,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
   ChatUnread,
   ChatUser,
+  ChatUserPresence,
   LocalChat,
   LocalChatSections,
   LocalSpace,
   MeetRoom,
+  MeetRoomSchedule,
   StartMeetingOptions,
   User,
 } from "../types";
@@ -47,6 +51,7 @@ import {
   clearStoredConversationSearch,
   matrixStorageOwner,
 } from "./matrixStorage";
+import { readChatSelfPresencePreference } from "../presencePreference";
 
 /**
  * Keeps `matrix-js-sdk` out of the main Next.js bundle. The real Matrix driver
@@ -115,6 +120,7 @@ export class LazyMatrixDriver extends BaseDriver {
   // the New Chat composer before the SDK lazy-loads.
   override readonly supportsConversationCreation = true;
   override readonly supportsSpaces = true;
+  override readonly supportsSpaceCreation = true;
   // Static capability mirroring the real `MatrixDriver`, read by the meeting
   // button before the SDK lazy-loads.
   override readonly supportsMeetings = true;
@@ -184,8 +190,41 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.getSpaces());
   }
 
+  async createSpace(name: string): Promise<LocalSpace> {
+    return this.withTarget((driver) => driver.createSpace(name));
+  }
+
   async getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]> {
     return this.withTarget((driver) => driver.getChatUsers(filters));
+  }
+
+  getUserPresence(userId: string): ChatUserPresence | null {
+    return this.target?.getUserPresence(userId) ?? null;
+  }
+
+  override readonly supportsPresence = true;
+
+  getCurrentUserId(): string | null {
+    return this.target?.getCurrentUserId() ?? null;
+  }
+
+  getSelfPresencePreference(): ChatSelfPresencePreference {
+    return (
+      this.target?.getSelfPresencePreference() ??
+      readChatSelfPresencePreference(this.accountId)
+    );
+  }
+
+  async setSelfPresencePreference(
+    preference: ChatSelfPresencePreference,
+  ): Promise<void> {
+    return this.withTarget((driver) =>
+      driver.setSelfPresencePreference(preference),
+    );
+  }
+
+  async setUserPresence(state: ChatUserPresence["state"]): Promise<void> {
+    return this.withTarget((driver) => driver.setUserPresence(state));
   }
 
   async getChatMembers(chatId: string): Promise<ChatMembers> {
@@ -196,13 +235,26 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.getChatForUsers(userIds));
   }
 
-  async createChatForUsers(userIds: string[]): Promise<LocalChat> {
-    return this.withTarget((driver) => driver.createChatForUsers(userIds));
+  async createChatForUsers(
+    userIds: string[],
+    name?: string,
+    spaceId?: string,
+    forceNew?: boolean,
+  ): Promise<LocalChat> {
+    return this.withTarget((driver) =>
+      driver.createChatForUsers(userIds, name, spaceId, forceNew),
+    );
   }
 
   // Static capability mirroring the real `MatrixDriver`, read synchronously
   // before the SDK lazy-loads.
   override readonly supportsAvatarUpload = true;
+
+  override readonly supportsProfileRoles = true;
+
+  override async getProfileIdentityToken(): Promise<string> {
+    return this.withTarget((driver) => driver.getProfileIdentityToken());
+  }
 
   async setUserAvatar(file: File): Promise<string> {
     return this.withTarget((driver) => driver.setUserAvatar(file));
@@ -296,7 +348,7 @@ export class LazyMatrixDriver extends BaseDriver {
 
   override async startChatMeeting(
     chatId: string,
-    createRoom: () => Promise<MeetRoom>,
+    createRoom: (schedule: MeetRoomSchedule) => Promise<MeetRoom>,
     options?: StartMeetingOptions,
   ): Promise<ChatMeeting> {
     return this.withTarget((driver) =>
@@ -310,6 +362,20 @@ export class LazyMatrixDriver extends BaseDriver {
   ): Promise<void> {
     return this.withTarget((driver) =>
       driver.endChatMeeting(chatId, meetingId),
+    );
+  }
+
+  override async getOpenIdToken(): Promise<string> {
+    return this.withTarget((driver) => driver.getOpenIdToken());
+  }
+
+  override async addChatMeetingDocument(
+    chatId: string,
+    meetingId: string,
+    document: ChatMeetingDocument,
+  ): Promise<void> {
+    return this.withTarget((driver) =>
+      driver.addChatMeetingDocument(chatId, meetingId, document),
     );
   }
 

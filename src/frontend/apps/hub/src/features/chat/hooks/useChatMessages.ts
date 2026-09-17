@@ -47,6 +47,10 @@ export type UseChatMessagesResult = {
   fetchOlder: () => void;
   fetchNewer: () => void;
   openAround: (eventId: string) => Promise<void>;
+  /** Drops any re-anchored window and refetches the live tail — the "jump
+   * to most recent message" affordance, for when `openAround` has moved the
+   * loaded window away from `isAtLiveEnd`. */
+  returnToLive: () => Promise<void>;
 };
 
 export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
@@ -154,6 +158,25 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     [queryClient, queryKey, ref.accountId, ref.chatId],
   );
 
+  const returnToLive = useCallback(async () => {
+    await queryClient.cancelQueries({ queryKey, exact: true });
+    const page = await getRegistry().get(ref.accountId).getChatMessages({
+      chatId: ref.chatId,
+      cursor: null,
+      direction: "older",
+      limit: CHAT_PAGE_SIZE,
+    });
+    queryClient.setQueryData<InfiniteData<ChatMessagesPage, MessagePageParam>>(
+      queryKey,
+      {
+        pages: [page],
+        pageParams: [{ cursor: null, direction: "older" }],
+      },
+    );
+    setWindowAnchor(null);
+    setWindowVersion((version) => version + 1);
+  }, [queryClient, queryKey, ref.accountId, ref.chatId]);
+
   // Virtuoso indexes are derived from Matrix identities. When older messages
   // are prepended, find the former first event and move the virtual origin by
   // exactly that many rows. Appends and counter updates leave it untouched.
@@ -210,5 +233,6 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     fetchOlder,
     fetchNewer,
     openAround,
+    returnToLive,
   };
 };

@@ -1,49 +1,15 @@
-@use "./scaffoldTokens" as *;
-
+// Name/subtitle/open-link reuse .hub__conversation-search's own classes —
+// a message result is visually the same row as a chat result, plus this
+// excerpt line underneath.
 .hub__message-search-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 0;
-  color: var(--hub-scaffold-text-sub);
-
-  &__sender {
-    font-weight: 500;
-    color: var(--hub-scaffold-text-title);
-  }
-
-  &__account {
-    font-weight: normal;
-    color: var(--hub-scaffold-text-sub);
-    font-size: 0.9em;
-  }
-
-  &__timestamp {
-    font-size: 0.85em;
-    color: var(--hub-scaffold-text-sub);
-  }
-
   &__excerpt {
-    font-size: 0.9em;
-    color: var(--hub-scaffold-text-sub);
-    max-width: 100%;
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #75758a);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  &__action {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.9em;
-    color: var(--hub-scaffold-text-title);
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-
-  &:hover &__action,
-  &:focus-within &__action {
-    opacity: 1;
   }
 }

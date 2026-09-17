@@ -104,6 +104,23 @@ services:
         createbuckets:
           condition: service_started
 
+  # Relays the live subtitles of Hub meetings (see src/scribe). Optional:
+  # started only with the `transcript` profile.
+  meeting-scribe:
+    profiles: [transcript]
+    build:
+      context: src/scribe
+      target: production
+    image: hub:meeting-scribe
+    restart: unless-stopped
+    env_file:
+      - env.d/development/scribe
+      - path: env.d/development/scribe.local
+        required: false
+    depends_on:
+      app-dev:
+        condition: service_started
+
   frontend-development:
     user: "${DOCKER_USER:-1000}"
     build:

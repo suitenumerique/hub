@@ -22,13 +22,14 @@ import { useTranslation } from "react-i18next";
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
-import { useAvatarSrc } from "@/features/chat/hooks/useAvatarSrc";
 import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
 import { useSetChatAvatar } from "@/features/chat/hooks/useSetChatAvatar";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatRef } from "@/features/drivers/types";
-import { Avatar } from "@/features/ui/components/avatar/Avatar";
+import { RoleBadge } from "@/features/roles/RoleBadge";
+import { useUserRoles } from "@/features/roles/useRoles";
+import { ChatPresenceAvatar } from "@/features/ui/components/presence/ChatPresenceAvatar";
 
 import { ChatMembersModal } from "./ChatMembersModal";
 import { LeaveConversationModal } from "./LeaveConversationModal";
@@ -130,6 +131,13 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
   const router = useRouter();
   const { t } = useTranslation();
   const menu = useDropdownMenu();
+  const counterpartId =
+    chat.kind === "direct" ? chat.participantIds[0] : undefined;
+  const roles = useUserRoles(counterpartId ? [counterpartId] : []);
+  const role = counterpartId ? roles[counterpartId] : "";
+  const accessibleName = role
+    ? `${chat.name}, ${t("Role: {{role}}", { role })}`
+    : chat.name;
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isLeaveOpen, setIsLeaveOpen] = useState(false);
   const { setFavourite, isPending } = useChatFavourite(chat.ref);
@@ -249,13 +257,16 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       size="small"
       className="hub__chat-header__breadcrumb"
       disabled={isInvitation}
-      aria-label={chat.name}
+      // An explicit label replaces the button's content for assistive
+      // technology, so the role is spoken with the name rather than lost.
+      aria-label={accessibleName}
       aria-haspopup={isInvitation ? undefined : "menu"}
       aria-expanded={isInvitation ? undefined : menu.isOpen}
       onClick={() => menu.setIsOpen((open) => !open)}
     >
-      <ChatAvatar chat={chat} />
+      <ChatPresenceAvatar chat={chat} />
       <span className="hub__chat-header__breadcrumb__name">{chat.name}</span>
+      <RoleBadge role={role ?? ""} />
       {!isInvitation && <ArrowDropDown aria-hidden="true" />}
     </Button>
   );
@@ -293,28 +304,4 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       />
     </>
   );
-};
-
-const ChatAvatar = ({ chat }: { chat: Chat }) => {
-  const src = useAvatarSrc(chat.accountId, chat.visual);
-  if (chat.visual.kind === "image") {
-    return <Avatar label={chat.name} src={src} decorative />;
-  }
-  if (chat.visual.kind === "emoji") {
-    return (
-      <Avatar label={chat.name} variant="soft" decorative>
-        {chat.visual.emoji}
-      </Avatar>
-    );
-  }
-  if (chat.visual.kind === "icon") {
-    return (
-      <Avatar label={chat.name} decorative>
-        <span className="material-icons" aria-hidden="true">
-          {chat.visual.icon}
-        </span>
-      </Avatar>
-    );
-  }
-  return <Avatar label={chat.name} decorative />;
 };

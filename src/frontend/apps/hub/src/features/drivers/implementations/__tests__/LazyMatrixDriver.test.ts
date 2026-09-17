@@ -7,6 +7,8 @@ const getChatMeetingsMock = vi.hoisted(() => vi.fn());
 const endChatMeetingMock = vi.hoisted(() => vi.fn());
 const extendChatMeetingMock = vi.hoisted(() => vi.fn());
 const renameChatMeetingMock = vi.hoisted(() => vi.fn());
+const addChatMeetingDocumentMock = vi.hoisted(() => vi.fn());
+const getOpenIdTokenMock = vi.hoisted(() => vi.fn());
 
 // The real driver pulls in matrix-js-sdk: only the meeting calls matter here.
 vi.mock("../MatrixDriver", () => ({
@@ -24,6 +26,8 @@ vi.mock("../MatrixDriver", () => ({
     endChatMeeting = endChatMeetingMock;
     extendChatMeeting = extendChatMeetingMock;
     renameChatMeeting = renameChatMeetingMock;
+    addChatMeetingDocument = addChatMeetingDocumentMock;
+    getOpenIdToken = getOpenIdTokenMock;
   },
 }));
 
@@ -57,6 +61,8 @@ describe("LazyMatrixDriver meetings", () => {
     await driver.endChatMeeting(ROOM_ID, meeting.id);
     await driver.extendChatMeeting(ROOM_ID, meeting.id, 15);
     await driver.renameChatMeeting(ROOM_ID, meeting.id, "Point hebdo");
+    const transcript = { id: "doc", title: "Doc", url: "https://x/doc" };
+    await driver.addChatMeetingDocument(ROOM_ID, meeting.id, transcript);
 
     expect(startChatMeetingMock).toHaveBeenCalledWith(
       ROOM_ID,
@@ -66,10 +72,23 @@ describe("LazyMatrixDriver meetings", () => {
     expect(getChatMeetingsMock).toHaveBeenCalledWith(ROOM_ID);
     expect(endChatMeetingMock).toHaveBeenCalledWith(ROOM_ID, meeting.id);
     expect(extendChatMeetingMock).toHaveBeenCalledWith(ROOM_ID, meeting.id, 15);
+    expect(addChatMeetingDocumentMock).toHaveBeenCalledWith(
+      ROOM_ID,
+      meeting.id,
+      transcript,
+    );
     expect(renameChatMeetingMock).toHaveBeenCalledWith(
       ROOM_ID,
       meeting.id,
       "Point hebdo",
+    );
+  });
+
+  it("forwards the OpenID token request", async () => {
+    getOpenIdTokenMock.mockResolvedValue("openid-token");
+
+    await expect(new LazyMatrixDriver("matrix").getOpenIdToken()).resolves.toBe(
+      "openid-token",
     );
   });
 });

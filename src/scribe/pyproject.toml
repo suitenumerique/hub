@@ -1,0 +1,14 @@
+# Tool settings only: the scribe is a single module, installed from
+# requirements.txt.
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "BLE"]

@@ -5,6 +5,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type { ChatThread } from "@/features/drivers/types";
+import { UserRoleBadge } from "@/features/roles/RoleBadge";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { formatChatTime } from "../../formatTimestamp";
@@ -56,6 +57,7 @@ export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
             <span className="hub__chat-thread-item__author">
               {thread.author.name}
             </span>
+            <UserRoleBadge userId={thread.author.id} />
             <span className="hub__chat-thread-item__time">
               {formatChatTime(thread.lastReplyAt)}
             </span>

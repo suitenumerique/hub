@@ -27,7 +27,8 @@ def create_room(email):
     Create a Meet room owned by the user with this email.
 
     Meet issues an application token scoped to that user, then the room is
-    created with it. Returns the room's `url` and `slug`.
+    created with it. Returns the room's `id` (also the name of its LiveKit
+    room), `url` and `slug`.
     """
     base_url = settings.MEET_API_URL.rstrip("/")
     timeout = settings.MEET_API_TIMEOUT
@@ -54,7 +55,7 @@ def create_room(email):
         )
         room_response.raise_for_status()
         room = room_response.json()
-        return {"url": room["url"], "slug": room["slug"]}
+        return {"id": str(room["id"]), "url": room["url"], "slug": room["slug"]}
     except (requests.RequestException, KeyError, ValueError) as error:
         logger.warning("Meet room creation failed: %s", error)
         raise MeetError from error

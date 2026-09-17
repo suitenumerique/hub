@@ -48,7 +48,18 @@ export const useStartChatMeeting = (
       }
       return getRegistry()
         .get(ref.accountId)
-        .startChatMeeting(ref.chatId, createMeetRoom, options);
+        .startChatMeeting(
+          ref.chatId,
+          (schedule) =>
+            createMeetRoom({
+              ...schedule,
+              chatId: ref.chatId,
+              title: options?.title?.trim(),
+              agenda: options?.agenda,
+              attachments: options?.attachments,
+            }),
+          options,
+        );
     },
     onSuccess: () => {
       if (ref) {

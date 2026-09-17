@@ -129,13 +129,14 @@ export const ConversationSearchModal = ({
                 ))}
               </div>
 
-              {/* --- Messages section: new for ISSUE42, scaffold-styled --- */}
-              <div className="hub__message-search-scaffold">
+              {/* Messages section: same row style as "Select a chat" above,
+                  separated by a divider — see MessageSearchSection.scss. */}
+              <div className="hub__message-search-section">
                 {messageResults.length > 0 && (
                   <div role="group" aria-labelledby={messageHeading}>
                     <h2
                       id={messageHeading}
-                      className="hub__message-search-scaffold__heading"
+                      className="hub__conversation-search__heading"
                     >
                       {t("Messages")}
                     </h2>
@@ -173,7 +174,7 @@ export const ConversationSearchModal = ({
                   </QuickSearchItem>
                 )}
                 <div
-                  className="hub__message-search-scaffold__status"
+                  className="hub__conversation-search__status"
                   role="status"
                   aria-live="polite"
                 >
@@ -289,7 +290,7 @@ const SearchStatus = ({
   );
 };
 
-// --- Message search UI helpers (new for ISSUE42, scaffold-styled) ---------
+// --- Message search UI helpers ---------------------------------------
 
 const MessageSearchResultsMessage = ({
   hasResults,
@@ -342,12 +343,12 @@ const MessageSearchStatusHint = ({
         </p>
       )}
       {status.pendingRooms.length > 0 && (
-        <ul className="hub__message-search-scaffold__pending-rooms">
+        <ul className="hub__conversation-search__pending-rooms">
           {status.pendingRooms.map((room) => (
             <li key={room.roomId}>
               <button
                 type="button"
-                className="hub__message-search-scaffold__retry"
+                className="hub__conversation-search__retry"
                 disabled={room.status === "backfilling"}
                 onClick={() => onBackfillRoom(room.roomId)}
               >
@@ -371,7 +372,7 @@ const MessageSearchStatusHint = ({
       {retryable && (
         <button
           type="button"
-          className="hub__message-search-scaffold__retry"
+          className="hub__conversation-search__retry"
           onClick={onRetry}
         >
           {t("Retry indexing")}

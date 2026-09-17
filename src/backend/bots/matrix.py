@@ -292,3 +292,77 @@ def send_message(
         json=content,
     )
     return sent["event_id"]
+
+
+# --- Hub meetings -----------------------------------------------------------
+# The meeting of a conversation is room state. Ariane writes it when the
+# server closes a meeting on its own; the archive asks the homeserver who is
+# in the room and who is asking.
+
+
+def can_write_rooms() -> bool:
+    """Whether Ariane has what she needs to get into a room and write in it."""
+    return bool(
+        settings.MATRIX_AS_TOKEN
+        and settings.MATRIX_ADMIN_TOKEN
+        and settings.MATRIX_BOT_USER_ID
+    )
+
+
+def _state_path(room_id: str, event_type: str, state_key: str) -> str:
+    return (
+        f"{CLIENT_API:s}/rooms/{quote(room_id, safe=''):s}"
+        f"/state/{quote(event_type, safe=''):s}/{quote(state_key, safe=''):s}"
+    )
+
+
+def get_room_state(room_id: str, event_type: str, state_key: str) -> dict[str, Any]:
+    """One state event's content, read as Ariane (she must be in the room)."""
+    return _as("GET", _state_path(room_id, event_type, state_key))
+
+
+def set_room_state(
+    room_id: str, event_type: str, state_key: str, content: dict[str, Any]
+) -> None:
+    """Write one state event as Ariane (she must be in the room)."""
+    _as("PUT", _state_path(room_id, event_type, state_key), json=content)
+
+
+def joined_members(room_id: str) -> set[str]:
+    """Who is in a room now, through the admin API: Ariane need not be there."""
+    members = _call(
+        "GET",
+        f"/_synapse/admin/v1/rooms/{quote(room_id, safe=''):s}/members",
+        settings.MATRIX_ADMIN_TOKEN,
+    )
+    return set(members.get("members", []))
+
+
+def openid_user_id(openid_token: str) -> str | None:
+    """
+    The Matrix account behind an OpenID token its client requested, or `None`.
+
+    This is how a browser proves which Matrix user it is without handing over
+    its access token: the homeserver vouches for the short-lived OpenID token.
+    """
+    try:
+        response = requests.get(
+            f"{settings.MATRIX_HOMESERVER_URL.rstrip('/'):s}"
+            "/_matrix/federation/v1/openid/userinfo",
+            params={"access_token": openid_token},
+            timeout=settings.MATRIX_REQUEST_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise MatrixError(f"OpenID userinfo failed: {exc!s}") from exc
+    if response.status_code in (401, 403, 404):
+        return None
+    if response.status_code >= 400:
+        raise MatrixError(
+            f"OpenID userinfo returned {response.status_code:d}",
+            status_code=response.status_code,
+        )
+    try:
+        user_id = response.json().get("sub")
+    except ValueError:
+        return None
+    return user_id if isinstance(user_id, str) and user_id else None

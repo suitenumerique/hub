@@ -16,11 +16,15 @@ type DraftDocument = {
   url: string;
   /** Picked on this device and served from a blob URL, to release on removal. */
   isLocalFile?: boolean;
+  /** Text of a picked file, kept by the Hub for the meeting archive. */
+  content?: string;
 };
 
 /** Planned lengths offered in the form, in minutes. */
 export const MEETING_DURATIONS = [15, 30, 45, 60, 90, 120, 180] as const;
 export const DEFAULT_MEETING_DURATION = 60;
+/** Attached text files are kept by the Hub: small ones only. */
+export const MAX_ATTACHMENT_BYTES = 100_000;
 
 type NewMeetingFormProps = {
   isOpen: boolean;
@@ -33,6 +37,15 @@ type NewMeetingFormProps = {
   /** Schedules the call at the chosen date and time. */
   onSchedule: (options: StartMeetingOptions) => void;
 };
+
+/** The text of a picked file. */
+const readText = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
 
 /** The local date and time of the form as a `Date`, when both are set. */
 const toStartDate = (date: string, time: string): Date | undefined => {
@@ -87,9 +100,8 @@ const DocumentRow = ({ document, tabIndex, onRemove }: DocumentRowProps) => {
  * calendar, and the agenda and the documents accept .txt and .md files from
  * the user's device; documents can also be added by link ("Docs").
  *
- * Nothing is persisted yet: the Hub has no store for a planned meeting, so the
- * title, date, agenda and documents live in component state and only the
- * immediate call reaches the server.
+ * Links are shown to every member with the meeting. The agenda and the picked
+ * files are kept by the Hub for the meeting archive.
  */
 export const NewMeetingForm = ({
   isOpen,
@@ -124,9 +136,21 @@ export const NewMeetingForm = ({
 
   const tabIndex = isOpen ? 0 : -1;
 
+  const pickedFiles = [agendaFile, ...documents].filter(
+    (doc): doc is DraftDocument => doc?.content !== undefined,
+  );
   const meetingOptions: StartMeetingOptions = {
     title: title.trim() || undefined,
     plannedDurationMinutes: durationMinutes,
+    agenda: agenda.trim() || undefined,
+    attachments: pickedFiles.map((doc) => ({
+      name: doc.title,
+      content: doc.content ?? "",
+    })),
+    // Links are listed for every member; picked files only go to the archive.
+    documents: documents
+      .filter((doc) => !doc.isLocalFile)
+      .map(({ id, title: docTitle, url }) => ({ id, title: docTitle, url })),
   };
   const startsAt = toStartDate(date, time);
   const canSchedule = startsAt !== undefined && startsAt.getTime() > Date.now();
@@ -143,10 +167,31 @@ export const NewMeetingForm = ({
 
   const newDocumentId = () => `document-${nextDocumentId.current++}`;
 
-  const toLocalDocument = (file: File): DraftDocument => {
+  const toLocalDocument = async (file: File): Promise<DraftDocument> => {
+    const content = await readText(file);
     const url = URL.createObjectURL(file);
     localFileUrls.current.add(url);
-    return { id: newDocumentId(), title: file.name, url, isLocalFile: true };
+    return {
+      id: newDocumentId(),
+      title: file.name,
+      url,
+      isLocalFile: true,
+      content,
+    };
+  };
+
+  /** The picked files, read; an unreadable or too large one is refused. */
+  const readFiles = async (files: File[]): Promise<DraftDocument[]> => {
+    const readable = files.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+    if (readable.length !== files.length) {
+      notify.error(t("A file is too large to be attached (100 KB at most)."));
+    }
+    try {
+      return await Promise.all(readable.map(toLocalDocument));
+    } catch {
+      notify.error(t("The file could not be read."));
+      return [];
+    }
   };
 
   const release = (document: DraftDocument | null | undefined) => {
@@ -168,13 +213,17 @@ export const NewMeetingForm = ({
     return accepted;
   };
 
-  const attachAgendaFile = (event: ChangeEvent<HTMLInputElement>) => {
+  const attachAgendaFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const [file] = pickTextFiles(event);
     if (!file) {
       return;
     }
+    const picked = await readFiles([file]);
+    if (picked.length === 0) {
+      return;
+    }
     release(agendaFile);
-    setAgendaFile(toLocalDocument(file));
+    setAgendaFile(picked[0]);
   };
 
   const removeAgendaFile = () => {
@@ -182,8 +231,8 @@ export const NewMeetingForm = ({
     setAgendaFile(null);
   };
 
-  const attachDocumentFiles = (event: ChangeEvent<HTMLInputElement>) => {
-    const added = pickTextFiles(event).map(toLocalDocument);
+  const attachDocumentFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    const added = await readFiles(pickTextFiles(event));
     if (added.length > 0) {
       setDocuments((current) => [...current, ...added]);
     }
