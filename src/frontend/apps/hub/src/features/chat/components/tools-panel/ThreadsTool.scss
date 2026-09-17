@@ -160,9 +160,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--c--globals--spacings--xs, 8px);
-    // Leave room inside the scrollport for the root bubble's hover toolbar.
-    // It extends above the bubble and would otherwise be clipped by overflow.
-    padding: 20px var(--c--globals--spacings--sm, 12px)
+    // The toolbar extends 38px above the bubble, including its hover bridge.
+    // Sent roots have no author header to provide any extra space.
+    padding: var(--c--globals--spacings--xxl, 48px)
+      var(--c--globals--spacings--sm, 12px)
       var(--c--globals--spacings--sm, 12px);
   }
 

@@ -186,7 +186,7 @@ jobs:
 
       - name: Configure MinIO
         run: |
-          MINIO=$(docker ps | grep minio/minio | sed -E 's/.*\s+([a-zA-Z0-9_-]+)$/\1/')
+          MINIO=$(docker ps | grep quay.io/minio/minio | sed -E 's/.*\s+([a-zA-Z0-9_-]+)$/\1/')
           docker exec ${MINIO} sh -c \
             "mc alias set hub http://localhost:9000 hub password && \
             mc alias ls && \

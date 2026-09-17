@@ -1,12 +1,14 @@
+import { type InfiniteData, skipToken, useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatRef } from "@/features/drivers/types";
+import type { ChatMessagesPage, ChatRef } from "@/features/drivers/types";
 
 import type {
   DraftThreadRoot,
   OpenThreadOptions,
 } from "../../ChatPanelContext";
+import { chatKeys } from "../../chatKeys";
 import { useStartChatThread } from "../../hooks/useStartChatThread";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
@@ -34,7 +36,22 @@ export const DraftThreadDetail = ({
 }: DraftThreadDetailProps) => {
   const { t } = useTranslation();
   const { startThread, isStarting, isSupported } = useStartChatThread(chatRef);
-  const { message, author } = root;
+  // The draft root is a snapshot from when Reply was clicked. Subscribe to
+  // its cached message so reactions stay live before the first reply is sent.
+  const { data: cachedMessage } = useQuery({
+    queryKey: chatKeys.messages(chatRef),
+    queryFn: skipToken,
+    select: (data: InfiniteData<ChatMessagesPage>) => {
+      for (const page of data.pages) {
+        const message = page.messages.find(({ id }) => id === root.message.id);
+        if (message) {
+          return message;
+        }
+      }
+    },
+  });
+  const message = cachedMessage ?? root.message;
+  const { author } = root;
 
   const handleSubmit = (content: string) =>
     startThread(message, content, {

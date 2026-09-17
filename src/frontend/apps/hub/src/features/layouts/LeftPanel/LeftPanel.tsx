@@ -45,6 +45,7 @@ type ActionItem =
       icon: ReactNode;
       label: string;
       keyShortcuts?: string;
+      shortcutLabel?: string;
       onClick: () => void;
     };
 
@@ -105,6 +106,10 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const scopedChats = useChats(activeSpaceId ?? undefined);
   const unreadLookup = useChatUnread();
   const entries = useDriverEntries();
+  const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+    ? "⌘K"
+    : "Ctrl K";
+
   const accountLabels = new Map(
     entries.map((entry) => [entry.accountId, entry.label]),
   );
@@ -158,6 +163,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
       ),
       label: t("Search"),
       keyShortcuts: "Meta+K Control+K",
+      shortcutLabel: searchShortcut,
       onClick: onSearch,
     });
   }
@@ -273,6 +279,11 @@ const ActionRow = ({ action }: { action: ActionItem }) => {
         {action.icon}
       </span>
       <span className="hub__left-panel__action__label">{action.label}</span>
+      {"shortcutLabel" in action && action.shortcutLabel ? (
+        <kbd className="hub__left-panel__action__shortcut" aria-hidden="true">
+          {action.shortcutLabel}
+        </kbd>
+      ) : null}
     </>
   );
 

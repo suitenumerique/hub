@@ -73,6 +73,7 @@ and this project adheres to
 - ✨(backend) Create Meet rooms through the Meet external API. Add the
   `/meetings/` endpoint, enabled once the Meet application credentials are set.
   Rooms are public by default so they can be joined from an embedded frame.
+- 💄(frontend) Show the platform-specific search shortcut on sidebar hover.
 - ✨(frontend) Search joined conversations by name and current participants.
   Persist the search index separately and prepare small rooms progressively.
   Add a QuickSearch modal with local results across connected accounts.
@@ -86,7 +87,9 @@ and this project adheres to
   days, whichever comes first) automatically when it is opened, or on demand
   per room from the search modal, with indexing progress shown per room.
 - ✨(frontend) Notify incoming messages, thread replies and invitations.
-  Play sound on receipt and show browser notifications when Hub is unfocused.
+  Play sound when Hub is unfocused or another conversation is displayed.
+  Show browser notifications only when Hub is unfocused.
+  Use the sidebar's Tchap symbol for notification icons.
   Request permission on incoming activity with a user-gesture fallback.
   Preload audio on arrival without replaying missed alerts.
 - 🏗️(frontend) Initialize the Hub frontend project
@@ -114,6 +117,7 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Hide the unavailable thread follow control
 - ✨(frontend) Expand the message composer up to eight lines
 - ⚡(frontend) Speed up the emoji picker and align reaction artwork
 - 💄(frontend) Improve message dates and bubble readability
@@ -130,6 +134,21 @@ and this project adheres to
 
 - 🐛(frontend) Let every member start a meeting in conversations created by
   the Hub, and explain the refusal before creating a Meet room elsewhere.
+- 🐛(frontend) Keep the toolbar open beside short messages after hovering
+  the bubble, without revealing it from the surrounding empty space
+- 🐛(frontend) Reserve enough space for the thread root reaction toolbar
+- 🐛(frontend) Update root reactions while drafting the first thread reply
+- 🐛(frontend) Allow reactions on newly sent messages before Matrix sync
+  indexes them in the conversation or thread timeline
+- 🐛(frontend) Preserve group names in conversation search and lists when
+  Matrix participants are only partially loaded
+- 🐛(docker) Pull MinIO images from quay.io for development and CI
+- 🐛(frontend) Reopen conversations at the latest message after unread
+  navigation and resume forward pagination from contextual history
+- 🐛(frontend) Keep the unread button visible while navigating to unread
+  messages
+- 🐛(frontend) Show the unread button before the initial viewport check
+- 🐛(frontend) Keep the unread separator stable while reading messages
 - 🐛(frontend) Restore unread navigation in conversations without a read marker
 - 🐛(frontend) Keep the thread root message toolbar fully accessible
 - 🐛(frontend) Follow Matrix timeline and count updates for deleted thread

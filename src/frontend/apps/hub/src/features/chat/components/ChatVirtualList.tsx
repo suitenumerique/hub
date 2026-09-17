@@ -20,6 +20,7 @@ import type {
 import { isSameChatDay } from "../formatTimestamp";
 import { useChatMessages } from "../hooks/useChatMessages";
 import { useMainTimelineUnread } from "../hooks/useMainTimelineUnread";
+import { useUnreadSeparator } from "../hooks/useUnreadSeparator";
 
 import { ChatBubble } from "./ChatBubble";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
@@ -45,12 +46,6 @@ const MESSAGE_VISIBILITY_RATIO = 0.6;
 type SkeletonState = "visible" | "leaving" | "hidden";
 type UnreadViewportState = "unknown" | "all-visible" | "needs-navigation";
 
-type UnreadSeparatorState = {
-  chatKey: string;
-  eventId: string;
-  isVisible: boolean;
-};
-
 export const ChatVirtualList = ({
   chatRef,
   onUnreadBannerChange,
@@ -74,6 +69,16 @@ export const ChatVirtualList = ({
     returnToLive,
   } = useChatMessages(chatRef);
   const unread = useMainTimelineUnread(chatRef, messages);
+  const {
+    slots: separatorSlots,
+    eventId: separatorEventId,
+    anchorTo: anchorSeparatorTo,
+    releaseHiddenSlots,
+  } = useUnreadSeparator(
+    unread.firstUnreadId,
+    unread.hasUnread,
+    unread.isLoading,
+  );
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
 
   useEffect(() => {
@@ -89,7 +94,6 @@ export const ChatVirtualList = ({
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
   const messagesRef = useRef(messages);
-  const previousChatRef = useRef(chatRef);
   const previousAppendState = useRef({
     chatKey,
     windowVersion,
@@ -100,14 +104,15 @@ export const ChatVirtualList = ({
   const isAtLiveEndRef = useRef(isAtLiveEnd);
   const shouldStickToBottomRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
+  const canReanchorAtBottomRef = useRef(false);
+  const pendingBottomArrivalRef = useRef(false);
+  const navigationRef = useRef<symbol | null>(null);
   const pendingScrollRaf = useRef<number | null>(null);
   const visibilityRafRef = useRef<number | null>(null);
   const visibilityTimerRef = useRef<number | null>(null);
   const readDwellTimerRef = useRef<number | null>(null);
   const [unreadViewportState, setUnreadViewportState] =
     useState<UnreadViewportState>("unknown");
-  const [unreadSeparator, setUnreadSeparator] =
-    useState<UnreadSeparatorState | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const unreadSeparatorEventId =
@@ -123,43 +128,91 @@ export const ChatVirtualList = ({
     }
   }, []);
 
-  const releaseHiddenSeparatorOutsideViewport = useCallback(() => {
+  const reconcileSeparatorOutsideViewport = useCallback(() => {
     const scroller = scrollerRef.current;
     if (
       !scroller ||
-      !unreadSeparator ||
-      unreadSeparator.chatKey !== chatKey ||
-      unreadSeparator.isVisible
+      (!pendingBottomArrivalRef.current &&
+        !separatorSlots.some((slot) => !slot.isVisible))
     ) {
       return;
     }
-    const separatorRow = Array.from(
-      scroller.querySelectorAll<HTMLElement>("[data-chat-message-id]"),
-    ).find((row) => row.dataset.chatMessageId === unreadSeparator.eventId);
     const viewport = scroller.getBoundingClientRect();
-    const bounds = separatorRow?.getBoundingClientRect();
-    if (!bounds || bounds.top >= viewport.bottom) {
-      setUnreadSeparator((current) =>
-        current?.chatKey === chatKey &&
-        current.eventId === unreadSeparator.eventId &&
-        !current.isVisible
-          ? null
-          : current,
+    const rows = new Map(
+      Array.from(
+        scroller.querySelectorAll<HTMLElement>("[data-chat-message-id]"),
+        (row) => [row.dataset.chatMessageId, row.getBoundingClientRect()],
+      ),
+    );
+    const isAtBottom = atBottomRef.current && isAtLiveEndRef.current;
+    const canChangeSlot = (eventId: string, allowAbove: boolean) => {
+      const index = messagesRef.current.findIndex(
+        (message) => message.id === eventId,
       );
+      // The separator also splits the author group on the preceding row.
+      const previousId = messagesRef.current[index - 1]?.id;
+      return [eventId, previousId].every((id) => {
+        const bounds = rows.get(id);
+        return (
+          !bounds ||
+          bounds.top >= viewport.bottom ||
+          (allowAbove && bounds.bottom <= viewport.top)
+        );
+      });
+    };
+
+    if (pendingBottomArrivalRef.current) {
+      pendingBottomArrivalRef.current = false;
+      const targetId = unread.firstUnreadId;
+      if (
+        isAtBottom &&
+        !hasNewer &&
+        separatorEventId &&
+        targetId &&
+        targetId !== separatorEventId &&
+        canChangeSlot(separatorEventId, true) &&
+        canChangeSlot(targetId, true)
+      ) {
+        shouldStickToBottomRef.current = true;
+        anchorSeparatorTo(targetId);
+      }
     }
-  }, [chatKey, unreadSeparator]);
+
+    const releasableIds = new Set(
+      separatorSlots
+        .filter(
+          (slot) => !slot.isVisible && canChangeSlot(slot.eventId, isAtBottom),
+        )
+        .map((slot) => slot.eventId),
+    );
+    if (releasableIds.size > 0) {
+      if (isAtBottom) {
+        shouldStickToBottomRef.current = true;
+      }
+      releaseHiddenSlots(releasableIds);
+    }
+  }, [
+    anchorSeparatorTo,
+    hasNewer,
+    releaseHiddenSlots,
+    separatorEventId,
+    separatorSlots,
+    unread.firstUnreadId,
+  ]);
 
   const measureVisibleMessages = useCallback(() => {
     cancelReadDwell();
-    releaseHiddenSeparatorOutsideViewport();
+    reconcileSeparatorOutsideViewport();
     const scroller = scrollerRef.current;
     const isFocused =
       document.visibilityState === "visible" && document.hasFocus();
-    if (!scroller || unread.isLoading || !unread.hasUnread) {
+    if (!unread.hasUnread) {
       setUnreadViewportState("unknown");
       return;
     }
-    if (!isFocused) {
+    // Keep the last visibility decision while the viewport is unavailable or
+    // unread data is loading; neither means the shortcut is no longer useful.
+    if (!scroller || unread.isLoading || !isFocused) {
       return;
     }
 
@@ -206,7 +259,7 @@ export const ChatVirtualList = ({
   }, [
     cancelReadDwell,
     hasNewer,
-    releaseHiddenSeparatorOutsideViewport,
+    reconcileSeparatorOutsideViewport,
     unread.areAllUnreadVisible,
     unread.hasUnread,
     unread.isLoading,
@@ -232,9 +285,13 @@ export const ChatVirtualList = ({
 
   useEffect(() => {
     hasUserInteractedRef.current = false;
+    canReanchorAtBottomRef.current = false;
+    pendingBottomArrivalRef.current = false;
     atBottomRef.current = true;
     setIsAtBottom(true);
     setUnreadViewportState("unknown");
+    // A new message window keeps the current banner until it can be measured.
+    // Switching conversation already resets state by remounting this component.
     return () => {
       if (visibilityTimerRef.current !== null) {
         window.clearTimeout(visibilityTimerRef.current);
@@ -272,28 +329,6 @@ export const ChatVirtualList = ({
     };
   }, [cancelReadDwell, scheduleVisibilityMeasurement]);
 
-  // Keep the last boundary mounted while it fades. Its slot is released only
-  // when doing so cannot shift the visible rows below it.
-  useEffect(() => {
-    const eventId = unread.isLoading ? null : unread.firstUnreadId;
-    setUnreadSeparator((current) => {
-      if (eventId) {
-        if (
-          current?.chatKey === chatKey &&
-          current.eventId === eventId &&
-          current.isVisible
-        ) {
-          return current;
-        }
-        return { chatKey, eventId, isVisible: true };
-      }
-      if (current?.chatKey !== chatKey) {
-        return null;
-      }
-      return current.isVisible ? { ...current, isVisible: false } : current;
-    });
-  }, [chatKey, unread.firstUnreadId, unread.isLoading]);
-
   useEffect(() => {
     if (!isInitialLoading) {
       scheduleVisibilityMeasurement();
@@ -317,6 +352,13 @@ export const ChatVirtualList = ({
     }
     const markInteraction = () => {
       hasUserInteractedRef.current = true;
+      canReanchorAtBottomRef.current = !atBottomRef.current;
+      shouldStickToBottomRef.current = false;
+      // endReached can fire before the first interaction at a contextual end.
+      // A new interaction there must still be able to request the next page.
+      if (atBottomRef.current) {
+        fetchNewer();
+      }
       scheduleVisibilityMeasurement();
     };
     const onScroll = () => scheduleVisibilityMeasurement();
@@ -334,7 +376,7 @@ export const ChatVirtualList = ({
       scroller.removeEventListener("keydown", markInteraction);
       scroller.removeEventListener("scroll", onScroll);
     };
-  }, [chatKey, scheduleVisibilityMeasurement, windowVersion]);
+  }, [chatKey, fetchNewer, scheduleVisibilityMeasurement, windowVersion]);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
     isInitialLoading ? "visible" : "hidden",
@@ -353,31 +395,16 @@ export const ChatVirtualList = ({
     return () => cancelAnimationFrame(raf);
   }, [isInitialLoading]);
 
-  useEffect(() => {
-    if (
-      previousChatRef.current.accountId === chatRef.accountId &&
-      previousChatRef.current.chatId === chatRef.chatId
-    ) {
-      return;
-    }
-    previousChatRef.current = chatRef;
-    pendingScrollRaf.current = requestAnimationFrame(() => {
-      pendingScrollRaf.current = requestAnimationFrame(() => {
-        pendingScrollRaf.current = null;
-        virtuosoRef.current?.scrollToIndex({
-          index: "LAST",
-          align: "end",
-          behavior: "auto",
-        });
-      });
-    });
-    return () => {
+  useEffect(
+    () => () => {
+      navigationRef.current = null;
       if (pendingScrollRaf.current !== null) {
         cancelAnimationFrame(pendingScrollRaf.current);
         pendingScrollRaf.current = null;
       }
-    };
-  }, [chatRef]);
+    },
+    [],
+  );
 
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
@@ -428,32 +455,43 @@ export const ChatVirtualList = ({
 
   const handleNavigateToUnread = useCallback(async () => {
     const eventId = unread.firstUnreadId;
-    if (!eventId || isNavigating) {
+    if (!eventId || navigationRef.current) {
       return;
     }
+    const navigation = Symbol();
+    navigationRef.current = navigation;
     // Programmatic navigation exposes the target, but the focused dwell still
     // has to confirm that it remained readable in the real viewport.
     hasUserInteractedRef.current = false;
-    setUnreadViewportState("unknown");
+    canReanchorAtBottomRef.current = false;
+    pendingBottomArrivalRef.current = false;
+    shouldStickToBottomRef.current = false;
     setIsNavigating(true);
     try {
       if (!messagesRef.current.some((message) => message.id === eventId)) {
         await openAround(eventId);
       }
+      if (navigationRef.current !== navigation) {
+        return;
+      }
+      anchorSeparatorTo(eventId);
       scrollToEvent(eventId);
     } finally {
-      setIsNavigating(false);
+      if (navigationRef.current === navigation) {
+        navigationRef.current = null;
+        setIsNavigating(false);
+      }
     }
-  }, [isNavigating, openAround, scrollToEvent, unread.firstUnreadId]);
+  }, [anchorSeparatorTo, openAround, scrollToEvent, unread.firstUnreadId]);
 
   const navigateToUnread = useCallback(() => {
     void handleNavigateToUnread();
   }, [handleNavigateToUnread]);
 
-  // `unknown` deliberately renders nothing: waiting for Virtuoso to settle
-  // avoids flashing a shortcut before proving whether every unread is visible.
+  // Show known unread messages immediately. The settled viewport check can then
+  // hide the shortcut when every unread message is already visible.
   const shouldShowUnreadBanner =
-    unread.hasUnread && unreadViewportState === "needs-navigation";
+    unread.hasUnread && unreadViewportState !== "all-visible";
 
   // Publish the controls to ChatView because the list owns their callbacks,
   // while Figma places the rendered banner inside the composer stack.
@@ -533,6 +571,12 @@ export const ChatVirtualList = ({
     windowVersion,
   ]);
 
+  useLayoutEffect(() => {
+    if (shouldStickToBottomRef.current && isAtLiveEndRef.current) {
+      scrollToBottom();
+    }
+  }, [scrollToBottom, separatorSlots]);
+
   return (
     <div className="hub__chat-conversation__list">
       {!isInitialLoading && (
@@ -555,6 +599,15 @@ export const ChatVirtualList = ({
           followOutput={isAtLiveEnd ? "auto" : false}
           atTopStateChange={handleAtTopStateChange}
           atBottomStateChange={(atBottom) => {
+            if (
+              atBottom &&
+              !atBottomRef.current &&
+              isAtLiveEndRef.current &&
+              canReanchorAtBottomRef.current
+            ) {
+              pendingBottomArrivalRef.current = true;
+              canReanchorAtBottomRef.current = false;
+            }
             atBottomRef.current = atBottom;
             setIsAtBottom(atBottom);
             if (atBottom && isAtLiveEndRef.current) {
@@ -605,22 +658,25 @@ export const ChatVirtualList = ({
           }}
           itemContent={(virtualIndex, message) => {
             const arrayIndex = virtualIndex - firstItemIndex;
-            const hasSeparator = message.id === unreadSeparatorEventId;
+            const separator = separatorSlots.find(
+              (slot) => slot.eventId === message.id,
+            );
+            const hasSeparator = separator !== undefined;
             return (
               <Row
                 message={message}
                 chatRef={chatRef}
                 prev={hasSeparator ? undefined : messages[arrayIndex - 1]}
                 next={
-                  messages[arrayIndex + 1]?.id === unreadSeparatorEventId
+                  separatorSlots.some(
+                    (slot) => slot.eventId === messages[arrayIndex + 1]?.id,
+                  )
                     ? undefined
                     : messages[arrayIndex + 1]
                 }
                 authorsById={authorsById}
                 hasUnreadSeparator={hasSeparator}
-                isUnreadSeparatorVisible={
-                  hasSeparator && unreadSeparator?.isVisible === true
-                }
+                isUnreadSeparatorVisible={separator?.isVisible === true}
               />
             );
           }}

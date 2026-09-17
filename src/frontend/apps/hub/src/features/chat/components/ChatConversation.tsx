@@ -37,6 +37,7 @@ export const ChatConversation = ({
   return (
     <div className="hub__chat-conversation">
       <ChatVirtualList
+        key={`${chatRef.accountId}:${chatRef.chatId}`}
         chatRef={chatRef}
         onUnreadBannerChange={onUnreadBannerChange}
       />

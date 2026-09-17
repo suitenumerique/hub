@@ -1,4 +1,3 @@
-import { Bell } from "@gouvfr-lasuite/ui-components/icons";
 import {
   Fragment,
   useCallback,
@@ -165,20 +164,6 @@ export const ThreadDetail = ({
     return map;
   }, [thread]);
 
-  // Inert — thread mute is wired through the driver in a later change.
-  const muteAction = (
-    <button
-      type="button"
-      className="hub__chat-tools-panel__header-button"
-      aria-label={t("Mute thread")}
-      tabIndex={isOpen ? 0 : -1}
-      disabled
-      aria-disabled="true"
-    >
-      <Bell />
-    </button>
-  );
-
   const renderBody = () => {
     if (isInitialLoading) {
       return (
@@ -304,7 +289,6 @@ export const ThreadDetail = ({
         isOpen={isOpen}
         onClose={onClose}
         onBack={onBack}
-        action={muteAction}
       />
       <ChatMessageEditProvider value={editContext}>
         {renderBody()}

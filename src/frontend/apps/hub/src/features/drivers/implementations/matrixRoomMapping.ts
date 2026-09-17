@@ -117,7 +117,11 @@ export const matrixJoinedRoomToLocalChat = (
   // when its active member count drops to one because former members remain in
   // current room state. Only active members participate in an unnamed group's
   // generated label.
-  const isDirect = conversationMembers.length === 1;
+  // With lazy-loaded members, one known counterpart does not prove this is a
+  // DM. The sync summary can already establish that more people are present.
+  const isDirect =
+    conversationMembers.length === 1 &&
+    room.getInvitedAndJoinedMemberCount() <= 2;
   const displayedOthers = isDirect ? conversationMembers : activeOthers;
   const participantIds = displayedOthers.map((member) => member.userId);
   const otherNames = displayedOthers.map(
