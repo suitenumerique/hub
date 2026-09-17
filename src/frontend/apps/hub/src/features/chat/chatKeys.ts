@@ -41,8 +41,17 @@ export const chatKeys = {
     ["chat-thread", ref.accountId, ref.chatId] as const,
   members: (ref: ChatRef) =>
     ["chat-members", ref.accountId, ref.chatId] as const,
-  connection: (accountId: AccountId, userId: string | null) =>
-    ["chat-connection", accountId, userId] as const,
+  connection: (
+    accountId: AccountId,
+    userId: string | null,
+    driverFingerprint?: string,
+  ) => ["chat-connection", accountId, userId, driverFingerprint] as const,
+  userPresences: (accountId: AccountId) =>
+    ["chat-user-presence", accountId] as const,
+  userPresence: (accountId: AccountId, userId: string) =>
+    [...chatKeys.userPresences(accountId), userId] as const,
+  selfPresencePreference: (accountId: AccountId) =>
+    ["chat-self-presence-preference", accountId] as const,
   /** A `ChatVisual` image's driver-specific `url` resolved to a fetchable src. */
   avatarSrc: (accountId: AccountId, url: string) =>
     ["avatar-src", accountId, url] as const,

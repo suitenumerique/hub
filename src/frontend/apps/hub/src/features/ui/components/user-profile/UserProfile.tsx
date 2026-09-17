@@ -8,6 +8,10 @@ import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import { useAvatarPortalOverlay } from "../avatar/useAvatarPortalOverlay";
 import { ChangeProfilePhotoAction } from "./ChangeProfilePhotoAction";
 import { LogoutAction } from "./LogoutAction";
+import {
+  UserPresenceActions,
+  UserPresenceQuickControl,
+} from "./UserPresenceAction";
 
 export const UserProfile = () => {
   const { user } = useAuth();
@@ -18,6 +22,11 @@ export const UserProfile = () => {
   const avatarAccount = entries.find(
     (entry) => entry.driver.supportsAvatarUpload,
   );
+  const presenceAccount = entries.find(
+    (entry) =>
+      entry.driver.supportsPresence && entry.driver.getCurrentUserId() !== null,
+  );
+  const presenceUserId = presenceAccount?.driver.getCurrentUserId() ?? null;
   const avatarSrc = useMyAvatarSrc(avatarAccount?.accountId ?? "");
   // The popover header (name + email, opened from the trigger) is portaled
   // straight to `document.body` by the library — outside this component's
@@ -35,10 +44,11 @@ export const UserProfile = () => {
       <UserMenu
         user={user}
         // Not using `UserMenu`'s own `logout` prop: it always renders in a
-        // fixed slot above `actions`, and the change-photo action needs to
-        // come first — so logout moves into `actions` too, after it.
+        // fixed slot above `actions`; keeping it here lets presence, photo and
+        // logout follow the product-defined order in one list.
         actions={
           <>
+            <UserPresenceActions />
             <ChangeProfilePhotoAction />
             <LogoutAction />
           </>
@@ -50,6 +60,12 @@ export const UserProfile = () => {
           alt=""
           aria-hidden="true"
           className="hub__user-profile__avatar"
+        />
+      )}
+      {presenceAccount && presenceUserId && (
+        <UserPresenceQuickControl
+          accountId={presenceAccount.accountId}
+          userId={presenceUserId}
         />
       )}
     </div>

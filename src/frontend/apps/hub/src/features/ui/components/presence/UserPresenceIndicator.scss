@@ -1,0 +1,32 @@
+.hub__user-presence {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-inline-start: var(--c--globals--spacings--2xs);
+  border: 2px solid var(--c--contextuals--background--surface--primary);
+  border-radius: 50%;
+  vertical-align: middle;
+
+  &--online {
+    background: var(--c--contextuals--background--semantic--success--primary);
+  }
+
+  &--offline {
+    background: var(--c--contextuals--background--semantic--error--primary);
+  }
+
+  &--avatar {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    z-index: 1;
+    margin: 0;
+  }
+}
+
+.hub__presence-avatar {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}

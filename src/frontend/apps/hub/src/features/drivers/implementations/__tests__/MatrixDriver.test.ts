@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import {
   KnownMembership,
   type MatrixClient,
@@ -5,10 +6,11 @@ import {
   type Room,
   type Thread,
 } from "matrix-js-sdk/lib/matrix";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { timelineEventToChatEvent } from "../matrixEventMapping";
 import { MatrixDriver } from "../MatrixDriver";
+import { readChatSelfPresencePreference } from "../../presencePreference";
 import {
   matrixJoinedRoomToLocalChat,
   MATRIX_FAVOURITE_TAG,
@@ -131,6 +133,140 @@ const driverWithClient = (mx: MatrixClient | null): MatrixDriver => {
   (driver as unknown as { mx: MatrixClient | null }).mx = mx;
   return driver;
 };
+
+beforeEach(() => {
+  localStorage.clear();
+  startClientMock.mockReset();
+  startClientMock.mockResolvedValue(undefined);
+});
+
+describe("MatrixDriver.getUserPresence", () => {
+  it("reads the current presence from the Matrix client store", () => {
+    const getUser = vi.fn((userId: string) =>
+      userId === OTHER_ID
+        ? {
+            userId: OTHER_ID,
+            events: {
+              presence: { getContent: () => ({ presence: "online" }) },
+            },
+          }
+        : null,
+    );
+    const mx = { getUser } as unknown as MatrixClient;
+
+    expect(driverWithClient(mx).getUserPresence(OTHER_ID)).toEqual({
+      userId: OTHER_ID,
+      state: "online",
+    });
+    expect(getUser).toHaveBeenCalledWith(OTHER_ID);
+  });
+
+  it("returns null without a connected client or known user", () => {
+    expect(driverWithClient(null).getUserPresence(OTHER_ID)).toBeNull();
+    expect(
+      driverWithClient({
+        getUser: () => null,
+      } as unknown as MatrixClient).getUserPresence(OTHER_ID),
+    ).toBeNull();
+  });
+});
+
+describe("MatrixDriver.setUserPresence", () => {
+  it.each(["online", "unavailable", "offline"] as const)(
+    "makes Matrix %s authoritative for subsequent syncs",
+    async (state) => {
+      const setSyncPresence = vi.fn().mockResolvedValue(undefined);
+      const setPresence = vi.fn().mockResolvedValue(undefined);
+      const mx = {
+        getUserId: () => OTHER_ID,
+        setSyncPresence,
+        setPresence,
+      } as unknown as MatrixClient;
+      const driver = driverWithClient(mx);
+
+      expect(driver.getCurrentUserId()).toBe(OTHER_ID);
+      await driver.setUserPresence(state);
+
+      expect(setSyncPresence).toHaveBeenCalledWith(state);
+      expect(setPresence).not.toHaveBeenCalled();
+    },
+  );
+
+  it("deduplicates an unchanged effective state", async () => {
+    const setSyncPresence = vi.fn().mockResolvedValue(undefined);
+    const driver = driverWithClient({
+      setSyncPresence,
+    } as unknown as MatrixClient);
+
+    await driver.setUserPresence("online");
+    await driver.setUserPresence("online");
+
+    expect(setSyncPresence.mock.calls).toEqual([["online"]]);
+  });
+
+  it("rejects a non-standard busy state before calling the SDK", async () => {
+    const setSyncPresence = vi.fn().mockResolvedValue(undefined);
+    const setPresence = vi.fn().mockResolvedValue(undefined);
+    const driver = driverWithClient({
+      setSyncPresence,
+      setPresence,
+    } as unknown as MatrixClient);
+
+    await expect(driver.setUserPresence("busy" as never)).rejects.toThrowError(
+      'invalid state "busy"',
+    );
+    expect(setSyncPresence).not.toHaveBeenCalled();
+    expect(setPresence).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the Matrix account is not connected", async () => {
+    const driver = driverWithClient(null);
+
+    expect(driver.getCurrentUserId()).toBeNull();
+    await expect(driver.setUserPresence("online")).rejects.toThrowError(
+      "client is not connected",
+    );
+  });
+});
+
+describe("MatrixDriver self-presence preference", () => {
+  it.each(["online", "offline"] as const)(
+    "persists and applies the manual %s preference",
+    async (preference) => {
+      const setSyncPresence = vi.fn().mockResolvedValue(undefined);
+      const setPresence = vi.fn().mockResolvedValue(undefined);
+      const driver = driverWithClient({
+        setSyncPresence,
+        setPresence,
+      } as unknown as MatrixClient);
+
+      await driver.setSelfPresencePreference(preference);
+
+      expect(readChatSelfPresencePreference("matrix-local")).toBe(preference);
+      expect(setSyncPresence).toHaveBeenCalledWith(preference);
+      expect(setPresence).toHaveBeenCalledWith({ presence: preference });
+    },
+  );
+
+  it("keeps the sync intention and preference when the immediate PUT fails", async () => {
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const setSyncPresence = vi.fn().mockResolvedValue(undefined);
+    const setPresence = vi.fn().mockRejectedValue(new Error("rate limited"));
+    const driver = driverWithClient({
+      setSyncPresence,
+      setPresence,
+    } as unknown as MatrixClient);
+
+    await expect(
+      driver.setSelfPresencePreference("offline"),
+    ).resolves.toBeUndefined();
+
+    expect(setSyncPresence.mock.calls).toEqual([["offline"]]);
+    expect(readChatSelfPresencePreference("matrix-local")).toBe("offline");
+    expect(consoleInfo).toHaveBeenCalledOnce();
+    consoleInfo.mockRestore();
+  });
+});
 
 describe("timelineEventToChatEvent (real-time sync mapping)", () => {
   it("keeps a thread root on the main timeline", () => {

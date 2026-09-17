@@ -196,6 +196,18 @@ export type ChatUser = ChatMessageAuthor & {
   subtitle: string;
 };
 
+/** Presence values exposed by chat backends, kept separate from product labels. */
+export type ChatUserPresenceState = "online" | "unavailable" | "offline";
+
+/** User choice for this client; `online` enables automatic idle handling. */
+export type ChatSelfPresencePreference = "online" | "offline";
+
+/** Current transport-level presence for one chat user. */
+export type ChatUserPresence = {
+  userId: string;
+  state: ChatUserPresenceState;
+};
+
 /**
  * A member of one conversation. Kept separate from `ChatUser`: room membership
  * comes from the room state and may expose less profile data than directory

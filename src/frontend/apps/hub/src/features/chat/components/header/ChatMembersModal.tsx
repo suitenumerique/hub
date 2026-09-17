@@ -3,13 +3,16 @@ import {
   ShareModal,
   type DropdownMenuOption,
 } from "@gouvfr-lasuite/ui-components";
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { useChatMembers } from "@/features/chat/hooks/useChatMembers";
+import { useChatUserPresence } from "@/features/chat/hooks/useChatUserPresence";
 import { useMyAvatarSrc } from "@/features/chat/hooks/useMyAvatarSrc";
 import type { Chat, ChatMember } from "@/features/drivers/types";
 import { useAvatarPortalOverlay } from "@/features/ui/components/avatar/useAvatarPortalOverlay";
+import { UserPresenceIndicator } from "@/features/ui/components/presence/UserPresenceIndicator";
 
 type ChatMembersModalProps = {
   chat: Chat;
@@ -29,6 +32,71 @@ const toShareUser = (member: ChatMember) => ({
   full_name: member.name,
   email: member.secondaryText,
 });
+
+const MemberPresence = ({
+  accountId,
+  member,
+  target,
+}: {
+  accountId: Chat["accountId"];
+  member: ChatMember;
+  target: HTMLElement;
+}) => {
+  const presence = useChatUserPresence(accountId, member.id);
+  return createPortal(
+    <UserPresenceIndicator state={presence?.state ?? null} />,
+    target,
+  );
+};
+
+/** Adds React-owned presence content to the UI kit's portaled member rows. */
+const MemberPresencePortals = ({
+  accountId,
+  members,
+}: {
+  accountId: Chat["accountId"];
+  members: ChatMember[];
+}) => {
+  const markerRef = useRef<HTMLSpanElement>(null);
+  const [targets, setTargets] = useState<HTMLElement[]>([]);
+
+  useLayoutEffect(() => {
+    const modal = markerRef.current?.closest(".c__share-modal");
+    const names = modal
+      ? Array.from(
+          modal.querySelectorAll(
+            ".c__share-modal__members .c__share-member-item .c__user-row__name",
+          ),
+        ).slice(0, members.length)
+      : [];
+    const nextTargets = names.map((name) => {
+      const target = document.createElement("span");
+      target.className = "hub__member-presence-target";
+      name.appendChild(target);
+      return target;
+    });
+    setTargets(nextTargets);
+
+    return () => nextTargets.forEach((target) => target.remove());
+  }, [members]);
+
+  return (
+    <>
+      <span ref={markerRef} hidden aria-hidden="true" />
+      {members.map((member, index) => {
+        const target = targets[index];
+        return target ? (
+          <MemberPresence
+            key={member.id}
+            accountId={accountId}
+            member={member}
+            target={target}
+          />
+        ) : null;
+      })}
+    </>
+  );
+};
 
 /** UI-kit ShareModal adapter with every membership mutation switched off. */
 export const ChatMembersModal = ({
@@ -94,6 +162,8 @@ export const ChatMembersModal = ({
       invitationRoles={READ_ONLY_ROLES}
       accesses={accesses}
       invitations={invitations}
-    />
+    >
+      <MemberPresencePortals accountId={chat.accountId} members={present} />
+    </ShareModal>
   );
 };

@@ -24,6 +24,8 @@ import {
   ChatTypingUser,
   ChatUnread,
   ChatUser,
+  ChatUserPresence,
+  ChatSelfPresencePreference,
   LocalChat,
   LocalChatSections,
   LocalSpace,
@@ -158,6 +160,7 @@ export type ChatConnectionState = {
  */
 export type ChatEvent =
   | { type: "search:changed" }
+  | { type: "user:presence-changed"; presence: ChatUserPresence }
   // Delivery signals are independent from timeline/cache patches.
   | {
       type: "message:received";
@@ -290,6 +293,40 @@ export abstract class Driver {
   }
   /** People available when composing a new chat. */
   abstract getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]>;
+  /**
+   * Current presence already known by the backend client, without requesting it
+   * from the network. Live changes arrive through `subscribeToEvents`.
+   */
+  getUserPresence(_userId: string): ChatUserPresence | null {
+    void _userId;
+    return null;
+  }
+  /** Whether this backend lets the current user publish presence. */
+  readonly supportsPresence: boolean = false;
+  /** Current backend user id, when the account has an active connection. */
+  getCurrentUserId(): string | null {
+    return null;
+  }
+  /** Persisted manual mode for this client (`online` means automatic). */
+  getSelfPresencePreference(): ChatSelfPresencePreference {
+    return "online";
+  }
+  /** Persists and applies the manual mode for this client. */
+  async setSelfPresencePreference(
+    _preference: ChatSelfPresencePreference,
+  ): Promise<void> {
+    void _preference;
+    throw new Error(
+      `${this.constructor.name}.setSelfPresencePreference: presence is not supported by this driver.`,
+    );
+  }
+  /** Publishes an effective transport state; automatic transitions use this. */
+  async setUserPresence(_state: ChatUserPresence["state"]): Promise<void> {
+    void _state;
+    throw new Error(
+      `${this.constructor.name}.setUserPresence: presence is not supported by this driver.`,
+    );
+  }
   /** Joined members and pending invitees of one conversation. */
   abstract getChatMembers(chatId: string): Promise<ChatMembers>;
   /** Existing conversation for exactly these participants, or `null`. */

@@ -23,13 +23,12 @@ import { useTranslation } from "react-i18next";
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
-import { useAvatarSrc } from "@/features/chat/hooks/useAvatarSrc";
 import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
 import { useSetChatAvatar } from "@/features/chat/hooks/useSetChatAvatar";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat } from "@/features/drivers/types";
-import { Avatar } from "@/features/ui/components/avatar/Avatar";
+import { ChatPresenceAvatar } from "@/features/ui/components/presence/ChatPresenceAvatar";
 
 import { ChatMembersModal } from "./ChatMembersModal";
 import { LeaveConversationModal } from "./LeaveConversationModal";
@@ -255,7 +254,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       aria-expanded={isInvitation ? undefined : menu.isOpen}
       onClick={() => menu.setIsOpen((open) => !open)}
     >
-      <ChatAvatar chat={chat} />
+      <ChatPresenceAvatar chat={chat} />
       <span className="hub__chat-header__breadcrumb__name">{chat.name}</span>
       {!isInvitation && <ArrowDropDown aria-hidden="true" />}
     </Button>
@@ -294,28 +293,4 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       />
     </>
   );
-};
-
-const ChatAvatar = ({ chat }: { chat: Chat }) => {
-  const src = useAvatarSrc(chat.accountId, chat.visual);
-  if (chat.visual.kind === "image") {
-    return <Avatar label={chat.name} src={src} decorative />;
-  }
-  if (chat.visual.kind === "emoji") {
-    return (
-      <Avatar label={chat.name} variant="soft" decorative>
-        {chat.visual.emoji}
-      </Avatar>
-    );
-  }
-  if (chat.visual.kind === "icon") {
-    return (
-      <Avatar label={chat.name} decorative>
-        <span className="material-icons" aria-hidden="true">
-          {chat.visual.icon}
-        </span>
-      </Avatar>
-    );
-  }
-  return <Avatar label={chat.name} decorative />;
 };

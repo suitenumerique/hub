@@ -155,6 +155,51 @@ describe("useChatEvents", () => {
     expect(data?.pages[0].messages[0].reactions[0].emoji).toBe("👍");
   });
 
+  it("PATCHES only the matching account and user presence", () => {
+    queryClient.setQueryData(
+      chatKeys.userPresence("account-a", "@alice:localhost"),
+      { userId: "@alice:localhost", state: "online" },
+    );
+    queryClient.setQueryData(
+      chatKeys.userPresence("account-a", "@bob:localhost"),
+      { userId: "@bob:localhost", state: "online" },
+    );
+    queryClient.setQueryData(
+      chatKeys.userPresence("account-b", "@alice:localhost"),
+      { userId: "@alice:localhost", state: "online" },
+    );
+    mount();
+
+    for (const state of [
+      "offline",
+      "online",
+      "unavailable",
+      "online",
+    ] as const) {
+      emit({
+        type: "user:presence-changed",
+        presence: { userId: "@alice:localhost", state },
+      });
+
+      expect(
+        queryClient.getQueryData(
+          chatKeys.userPresence("account-a", "@alice:localhost"),
+        ),
+      ).toEqual({ userId: "@alice:localhost", state });
+      expect(
+        queryClient.getQueryData(
+          chatKeys.userPresence("account-a", "@bob:localhost"),
+        ),
+      ).toEqual({ userId: "@bob:localhost", state: "online" });
+      expect(
+        queryClient.getQueryData(
+          chatKeys.userPresence("account-b", "@alice:localhost"),
+        ),
+      ).toEqual({ userId: "@alice:localhost", state: "online" });
+    }
+    expect(queryClient.isFetching()).toBe(0);
+  });
+
   it.each<[ChatEvent, readonly unknown[]]>([
     [
       { type: "chat:changed", chatId: "c1" },

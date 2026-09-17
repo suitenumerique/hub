@@ -20,7 +20,6 @@ import {
 } from "@/features/chat/chatRefs";
 import { compareChats } from "@/features/chat/chatSorting";
 import { formatChatListTimestamp } from "@/features/chat/formatTimestamp";
-import { useAvatarSrc } from "@/features/chat/hooks/useAvatarSrc";
 import { useChatUnread } from "@/features/chat/hooks/useChatUnread";
 import { useChats } from "@/features/chat/hooks/useChats";
 import { useSpaces } from "@/features/chat/hooks/useSpaces";
@@ -28,6 +27,7 @@ import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatUnread, Space } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
+import { ChatPresenceAvatar } from "@/features/ui/components/presence/ChatPresenceAvatar";
 import { LanguagePickerUserMenu } from "@/features/ui/components/user-profile/LanguagePickerUserMenu";
 
 import { TchapLogo } from "./TchapLogo";
@@ -315,7 +315,7 @@ const ChatRow = ({
         isActive && "hub__left-panel__chat--active",
       )}
     >
-      <ChatAvatar chat={chat} />
+      <ChatPresenceAvatar chat={chat} />
       <span className="hub__left-panel__chat__body">
         <span className="hub__left-panel__chat__row">
           <span
@@ -348,30 +348,6 @@ const ChatRow = ({
       )}
     </Link>
   );
-};
-
-const ChatAvatar = ({ chat }: { chat: Chat }) => {
-  const src = useAvatarSrc(chat.accountId, chat.visual);
-  if (chat.visual.kind === "image") {
-    return <Avatar label={chat.name} src={src} decorative />;
-  }
-  if (chat.visual.kind === "emoji") {
-    return (
-      <Avatar label={chat.name} variant="soft" decorative>
-        {chat.visual.emoji}
-      </Avatar>
-    );
-  }
-  if (chat.visual.kind === "icon") {
-    return (
-      <Avatar label={chat.name} decorative>
-        <span className="material-icons" aria-hidden="true">
-          {chat.visual.icon}
-        </span>
-      </Avatar>
-    );
-  }
-  return <Avatar label={chat.name} decorative />;
 };
 
 /**

@@ -10,11 +10,15 @@ import {
   RoomEvent,
   SyncState,
   type SyncStateData,
+  type User,
+  UserEvent,
 } from "matrix-js-sdk/lib/matrix";
 
 import type { ChatEventListener } from "../Driver";
+import type { ChatUserPresenceState } from "../types";
 
 import { isOwnEcho } from "./matrixEventMapping";
+import { matrixUserToChatUserPresence } from "./matrixPresence";
 import { matrixRoomToLocalChat } from "./matrixRoomMapping";
 
 /** Attach only AFTER the initial network sync; cache/history is never delivery. */
@@ -37,6 +41,7 @@ export const subscribeToIncomingMatrixEvents = (
     string,
     { event: MatrixEvent; at: number }
   >();
+  const emittedPresenceByUser = new Map<string, ChatUserPresenceState>();
 
   const publishMessage = (event: MatrixEvent) => {
     const id = event.getId();
@@ -143,19 +148,35 @@ export const subscribeToIncomingMatrixEvents = (
       if (Date.now() - pending.at >= 60_000) pendingEncrypted.delete(id);
     });
   };
+  const onPresenceEvent = (_event: MatrixEvent | undefined, user: User) => {
+    const presence = matrixUserToChatUserPresence(user);
+    if (
+      !presence ||
+      emittedPresenceByUser.get(presence.userId) === presence.state
+    ) {
+      return;
+    }
+    emittedPresenceByUser.set(presence.userId, presence.state);
+    emit({ type: "user:presence-changed", presence });
+  };
   // ClientEvent.Event is emitted by /sync for both room and thread messages.
   // Unlike RoomEvent.Timeline it is NOT emitted by forward/backward pagination.
   mx.on(ClientEvent.Event, onEvent);
   mx.on(MatrixEventEvent.Decrypted, onDecrypted);
   mx.on(RoomEvent.MyMembership, onMembership);
   mx.on(ClientEvent.Sync, onSync);
+  // LastPresenceTs fires for every real m.presence, including a user's first
+  // offline event (which Presence can miss because User defaults to offline).
+  mx.on(UserEvent.LastPresenceTs, onPresenceEvent);
   return () => {
     active = false;
     mx.off(ClientEvent.Event, onEvent);
     mx.off(MatrixEventEvent.Decrypted, onDecrypted);
     mx.off(RoomEvent.MyMembership, onMembership);
     mx.off(ClientEvent.Sync, onSync);
+    mx.off(UserEvent.LastPresenceTs, onPresenceEvent);
     pendingInvitations.clear();
     pendingEncrypted.clear();
+    emittedPresenceByUser.clear();
   };
 };
