@@ -8,6 +8,7 @@ and this project adheres to
 
 ### Added
 
+- 💄(frontend) Show the platform-specific search shortcut on sidebar hover.
 - ✨(frontend) Search joined conversations by name and current participants.
   Persist the search index separately and prepare small rooms progressively.
   Add a QuickSearch modal with local results across connected accounts.

@@ -86,11 +86,26 @@
       white-space: nowrap;
     }
 
+    &__shortcut {
+      flex: 0 0 auto;
+      margin-inline-start: auto;
+      color: var(--c--contextuals--content--semantic--disabled--primary);
+      font: inherit;
+      font-size: 12px;
+      line-height: 18px;
+      white-space: nowrap;
+      visibility: hidden;
+    }
+
     &:hover {
       background: var(
         --c--contextuals--background--semantic--overlay--primary,
         rgba(24, 27, 36, 0.05)
       );
+
+      .hub__left-panel__action__shortcut {
+        visibility: visible;
+      }
     }
 
     &:focus-visible {
