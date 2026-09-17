@@ -8,6 +8,10 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Open a whiteboard next to the call in the meeting window. The
+  Excalidraw room is derived from the meeting, so every participant lands on
+  the same board, and it is self-hosted alongside its collaboration server
+  (`MEETING_BOARD_BASE_URL`); without that setting the call is shown alone.
 - ✨(frontend) Name a meeting, plan its duration or schedule it ahead,
   follow its progress in the meeting window, and let its organizer rename,
   extend or close it.

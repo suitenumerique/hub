@@ -154,10 +154,45 @@
     }
   }
 
+  &__body {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+    // Under ~720px the two frames would both be unusable: the whiteboard goes
+    // under the call instead of beside it.
+    @media (max-width: 720px) {
+      flex-direction: column;
+    }
+  }
+
   &__frame {
     flex: 1 1 auto;
-    width: 100%;
+    min-width: 0;
+    min-height: 0;
     border: 0;
     background: #000;
+  }
+
+  &__board {
+    flex: 0 0 45%;
+    min-width: 0;
+    min-height: 0;
+    border: 0;
+    border-left: 1px solid
+      var(--c--contextuals--border--surface--primary, #dfe2ea);
+    background: var(--c--contextuals--background--surface--primary, #fff);
+
+    // `hidden` must win over the flex display above: the frame stays mounted
+    // so the call and the drawing survive closing the panel.
+    &[hidden] {
+      display: none;
+    }
+
+    @media (max-width: 720px) {
+      flex-basis: 50%;
+      border-left: 0;
+      border-top: 1px solid
+        var(--c--contextuals--border--surface--primary, #dfe2ea);
+    }
   }
 }

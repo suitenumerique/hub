@@ -18,6 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/features/auth/Auth";
+import { Whiteboard } from "@/features/chat/components/tools-panel/MeetingIcons";
 import { useChatMeetingActions } from "@/features/chat/hooks/useChatMeetingActions";
 import { useChatMeetings } from "@/features/chat/hooks/useChatMeetings";
 import {
@@ -28,6 +29,7 @@ import {
 import type { ChatRef } from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
+import { useMeetingBoardUrl } from "./meetingBoard";
 import { useNow } from "./useNow";
 
 /** Minutes added by the organizer's extend button. */
@@ -91,7 +93,12 @@ const MeetingWindow = ({
   const { endMeeting, extendMeeting, renameMeeting, isPending } =
     useChatMeetingActions(chatRef);
   const [draftTitle, setDraftTitle] = useState<string | null>(null);
+  const [isBoardOpen, setIsBoardOpen] = useState(false);
+  const [wasBoardOpened, setWasBoardOpened] = useState(false);
   const isRenamingRef = useRef(false);
+  // The whiteboard follows the meeting, so everyone in the call lands on the
+  // same board; a call opened outside a meeting falls back on its own link.
+  const boardUrl = useMeetingBoardUrl(target.meetingId ?? target.url);
 
   const meeting = target.meetingId
     ? meetings.find((candidate) => candidate.id === target.meetingId)
@@ -243,6 +250,29 @@ const MeetingWindow = ({
                 </button>
               </>
             )}
+            {boardUrl && !isMinimized && (
+              <button
+                type="button"
+                className="hub__meeting-window__button"
+                aria-label={
+                  isBoardOpen
+                    ? t("Hide the whiteboard")
+                    : t("Show the whiteboard")
+                }
+                title={
+                  isBoardOpen
+                    ? t("Hide the whiteboard")
+                    : t("Show the whiteboard")
+                }
+                aria-pressed={isBoardOpen}
+                onClick={() => {
+                  setWasBoardOpened(true);
+                  setIsBoardOpen((open) => !open);
+                }}
+              >
+                <Whiteboard />
+              </button>
+            )}
             <a
               className="hub__meeting-window__button"
               href={target.url}
@@ -285,13 +315,29 @@ const MeetingWindow = ({
             </button>
           </span>
         </header>
-        <iframe
-          className="hub__meeting-window__frame"
-          src={target.url}
-          title={t("Meeting")}
-          allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
-          allowFullScreen
-        />
+        <div className="hub__meeting-window__body">
+          <iframe
+            className="hub__meeting-window__frame"
+            src={target.url}
+            title={t("Meeting")}
+            allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
+            allowFullScreen
+          />
+          {/* Hidden rather than unmounted once opened: reloading the frame
+              would drop the drawer out of the collaboration and lose their
+              local scene. The thumbnail has no room for it, so minimizing the
+              window hides it too. */}
+          {boardUrl && wasBoardOpened && (
+            <iframe
+              className="hub__meeting-window__board"
+              data-testid="meeting-board"
+              src={boardUrl}
+              title={t("Whiteboard")}
+              allow="clipboard-read; clipboard-write"
+              hidden={!isBoardOpen || isMinimized}
+            />
+          )}
+        </div>
       </section>
     </>
   );

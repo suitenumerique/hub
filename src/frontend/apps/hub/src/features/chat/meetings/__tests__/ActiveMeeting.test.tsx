@@ -18,7 +18,12 @@ const URL_A = "https://meet.example.com/abc-defg-hij";
 const URL_B = "https://meet.example.com/klm-nopq-rst";
 const CHAT_REF: ChatRef = { accountId: "matrix", chatId: "!room:localhost" };
 
-const state = vi.hoisted(() => ({ meetings: [] as ChatMeeting[] }));
+const BOARD_URL = "https://board.example.com/#room=abc,key";
+
+const state = vi.hoisted(() => ({
+  meetings: [] as ChatMeeting[],
+  boardUrl: null as string | null,
+}));
 const endMeeting = vi.hoisted(() => vi.fn(async () => undefined));
 const extendMeeting = vi.hoisted(() => vi.fn(async () => undefined));
 const renameMeeting = vi.hoisted(() => vi.fn(async () => undefined));
@@ -44,6 +49,11 @@ vi.mock("@/features/chat/hooks/useChatMeetingActions", () => ({
     renameMeeting,
     isPending: false,
   }),
+}));
+// The board URL derivation needs Web Crypto, which jsdom does not provide;
+// it has its own unit test.
+vi.mock("../meetingBoard", () => ({
+  useMeetingBoardUrl: () => state.boardUrl,
 }));
 vi.mock("@/features/ui/components/toast", () => ({
   notify: { brand: notifyBrand, error: vi.fn() },
@@ -96,6 +106,7 @@ const dialog = () => screen.getByRole("dialog");
 describe("ActiveMeetingProvider", () => {
   beforeEach(() => {
     state.meetings = [meetingA()];
+    state.boardUrl = null;
   });
 
   afterEach(() => {
@@ -186,6 +197,55 @@ describe("ActiveMeetingProvider", () => {
     const progress = screen.getByTestId("meeting-progress");
     expect(progress.textContent).toBe("10 min / 5 min · Overtime");
     expect(progress.hasAttribute("data-overdue")).toBe(true);
+  });
+
+  it("offers no whiteboard when the deployment configures none", () => {
+    render(app());
+    fireEvent.click(screen.getByText("open A"));
+
+    expect(screen.queryByLabelText("Show the whiteboard")).toBeNull();
+    expect(screen.queryByTestId("meeting-board")).toBeNull();
+  });
+
+  it("shows the whiteboard next to the call, without touching the call", () => {
+    state.boardUrl = BOARD_URL;
+    render(app());
+    fireEvent.click(screen.getByText("open A"));
+    const call = frame();
+
+    fireEvent.click(screen.getByLabelText("Show the whiteboard"));
+
+    const board = screen.getByTestId("meeting-board") as HTMLIFrameElement;
+    expect(board.getAttribute("src")).toBe(BOARD_URL);
+    expect(board.hidden).toBe(false);
+    // The call must survive the split: a remounted frame would drop the user.
+    expect(frame()).toBe(call);
+  });
+
+  it("keeps the whiteboard mounted when it is hidden again", () => {
+    state.boardUrl = BOARD_URL;
+    render(app());
+    fireEvent.click(screen.getByText("open A"));
+    fireEvent.click(screen.getByLabelText("Show the whiteboard"));
+    const board = screen.getByTestId("meeting-board") as HTMLIFrameElement;
+
+    fireEvent.click(screen.getByLabelText("Hide the whiteboard"));
+
+    expect(screen.getByTestId("meeting-board")).toBe(board);
+    expect(board.hidden).toBe(true);
+  });
+
+  it("hides the whiteboard while the window is minimized", () => {
+    state.boardUrl = BOARD_URL;
+    render(app());
+    fireEvent.click(screen.getByText("open A"));
+    fireEvent.click(screen.getByLabelText("Show the whiteboard"));
+
+    fireEvent.click(screen.getByLabelText("Minimize the meeting"));
+
+    const board = screen.getByTestId("meeting-board") as HTMLIFrameElement;
+    expect(screen.queryByLabelText("Hide the whiteboard")).toBeNull();
+    expect(board.hidden).toBe(true);
   });
 
   it("lets the organizer extend and close the meeting", () => {

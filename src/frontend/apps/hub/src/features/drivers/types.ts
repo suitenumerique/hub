@@ -220,6 +220,8 @@ export type ApiConfig = {
   FRONTEND_EXTERNAL_HOME_URL?: string;
   FRONTEND_CSS_URL?: string;
   FRONTEND_JS_URL?: string;
+  /** Base URL of the self-hosted whiteboard shown next to a call. */
+  MEETING_BOARD_BASE_URL?: string | null;
   theme_customization?: ThemeCustomization;
 };
 

@@ -35,3 +35,24 @@ export const Calendar = () => (
     />
   </svg>
 );
+
+export const Whiteboard = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+    <rect
+      x="3"
+      y="4.5"
+      width="18"
+      height="12"
+      rx="2"
+      stroke="currentColor"
+      strokeWidth="1.8"
+    />
+    <path
+      d="M12 16.5v3m-3 0h6M7 12l2.5-3 2.5 2.5 2-4L17 12"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
