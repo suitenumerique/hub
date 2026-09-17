@@ -298,6 +298,11 @@ class Base(Configuration):
                 environ_name="API_USERS_LIST_THROTTLE_RATE_BURST",
                 environ_prefix=None,
             ),
+            "meeting_creation": values.Value(
+                default="20/minute",
+                environ_name="API_MEETING_CREATION_THROTTLE_RATE",
+                environ_prefix=None,
+            ),
         },
     }
     MONITORED_THROTTLE_FAILURE_CALLBACK = (
@@ -473,6 +478,24 @@ class Base(Configuration):
     SESSION_COOKIE_NAME = "hub_sessionid"
 
     # OIDC - Authorization Code Flow
+    # Meet: rooms are created through its external API, with an application
+    # registered in Meet. Without these settings, meeting creation is disabled.
+    MEET_API_URL = values.Value(None, environ_name="MEET_API_URL", environ_prefix=None)
+    MEET_APPLICATION_CLIENT_ID = values.Value(
+        None, environ_name="MEET_APPLICATION_CLIENT_ID", environ_prefix=None
+    )
+    MEET_APPLICATION_CLIENT_SECRET = SecretFileValue(
+        None, environ_name="MEET_APPLICATION_CLIENT_SECRET", environ_prefix=None
+    )
+    # The Hub shows the call in a frame, where the Meet session does not reach:
+    # rooms must be public for participants to join without a waiting room.
+    MEET_ROOM_ACCESS_LEVEL = values.Value(
+        "public", environ_name="MEET_ROOM_ACCESS_LEVEL", environ_prefix=None
+    )
+    MEET_API_TIMEOUT = values.PositiveIntegerValue(
+        10, environ_name="MEET_API_TIMEOUT", environ_prefix=None
+    )
+
     OIDC_AUTHENTICATE_CLASS = values.Value(
         "lasuite.oidc_login.views.OIDCAuthenticationRequestView",
         environ_name="OIDC_AUTHENTICATE_CLASS",

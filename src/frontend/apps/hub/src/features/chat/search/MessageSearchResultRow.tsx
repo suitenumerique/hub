@@ -5,7 +5,9 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type { MessageSearchResult } from "@/features/chat/search/types";
+import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
+import { renderChatAvatarContent } from "./chatAvatarContent";
 import { HighlightedExcerpt } from "./highlightExcerpt";
 
 export type MessageSearchResultRowProps = {
@@ -22,6 +24,7 @@ export const MessageSearchResultRow = ({
   onSelect,
 }: MessageSearchResultRowProps) => {
   const { t } = useTranslation();
+  const { chat } = result;
 
   const timestamp = new Date(result.timestamp);
   const timeString = timestamp.toLocaleString(undefined, {
@@ -30,36 +33,39 @@ export const MessageSearchResultRow = ({
     hour: "2-digit",
     minute: "2-digit",
   });
+  const meta = [result.senderName, accountLabel, timeString]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <QuickSearchItem id={id} onSelect={onSelect}>
       <QuickSearchItemTemplate
         alwaysShowRight
         left={
-          <span className="hub__message-search-row">
-            <span className="hub__message-search-row__sender">
-              {result.senderName}
-              {accountLabel && (
-                <span className="hub__message-search-row__account">
-                  {" "}
-                  · {accountLabel}
-                </span>
-              )}
-              <span className="hub__message-search-row__timestamp">
-                {" "}
-                · {timeString}
+          <>
+            <Avatar
+              label={chat.name}
+              decorative
+              variant={chat.visual.kind === "emoji" ? "soft" : "solid"}
+            >
+              {renderChatAvatarContent(chat.visual)}
+            </Avatar>
+            <span className="hub__conversation-search__text">
+              <span className="hub__conversation-search__name">
+                {chat.name}
+              </span>
+              <span className="hub__conversation-search__subtitle">{meta}</span>
+              <span className="hub__message-search-row__excerpt">
+                <HighlightedExcerpt
+                  excerpt={result.excerpt}
+                  matchRanges={result.matchRanges}
+                />
               </span>
             </span>
-            <span className="hub__message-search-row__excerpt">
-              <HighlightedExcerpt
-                excerpt={result.excerpt}
-                matchRanges={result.matchRanges}
-              />
-            </span>
-          </span>
+          </>
         }
         right={
-          <span className="hub__message-search-row__action">
+          <span className="hub__conversation-search__open">
             {t("Jump to message")}
             <span className="material-icons" aria-hidden="true">
               arrow_forward

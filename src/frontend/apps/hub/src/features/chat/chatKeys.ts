@@ -41,6 +41,8 @@ export const chatKeys = {
     ["chat-thread", ref.accountId, ref.chatId] as const,
   members: (ref: ChatRef) =>
     ["chat-members", ref.accountId, ref.chatId] as const,
+  meetings: (ref: ChatRef) =>
+    ["chat-meetings", ref.accountId, ref.chatId] as const,
   connection: (
     accountId: AccountId,
     userId: string | null,

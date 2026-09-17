@@ -9,6 +9,8 @@ type ToolsPanelHeaderProps = {
   onClose: () => void;
   /** When set, renders a leading back button (e.g. thread detail → list). */
   onBack?: () => void;
+  /** Accessible label of the back button, when the default does not fit. */
+  backLabel?: string;
   /** Optional control rendered between the title and the close button. */
   action?: ReactNode;
 };
@@ -23,6 +25,7 @@ export const ToolsPanelHeader = ({
   isOpen,
   onClose,
   onBack,
+  backLabel,
   action,
 }: ToolsPanelHeaderProps) => {
   const { t } = useTranslation();
@@ -34,7 +37,7 @@ export const ToolsPanelHeader = ({
           type="button"
           className="hub__chat-tools-panel__header-button"
           onClick={onBack}
-          aria-label={t("Back to all threads")}
+          aria-label={backLabel ?? t("Back to all threads")}
           tabIndex={isOpen ? 0 : -1}
         >
           <ArrowLeft />

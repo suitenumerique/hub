@@ -19,6 +19,7 @@ import "../styles/globals.scss";
 import { AnalyticsProvider } from "@/features/analytics/AnalyticsProvider";
 import { APIError, errorToString } from "@/features/api/APIError";
 import { Auth } from "@/features/auth/Auth";
+import { ActiveMeetingProvider } from "@/features/chat/meetings/ActiveMeeting";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
 
@@ -75,7 +76,11 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <CunninghamProvider currentLocale={i18n.language} theme="dsfr-light">
           <ConfigProvider>
             <AnalyticsProvider>
-              <Auth>{getLayout(<Component {...pageProps} />)}</Auth>
+              <Auth>
+                <ActiveMeetingProvider>
+                  {getLayout(<Component {...pageProps} />)}
+                </ActiveMeetingProvider>
+              </Auth>
             </AnalyticsProvider>
           </ConfigProvider>
         </CunninghamProvider>

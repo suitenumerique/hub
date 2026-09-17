@@ -11,7 +11,6 @@ import {
   File,
   ImageAdd,
   Leave,
-  Meet,
   Shared,
   Star,
   StarSlash,
@@ -27,15 +26,18 @@ import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
 import { useSetChatAvatar } from "@/features/chat/hooks/useSetChatAvatar";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
-import type { Chat } from "@/features/drivers/types";
+import type { Chat, ChatRef } from "@/features/drivers/types";
 import { ChatPresenceAvatar } from "@/features/ui/components/presence/ChatPresenceAvatar";
 
 import { ChatMembersModal } from "./ChatMembersModal";
 import { LeaveConversationModal } from "./LeaveConversationModal";
+import { MeetingButton } from "./MeetingButton";
 
 type ChatHeaderProps = {
   /** `null` while the conversation is being fetched — renders a skeleton. */
   chat: Chat | null;
+  /** Known synchronously from the route, ahead of `chat` itself resolving. */
+  chatRef: ChatRef | null;
   activeTool: ChatTool | null;
   onToggleTool: (tool: ChatTool) => void;
   /**
@@ -52,6 +54,7 @@ type ChatHeaderProps = {
  */
 export const ChatHeader = ({
   chat,
+  chatRef,
   activeTool,
   onToggleTool,
   showTools = true,
@@ -83,14 +86,10 @@ export const ChatHeader = ({
       <div className="hub__chat-header__actions">
         {showTools && (
           <div className="hub__chat-header__selector">
-            <Button
-              type="button"
-              variant="tertiary"
-              color="neutral"
-              size="small"
-              className="hub__chat-header__icon-button"
-              aria-label={t("Start a meeting")}
-              icon={<Meet />}
+            <MeetingButton
+              chatRef={chatRef}
+              isActive={activeTool === "meetings"}
+              onToggle={() => onToggleTool("meetings")}
             />
             <span className="hub__chat-header__separator" aria-hidden="true" />
             <Button

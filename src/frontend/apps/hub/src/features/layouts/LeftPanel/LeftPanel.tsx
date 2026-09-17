@@ -19,6 +19,8 @@ import {
   spaceHref,
 } from "@/features/chat/chatRefs";
 import { compareChats } from "@/features/chat/chatSorting";
+import { CreateSalonModal } from "@/features/chat/components/CreateSalonModal";
+import { CreateSpaceModal } from "@/features/chat/components/CreateSpaceModal";
 import { formatChatListTimestamp } from "@/features/chat/formatTimestamp";
 import { useChatUnread } from "@/features/chat/hooks/useChatUnread";
 import { useChats } from "@/features/chat/hooks/useChats";
@@ -107,6 +109,12 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   );
   const showAccountLabels = entries.length > 1;
   const [tab, setTab] = useState<Tab>("all");
+  const [isRoomsOpen, setIsRoomsOpen] = useState(true);
+  const [isSpaceModalOpen, setIsSpaceModalOpen] = useState(false);
+  const [isSalonModalOpen, setIsSalonModalOpen] = useState(false);
+  const roomsReactId = useId();
+  const roomsTitleId = `${roomsReactId}-title`;
+  const roomsPanelId = `${roomsReactId}-panel`;
 
   const directChats = useMemo(
     () =>
@@ -131,14 +139,14 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
     [tab, groupChats, unreadLookup],
   );
 
-  const actions: ActionItem[] = [
-    {
-      id: "new",
-      href: "/chat/new",
-      icon: <Plus size={16} />,
-      label: t("New"),
-    },
-  ];
+  const canCreateSalon = entries.some(
+    ({ driver }) => driver.supportsConversationCreation,
+  );
+  const canCreateSpace = entries.some(
+    ({ driver }) => driver.supportsSpaceCreation,
+  );
+
+  const actions: ActionItem[] = [];
   if (entries.some(({ driver }) => driver.supportsConversationSearch)) {
     actions.push({
       id: "search",
@@ -160,7 +168,6 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
       <div className="hub__left-panel__top">
         <div className="hub__left-panel__logo">
           <TchapLogo />
-          <span className="hub__left-panel__logo__label">{t("Messaging")}</span>
         </div>
 
         <nav
@@ -172,8 +179,19 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
           ))}
         </nav>
 
-        <EspacesRow spaces={spaces} activeSpaceId={activeSpaceId} />
+        <EspacesRow
+          spaces={spaces}
+          activeSpaceId={activeSpaceId}
+          canCreateSpace={canCreateSpace}
+          onCreateSpace={() => setIsSpaceModalOpen(true)}
+        />
+      </div>
 
+      {/* Direct messages and Rooms used to each scroll internally (a small
+          capped list, and a flex-grow list); they now share one scrollbar
+          for the whole panel body, so long lists in either section scroll
+          the same way instead of fighting each other for space. */}
+      <div className="hub__left-panel__body">
         <DirectMessagesSection
           chats={directChats}
           unreadLookup={unreadLookup}
@@ -182,25 +200,42 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
           spaceId={activeSpaceId}
         />
 
-        <span className="hub__left-panel__rooms-title">{t("Rooms")}</span>
+        <div className="hub__left-panel__section" data-open={isRoomsOpen}>
+          <SectionHeader
+            titleId={roomsTitleId}
+            panelId={roomsPanelId}
+            title={t("Rooms")}
+            isOpen={isRoomsOpen}
+            onToggle={() => setIsRoomsOpen((open) => !open)}
+            addLabel={canCreateSalon ? t("New room") : undefined}
+            onAdd={canCreateSalon ? () => setIsSalonModalOpen(true) : undefined}
+          />
 
-        <TabsRow tab={tab} tabs={tabs} onChange={setTab} />
-      </div>
+          {isRoomsOpen && <TabsRow tab={tab} tabs={tabs} onChange={setTab} />}
 
-      <div className="hub__left-panel__scroll">
-        <ul className="hub__left-panel__list">
-          {visibleChats.map((chat) => (
-            <li key={`${chat.accountId}:${chat.id}`}>
-              <ChatRow
-                chat={chat}
-                accountLabel={accountLabels.get(chat.accountId)}
-                showAccountLabel={showAccountLabels}
-                unread={unreadLookup(chat.ref)}
-                spaceId={activeSpaceId}
-              />
-            </li>
-          ))}
-        </ul>
+          {isRoomsOpen && (
+            <div
+              id={roomsPanelId}
+              role="region"
+              aria-labelledby={roomsTitleId}
+              className="hub__left-panel__section__panel__inner"
+            >
+              <ul className="hub__left-panel__list">
+                {visibleChats.map((chat) => (
+                  <li key={`${chat.accountId}:${chat.id}`}>
+                    <ChatRow
+                      chat={chat}
+                      accountLabel={accountLabels.get(chat.accountId)}
+                      showAccountLabel={showAccountLabels}
+                      unread={unreadLookup(chat.ref)}
+                      spaceId={activeSpaceId}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="hub__left-panel__footer">
@@ -215,6 +250,17 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
           <LanguagePickerUserMenu />
         </div>
       </div>
+
+      <CreateSpaceModal
+        isOpen={isSpaceModalOpen}
+        onClose={() => setIsSpaceModalOpen(false)}
+      />
+      <CreateSalonModal
+        isOpen={isSalonModalOpen}
+        onClose={() => setIsSalonModalOpen(false)}
+        spaces={spaces}
+        defaultSpaceId={activeSpaceId}
+      />
     </aside>
   );
 };
@@ -249,6 +295,64 @@ const ActionRow = ({ action }: { action: ActionItem }) => {
     </button>
   );
 };
+
+/**
+ * Discord-style section header: title + chevron are one tight, content-sized
+ * toggle button (not a full-width row) so a separate "+" button can sit on
+ * the same line, flush to the right, to add straight into this section.
+ */
+const SectionHeader = ({
+  titleId,
+  panelId,
+  title,
+  count,
+  isOpen,
+  onToggle,
+  addLabel,
+  onAdd,
+}: {
+  titleId: string;
+  panelId: string;
+  title: string;
+  count?: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  addLabel?: string;
+  onAdd?: () => void;
+}) => (
+  <div className="hub__left-panel__section__header-row">
+    <button
+      type="button"
+      id={titleId}
+      className="hub__left-panel__section__header"
+      aria-expanded={isOpen}
+      aria-controls={panelId}
+      onClick={onToggle}
+    >
+      <span className="hub__left-panel__section__title">
+        {title}
+        {!!count && count > 0 && (
+          <span className="hub__left-panel__section__count">{count}</span>
+        )}
+      </span>
+      <ArrowDropDown
+        aria-hidden="true"
+        className="hub__left-panel__section__chevron"
+      />
+    </button>
+    {onAdd && (
+      <button
+        type="button"
+        className="hub__left-panel__section__add"
+        aria-label={addLabel}
+        title={addLabel}
+        onClick={onAdd}
+      >
+        <Plus size={16} aria-hidden="true" />
+      </button>
+    )}
+  </div>
+);
 
 const TabsRow = ({
   tab,
@@ -370,6 +474,7 @@ const DirectMessagesSection = ({
   spaceId: string | null;
 }) => {
   const { t } = useTranslation();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
   const [tab, setTab] = useState<Tab>("all");
   const reactId = useId();
@@ -386,36 +491,25 @@ const DirectMessagesSection = ({
   );
 
   return (
-    <div className="hub__left-panel__dm-section" data-open={isOpen}>
-      <button
-        type="button"
-        id={titleId}
-        className="hub__left-panel__dm-section__header"
-        aria-expanded={isOpen}
-        aria-controls={panelId}
-        onClick={() => setIsOpen((open) => !open)}
-      >
-        <span className="hub__left-panel__dm-section__title">
-          {t("Direct messages")}
-          {unreadCount > 0 && (
-            <span className="hub__left-panel__dm-section__count">
-              {unreadCount}
-            </span>
-          )}
-        </span>
-        <ArrowDropDown
-          aria-hidden="true"
-          className="hub__left-panel__dm-section__chevron"
-        />
-      </button>
+    <div className="hub__left-panel__section" data-open={isOpen}>
+      <SectionHeader
+        titleId={titleId}
+        panelId={panelId}
+        title={t("Direct messages")}
+        count={unreadCount}
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((open) => !open)}
+        addLabel={t("New chat")}
+        onAdd={() => void router.push("/chat/new")}
+      />
       <div
         id={panelId}
         role="region"
         aria-labelledby={titleId}
-        className="hub__left-panel__dm-section__panel"
+        className="hub__left-panel__section__panel"
         inert={!isOpen}
       >
-        <div className="hub__left-panel__dm-section__panel__inner">
+        <div className="hub__left-panel__section__panel__inner">
           {chats.length > 0 && (
             <TabsRow tab={tab} tabs={tabs} onChange={setTab} />
           )}
@@ -434,7 +528,7 @@ const DirectMessagesSection = ({
               ))}
             </ul>
           ) : (
-            <p className="hub__left-panel__dm-section__empty">
+            <p className="hub__left-panel__section__empty">
               {t("No direct messages yet")}
             </p>
           )}
@@ -452,50 +546,77 @@ const DirectMessagesSection = ({
 const EspacesRow = ({
   spaces,
   activeSpaceId,
+  canCreateSpace,
+  onCreateSpace,
 }: {
   spaces: Space[];
   activeSpaceId: string | null;
+  canCreateSpace: boolean;
+  onCreateSpace: () => void;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
   const currentChatRef = readChatRef(router.query);
 
-  if (spaces.length === 0) {
+  if (spaces.length === 0 && !canCreateSpace) {
     return null;
   }
 
   return (
     <div className="hub__left-panel__spaces">
       <span className="hub__left-panel__spaces__title">{t("Spaces")}</span>
-      <div className="hub__left-panel__spaces__row">
-        {spaces.map((space) => {
-          const isActive = space.id === activeSpaceId;
-          return (
-            <Link
-              key={space.id}
-              href={spaceHref(space.id, currentChatRef)}
-              shallow
-              aria-current={isActive ? "true" : undefined}
-              aria-label={space.name}
-              title={space.name}
-              className={clsx(
-                "hub__left-panel__spaces__item",
-                isActive && "hub__left-panel__spaces__item--active",
-              )}
-            >
-              <span className="hub__left-panel__spaces__name">
-                {space.name}
-              </span>
-              <Avatar label={space.name} decorative>
-                <span className="material-icons" aria-hidden="true">
-                  {space.visual.kind === "icon"
-                    ? space.visual.icon
-                    : "workspaces"}
+      {/* The "+" and its separator stay fixed and visible; only the espace
+          bubbles themselves scroll horizontally underneath them. */}
+      <div className="hub__left-panel__spaces__bar">
+        <div className="hub__left-panel__spaces__row">
+          {spaces.map((space) => {
+            const isActive = space.id === activeSpaceId;
+            return (
+              <Link
+                key={space.id}
+                href={spaceHref(space.id, currentChatRef)}
+                shallow
+                aria-current={isActive ? "true" : undefined}
+                aria-label={space.name}
+                title={space.name}
+                className={clsx(
+                  "hub__left-panel__spaces__item",
+                  isActive && "hub__left-panel__spaces__item--active",
+                )}
+              >
+                <span className="hub__left-panel__spaces__name">
+                  {space.name}
                 </span>
-              </Avatar>
-            </Link>
-          );
-        })}
+                <Avatar label={space.name} decorative>
+                  <span className="material-icons" aria-hidden="true">
+                    {space.visual.kind === "icon"
+                      ? space.visual.icon
+                      : "workspaces"}
+                  </span>
+                </Avatar>
+              </Link>
+            );
+          })}
+        </div>
+        {canCreateSpace && (
+          <>
+            {spaces.length > 0 && (
+              <span
+                className="hub__left-panel__spaces__separator"
+                aria-hidden="true"
+              />
+            )}
+            <button
+              type="button"
+              className="hub__left-panel__spaces__add"
+              aria-label={t("New space")}
+              title={t("New space")}
+              onClick={onCreateSpace}
+            >
+              <Plus size={16} aria-hidden="true" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

@@ -243,6 +243,12 @@ const applyChatEvent = (
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
       return;
 
+    case "meeting:changed":
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.meetings(ref),
+      });
+      return;
+
     case "chats:changed":
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(accountId),

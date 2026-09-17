@@ -14,9 +14,9 @@ from django.utils.text import slugify
 import rest_framework as drf
 from lasuite.tools.email import get_domain_from_email
 from rest_framework import viewsets
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
-from core import models
+from core import meet, models
 from core.api.filters import remove_accents
 
 from . import permissions, serializers
@@ -330,3 +330,32 @@ class NotFoundView(drf.views.APIView):
             Return a 404 response.
         """
         raise Http404()
+
+
+class MeetingView(drf.views.APIView):
+    """API view creating Meet rooms for the authenticated user."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "meeting_creation"
+
+    def post(self, request):
+        """
+        POST /api/v1.0/meetings/
+            Create a Meet room owned by the authenticated user and return its
+            `url` and `slug`.
+        """
+        if not meet.is_meet_configured():
+            return drf.response.Response(
+                {"detail": "Meet is not configured."},
+                status=drf.status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            room = meet.create_room(request.user.email)
+        except meet.MeetError:
+            return drf.response.Response(
+                {"detail": "Meet could not create the room."},
+                status=drf.status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return drf.response.Response(room, status=drf.status.HTTP_201_CREATED)

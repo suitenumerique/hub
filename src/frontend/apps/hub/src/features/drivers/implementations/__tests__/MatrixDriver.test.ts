@@ -11,6 +11,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { timelineEventToChatEvent } from "../matrixEventMapping";
 import { MatrixDriver } from "../MatrixDriver";
 import { readChatSelfPresencePreference } from "../../presencePreference";
+import { MEETING_EVENT_TYPE } from "../matrixMeetingMapping";
+import { MeetingNotAllowedError } from "../../meetingErrors";
 import {
   matrixJoinedRoomToLocalChat,
   MATRIX_FAVOURITE_TAG,
@@ -679,5 +681,323 @@ describe("MatrixDriver.toggleChatReaction", () => {
     expect(updated.reactions).toEqual([
       { emoji: "👍", count: 1, reactedByMe: true },
     ]);
+  });
+});
+
+describe("MatrixDriver.startChatMeeting", () => {
+  const MEET_ROOM = {
+    slug: "abc-defg-hij",
+    url: "https://meet.example.com/abc-defg-hij",
+  };
+
+  const makeMeetingRoom = (
+    stateEvents: MatrixEvent[] = [],
+    mayRecordMeeting = true,
+  ): Room =>
+    ({
+      roomId: ROOM_ID,
+      currentState: {
+        getStateEvents: (_type: string, stateKey?: string) =>
+          stateKey === undefined
+            ? stateEvents
+            : (stateEvents.find((event) => event.getStateKey() === stateKey) ??
+              null),
+        maySendStateEvent: (type: string, userId: string) =>
+          type === MEETING_EVENT_TYPE && userId === SELF_ID && mayRecordMeeting,
+      },
+    }) as unknown as Room;
+
+  const meetingEvent = (
+    stateKey: string,
+    content: Record<string, unknown>,
+    sender = SELF_ID,
+  ): MatrixEvent =>
+    ({
+      getContent: () => content,
+      getSender: () => sender,
+      getStateKey: () => stateKey,
+    }) as unknown as MatrixEvent;
+
+  const makeClient = (room: Room) => {
+    const sendStateEvent = vi.fn(async () => ({
+      event_id: "$state:localhost",
+    }));
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      getJoinedRooms: async () => ({ joined_rooms: [ROOM_ID] }),
+      sendStateEvent,
+    } as unknown as MatrixClient;
+    return { mx, sendStateEvent };
+  };
+
+  it("creates a Meet room and records its link in the room state", async () => {
+    const { mx, sendStateEvent } = makeClient(makeMeetingRoom());
+    const createRoom = vi.fn(async () => MEET_ROOM);
+
+    const meeting = await driverWithClient(mx).startChatMeeting(
+      ROOM_ID,
+      createRoom,
+    );
+
+    expect(createRoom).toHaveBeenCalledOnce();
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      ROOM_ID,
+      MEETING_EVENT_TYPE,
+      {
+        meetingUrl: MEET_ROOM.url,
+        startedAt: expect.any(Number),
+        organizerId: SELF_ID,
+      },
+      MEET_ROOM.slug,
+    );
+    expect(meeting).toMatchObject({
+      id: MEET_ROOM.slug,
+      url: MEET_ROOM.url,
+      organizerId: SELF_ID,
+    });
+  });
+
+  it("schedules a meeting with its title and duration next to an ongoing one", async () => {
+    const ongoing = meetingEvent("xyz-abcd-efg", {
+      meetingUrl: "https://meet.example.com/xyz-abcd-efg",
+      startedAt: Date.now(),
+    });
+    const { mx, sendStateEvent } = makeClient(makeMeetingRoom([ongoing]));
+    const createRoom = vi.fn(async () => MEET_ROOM);
+    const startsAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    const meeting = await driverWithClient(mx).startChatMeeting(
+      ROOM_ID,
+      createRoom,
+      { title: " Point hebdo ", plannedDurationMinutes: 30, startsAt },
+    );
+
+    expect(createRoom).toHaveBeenCalledOnce();
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      ROOM_ID,
+      MEETING_EVENT_TYPE,
+      {
+        meetingUrl: MEET_ROOM.url,
+        startedAt: startsAt.getTime(),
+        organizerId: SELF_ID,
+        title: "Point hebdo",
+        plannedDurationMinutes: 30,
+      },
+      MEET_ROOM.slug,
+    );
+    expect(meeting).toMatchObject({
+      title: "Point hebdo",
+      startedAt: startsAt.toISOString(),
+      plannedDurationMinutes: 30,
+    });
+  });
+
+  it("closes the organizer's meeting and keeps its other fields", async () => {
+    const content = {
+      meetingUrl: MEET_ROOM.url,
+      startedAt: Date.now() - 10 * 60 * 1000,
+      organizerId: SELF_ID,
+      plannedDurationMinutes: 30,
+    };
+    const { mx, sendStateEvent } = makeClient(
+      makeMeetingRoom([meetingEvent(MEET_ROOM.slug, content)]),
+    );
+
+    await driverWithClient(mx).endChatMeeting(ROOM_ID, MEET_ROOM.slug);
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      ROOM_ID,
+      MEETING_EVENT_TYPE,
+      { ...content, endedAt: expect.any(Number) },
+      MEET_ROOM.slug,
+    );
+  });
+
+  it("refuses to close a meeting organized by someone else", async () => {
+    const event = meetingEvent(
+      MEET_ROOM.slug,
+      {
+        meetingUrl: MEET_ROOM.url,
+        startedAt: Date.now(),
+        organizerId: OTHER_ID,
+      },
+      // The last writer is not the organizer.
+      SELF_ID,
+    );
+    const { mx, sendStateEvent } = makeClient(makeMeetingRoom([event]));
+
+    await expect(
+      driverWithClient(mx).endChatMeeting(ROOM_ID, MEET_ROOM.slug),
+    ).rejects.toBeInstanceOf(MeetingNotAllowedError);
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it("extends the planned duration", async () => {
+    const content = {
+      meetingUrl: MEET_ROOM.url,
+      startedAt: Date.now(),
+      organizerId: SELF_ID,
+      plannedDurationMinutes: 30,
+    };
+    const { mx, sendStateEvent } = makeClient(
+      makeMeetingRoom([meetingEvent(MEET_ROOM.slug, content)]),
+    );
+
+    await driverWithClient(mx).extendChatMeeting(ROOM_ID, MEET_ROOM.slug, 15);
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      ROOM_ID,
+      MEETING_EVENT_TYPE,
+      { ...content, plannedDurationMinutes: 45 },
+      MEET_ROOM.slug,
+    );
+  });
+
+  it("renames the meeting, and removes the name when it is emptied", async () => {
+    const content = {
+      meetingUrl: MEET_ROOM.url,
+      startedAt: Date.now(),
+      organizerId: SELF_ID,
+      title: "Réunion",
+    };
+    const { mx, sendStateEvent } = makeClient(
+      makeMeetingRoom([meetingEvent(MEET_ROOM.slug, content)]),
+    );
+    const driver = driverWithClient(mx);
+
+    await driver.renameChatMeeting(ROOM_ID, MEET_ROOM.slug, "  Point hebdo ");
+    await driver.renameChatMeeting(ROOM_ID, MEET_ROOM.slug, "   ");
+
+    expect(sendStateEvent).toHaveBeenNthCalledWith(
+      1,
+      ROOM_ID,
+      MEETING_EVENT_TYPE,
+      { ...content, title: "Point hebdo" },
+      MEET_ROOM.slug,
+    );
+    expect(sendStateEvent).toHaveBeenNthCalledWith(
+      2,
+      ROOM_ID,
+      MEETING_EVENT_TYPE,
+      { ...content, title: undefined },
+      MEET_ROOM.slug,
+    );
+  });
+
+  it("extends a meeting without planned duration from the time spent", async () => {
+    const content = {
+      meetingUrl: MEET_ROOM.url,
+      startedAt: Date.now() - 20 * 60 * 1000,
+      organizerId: SELF_ID,
+    };
+    const { mx, sendStateEvent } = makeClient(
+      makeMeetingRoom([meetingEvent(MEET_ROOM.slug, content)]),
+    );
+
+    await driverWithClient(mx).extendChatMeeting(ROOM_ID, MEET_ROOM.slug, 15);
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      ROOM_ID,
+      MEETING_EVENT_TYPE,
+      { ...content, plannedDurationMinutes: 35 },
+      MEET_ROOM.slug,
+    );
+  });
+
+  it("rejoins the ongoing meeting without creating a Meet room", async () => {
+    const ongoing = {
+      getContent: () => ({
+        meetingUrl: "https://meet.example.com/xyz-abcd-efg",
+        startedAt: Date.now(),
+      }),
+      getSender: () => OTHER_ID,
+      getStateKey: () => "xyz-abcd-efg",
+    } as unknown as MatrixEvent;
+    const { mx, sendStateEvent } = makeClient(makeMeetingRoom([ongoing]));
+    const createRoom = vi.fn(async () => MEET_ROOM);
+
+    const meeting = await driverWithClient(mx).startChatMeeting(
+      ROOM_ID,
+      createRoom,
+    );
+
+    expect(createRoom).not.toHaveBeenCalled();
+    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(meeting.url).toBe("https://meet.example.com/xyz-abcd-efg");
+  });
+
+  it("records nothing when Meet cannot create the room", async () => {
+    const { mx, sendStateEvent } = makeClient(makeMeetingRoom());
+    const createRoom = vi.fn(async () => {
+      throw new Error("Meet unavailable");
+    });
+
+    await expect(
+      driverWithClient(mx).startChatMeeting(ROOM_ID, createRoom),
+    ).rejects.toThrow("Meet unavailable");
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("MatrixDriver.startChatMeeting permissions", () => {
+  it("refuses before creating a Meet room when the user may not record it", async () => {
+    const sendStateEvent = vi.fn();
+    const room = {
+      roomId: ROOM_ID,
+      currentState: {
+        getStateEvents: () => [],
+        maySendStateEvent: () => false,
+      },
+    } as unknown as Room;
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      getJoinedRooms: async () => ({ joined_rooms: [ROOM_ID] }),
+      sendStateEvent,
+    } as unknown as MatrixClient;
+    const createRoom = vi.fn();
+
+    await expect(
+      driverWithClient(mx).startChatMeeting(ROOM_ID, createRoom),
+    ).rejects.toBeInstanceOf(MeetingNotAllowedError);
+    expect(createRoom).not.toHaveBeenCalled();
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it("lets every member of a new conversation start a meeting", async () => {
+    const createRoomMock = vi.fn(async () => ({ room_id: ROOM_ID }));
+    const room = {
+      roomId: ROOM_ID,
+      name: "Alice",
+      getMembers: () => [],
+      getMyMembership: () => KnownMembership.Join,
+      getLastActiveTimestamp: () => 0,
+      tags: {},
+      currentState: { getStateEvents: () => undefined },
+    } as unknown as Room;
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      getJoinedRooms: async () => ({ joined_rooms: [] }),
+      getRooms: () => [],
+      createRoom: createRoomMock,
+    } as unknown as MatrixClient;
+
+    const driver = driverWithClient(mx);
+    // No existing conversation with these members: a room is created.
+    vi.spyOn(driver, "getChatForUsers").mockResolvedValue(null);
+
+    await driver
+      .createChatForUsers([OTHER_ID, "@bob:localhost"])
+      .catch(() => undefined);
+
+    expect(createRoomMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        power_level_content_override: {
+          events: { [MEETING_EVENT_TYPE]: 0 },
+        },
+      }),
+    );
   });
 });

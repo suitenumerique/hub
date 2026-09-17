@@ -79,6 +79,7 @@ import {
   AccountId,
   ChatLocalUser,
   ChatMainTimelineUnread,
+  ChatMeeting,
   ChatMessage,
   ChatMember,
   ChatMembers,
@@ -94,8 +95,12 @@ import {
   LocalChat,
   LocalChatSections,
   LocalSpace,
+  MeetRoom,
+  StartMeetingOptions,
   User,
 } from "../types";
+import { MeetingNotAllowedError } from "../meetingErrors";
+import { isMeetingOngoing } from "../meetingTime";
 import {
   authorForSender,
   buildAuthors,
@@ -131,6 +136,12 @@ import {
 import { matrixUserToChatUserPresence } from "./matrixPresence";
 import { MatrixConversationSearch } from "./MatrixConversationSearch";
 import { MatrixMessageSearch } from "./MatrixMessageSearch";
+import {
+  getChatMeetingsFromRoom,
+  getMeetingStateContent,
+  MEETING_EVENT_TYPE,
+  type MeetingStateEventContent,
+} from "./matrixMeetingMapping";
 import {
   clearStoredConversationSearch,
   MATRIX_USER_STORAGE_KEY,
@@ -304,6 +315,8 @@ export class MatrixDriver extends Driver {
   override readonly supportsConversationHistoryRemoval: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
   override readonly supportsSpaces: boolean = true;
+  override readonly supportsSpaceCreation: boolean = true;
+  override readonly supportsMeetings: boolean = true;
 
   private mx: MatrixClient | null = null;
   /** Subscribers to the single global event stream. */
@@ -421,6 +434,22 @@ export class MatrixDriver extends Driver {
       .map((room) => matrixRoomToLocalSpace(room));
   }
 
+  async createSpace(name: string): Promise<LocalSpace> {
+    const mx = this.requireClient("createSpace");
+    const { room_id: roomId } = await mx.createRoom({
+      name,
+      preset: Preset.PrivateChat,
+      creation_content: { type: "m.space" },
+    });
+    const room = await this.waitForRoom(mx, roomId);
+    if (!room) {
+      throw new Error(
+        `MatrixDriver.createSpace: room "${roomId}" not found after creation.`,
+      );
+    }
+    return matrixRoomToLocalSpace(room);
+  }
+
   /** Room ids listed as children of `spaceId`'s `m.space.child` state, if joined. */
   private getSpaceChildRoomIds(mx: MatrixClient, spaceId: string): Set<string> {
     const spaceRoom = mx.getRoom(spaceId);
@@ -504,6 +533,148 @@ export class MatrixDriver extends Driver {
       return;
     }
     await mx.deleteRoomTag(chatId, MATRIX_FAVOURITE_TAG);
+  }
+
+  async getChatMeetings(chatId: string): Promise<ChatMeeting[]> {
+    const { room } = this.requireRoom("getChatMeetings", chatId);
+    return getChatMeetingsFromRoom(room);
+  }
+
+  async startChatMeeting(
+    chatId: string,
+    createRoom: () => Promise<MeetRoom>,
+    options: StartMeetingOptions = {},
+  ): Promise<ChatMeeting> {
+    const { mx, room } = this.requireRoom("startChatMeeting", chatId);
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (!joinedRoomIds.has(chatId)) {
+      throw new Error(
+        `MatrixDriver.startChatMeeting: room "${chatId}" is not joined.`,
+      );
+    }
+    const now = Date.now();
+    const scheduledStart = options.startsAt?.getTime();
+    const isScheduled = scheduledStart !== undefined && scheduledStart > now;
+    if (!isScheduled) {
+      const ongoing = getChatMeetingsFromRoom(room).find((meeting) =>
+        isMeetingOngoing(meeting, now),
+      );
+      if (ongoing) {
+        return ongoing;
+      }
+    }
+    const selfUserId = this.requireMeetingOrganizerRights(mx, room, chatId);
+    // The Meet slug is unique per room: it doubles as the state key.
+    const { slug: meetingId, url } = await createRoom();
+    const title = options.title?.trim() || undefined;
+    const content: MeetingStateEventContent = {
+      meetingUrl: url,
+      startedAt: isScheduled ? scheduledStart : now,
+      organizerId: selfUserId,
+      ...(title ? { title } : {}),
+      ...(options.plannedDurationMinutes
+        ? { plannedDurationMinutes: options.plannedDurationMinutes }
+        : {}),
+    };
+    await mx.sendStateEvent(chatId, MEETING_EVENT_TYPE, content, meetingId);
+    return {
+      id: meetingId,
+      url,
+      organizerId: selfUserId,
+      ...(title ? { title } : {}),
+      startedAt: new Date(content.startedAt).toISOString(),
+      ...(content.plannedDurationMinutes
+        ? { plannedDurationMinutes: content.plannedDurationMinutes }
+        : {}),
+      documents: [],
+    };
+  }
+
+  async endChatMeeting(chatId: string, meetingId: string): Promise<void> {
+    await this.updateOwnMeeting("endChatMeeting", chatId, meetingId, () => ({
+      endedAt: Date.now(),
+    }));
+  }
+
+  async extendChatMeeting(
+    chatId: string,
+    meetingId: string,
+    minutes: number,
+  ): Promise<void> {
+    await this.updateOwnMeeting(
+      "extendChatMeeting",
+      chatId,
+      meetingId,
+      (content) => {
+        // Without a planned duration, the extension counts from now.
+        const elapsedMinutes = Math.ceil(
+          Math.max(0, Date.now() - content.startedAt) / 60000,
+        );
+        return {
+          plannedDurationMinutes:
+            (content.plannedDurationMinutes ?? elapsedMinutes) + minutes,
+        };
+      },
+    );
+  }
+
+  async renameChatMeeting(
+    chatId: string,
+    meetingId: string,
+    title: string,
+  ): Promise<void> {
+    const trimmed = title.trim();
+    await this.updateOwnMeeting("renameChatMeeting", chatId, meetingId, () => ({
+      title: trimmed || undefined,
+    }));
+  }
+
+  /**
+   * The connected user, when they may record a meeting in the room. Checked
+   * before creating a Meet room, which would otherwise be left unused when the
+   * homeserver refuses the state event.
+   */
+  private requireMeetingOrganizerRights(
+    mx: MatrixClient,
+    room: Room,
+    chatId: string,
+  ): string {
+    const selfUserId = mx.getUserId();
+    if (!selfUserId) {
+      throw new Error("MatrixDriver: no authenticated user.");
+    }
+    if (!room.currentState.maySendStateEvent(MEETING_EVENT_TYPE, selfUserId)) {
+      throw new MeetingNotAllowedError(chatId);
+    }
+    return selfUserId;
+  }
+
+  /** Rewrites one meeting's state, only for its organizer. */
+  private async updateOwnMeeting(
+    method: "endChatMeeting" | "extendChatMeeting" | "renameChatMeeting",
+    chatId: string,
+    meetingId: string,
+    change: (
+      content: MeetingStateEventContent,
+    ) => Partial<MeetingStateEventContent>,
+  ): Promise<void> {
+    const { mx, room } = this.requireRoom(method, chatId);
+    const content = getMeetingStateContent(room, meetingId);
+    if (!content) {
+      throw new Error(
+        `MatrixDriver.${method}: meeting "${meetingId}" not found in "${chatId}".`,
+      );
+    }
+    const selfUserId = this.requireMeetingOrganizerRights(mx, room, chatId);
+    if (content.organizerId !== selfUserId) {
+      throw new MeetingNotAllowedError(chatId);
+    }
+    await mx.sendStateEvent(
+      chatId,
+      MEETING_EVENT_TYPE,
+      { ...content, ...change(content) },
+      meetingId,
+    );
   }
 
   /**
@@ -614,6 +785,12 @@ export class MatrixDriver extends Driver {
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     const match = mx
       .getVisibleRooms()
+      // Espaces are a separate hierarchy level (see `getSpaces`), never a
+      // conversation — without this, an espace whose invite list happens to
+      // match `userIds` (e.g. every seeded espace shares the same invitees)
+      // gets misread as "the existing chat for these participants" and
+      // hijacked instead of creating a real room for them.
+      .filter((room) => !room.isSpaceRoom())
       .filter((room) => joinedRoomIds.has(room.roomId))
       .find(
         (room) =>
@@ -632,7 +809,12 @@ export class MatrixDriver extends Driver {
    * creating a second one. Concurrent local calls for the same participant set
    * share one promise.
    */
-  async createChatForUsers(userIds: string[]): Promise<LocalChat> {
+  async createChatForUsers(
+    userIds: string[],
+    name?: string,
+    spaceId?: string,
+    forceNew?: boolean,
+  ): Promise<LocalChat> {
     const mx = this.requireClient("createChatForUsers");
     const participantIds = [...new Set(userIds)].filter(Boolean);
     if (participantIds.length === 0) {
@@ -641,13 +823,22 @@ export class MatrixDriver extends Driver {
       );
     }
 
-    const creationKey = participantSetKey(participantIds);
+    // `forceNew` calls (Salon creation) never share an in-flight promise with
+    // a reuse-eligible one for the same participants — each is asking a
+    // different question ("the existing chat, if any" vs. "a brand-new one").
+    const creationKey = `${forceNew ? "new:" : ""}${participantSetKey(participantIds)}`;
     const inFlight = this.chatCreations.get(creationKey);
     if (inFlight) {
       return inFlight;
     }
 
-    const creation = this.resolveOrCreateChatForUsers(mx, participantIds);
+    const creation = this.resolveOrCreateChatForUsers(
+      mx,
+      participantIds,
+      name,
+      spaceId,
+      forceNew,
+    );
     this.chatCreations.set(creationKey, creation);
     try {
       return await creation;
@@ -712,13 +903,18 @@ export class MatrixDriver extends Driver {
   private async resolveOrCreateChatForUsers(
     mx: MatrixClient,
     participantIds: string[],
+    name?: string,
+    spaceId?: string,
+    forceNew?: boolean,
   ): Promise<LocalChat> {
-    // Creation is rare and duplicate rooms are permanent, so bypass the cached
-    // joined set for this last-chance check against the homeserver.
-    await this.refreshJoinedRoomIds(mx);
-    const existing = await this.getChatForUsers(participantIds);
-    if (existing) {
-      return existing;
+    if (!forceNew) {
+      // Creation is rare and duplicate rooms are permanent, so bypass the
+      // cached joined set for this last-chance check against the homeserver.
+      await this.refreshJoinedRoomIds(mx);
+      const existing = await this.getChatForUsers(participantIds);
+      if (existing) {
+        return existing;
+      }
     }
 
     if (participantIds.length === 1) {
@@ -766,7 +962,21 @@ export class MatrixDriver extends Driver {
       preset: Preset.PrivateChat,
       is_direct: isDirect,
       invite: participantIds,
+      ...(name ? { name } : {}),
+      // Every member may start a meeting, which is recorded as room state
+      // (moderator-only by default).
+      power_level_content_override: { events: { [MEETING_EVENT_TYPE]: 0 } },
     });
+
+    if (spaceId) {
+      const domain = mx.getDomain();
+      await mx.sendStateEvent(
+        spaceId,
+        EventType.SpaceChild,
+        { via: domain ? [domain] : [] },
+        roomId,
+      );
+    }
 
     const room = await this.waitForRoom(mx, roomId);
     if (room) {
@@ -777,7 +987,7 @@ export class MatrixDriver extends Driver {
     // real name/kind firm up once `getChat` reads the synced room.
     return {
       id: roomId,
-      name: participantIds[0],
+      name: name ?? participantIds[0],
       section: "all",
       kind: isDirect ? "direct" : "group",
       participantIds,
@@ -2442,6 +2652,15 @@ export class MatrixDriver extends Driver {
     const onTags = (_event: MatrixEvent, room: Room) => {
       this.emit({ type: "tags:changed", chatId: room.roomId });
     };
+    const onRoomState = (event: MatrixEvent) => {
+      if (event.getType() !== MEETING_EVENT_TYPE) {
+        return;
+      }
+      const roomId = event.getRoomId();
+      if (roomId) {
+        this.emit({ type: "meeting:changed", chatId: roomId });
+      }
+    };
     const onAccountData = (event: MatrixEvent, room: Room) => {
       if (event.getType() === EventType.FullyRead) {
         emitMainTimelineUnread(room);
@@ -2546,6 +2765,7 @@ export class MatrixDriver extends Driver {
     mx.on(RoomMemberEvent.Typing, onTyping);
     mx.on(RoomMemberEvent.PowerLevel, onPowerLevel);
     mx.on(RoomStateEvent.Members, onMembers);
+    mx.on(RoomStateEvent.Events, onRoomState);
     mx.on(RoomEvent.Name, onName);
     mx.on(RoomEvent.Tags, onTags);
     mx.on(RoomEvent.AccountData, onAccountData);
@@ -2568,6 +2788,7 @@ export class MatrixDriver extends Driver {
       mx.off(RoomMemberEvent.Typing, onTyping);
       mx.off(RoomMemberEvent.PowerLevel, onPowerLevel);
       mx.off(RoomStateEvent.Members, onMembers);
+      mx.off(RoomStateEvent.Events, onRoomState);
       mx.off(RoomEvent.Name, onName);
       mx.off(RoomEvent.Tags, onTags);
       mx.off(RoomEvent.AccountData, onAccountData);

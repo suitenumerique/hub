@@ -43,6 +43,8 @@ env.bak/
 venv.bak/
 env.d/development/*.local
 env.d/terraform
+hack42-README-equipe.md
+hack42-matrix-staging.sh
 
 # Docker
 compose.__override.yml
@@ -88,6 +90,8 @@ db.sqlite3
 .agents
 .claude/
 .claude
+.context/
+.context
 .codex/
 .playwright-mcp/
 openspec/

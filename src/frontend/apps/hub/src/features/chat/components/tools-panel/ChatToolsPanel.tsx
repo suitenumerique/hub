@@ -7,10 +7,11 @@ import type {
 } from "../../ChatPanelContext";
 
 import { DocumentsTool } from "./DocumentsTool";
+import { MeetingsTool } from "./MeetingsTool";
 import { ThreadsTool } from "./ThreadsTool";
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
-export type ChatTool = "threads" | "files";
+export type ChatTool = "meetings" | "threads" | "files";
 
 type ChatToolsPanelProps = {
   tool: ChatTool | null;
@@ -46,6 +47,9 @@ export const ChatToolsPanel = ({
       aria-label={t("Tools panel")}
       aria-hidden={!isOpen}
     >
+      {tool === "meetings" && (
+        <MeetingsTool chatRef={chatRef} isOpen={isOpen} onClose={onClose} />
+      )}
       {tool === "files" && (
         <>
           <ToolsPanelHeader

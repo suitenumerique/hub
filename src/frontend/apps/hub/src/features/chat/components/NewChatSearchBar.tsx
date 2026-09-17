@@ -186,12 +186,13 @@ export const NewChatSearchBar = ({
             <button
               type="button"
               className="hub__new-chat-search__icon-button"
-              aria-label={t("Start a meeting")}
+              aria-label={t("Meetings")}
+              aria-pressed={activeTool === "meetings"}
+              data-active={activeTool === "meetings"}
+              onClick={() => onToggleTool("meetings")}
             >
               <Meet aria-hidden="true" />
-              <span className="hub__visually-hidden">
-                {t("Start a meeting")}
-              </span>
+              <span className="hub__visually-hidden">{t("Meetings")}</span>
             </button>
             <span
               className="hub__new-chat-search__separator"

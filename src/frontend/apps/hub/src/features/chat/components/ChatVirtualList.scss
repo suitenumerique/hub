@@ -72,6 +72,48 @@
     max-width: 750px;
     padding: 2px;
   }
+
+  // Floats above the message list, horizontally centered — clear of the
+  // composer just below it.
+  &__scroll-to-bottom {
+    position: absolute;
+    left: 50%;
+    bottom: 16px;
+    z-index: 1;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    appearance: none;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    background: var(--c--contextuals--background--surface--primary, #ffffff);
+    color: var(--c--contextuals--content--semantic--brand--tertiary, #3e5de7);
+    box-shadow: 0 2px 8px rgba(24, 27, 36, 0.12);
+    cursor: pointer;
+    transform: translateX(-50%);
+    animation: hub-chat-scroll-to-bottom-in 150ms ease;
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    &:hover {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: 2px;
+    }
+  }
 }
 
 @keyframes hub-chat-spin {
@@ -80,9 +122,24 @@
   }
 }
 
+@keyframes hub-chat-scroll-to-bottom-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hub__chat-conversation__top-loader .material-icons,
   .hub__chat-conversation__bottom-loader .material-icons {
+    animation: none;
+  }
+
+  .hub__chat-conversation__scroll-to-bottom {
     animation: none;
   }
 }

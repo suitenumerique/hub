@@ -1,9 +1,9 @@
-@use "./scaffoldTokens" as *;
-
+// Same brand-tint treatment as the active tab / unread badge in the left
+// panel — the design system's existing "highlighted" visual language.
 .hub__message-search__highlight {
-  background-color: var(--hub-scaffold-highlight-bg);
-  color: var(--hub-scaffold-text-title);
+  background-color: var(--c--globals--colors--brand-050, #edf0ff);
+  color: var(--c--contextuals--content--semantic--brand--secondary, #304ddf);
   padding: 0 2px;
   border-radius: 2px;
-  font-weight: 500;
+  font-weight: 700;
 }

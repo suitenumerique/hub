@@ -52,6 +52,7 @@ type ChatViewProps = {
   chatRef: ChatRef | null;
   renderHeader?: (props: {
     chat: Chat | null;
+    chatRef: ChatRef | null;
     activeTool: ChatTool | null;
     onToggleTool: (tool: ChatTool) => void;
   }) => ReactNode;
@@ -238,6 +239,7 @@ export const ChatView = ({
             <>
               {renderHeader({
                 chat,
+                chatRef,
                 activeTool,
                 onToggleTool: toggleTool,
               })}
@@ -246,6 +248,7 @@ export const ChatView = ({
             <>
               <ChatHeader
                 chat={chat}
+                chatRef={chatRef}
                 activeTool={activeTool}
                 onToggleTool={toggleTool}
                 showTools={!isInvitation}

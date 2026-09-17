@@ -1,0 +1,163 @@
+.hub__meeting-window {
+  position: fixed;
+  z-index: 1001;
+  inset: 5vh 5vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--c--contextuals--background--surface--primary, #fff);
+  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(24, 27, 36, 0.24);
+
+  // Minimized: a corner thumbnail, the rest of the Hub stays usable.
+  &[data-minimized] {
+    inset: auto var(--c--globals--spacings--base, 16px)
+      var(--c--globals--spacings--base, 16px) auto;
+    width: min(360px, calc(100vw - 32px));
+    height: 240px;
+  }
+
+  &__backdrop {
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
+    background: rgba(24, 27, 36, 0.4);
+  }
+
+  &__bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    // A narrow (minimized) window moves the actions under the title.
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--c--globals--spacings--xxxs, 4px)
+      var(--c--globals--spacings--xs, 8px);
+    padding: var(--c--globals--spacings--xxxs, 4px)
+      var(--c--globals--spacings--xs, 8px);
+    border-bottom: 1px solid
+      var(--c--contextuals--border--surface--primary, #dfe2ea);
+  }
+
+  &__heading {
+    flex: 1 1 160px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px)
+      var(--c--globals--spacings--xs, 8px);
+    overflow: hidden;
+  }
+
+  &__title-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 28px;
+    padding: 0 var(--c--globals--spacings--xs, 8px);
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__progress {
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #75758a);
+
+    &[data-overdue] {
+      font-weight: 700;
+      color: var(
+        --c--contextuals--content--semantic--warning--primary,
+        #b34000
+      );
+    }
+  }
+
+  &__text-button {
+    appearance: none;
+    height: 28px;
+    padding: 0 var(--c--globals--spacings--xs, 8px);
+    background: transparent;
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+    white-space: nowrap;
+
+    &[data-danger] {
+      color: var(--c--contextuals--content--semantic--error--primary, #ce0500);
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+  }
+
+  &__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 18px;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__actions {
+    flex: 0 0 auto;
+    display: inline-flex;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+  }
+
+  &__button {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(
+      --c--contextuals--content--semantic--neutral--secondary,
+      #3a3f4c
+    );
+
+    &:hover,
+    &:focus-visible {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+
+    &[data-danger] {
+      color: var(--c--contextuals--content--semantic--error--primary, #ce0500);
+    }
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  &__frame {
+    flex: 1 1 auto;
+    width: 100%;
+    border: 0;
+    background: #000;
+  }
+}

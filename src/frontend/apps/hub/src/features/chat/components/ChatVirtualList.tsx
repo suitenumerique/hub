@@ -1,3 +1,4 @@
+import { ArrowDown } from "@gouvfr-lasuite/ui-components/icons";
 import {
   memo,
   useCallback,
@@ -70,6 +71,7 @@ export const ChatVirtualList = ({
     fetchOlder,
     fetchNewer,
     openAround,
+    returnToLive,
   } = useChatMessages(chatRef);
   const unread = useMainTimelineUnread(chatRef, messages);
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
@@ -107,6 +109,7 @@ export const ChatVirtualList = ({
   const [unreadSeparator, setUnreadSeparator] =
     useState<UnreadSeparatorState | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const unreadSeparatorEventId =
     unreadSeparator?.chatKey === chatKey ? unreadSeparator.eventId : null;
 
@@ -230,6 +233,7 @@ export const ChatVirtualList = ({
   useEffect(() => {
     hasUserInteractedRef.current = false;
     atBottomRef.current = true;
+    setIsAtBottom(true);
     setUnreadViewportState("unknown");
     return () => {
       if (visibilityTimerRef.current !== null) {
@@ -382,6 +386,20 @@ export const ChatVirtualList = ({
       behavior: "auto",
     });
   }, []);
+
+  // Visible once the user has scrolled away from the bottom of the live
+  // window, or (via unread navigation) away from the live window entirely —
+  // the latter needs `returnToLive` first, a plain scroll cannot reach it.
+  const showScrollToBottom = !isInitialLoading && (!isAtBottom || !isAtLiveEnd);
+
+  const handleScrollToBottom = useCallback(() => {
+    if (!isAtLiveEndRef.current) {
+      void returnToLive();
+      return;
+    }
+    shouldStickToBottomRef.current = true;
+    scrollToBottom();
+  }, [returnToLive, scrollToBottom]);
 
   const scrollToEvent = useCallback((eventId: string) => {
     if (pendingScrollRaf.current !== null) {
@@ -538,6 +556,7 @@ export const ChatVirtualList = ({
           atTopStateChange={handleAtTopStateChange}
           atBottomStateChange={(atBottom) => {
             atBottomRef.current = atBottom;
+            setIsAtBottom(atBottom);
             if (atBottom && isAtLiveEndRef.current) {
               shouldStickToBottomRef.current = false;
             }
@@ -616,6 +635,17 @@ export const ChatVirtualList = ({
             )
           }
         />
+      )}
+      {showScrollToBottom && (
+        <button
+          type="button"
+          className="hub__chat-conversation__scroll-to-bottom"
+          onClick={handleScrollToBottom}
+          aria-label={t("Scroll to most recent message")}
+          title={t("Scroll to most recent message")}
+        >
+          <ArrowDown aria-hidden="true" />
+        </button>
       )}
     </div>
   );

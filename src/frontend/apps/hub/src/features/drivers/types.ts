@@ -9,6 +9,14 @@ export type ChatRef = {
   chatId: string;
 };
 
+/** A Meet room created through the Hub backend. */
+export type MeetRoom = {
+  /** Link every participant opens to join the call. */
+  url: string;
+  /** Meet's room identifier, unique per room. */
+  slug: string;
+};
+
 export type ChatAccountConfig = {
   accountId: AccountId;
   label: string;
@@ -135,6 +143,45 @@ export type ChatPreview = {
 export type Chat = LocalChat & {
   accountId: AccountId;
   ref: ChatRef;
+};
+
+/** A document linked to a meeting: an agenda file, a shared doc, a recap. */
+export type ChatMeetingDocument = {
+  id: string;
+  title: string;
+  url: string;
+};
+
+/**
+ * One call of a conversation, started or scheduled from the meetings panel.
+ * Its status (upcoming, ongoing, ended) depends on the current time: derive it
+ * with `getMeetingStatus` rather than storing it.
+ */
+export type ChatMeeting = {
+  id: string;
+  /** URL of the Meet call every participant joins. */
+  url: string;
+  organizerId: string;
+  /** Name given when the meeting was created. */
+  title?: string;
+  /** ISO 8601 start of the call: planned for a scheduled meeting. */
+  startedAt: string;
+  /** Planned length. The call stays joinable past it until it is closed. */
+  plannedDurationMinutes?: number;
+  /** ISO 8601 time the organizer closed the meeting. */
+  endedAt?: string;
+  /** Documents shared for this meeting (agenda, support…), newest first. */
+  documents: ChatMeetingDocument[];
+  /** Recap/summary document, once attached. */
+  summary?: ChatMeetingDocument;
+};
+
+/** How a meeting is created from the meetings panel. */
+export type StartMeetingOptions = {
+  title?: string;
+  plannedDurationMinutes?: number;
+  /** Future start of a scheduled meeting; omitted to start the call now. */
+  startsAt?: Date;
 };
 
 export type LocalChatSections = {

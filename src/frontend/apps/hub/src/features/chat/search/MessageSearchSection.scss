@@ -1,0 +1,8 @@
+// The "Messages" results group: a plain continuation of the search list,
+// separated from the "chats" group above it by the same divider style the
+// modal already uses between its own sections.
+.hub__message-search-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+}

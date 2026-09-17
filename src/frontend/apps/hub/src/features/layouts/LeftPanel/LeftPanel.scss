@@ -25,14 +25,17 @@
     background: var(--c--contextuals--background--surface--tertiary, #f6f8f9);
   }
 
-  &__scroll {
+  // Single scrollbar for the whole panel body: Direct messages and Rooms
+  // used to each scroll on their own (a capped list, and a flex-grow list);
+  // now they're normal-flow content inside one shared scroll area.
+  &__body {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
     padding: 0 0 8px;
   }
 
@@ -41,16 +44,6 @@
     align-items: center;
     gap: 8px;
     padding: 0 12px;
-
-    &__label {
-      font-size: 20px;
-      font-weight: 700;
-      line-height: 26px;
-      color: var(
-        --c--contextuals--content--semantic--neutral--primary,
-        #222631
-      );
-    }
   }
 
   &__actions {
@@ -113,23 +106,39 @@
     }
   }
 
-  &__dm-section {
+  // Shared by the Direct messages and Rooms collapsible headers — same
+  // hover, same chevron-toggle interaction. Both are normal-flow content
+  // inside `&__body`, which owns the panel's single shared scrollbar.
+  &__section {
     display: flex;
     flex-direction: column;
     gap: 2px;
+
+    // Discord-style header row: the title+chevron toggle is content-sized
+    // (not full width) so a separate "+" button can sit flush right on
+    // the same line, its own click target for adding straight into this
+    // section.
+    &__header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      padding: 0 8px 0 12px;
+      height: 28px;
+    }
 
     &__header {
       appearance: none;
       background: transparent;
       border: 0;
       cursor: pointer;
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      width: 100%;
+      gap: 4px;
+      min-width: 0;
       height: 28px;
-      padding: 0 12px;
+      padding: 0 4px;
+      margin-left: -4px;
       border-radius: var(--hub-lp-radius);
       color: inherit;
       font: inherit;
@@ -139,6 +148,46 @@
         background: var(
           --c--contextuals--background--semantic--overlay--primary,
           rgba(24, 27, 36, 0.05)
+        );
+      }
+
+      &:focus-visible {
+        outline: 2px solid
+          var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+        outline-offset: 2px;
+      }
+    }
+
+    &__add {
+      appearance: none;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: var(--hub-lp-radius);
+      color: var(
+        --c--contextuals--content--semantic--neutral--secondary,
+        #555e74
+      );
+
+      svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      &:hover {
+        background: var(
+          --c--contextuals--background--semantic--overlay--primary,
+          rgba(24, 27, 36, 0.05)
+        );
+        color: var(
+          --c--contextuals--content--semantic--brand--primary,
+          #3e5de7
         );
       }
 
@@ -206,13 +255,6 @@
         min-height: 0;
         overflow: hidden;
       }
-
-      .hub__left-panel__list {
-        overflow: hidden;
-        overflow-y: auto;
-        min-height: 0;
-        max-height: 240px;
-      }
     }
 
     &__empty {
@@ -227,26 +269,14 @@
     }
 
     &[data-open="false"] {
-      .hub__left-panel__dm-section__chevron {
+      .hub__left-panel__section__chevron {
         transform: rotate(-90deg);
       }
 
-      .hub__left-panel__dm-section__panel {
+      .hub__left-panel__section__panel {
         grid-template-rows: 0fr;
       }
     }
-  }
-
-  &__rooms-title {
-    display: block;
-    padding: 4px 12px 0;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 16px;
-    color: var(
-      --c--contextuals--content--semantic--neutral--secondary,
-      #555e74
-    );
   }
 
   &__spaces {
@@ -265,7 +295,17 @@
       );
     }
 
+    // Holds the scrollable bubble row plus the fixed separator/"+" — only
+    // the row itself scrolls, so the "+" stays put and visible.
+    &__bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     &__row {
+      flex: 1 1 auto;
+      min-width: 0;
       display: flex;
       align-items: flex-start;
       gap: 10px;
@@ -353,6 +393,54 @@
         --c--contextuals--content--semantic--neutral--primary,
         #222631
       );
+    }
+
+    // Grey pipe between the scrollable espace row and the fixed "+" —
+    // siblings of `&__row` inside `&__bar`, so neither scrolls with it.
+    &__separator {
+      flex: 0 0 auto;
+      align-self: stretch;
+      width: 1px;
+      background: var(--c--contextuals--border--surface--primary, #dfe2ea);
+    }
+
+    &__add {
+      appearance: none;
+      background: var(--c--contextuals--background--surface--primary, #fff);
+      border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+      cursor: pointer;
+      flex: 0 0 auto;
+      align-self: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(
+        --c--contextuals--content--semantic--neutral--secondary,
+        #555e74
+      );
+      transition:
+        background 150ms ease,
+        color 150ms ease;
+
+      &:hover {
+        background: var(
+          --c--contextuals--background--semantic--overlay--primary,
+          rgba(24, 27, 36, 0.05)
+        );
+        color: var(
+          --c--contextuals--content--semantic--brand--primary,
+          #3e5de7
+        );
+      }
+
+      &:focus-visible {
+        outline: 2px solid
+          var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+        outline-offset: 2px;
+      }
     }
   }
 
@@ -606,8 +694,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hub__left-panel__dm-section__panel,
-  .hub__left-panel__dm-section__toggle svg {
+  .hub__left-panel__section__panel,
+  .hub__left-panel__section__chevron {
     transition: none;
   }
 }

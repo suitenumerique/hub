@@ -25,6 +25,7 @@ urlpatterns = [
     path("config/", viewsets.ConfigView.as_view()),
     # The assistant's identity and command catalogue, read by the composer.
     path("bots/assistant/", bots_api.AssistantView.as_view(), name="bots-assistant"),
+    path("meetings/", viewsets.MeetingView.as_view()),
 ]
 
 # When DEBUG, include a 404 URL for E2E tests
