@@ -59,6 +59,8 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Require notification permission before playing 
+  notification sounds.
 - 🐛(frontend) Keep the toolbar open beside short messages after hovering
   the bubble, without revealing it from the surrounding empty space
 - 🐛(frontend) Reserve enough space for the thread root reaction toolbar
