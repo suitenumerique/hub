@@ -80,7 +80,7 @@ export class NotificationPermission {
       // A dismissed gesture request is not repeated during this page visit.
     } catch {
       // Keep the gesture fallback armed if the automatic request was rejected.
-      // Permission errors must never prevent the independent notification sound.
+      // Sound remains disabled until notification permission is granted.
     } finally {
       this.requesting = false;
     }

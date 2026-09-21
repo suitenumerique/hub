@@ -1,5 +1,5 @@
 /**
- * One audio context per authenticated shell, independent of Notification permission.
+ * One audio context per authenticated shell; the caller gates playback on permission.
  * Keep the file decoded in memory so each receipt can play without loading it.
  * Preloading does not bypass the browser's autoplay restrictions.
  */

@@ -24,7 +24,7 @@ const preview = (content: string): string => {
     : characters.join("");
 };
 
-/** Sound outside the focused chat; browser notifications only without focus. */
+/** With permission, play sound outside the focused chat and notify without focus. */
 export const useChatNotifications = (
   userId: string | undefined,
   activeChatRef: RefObject<ChatRef | null>,
@@ -86,16 +86,18 @@ export const useChatNotifications = (
         const focused =
           document.visibilityState === "visible" && document.hasFocus();
         const ref: ChatRef = { accountId, chatId: event.chatId };
-        if (!focused || !sameChatRef(ref, activeChatRef.current)) {
+        const notificationsAllowed =
+          window.isSecureContext &&
+          "Notification" in window &&
+          Notification.permission === "granted";
+        if (
+          notificationsAllowed &&
+          (!focused || !sameChatRef(ref, activeChatRef.current))
+        ) {
           current.sound.play();
         }
         try {
-          if (
-            !focused &&
-            window.isSecureContext &&
-            "Notification" in window &&
-            Notification.permission === "granted"
-          ) {
+          if (!focused && notificationsAllowed) {
             const { t } = latest.current;
             let body: string;
             if (event.type === "message:received") {
