@@ -3,6 +3,7 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 
 import { fallbackLng } from "./config";
+import { localUiTranslations } from "./localUiTranslations";
 import resources from "./translations.json";
 
 // Add an initialization guard
@@ -16,7 +17,18 @@ if (!isInitialized && !i18next.isInitialized) {
     .use(LanguageDetector)
     .use(initReactI18next)
     .init({
-      resources,
+      resources: Object.fromEntries(
+        Object.entries(resources).map(([language, namespaces]) => [
+          language,
+          {
+            ...namespaces,
+            translation: {
+              ...localUiTranslations[language],
+              ...namespaces.translation,
+            },
+          },
+        ]),
+      ),
       fallbackLng,
       debug: false,
       detection: {
