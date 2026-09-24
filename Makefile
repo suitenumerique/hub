@@ -66,7 +66,7 @@ FRONT_YARN          = $(COMPOSE_RUN) -w //app/src/frontend node yarn
 FRONT_E2E_YARN      = $(COMPOSE_RUN) -w //app/src/frontend/apps/e2e node yarn
 FRONT_HUB_YARN = $(COMPOSE_RUN) -w //app/src/frontend/apps/hub node yarn
 FRONT_I18N_YARN     = $(COMPOSE_RUN) -w //app/src/frontend/packages/i18n node yarn
-FRONT_DEV_YARN      = $(COMPOSE) run --rm --service-ports -w //app/src/frontend/apps/hub node yarn
+FRONT_DEV_YARN      = $(COMPOSE) run --rm -p 127.0.0.1:9800:9800 -w //app/src/frontend/apps/hub node yarn
 
 # ==============================================================================
 # RULES
@@ -235,6 +235,8 @@ run-backend: ## Start only the backend application and all needed services
 
 run-backend-e2e: ## Start the backend with the e2e DB; always reset the postgresql.e2e volume first
 	@$(MAKE) stop
+	# Recreate the container so its bind mount cannot retain the deleted directory.
+	@$(COMPOSE) rm -f postgresql
 	rm -rf data/postgresql.e2e
 	@ENV_OVERRIDE=e2e $(MAKE) run-backend
 	@ENV_OVERRIDE=e2e $(MAKE) migrate
@@ -386,6 +388,10 @@ reset-matrix: ## reset local Matrix data and provision users without rooms
 	@$(MAKE) run-matrix
 	@python3 bin/seed-matrix --users-only
 .PHONY: reset-matrix
+
+reset-matrix-e2ee: ## reset only the disposable Matrix stack, then seed users
+	@python3 bin/reset-matrix-e2ee
+.PHONY: reset-matrix-e2ee
 
 crowdin-download: ## Download translated message from crowdin
 	@$(COMPOSE_RUN_CROWDIN) download -c crowdin/config.yml

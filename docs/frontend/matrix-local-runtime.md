@@ -15,6 +15,11 @@ $ make seed-matrix # optional: deterministic local rooms and messages
 $ make run-frontend-development
 ```
 
+The nominal seed creates plaintext rooms. For encrypted messaging, provision
+only users with `python3 bin/seed-matrix --users-only` and follow the
+[local E2EE guide](matrix-e2ee-quick-guide.md). Element at `http://localhost:9807` is the
+explicit reference client; its new private rooms default to encryption.
+
 The frontend is available at <http://localhost:9800>. `make run-matrix` also
 starts the backend services needed by the local Keycloak realm. The Matrix
 stack and its databases remain managed by the existing Compose overlay.

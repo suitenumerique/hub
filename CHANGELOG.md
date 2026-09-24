@@ -15,6 +15,7 @@ and this project adheres to
 - ✨(frontend) Add Matrix device verification with SAS, existing key-backup
   recovery, exclusive browser-session ownership and encrypted private rooms.
   Preserve crypto stores on connection failures and show unavailable messages.
+- ✨(docker) Add a guarded local E2EE reset and an Element reproduction guide.
 - 💄(frontend) Show the platform-specific search shortcut on sidebar hover.
 - ✨(frontend) Search joined conversations by name and current participants.
   Persist the search index separately and prepare small rooms progressively.
@@ -69,6 +70,7 @@ and this project adheres to
 - 🐛(frontend) Keep encryption settings closed after cancellation failures,
   clean stored search data safely on logout and batch decryption refreshes.
   Preserve acknowledged sends and suppress local message echoes.
+- 🐛(docker) Retry transient HTTP failures while waiting for local Matrix.
 - 🐛(frontend) Preserve drafts on Matrix outages and exclude failed SDK echoes
   from delivered messages. Use the registered OIDC callback from deep links
   and keep the development indicator clear of the account menu.
@@ -79,6 +81,8 @@ and this project adheres to
 - 🌐(frontend) Use English source messages throughout the encryption flow and
   keep French translations in the locale dictionary.
 
+- 🐛(docker) Recreate PostgreSQL before resetting the E2E data directory so
+  consecutive test runs can initialize the database.
 - ♻️(frontend) Replace nested ternaries with explicit branches and prevent new
   occurrences with ESLint. Align the OIDC mock with its asynchronous API.
 - 🐛(frontend) Let clicks pass through the empty UI-kit toast container so the
