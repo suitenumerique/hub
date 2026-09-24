@@ -79,6 +79,8 @@ and this project adheres to
 - 🌐(frontend) Use English source messages throughout the encryption flow and
   keep French translations in the locale dictionary.
 
+- ♻️(frontend) Replace nested ternaries with explicit branches and prevent new
+  occurrences with ESLint. Align the OIDC mock with its asynchronous API.
 - 🐛(frontend) Let clicks pass through the empty UI-kit toast container so the
   account avatar menu opens with the mouse.
 - 🐛(frontend) Require notification permission before playing 

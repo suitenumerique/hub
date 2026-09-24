@@ -478,6 +478,10 @@ frontend-format-check: ## check the frontend formatting (prettier --check)
 	@$(FRONT_YARN) format:check
 .PHONY: frontend-format-check
 
+frontend-typecheck: ## check frontend TypeScript without running tests
+	@$(FRONT_HUB_YARN) tsc --noEmit --incremental false
+.PHONY: frontend-typecheck
+
 run-frontend-development: ## Run the frontend in development mode
 	@$(COMPOSE) stop frontend-development
 	@$(FRONT_DEV_YARN) dev
