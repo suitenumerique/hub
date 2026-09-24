@@ -62,10 +62,16 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Keep encryption settings closed after cancellation failures,
+  clean stored search data safely on logout and batch decryption refreshes.
+  Preserve acknowledged sends and suppress local message echoes.
 - 🐛(frontend) Distinguish Matrix backup outages from missing backups, check
   signed reference devices and preserve actionable encryption failure causes.
   Reuse local security state before sending and restore full history only after
   verification or an explicit recovery request.
+- 🌐(frontend) Use English source messages throughout the encryption flow and
+  keep French translations in the locale dictionary.
+
 - 🐛(frontend) Require notification permission before playing 
   notification sounds.
 - 🐛(frontend) Keep the toolbar open beside short messages after hovering
