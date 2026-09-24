@@ -21,6 +21,7 @@ import { useMainTimelineUnread } from "../hooks/useMainTimelineUnread";
 import { useUnreadSeparator } from "../hooks/useUnreadSeparator";
 
 import { ChatBubble } from "./ChatBubble";
+import { ChatEncryptionNotice } from "./ChatEncryptionNotice";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
 import type { UnreadMessagesBannerProps } from "./UnreadMessagesBanner";
 import { UnreadSeparator } from "./UnreadSeparator";
@@ -31,6 +32,41 @@ type ChatVirtualListProps = {
     chatKey: string,
     banner: UnreadMessagesBannerProps | null,
   ) => void;
+};
+
+type TimelineContext = {
+  chatRef: ChatRef;
+  hasOlder: boolean;
+  isFetchingOlder: boolean;
+};
+
+// Keep the header component stable across pagination updates; changing values
+// arrive through Virtuoso's context rather than recreating the component type.
+const TimelineHeader = ({ context }: { context?: TimelineContext }) => {
+  const { t } = useTranslation();
+  if (!context) return null;
+  return (
+    <>
+      <div className="hub__chat-conversation__top-spacer">
+        {context.isFetchingOlder && (
+          <div className="hub__chat-conversation__top-loader" role="status">
+            <span className="material-icons" aria-hidden="true">
+              sync
+            </span>
+            {t("Loading older messages…")}
+          </div>
+        )}
+      </div>
+      {/* Show the notice at the start of available history, not every page. */}
+      {!context.hasOlder && (
+        <div className="hub__chat-conversation__row">
+          <div className="hub__chat-conversation__row-inner">
+            <ChatEncryptionNotice chatRef={context.chatRef} />
+          </div>
+        </div>
+      )}
+    </>
+  );
 };
 
 const DEFAULT_ITEM_HEIGHT = 72;
@@ -560,6 +596,7 @@ export const ChatVirtualList = ({
               element instanceof HTMLElement ? element : null;
           }}
           data={messages}
+          context={{ chatRef, hasOlder, isFetchingOlder }}
           firstItemIndex={firstItemIndex}
           computeItemKey={(_index, message) => message.id}
           defaultItemHeight={DEFAULT_ITEM_HEIGHT}
@@ -596,21 +633,7 @@ export const ChatVirtualList = ({
           endReached={hasNewer ? handleEndReached : undefined}
           increaseViewportBy={{ top: 400, bottom: 0 }}
           components={{
-            Header: () => (
-              <div className="hub__chat-conversation__top-spacer">
-                {isFetchingOlder && (
-                  <div
-                    className="hub__chat-conversation__top-loader"
-                    role="status"
-                  >
-                    <span className="material-icons" aria-hidden="true">
-                      sync
-                    </span>
-                    {t("Loading older messages…")}
-                  </div>
-                )}
-              </div>
-            ),
+            Header: TimelineHeader,
             Footer: () => (
               <div className="hub__chat-conversation__bottom-spacer">
                 {isFetchingNewer && (

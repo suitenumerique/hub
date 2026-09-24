@@ -45,7 +45,7 @@ describe("getOIDCAuthUrl", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses the pre-registered local MAS client", async () => {
+  it("uses the registered MAS client and root callback from a deep link", async () => {
     vi.stubGlobal("window", {
       location: {
         origin: "http://localhost:9800",
@@ -55,7 +55,7 @@ describe("getOIDCAuthUrl", () => {
     vi.mocked(createClient).mockReturnValue({
       getAuthMetadata: vi.fn(async () => OIDC_METADATA),
     } as never);
-    vi.mocked(generateOidcAuthorizationUrl).mockReturnValue(
+    vi.mocked(generateOidcAuthorizationUrl).mockResolvedValue(
       "http://localhost:9810/authorize",
     );
 
@@ -66,7 +66,7 @@ describe("getOIDCAuthUrl", () => {
         clientId: OIDC_CLIENT_ID,
         homeserverUrl: HOMESERVER,
         loginHint: "hub@example.com",
-        redirectUri: "http://localhost:9800/chat",
+        redirectUri: "http://localhost:9800/",
       }),
     );
   });

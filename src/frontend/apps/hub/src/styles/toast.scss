@@ -1,3 +1,13 @@
+.c__toast__container {
+  // The UI provider keeps this padded container mounted even without toasts.
+  // Let clicks through its empty space, including over the account avatar.
+  pointer-events: none;
+
+  > .c__toast {
+    pointer-events: auto;
+  }
+}
+
 // react-toastify wrapper neutralisation. The visible toast surface is rendered
 // by the custom `Toast` component (features/ui/components/toast), reproducing the
 // Figma design pixel-for-pixel; react-toastify only handles positioning,

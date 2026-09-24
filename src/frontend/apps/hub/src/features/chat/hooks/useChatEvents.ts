@@ -113,6 +113,28 @@ const applyChatEvent = (
         };
 
   switch (event.type) {
+    case "message:reconciled":
+      // Decryption updates an existing placeholder, not a new delivery. A null
+      // message removes it when the clear event turns out to be a reply or edit.
+      queryClient.setQueryData<ChatMessagesData>(
+        chatKeys.messages(ref),
+        (data) => {
+          if (!data) return data;
+          return event.message
+            ? replaceMessage(data, event.messageId, () => event.message!)
+            : {
+                ...data,
+                pages: data.pages.map((page) => ({
+                  ...page,
+                  messages: page.messages.filter(
+                    (message) => message.id !== event.messageId,
+                  ),
+                })),
+              };
+        },
+      );
+      // The driver batches list refreshes separately from these per-event patches.
+      return;
     case "message:new":
       queryClient.setQueryData<ChatMessagesData>(
         chatKeys.messages(ref),

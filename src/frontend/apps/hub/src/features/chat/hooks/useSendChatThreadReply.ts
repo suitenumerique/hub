@@ -236,12 +236,12 @@ export const useSendChatThreadReply = (
       }
       queryClient.setQueryData<ChatThreadDetail>(
         context.threadKey,
-        (current) =>
-          current === context.optimisticThread
-            ? context.previousThread
-            : current
-              ? removeThreadMessage(current, context.optimisticMessageId)
-              : current,
+        (current) => {
+          if (current === context.optimisticThread)
+            return context.previousThread;
+          if (!current) return current;
+          return removeThreadMessage(current, context.optimisticMessageId);
+        },
       );
       queryClient.setQueryData<ChatThread[]>(context.threadsKey, (current) => {
         if (current === context.optimisticThreads) {

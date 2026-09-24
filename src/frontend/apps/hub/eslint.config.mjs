@@ -13,6 +13,7 @@ const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
+      "no-nested-ternary": "error",
       "react-hooks/exhaustive-deps": "off",
       "@next/next/no-img-element": "off",
     },

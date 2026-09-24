@@ -209,13 +209,12 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
               )
             : current,
       );
-      queryClient.setQueryData<ChatThread[]>(context.threadsKey, (current) =>
-        current === context.optimisticThreads
-          ? context.previousThreads
-          : current
-            ? removeThread(current, context.tempThreadId)
-            : current,
-      );
+      queryClient.setQueryData<ChatThread[]>(context.threadsKey, (current) => {
+        if (current === context.optimisticThreads)
+          return context.previousThreads;
+        if (!current) return current;
+        return removeThread(current, context.tempThreadId);
+      });
       queryClient.removeQueries({
         queryKey: context.tempThreadKey,
         exact: true,
