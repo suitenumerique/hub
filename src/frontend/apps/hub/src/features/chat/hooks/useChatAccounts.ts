@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { MATRIX_LOCAL_ACCOUNTS } from "@/features/config/Config";
 import {
@@ -12,16 +13,29 @@ import type { AccountId } from "@/features/drivers/types";
  * registry remains account-scoped so another fixed Matrix server can be added
  * later without changing routes, hooks, or query keys.
  */
-export const useChatAccountsBootstrap = () => {
+export const useChatAccountsBootstrap = (
+  sessionOwner: string | null = null,
+) => {
   const entries = useDriverEntries();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    getRegistry().reconcile(MATRIX_LOCAL_ACCOUNTS);
+    // Message caches are account-scoped; remove the previous Hub user's views
+    // before the new driver's connection can expose its conversations.
+    queryClient.removeQueries({
+      predicate: (query) =>
+        typeof query.queryKey[0] === "string" &&
+        (query.queryKey[0].startsWith("chat") ||
+          query.queryKey[0].startsWith("conversation-search")),
+    });
+    getRegistry().reconcile(MATRIX_LOCAL_ACCOUNTS, sessionOwner);
     return () => getRegistry().destroyAll();
-  }, []);
+  }, [queryClient, sessionOwner]);
 
   return {
-    isReconciling: entries.length !== MATRIX_LOCAL_ACCOUNTS.length,
+    isReconciling:
+      entries.length !== MATRIX_LOCAL_ACCOUNTS.length ||
+      entries.some((entry) => entry.sessionOwner !== sessionOwner),
   };
 };
 

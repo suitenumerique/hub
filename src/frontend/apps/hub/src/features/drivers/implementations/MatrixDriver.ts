@@ -44,12 +44,34 @@ import {
   type MatrixDriverSettings,
   parseMatrixDriverSettings,
 } from "@/features/matrix/config";
-import { initClient, startClient } from "@/features/matrix/initMatrix";
+import {
+  closeMatrixClient,
+  initClient,
+  MatrixStorageContinuityError,
+  startClient,
+} from "@/features/matrix/initMatrix";
+import {
+  MatrixOwnershipError,
+  MatrixSessionOwnership,
+} from "@/features/matrix/sessionOwnership";
+import { MatrixSecurity } from "@/features/matrix/MatrixSecurity";
+import { securitySendError } from "@/features/matrix/securityErrors";
+import {
+  prepareRoomSecurity,
+  roomSecurity,
+} from "@/features/matrix/roomSecurity";
+import {
+  EMPTY_SECURITY,
+  ChatSecuritySendError,
+  type ChatSecurityCommand,
+  type ChatSecuritySnapshot,
+} from "../security";
 import { MatrixUserInterface } from "@/features/matrix/types";
 import {
   buildOidcTokenRefreshFunction,
   completeOidcLogin,
   getOIDCAuthUrl,
+  getOidcRedirectUri,
   getUserIdFromAccessToken,
 } from "@/features/matrix/utils/auth";
 import {
@@ -186,12 +208,7 @@ const isMatrixSessionInvalidError = (error: unknown): boolean => {
   if (!(error instanceof MatrixError)) {
     return false;
   }
-  return (
-    error.errcode === "M_UNKNOWN_TOKEN" ||
-    error.httpStatus === 401 ||
-    (error.httpStatus === 503 &&
-      /introspect the access token/i.test(error.message))
-  );
+  return error.errcode === "M_UNKNOWN_TOKEN" || error.httpStatus === 401;
 };
 
 const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
@@ -241,6 +258,56 @@ export class MatrixDriver extends Driver {
   private conversationSearchStart: Promise<void> | null = null;
   private conversationSearchDatabase: string | null = null;
   private clientGeneration = 0;
+  private security: MatrixSecurity | null = null;
+  private securitySnapshot: ChatSecuritySnapshot = {
+    ...EMPTY_SECURITY,
+    supported: true,
+  };
+  private readonly securityListeners = new Set<() => void>();
+  override getSecuritySnapshot = (): ChatSecuritySnapshot =>
+    this.securitySnapshot;
+  override subscribeToSecurity = (listener: () => void): (() => void) => {
+    this.securityListeners.add(listener);
+    return () => {
+      this.securityListeners.delete(listener);
+    };
+  };
+  override async securityCommand(command: ChatSecurityCommand): Promise<void> {
+    this.assertOwner();
+    await this.security?.command(command);
+  }
+  private readonly ownership = new MatrixSessionOwnership();
+  private connectionWork: Promise<ChatConnectionState> | null = null;
+  private shutdownWork: Promise<void> | null = null;
+  private readonly pendingWork = new Set<Promise<unknown>>();
+  private disposed = false;
+  private lostDeviceSession = false;
+  private clearProjectionOnClose = false;
+  private clientAbort = new AbortController();
+
+  private assertOwner = (): void => {
+    if (this.disposed || !this.ownership.held) {
+      throw new DOMException("Matrix owner stopped", "AbortError");
+    }
+  };
+
+  private track<T>(work: Promise<T>): Promise<T> {
+    this.pendingWork.add(work);
+    void work.finally(() => this.pendingWork.delete(work)).catch(() => {});
+    return work;
+  }
+
+  private onPageHide = (): void => {
+    void this.shutdown();
+  };
+  private onPageShow = (event: PageTransitionEvent): void => {
+    if (event.persisted) window.location.reload();
+  };
+
+  override initialize(): void {
+    window.addEventListener("pagehide", this.onPageHide);
+    window.addEventListener("pageshow", this.onPageShow);
+  }
 
   override searchConversations(request: ConversationSearchRequest) {
     return (
@@ -405,6 +472,7 @@ export class MatrixDriver extends Driver {
       throw new Error(`MatrixDriver.getChat: room "${chatId}" is not joined.`);
     }
     const currentUserId = mx.getUserId() ?? undefined;
+    if (joinedRoomIds.has(chatId)) await this.prepareRoom(mx, room);
     return joinedRoomIds.has(chatId)
       ? matrixJoinedRoomToLocalChat(room, currentUserId)
       : matrixRoomToLocalChat(room, currentUserId);
@@ -605,10 +673,18 @@ export class MatrixDriver extends Driver {
       preset: Preset.PrivateChat,
       is_direct: isDirect,
       invite: participantIds,
+      initial_state: [
+        {
+          type: EventType.RoomEncryption,
+          state_key: "",
+          content: { algorithm: "m.megolm.v1.aes-sha2" },
+        },
+      ],
     });
 
     const room = await this.waitForRoom(mx, roomId);
     if (room) {
+      await this.prepareRoom(mx, room);
       return matrixRoomToLocalChat(room, selfUserId);
     }
     // Fallback if the room has not surfaced through /sync within the timeout: a
@@ -616,6 +692,7 @@ export class MatrixDriver extends Driver {
     // real name/kind firm up once `getChat` reads the synced room.
     return {
       id: roomId,
+      encryption: "unknown",
       name: participantIds[0],
       section: "all",
       kind: isDirect ? "direct" : "group",
@@ -714,6 +791,7 @@ export class MatrixDriver extends Driver {
       );
     }
     this.emit({ type: "chats:changed" });
+    await this.prepareRoom(mx, room);
     return matrixJoinedRoomToLocalChat(room, mx.getUserId() ?? undefined);
   }
 
@@ -1188,11 +1266,54 @@ export class MatrixDriver extends Driver {
 
   /** Resolves a connected client for Matrix-only operations. */
   private requireClient(method: string): MatrixClient {
+    this.assertOwner();
     const mx = this.mx;
     if (!mx) {
       throw new Error(`MatrixDriver.${method}: client is not connected.`);
     }
     return mx;
+  }
+
+  private prepareRoom(mx: MatrixClient, room: Room) {
+    const generation = this.clientGeneration;
+    return this.track(
+      prepareRoomSecurity(mx, room, this.clientAbort.signal, () => {
+        this.assertOwner();
+        if (generation !== this.clientGeneration || this.mx !== mx)
+          throw new Error("Matrix client replaced.");
+      }),
+    );
+  }
+
+  private async guardSend(mx: MatrixClient, room: Room): Promise<void> {
+    const encryption = await this.prepareRoom(mx, room);
+    this.assertOwner();
+    if (this.mx !== mx) throw new Error("Matrix client replaced.");
+    if (encryption === "encrypted") {
+      // Read current local SDK trust before every send. Server refreshes belong
+      // to setup/reconnect/security events, not the normal message round trip.
+      await this.security?.assertCanSend();
+      this.assertOwner();
+      if (this.mx !== mx || !this.securitySnapshot.canSendEncrypted) {
+        throw new ChatSecuritySendError("not-ready");
+      }
+    }
+  }
+
+  private async sendContent<T>(
+    mx: MatrixClient,
+    room: Room,
+    send: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      await this.guardSend(mx, room);
+      // Once the server accepts a write, retiring the client must not turn it
+      // into a failed send and invite a duplicate retry.
+      return await this.track(send());
+    } catch (error) {
+      if (roomSecurity(room) === "encrypted") throw securitySendError(error);
+      throw error;
+    }
   }
 
   /** Resolves a connected client and a known room for Matrix-only operations. */
@@ -1335,6 +1456,7 @@ export class MatrixDriver extends Driver {
           key: emoji,
         },
       };
+      await this.guardSend(mx, room);
       await (threadId
         ? mx.sendEvent(chatId, threadId, EventType.Reaction, content)
         : mx.sendEvent(chatId, EventType.Reaction, content));
@@ -1572,10 +1694,10 @@ export class MatrixDriver extends Driver {
     content,
     attachment,
   }: SendChatMessageParams): Promise<ChatMessage> {
-    const { mx } = this.requireRoom("sendChatMessage", chatId);
+    const { mx, room } = this.requireRoom("sendChatMessage", chatId);
     const eventId = await this.sendRoomMessage(
       mx,
-      chatId,
+      room,
       null,
       content,
       attachment,
@@ -1586,16 +1708,15 @@ export class MatrixDriver extends Driver {
   /** Posts text or an uploaded file, at the room level or inside a thread. */
   private async sendRoomMessage(
     mx: MatrixClient,
-    chatId: string,
+    room: Room,
     threadId: string | null,
     content: string,
     attachment: ChatAttachment | undefined,
   ): Promise<string> {
+    const chatId = room.roomId;
     if (!attachment) {
-      const { event_id: eventId } = await mx.sendTextMessage(
-        chatId,
-        threadId,
-        content,
+      const { event_id: eventId } = await this.sendContent(mx, room, () =>
+        mx.sendTextMessage(chatId, threadId, content),
       );
       return eventId;
     }
@@ -1607,10 +1728,12 @@ export class MatrixDriver extends Driver {
         "MatrixDriver: this conversation is encrypted; the file was uploaded unencrypted.",
       );
     }
-    const { event_id: eventId } = await mx.sendMessage(
-      chatId,
-      threadId,
-      matrixAttachmentContent(attachment, content) as RoomMessageEventContent,
+    const { event_id: eventId } = await this.sendContent(mx, room, () =>
+      mx.sendMessage(
+        chatId,
+        threadId,
+        matrixAttachmentContent(attachment, content) as RoomMessageEventContent,
+      ),
     );
     return eventId;
   }
@@ -1793,9 +1916,11 @@ export class MatrixDriver extends Driver {
         event_id: messageId,
       },
     };
-    await (threadId
-      ? mx.sendMessage(chatId, threadId, editContent)
-      : mx.sendMessage(chatId, editContent));
+    await this.sendContent(mx, room, () =>
+      threadId
+        ? mx.sendMessage(chatId, threadId, editContent)
+        : mx.sendMessage(chatId, editContent),
+    );
 
     return {
       ...matrixEventToChatMessage(event, room, selfUserId),
@@ -1862,7 +1987,7 @@ export class MatrixDriver extends Driver {
     }
     const eventId = await this.sendRoomMessage(
       mx,
-      chatId,
+      room,
       threadId,
       content,
       attachment,
@@ -1897,7 +2022,7 @@ export class MatrixDriver extends Driver {
     }
     const eventId = await this.sendRoomMessage(
       mx,
-      chatId,
+      room,
       rootMessageId,
       content,
       attachment,
@@ -1988,22 +2113,77 @@ export class MatrixDriver extends Driver {
    * Called through `useChatConnection` (a React Query query), so retries,
    * caching and de-duplication are handled by React Query — no bespoke store.
    */
-  async connect(user: User | null | undefined): Promise<ChatConnectionState> {
+  connect(user: User | null | undefined): Promise<ChatConnectionState> {
+    if (this.connectionWork) return this.connectionWork;
+    const work = this.connectOwned(user);
+    this.connectionWork = work;
+    void work
+      .finally(() => {
+        if (this.connectionWork === work) this.connectionWork = null;
+      })
+      .catch(() => {});
+    return work;
+  }
+
+  private async connectOwned(
+    user: User | null | undefined,
+  ): Promise<ChatConnectionState> {
     // The whole flow touches window/localStorage/IndexedDB. Static export has
     // no server runtime, but guard regardless.
     if (typeof window === "undefined") {
       return { status: "connecting", chatUser: null };
     }
     this.setStorageOwner(user);
+    try {
+      // Reserve credentials and sync storage before reading either. The crypto
+      // lock is acquired later, once the stored Matrix device is identified.
+      await this.ownership.acquire([
+        `session:${this.key(STORAGE.user)}`,
+        `sync:matrix-js-sdk:${this.key(SYNC_STORE_DB_NAME)}`,
+      ]);
+      this.assertOwner();
+      return await this.connectSession(user);
+    } catch (error) {
+      if (error instanceof MatrixOwnershipError) {
+        return { status: "blocked", chatUser: null, reason: error.reason };
+      }
+      if (error instanceof MatrixStorageContinuityError) {
+        this.lostDeviceSession = true;
+        return {
+          status: "blocked",
+          chatUser: null,
+          reason: "storage-continuity",
+        };
+      }
+      this.teardownClient();
+      throw error;
+    }
+  }
+
+  private async connectSession(
+    user: User | null | undefined,
+  ): Promise<ChatConnectionState> {
+    this.assertOwner();
 
     // 1. Returning user — credentials already persisted.
     const stored = this.readStoredJson<MatrixUserInterface>(STORAGE.user);
     if (stored) {
+      if (
+        stored.homeserverUrl !== this.settings.baseUrl ||
+        !stored.mxId ||
+        !stored.accessToken
+      ) {
+        throw new MatrixStorageContinuityError(
+          "The saved session does not match the configured account.",
+        );
+      }
       try {
         await this.bootstrapClient(stored);
         return { status: "connected", chatUser: toChatUser(stored) };
       } catch (error) {
         if (!isMatrixSessionInvalidError(error)) {
+          // Network or storage failures do not revoke the session. Preserve its
+          // credentials and keys instead of silently starting a new device.
           throw error;
         }
         await this.clearStoredSession(stored);
@@ -2039,6 +2219,23 @@ export class MatrixDriver extends Driver {
     return { status: "connecting", chatUser: null, redirectTo };
   }
 
+  override async replaceLostDeviceSession(
+    user: User,
+  ): Promise<ChatConnectionState> {
+    this.assertOwner();
+    if (!this.lostDeviceSession)
+      throw new Error("This session does not require device replacement.");
+    // Only this explicit recovery action abandons the unusable device session;
+    // clearStoredSession keeps its crypto database available for recovery.
+    await this.clearStoredSession();
+    this.lostDeviceSession = false;
+    return {
+      status: "connecting",
+      chatUser: null,
+      redirectTo: await this.startOidcFlow(user),
+    };
+  }
+
   private async startOidcFlow(user: User | null | undefined): Promise<string> {
     const loginHint = this.resolveLoginHint(user);
     const authUrl = await getOIDCAuthUrl(
@@ -2046,6 +2243,7 @@ export class MatrixDriver extends Driver {
       loginHint,
       this.settings.oidcClientId,
     );
+    this.assertOwner();
     const state = new URL(authUrl).searchParams.get("state");
     if (state) {
       sessionStorage.setItem(this.key(STORAGE.oidcState), state);
@@ -2058,8 +2256,10 @@ export class MatrixDriver extends Driver {
     state: string,
   ): Promise<MatrixUserInterface> {
     const oidc = await completeOidcLogin({ code, state });
+    this.assertOwner();
     const { user_id: mxId, device_id: deviceId } =
       await getUserIdFromAccessToken(oidc.accessToken, this.settings.baseUrl);
+    this.assertOwner();
 
     const matrixUser: MatrixUserInterface = {
       homeserverUrl: this.settings.baseUrl,
@@ -2074,10 +2274,9 @@ export class MatrixDriver extends Driver {
       issuer: oidc.issuer,
       idToken: oidc.idToken,
       idTokenClaims: oidc.idTokenClaims,
-      // The IdP redirected back to this exact URL, so origin + pathname is the
-      // redirect URI registered for this client.
-      redirectUri: new URL(window.location.origin + window.location.pathname)
-        .href,
+      // Keep the token refresh metadata aligned with the registered callback
+      // used to start authorization, including logins started from deep links.
+      redirectUri: getOidcRedirectUri(),
     } satisfies StoredOidc);
     sessionStorage.removeItem(this.key(STORAGE.oidcState));
     return matrixUser;
@@ -2122,27 +2321,52 @@ export class MatrixDriver extends Driver {
       return;
     }
     this.teardownClient();
+    this.clientAbort = new AbortController();
     const generation = this.clientGeneration;
+    const assertActive = () => {
+      this.assertOwner();
+      if (generation !== this.clientGeneration)
+        throw new DOMException("Client replaced", "AbortError");
+    };
+    await Promise.allSettled([...this.pendingWork]);
+    assertActive();
+    await this.ownership.acquire([`crypto:${this.cryptoStoreDbName(user)}`]);
+    assertActive();
     const mx = await initClient(user, {
+      assertActive,
       syncStoreDbName: this.key(SYNC_STORE_DB_NAME),
       cryptoStoreDbName: this.cryptoStoreDbName(user),
       tokenRefreshFunction: this.buildTokenRefreshFunction(user),
       onSyncStoreReady: async (client) => {
-        if (generation !== this.clientGeneration) return;
+        assertActive();
         this.mx = client;
+        this.security = new MatrixSecurity(
+          client,
+          this.settings,
+          (snapshot) => {
+            if (generation !== this.clientGeneration || this.disposed) return;
+            this.securitySnapshot = snapshot;
+            this.securityListeners.forEach((listener) => listener());
+          },
+        );
         this.conversationSearchDatabase = this.searchStoreDbName(user);
         await this.startConversationSearch(client);
       },
     });
     if (generation !== this.clientGeneration) {
-      mx.stopClient();
-      return;
+      await closeMatrixClient(mx);
+      assertActive();
     }
     this.mx = mx;
     localStorage.removeItem(this.key("matrixRedactedThreads"));
     await this.startClientOrFailOnLogout(mx);
     if (generation !== this.clientGeneration) return;
+    void this.security?.refresh();
+    void mx
+      .setDeviceDetails(user.deviceId!, { display_name: "Hub · navigateur" })
+      .catch(() => {});
     await this.refreshJoinedRoomIds(mx);
+    assertActive();
 
     // Bridge Matrix `/sync` onto the generic event stream, once, for the
     // client's lifetime. The handlers fan out to whatever subscribers exist at
@@ -2152,18 +2376,26 @@ export class MatrixDriver extends Driver {
     // server before their targeted patch; list membership changes and
     // reconnects stay coarse (`chats:changed`, per-room `chat:changed`).
     this.detachSync();
+    const emitCurrent = (event: ChatEvent) => {
+      if (
+        this.mx === mx &&
+        generation === this.clientGeneration &&
+        !this.disposed
+      )
+        this.emit(event);
+    };
     const detachIncomingEvents = subscribeToIncomingMatrixEvents(mx, (event) =>
-      this.emit(event),
+      emitCurrent(event),
     );
     const selfUserId = mx.getUserId() ?? undefined;
     const emitUnread = (room: Room) =>
-      this.emit({
+      emitCurrent({
         type: "unread:changed",
         chatId: room.roomId,
         unread: roomUnread(room, selfUserId),
       });
     const emitMainTimelineUnread = (room: Room) =>
-      this.emit({
+      emitCurrent({
         type: "main-timeline-unread:changed",
         chatId: room.roomId,
       });
@@ -2172,7 +2404,7 @@ export class MatrixDriver extends Driver {
       if (!thread.rootEvent) {
         return;
       }
-      this.emit({
+      emitCurrent({
         type: "message:updated",
         chatId: thread.room.roomId,
         message: matrixEventToChatMessage(
@@ -2187,7 +2419,7 @@ export class MatrixDriver extends Driver {
       if (event && isOwnEcho(event)) {
         return;
       }
-      this.emit({ type: "threads:changed", chatId: thread.room.roomId });
+      emitCurrent({ type: "threads:changed", chatId: thread.room.roomId });
       emitThreadRootUpdate(thread);
       emitUnread(thread.room);
     };
@@ -2196,7 +2428,7 @@ export class MatrixDriver extends Driver {
       if (threads.length === 0) {
         return;
       }
-      this.emit({ type: "threads:changed", chatId: room.roomId });
+      emitCurrent({ type: "threads:changed", chatId: room.roomId });
       threads.forEach((thread) => emitThreadRootUpdate(thread));
     };
     const pendingLiveThreadReplies = new Set<string>();
@@ -2318,14 +2550,14 @@ export class MatrixDriver extends Driver {
               snapshot.reactions,
               threadIdHint,
             )) {
-              this.emit(chatEvent);
+              emitCurrent(chatEvent);
             }
           })
           .catch(() => {
             if (this.mx === mx) {
-              this.emit({ type: "chat:changed", chatId: room.roomId });
+              emitCurrent({ type: "chat:changed", chatId: room.roomId });
               if (threadIdHint || room.getThread(targetId)) {
-                this.emit({ type: "threads:changed", chatId: room.roomId });
+                emitCurrent({ type: "threads:changed", chatId: room.roomId });
               }
             }
           });
@@ -2336,7 +2568,7 @@ export class MatrixDriver extends Driver {
         room,
         selfUserId,
       )) {
-        this.emit(chatEvent);
+        emitCurrent(chatEvent);
       }
       emitUnread(room);
       emitMainTimelineUnread(room);
@@ -2356,14 +2588,14 @@ export class MatrixDriver extends Driver {
         return;
       }
       const threadId = event.isThreadRoot ? event.getId() : event.threadRootId;
-      this.emit({
+      emitCurrent({
         type: "message:updated",
         chatId: room.roomId,
         message: matrixEventToChatMessage(event, room, selfUserId),
         ...(threadId ? { threadId } : {}),
       });
       if (threadId) {
-        this.emit({
+        emitCurrent({
           type: "threads:changed",
           chatId: room.roomId,
           invalidateDetails: false,
@@ -2405,7 +2637,7 @@ export class MatrixDriver extends Driver {
         const currentThreadId = target.isThreadRoot
           ? target.getId()
           : target.threadRootId;
-        this.emit({
+        emitCurrent({
           type: "message:updated",
           chatId: room.roomId,
           message: matrixEventToChatMessage(target, room, selfUserId),
@@ -2420,9 +2652,9 @@ export class MatrixDriver extends Driver {
           if (pending?.thread) {
             emitThreadRootUpdate(pending.thread);
           }
-          this.emit({ type: "chat:changed", chatId: room.roomId });
+          emitCurrent({ type: "chat:changed", chatId: room.roomId });
           if (threadId) {
-            this.emit({ type: "threads:changed", chatId: room.roomId });
+            emitCurrent({ type: "threads:changed", chatId: room.roomId });
           }
           emitUnread(room);
           emitMainTimelineUnread(room);
@@ -2448,27 +2680,27 @@ export class MatrixDriver extends Driver {
               pending.relationTargetId!,
               reactions,
               threadId,
-            ).forEach((chatEvent) => this.emit(chatEvent));
+            ).forEach((chatEvent) => emitCurrent(chatEvent));
           })
           .catch(() => {
             if (this.mx === mx) {
-              this.emit({ type: "chat:changed", chatId: room.roomId });
+              emitCurrent({ type: "chat:changed", chatId: room.roomId });
               if (threadId) {
-                this.emit({ type: "threads:changed", chatId: room.roomId });
+                emitCurrent({ type: "threads:changed", chatId: room.roomId });
               }
             }
           });
         return;
       }
-      this.emit({ type: "chat:changed", chatId: room.roomId });
+      emitCurrent({ type: "chat:changed", chatId: room.roomId });
       emitMainTimelineUnread(room);
       if (threadId) {
-        this.emit({ type: "threads:changed", chatId: room.roomId });
+        emitCurrent({ type: "threads:changed", chatId: room.roomId });
       }
     };
     const onRedactionCancelled = (_event: MatrixEvent, room: Room) => {
-      this.emit({ type: "chat:changed", chatId: room.roomId });
-      this.emit({ type: "threads:changed", chatId: room.roomId });
+      emitCurrent({ type: "chat:changed", chatId: room.roomId });
+      emitCurrent({ type: "threads:changed", chatId: room.roomId });
       emitMainTimelineUnread(room);
     };
     // One m.typing EDU updates members sequentially and can emit several
@@ -2501,26 +2733,26 @@ export class MatrixDriver extends Driver {
       if (member.userId !== selfUserId) {
         return;
       }
-      this.emit({ type: "chat:changed", chatId: member.roomId });
-      this.emit({ type: "threads:changed", chatId: member.roomId });
+      emitCurrent({ type: "chat:changed", chatId: member.roomId });
+      emitCurrent({ type: "threads:changed", chatId: member.roomId });
     };
     const onMembers = (
       _event: MatrixEvent,
       _state: unknown,
       member: RoomMember,
     ) => {
-      this.emit({ type: "members:changed", chatId: member.roomId });
+      emitCurrent({ type: "members:changed", chatId: member.roomId });
     };
     // Membership events are applied before the SDK recalculates `room.name`.
     // Wait for this final signal before refreshing the conversation metadata,
     // otherwise a remote leave can leave the header/sidebar on the old DM name
     // until an unrelated event triggers another read.
     const onName = (room: Room) => {
-      this.emit({ type: "chat:changed", chatId: room.roomId });
-      this.emit({ type: "chats:changed" });
+      emitCurrent({ type: "chat:changed", chatId: room.roomId });
+      emitCurrent({ type: "chats:changed" });
     };
     const onTags = (_event: MatrixEvent, room: Room) => {
-      this.emit({ type: "tags:changed", chatId: room.roomId });
+      emitCurrent({ type: "tags:changed", chatId: room.roomId });
     };
     const onAccountData = (event: MatrixEvent, room: Room) => {
       if (event.getType() === EventType.FullyRead) {
@@ -2574,7 +2806,7 @@ export class MatrixDriver extends Driver {
       this.joinedRoomIds = null;
       emitUnread(room);
       emitMainTimelineUnread(room);
-      this.emit({ type: "chats:changed" });
+      emitCurrent({ type: "chats:changed" });
     };
     // Reconnect / first authentic network sync. A warm start resolves the
     // initial sync from IndexedDB (`fromCache`) before the network catches up,
@@ -2597,12 +2829,12 @@ export class MatrixDriver extends Driver {
       this.joinedRoomIds = null;
       if (!this.conversationSearch) this.retryConversationSearch();
       for (const room of mx.getVisibleRooms()) {
-        this.emit({ type: "chat:changed", chatId: room.roomId });
+        emitCurrent({ type: "chat:changed", chatId: room.roomId });
         emitUnread(room);
         emitMainTimelineUnread(room);
         emitThreadsRefresh(room);
       }
-      this.emit({ type: "chats:changed" });
+      emitCurrent({ type: "chats:changed" });
     };
     // Our own membership changing (leaving, being kicked/banned, joining) alters
     // the conversation list, but a leave is an ordinary incremental sync: it
@@ -2614,7 +2846,7 @@ export class MatrixDriver extends Driver {
       void this.conversationSearch?.reconcile();
       emitUnread(room);
       emitMainTimelineUnread(room);
-      this.emit({ type: "chats:changed" });
+      emitCurrent({ type: "chats:changed" });
     };
     mx.getRooms().forEach(attachThreadListeners);
     mx.on(RoomEvent.Timeline, onTimeline);
@@ -2637,7 +2869,97 @@ export class MatrixDriver extends Driver {
         this.prepareTypingRoom(room);
       }
     });
+    const decryptedRooms = new Map<
+      string,
+      { room: Room; threadsChanged: boolean; chatChanged: boolean }
+    >();
+    let decryptionFlushQueued = false;
+    const flushDecryptedRooms = () => {
+      decryptionFlushQueued = false;
+      const updates = [...decryptedRooms.values()];
+      decryptedRooms.clear();
+      if (
+        this.mx !== mx ||
+        generation !== this.clientGeneration ||
+        this.disposed
+      )
+        return;
+      for (const { room, threadsChanged, chatChanged } of updates) {
+        if (chatChanged)
+          emitCurrent({ type: "chat:changed", chatId: room.roomId });
+        if (threadsChanged)
+          emitCurrent({ type: "threads:changed", chatId: room.roomId });
+        emitUnread(room);
+        emitMainTimelineUnread(room);
+      }
+      // A backup can decrypt hundreds of events at once. Refresh list previews
+      // once for the batch while retaining every per-message cache patch.
+      if (updates.length) emitCurrent({ type: "chats:changed" });
+    };
+    const onDecrypted = (event: MatrixEvent) => {
+      // Let the SDK finish applying the decrypted event before classifying it
+      // as a main-timeline message, thread reply or relation.
+      queueMicrotask(() => {
+        if (
+          this.mx !== mx ||
+          generation !== this.clientGeneration ||
+          this.disposed
+        )
+          return;
+        const roomId = event.getRoomId();
+        const eventId = event.getId();
+        const room = roomId ? mx.getRoom(roomId) : null;
+        if (!room || !eventId) return;
+        let pending = decryptedRooms.get(room.roomId);
+        if (!pending) {
+          pending = { room, threadsChanged: false, chatChanged: false };
+          decryptedRooms.set(room.roomId, pending);
+        }
+        // Patch only existing rows: restoring old keys is never a delivery.
+        emitCurrent({
+          type: "message:reconciled",
+          chatId: room.roomId,
+          messageId: eventId,
+          message: isMainTimelineMessage(event)
+            ? matrixEventToChatMessage(event, room, selfUserId)
+            : null,
+        });
+        if (!event.isDecryptionFailure()) {
+          for (const update of timelineEventToChatEvent(
+            event,
+            room,
+            selfUserId,
+          )) {
+            if (update.type === "threads:changed")
+              pending.threadsChanged = true;
+            else if (update.type === "chat:changed") pending.chatChanged = true;
+            else if (update.type !== "message:new") emitCurrent(update);
+          }
+        }
+        // A send mutation already published this session's reply. Decryption
+        // can precede its insertion in the SDK thread timeline; refetching now
+        // would replace that confirmed reply with an incomplete projection.
+        if (!isOwnThreadEcho(event)) {
+          pending.threadsChanged = true;
+        }
+        if (!decryptionFlushQueued) {
+          decryptionFlushQueued = true;
+          queueMicrotask(flushDecryptedRooms);
+        }
+      });
+    };
+    mx.on(MatrixEventEvent.Decrypted, onDecrypted);
+    const onLoggedOut = () => {
+      if (this.mx !== mx || generation !== this.clientGeneration) return;
+      // Retire this client immediately. The connection query then validates
+      // the saved credentials and starts OIDC only for a definitive failure.
+      this.teardownClient();
+      this.emit({ type: "connection:invalidated" });
+    };
+    mx.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
     this.detachSync = () => {
+      mx.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+      mx.off(MatrixEventEvent.Decrypted, onDecrypted);
       detachIncomingEvents();
       mx.off(RoomEvent.Timeline, onTimeline);
       mx.off(RoomEvent.Receipt, onReceipt);
@@ -2657,6 +2979,7 @@ export class MatrixDriver extends Driver {
       detachThreadListenersByRoomId.clear();
       pendingLiveThreadReplies.clear();
       pendingTypingRoomIds.clear();
+      decryptedRooms.clear();
     };
   }
 
@@ -2672,7 +2995,7 @@ export class MatrixDriver extends Driver {
     });
 
     try {
-      await Promise.race([startClient(mx), loggedOut]);
+      await Promise.race([startClient(mx, this.clientAbort.signal), loggedOut]);
     } finally {
       cleanup();
     }
@@ -2690,13 +3013,22 @@ export class MatrixDriver extends Driver {
     if (!oidc || !user.refreshToken || !user.deviceId) {
       return undefined;
     }
-    return buildOidcTokenRefreshFunction({
+    const generation = this.clientGeneration;
+    const assertCurrent = () => {
+      this.assertOwner();
+      if (generation !== this.clientGeneration)
+        throw new DOMException("Session replaced", "AbortError");
+    };
+    const refresh = buildOidcTokenRefreshFunction({
       issuer: oidc.issuer,
       clientId: oidc.clientId,
       redirectUri: oidc.redirectUri,
       deviceId: user.deviceId,
       idTokenClaims: oidc.idTokenClaims,
       onTokensRefreshed: ({ accessToken, refreshToken }) => {
+        // A refresh started by the previous client must not overwrite tokens
+        // saved by its replacement while the refresh request was in flight.
+        assertCurrent();
         this.writeStoredJson(STORAGE.user, {
           ...user,
           accessToken,
@@ -2704,6 +3036,10 @@ export class MatrixDriver extends Driver {
         } satisfies MatrixUserInterface);
       },
     });
+    return (token: string) => {
+      assertCurrent();
+      return this.track(refresh(token));
+    };
   }
 
   private clearCallbackParams(): void {
@@ -2719,9 +3055,16 @@ export class MatrixDriver extends Driver {
    * afterwards, and only {@link destroy} ends the stream for good.
    */
   private teardownClient(): void {
+    // Invalidate callbacks synchronously; closing the SDK and stores is tracked
+    // asynchronous work that shutdown must await before releasing ownership.
+    this.clientAbort.abort();
     this.joinedRoomRevision++;
     this.joinedRoomRefresh = null;
     this.clientGeneration++;
+    if (this.security) void this.track(this.security.stop());
+    this.security = null;
+    this.securitySnapshot = { ...EMPTY_SECURITY, supported: true };
+    this.securityListeners.forEach((listener) => listener());
     this.conversationSearch?.close();
     this.conversationSearch = null;
     this.conversationSearchStart = null;
@@ -2733,7 +3076,7 @@ export class MatrixDriver extends Driver {
     });
     this.typingSignatures.clear();
     this.typingRoomPreparations.clear();
-    this.mx?.stopClient();
+    if (this.mx) void this.track(closeMatrixClient(this.mx)).catch(() => {});
     this.mx = null;
     this.joinedRoomIds = null;
     this.sentThreadReplyEventIds.clear();
@@ -2743,9 +3086,36 @@ export class MatrixDriver extends Driver {
   }
 
   destroy(): void {
+    void this.shutdown();
+  }
+
+  override shutdown(): Promise<void> {
+    if (this.shutdownWork) return this.shutdownWork;
+    this.disposed = true;
+    window.removeEventListener("pagehide", this.onPageHide);
+    // Keep pageshow: a bfcache-restored page must recreate a fresh driver.
     this.teardownClient();
     this.eventListeners.clear();
     this.typingListeners.clear();
+    this.securityListeners.clear();
+    this.shutdownWork = (async () => {
+      await Promise.allSettled([this.connectionWork, ...this.pendingWork]);
+      // Initialization may have created a client after shutdown began. Its
+      // generation check closes it before its connection promise settles.
+      await Promise.allSettled([...this.pendingWork]);
+      try {
+        if (this.clearProjectionOnClose && this.ownership.held)
+          await this.clearConversationSearch();
+      } finally {
+        this.ownership.release();
+      }
+    })();
+    return this.shutdownWork;
+  }
+
+  override logout(): Promise<void> {
+    this.clearProjectionOnClose = true;
+    return this.shutdown();
   }
 
   /**
@@ -2845,8 +3215,9 @@ export class MatrixDriver extends Driver {
 
   // --- Token persistence (driver-owned, no separate store) ----------------
 
-  /** Reads an account-scoped JSON blob, dropping it when it cannot be parsed. */
+  /** Preserve unreadable session data and require explicit recovery. */
   private readStoredJson<T>(key: string): T | null {
+    this.assertOwner();
     const storageKey = this.key(key);
     const raw = localStorage.getItem(storageKey);
     if (!raw) {
@@ -2855,18 +3226,24 @@ export class MatrixDriver extends Driver {
     try {
       return JSON.parse(raw) as T;
     } catch {
-      localStorage.removeItem(storageKey);
-      return null;
+      throw new MatrixStorageContinuityError(
+        "The saved Matrix session is unreadable.",
+      );
     }
   }
 
   private writeStoredJson(key: string, value: unknown): void {
+    this.assertOwner();
     localStorage.setItem(this.key(key), JSON.stringify(value));
   }
 
   private async clearStoredSession(user?: MatrixUserInterface): Promise<void> {
+    this.assertOwner();
     const search = this.conversationSearch;
     this.teardownClient();
+
+    await Promise.allSettled([...this.pendingWork]);
+    this.assertOwner();
 
     localStorage.removeItem(this.key(STORAGE.user));
     localStorage.removeItem(this.key(STORAGE.oidc));
@@ -2881,9 +3258,8 @@ export class MatrixDriver extends Driver {
 
     await Promise.all([
       searchCleanup,
-      this.deleteIndexedDb(this.key(SYNC_STORE_DB_NAME)),
-      this.deleteIndexedDb(this.key(CRYPTO_STORE_DB_NAME)),
-      ...(user ? [this.deleteIndexedDb(this.cryptoStoreDbName(user))] : []),
+      this.deleteIndexedDb(`matrix-js-sdk:${this.key(SYNC_STORE_DB_NAME)}`),
+      // Crypto stores remain isolated by user/device for explicit recovery.
     ]);
   }
 
@@ -2891,22 +3267,26 @@ export class MatrixDriver extends Driver {
     if (typeof indexedDB === "undefined") {
       return Promise.resolve();
     }
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const request = indexedDB.deleteDatabase(dbName);
       request.onsuccess = () => resolve();
       request.onerror = () => {
-        console.warn("MatrixDriver: failed to delete IndexedDB", dbName);
-        resolve();
+        reject(new Error("Matrix cache cleanup failed."));
       };
       request.onblocked = () => {
-        console.warn("MatrixDriver: IndexedDB deletion blocked", dbName);
-        resolve();
+        reject(
+          new Error("Matrix cache cleanup is blocked by another connection."),
+        );
       };
     });
   }
 
   private setStorageOwner(user: User | null | undefined): void {
-    this.storageOwner = matrixStorageOwner(this.settings, user);
+    const owner = matrixStorageOwner(this.settings, user);
+    if (this.ownership.held && owner !== this.storageOwner) {
+      throw new Error("An account change requires a new Matrix driver.");
+    }
+    this.storageOwner = owner;
   }
 
   private key(key: string): string {
