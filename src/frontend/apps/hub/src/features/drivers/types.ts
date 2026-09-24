@@ -75,6 +75,7 @@ export type ChatInvitation = {
 };
 
 export type LocalChat = {
+  encryption?: "encrypted" | "plaintext" | "unknown";
   id: string;
   lastActivityAt?: string;
   name: string;
@@ -211,6 +212,12 @@ export type ChatThreadSummary = {
 };
 
 export type ChatMessage = {
+  availability?:
+    | "clear"
+    | "encrypted-pending"
+    | "encrypted-unavailable"
+    | "encrypted-error"
+    | "unsupported-media";
   id: string;
   authorId: string;
   content: string;
