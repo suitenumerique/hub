@@ -38,6 +38,8 @@ import {
 } from "../types";
 import { initialsFor } from "./matrixIdentity";
 import { parseMatrixAttachment } from "./matrixMedia";
+import i18n from "@/i18n/initI18n";
+import { DecryptionFailureCode } from "matrix-js-sdk/lib/crypto-api";
 
 type ReactionRelations = NonNullable<
   ReturnType<Room["relations"]["getChildEventsForEvent"]>
@@ -60,7 +62,11 @@ const toAuthorId = (
 
 /** Timeline entries the chat UI renders as message bubbles. */
 export const isMessageEvent = (event: MatrixEvent): boolean =>
-  event.getType() === EventType.RoomMessage &&
+  // Hub owns optimistic rows. SDK local echoes include failed sends, which must
+  // never reappear as delivered messages when a reconnect refetches the timeline.
+  event.status === null &&
+  (event.getType() === EventType.RoomMessage ||
+    event.getType() === EventType.RoomMessageEncrypted) &&
   event.getRelation()?.rel_type !== RelationType.Replace;
 
 /** A user-visible message on the room's main timeline (not a reply or edit). */
@@ -584,7 +590,40 @@ export const matrixEventToChatMessage = (
   const isDeleted = event.isRedacted();
   const content = event.getContent<{ body?: string; msgtype?: string }>();
   const body = content.body;
-  const media = isDeleted ? null : parseMatrixAttachment(content);
+  // Keep the encrypted event's id and position while its key is missing. A
+  // later decryption event can replace this placeholder without adding a row.
+  const unavailable =
+    event.isEncrypted() &&
+    (event.isDecryptionFailure() ||
+      event.isBeingDecrypted() ||
+      event.getType() === EventType.RoomMessageEncrypted);
+  const media = isDeleted || unavailable ? null : parseMatrixAttachment(content);
+  const unsupportedMedia =
+    !unavailable &&
+    !media &&
+    content.msgtype !== undefined &&
+    !["m.text", "m.notice", "m.emote"].includes(content.msgtype);
+  let availability: ChatMessage["availability"] = "clear";
+  let visibleContent = typeof body === "string" ? body : "";
+  if (media) {
+    visibleContent = media.caption;
+  } else if (unavailable) {
+    if (event.isDecryptionFailure()) {
+      availability =
+        event.decryptionFailureReason === DecryptionFailureCode.UNKNOWN_ERROR
+          ? "encrypted-error"
+          : "encrypted-unavailable";
+      visibleContent = encryptedFailureText(event);
+    } else {
+      availability = "encrypted-pending";
+      visibleContent = i18n.t("Encrypted message awaiting decryption…");
+    }
+  } else if (unsupportedMedia) {
+    availability = "unsupported-media";
+    visibleContent = i18n.t("Unsupported attachment: {{name}}", {
+      name: typeof body === "string" ? body : content.msgtype,
+    });
+  }
   const eventId = event.getId() ?? "";
   const canEdit = Boolean(
     !isDeleted &&
@@ -599,12 +638,9 @@ export const matrixEventToChatMessage = (
   );
   const message: ChatMessage = {
     id: eventId,
+    availability,
     authorId: toAuthorId(event.getSender(), selfUserId),
-    content: media
-      ? media.caption
-      : !isDeleted && typeof body === "string"
-        ? body
-        : "",
+    content: !isDeleted ? visibleContent : "",
     ...(media ? { attachment: media.attachment } : {}),
     timestamp: new Date(event.getTs()).toISOString(),
     reactions: isDeleted
@@ -626,6 +662,36 @@ export const matrixEventToChatMessage = (
   return message;
 };
 
+const encryptedFailureText = (event: MatrixEvent): string => {
+  switch (event.decryptionFailureReason) {
+    case DecryptionFailureCode.MEGOLM_KEY_WITHHELD_FOR_UNVERIFIED_DEVICE:
+      return i18n.t(
+        "Encrypted message unavailable: the sender is waiting for this device to be verified.",
+      );
+    case DecryptionFailureCode.MEGOLM_KEY_WITHHELD:
+      return i18n.t(
+        "Encrypted message unavailable: the sender has not shared its key.",
+      );
+    case DecryptionFailureCode.SENDER_IDENTITY_PREVIOUSLY_VERIFIED:
+      return i18n.t(
+        "Message not decrypted: the sender’s encryption identity has changed.",
+      );
+    case DecryptionFailureCode.UNSIGNED_SENDER_DEVICE:
+    case DecryptionFailureCode.UNKNOWN_SENDER_DEVICE:
+      return i18n.t(
+        "Message not decrypted: the sender’s device is not recognized.",
+      );
+    case DecryptionFailureCode.UNKNOWN_ERROR:
+      return i18n.t(
+        "This message could not be decrypted. Stored keys have not been deleted.",
+      );
+    default:
+      return i18n.t(
+        "Encrypted message unavailable. Its key has not been recovered yet.",
+      );
+  }
+};
+
 export const threadToChatThread = (
   room: Room,
   thread: Thread,
@@ -633,7 +699,11 @@ export const threadToChatThread = (
 ): ChatThread => {
   const lastReply = thread.replyToEvent ?? thread.rootEvent;
   const sender = lastReply?.getSender() ?? "";
-  const body = lastReply?.getContent<{ body?: string }>().body;
+  const lastReplyMessage = lastReply
+    ? matrixEventToChatMessage(lastReply, room, selfUserId)
+    : undefined;
+  const body =
+    lastReplyMessage?.content || lastReplyMessage?.attachment?.name || "";
   const lastReplyDeleted = lastReply?.isRedacted() ?? false;
   return {
     id: thread.id,
@@ -760,6 +830,15 @@ export const timelineEventToChatEvent = (
   room: Room,
   selfUserId: string | undefined,
 ): ChatEvent[] => {
+  // Pending/failed local messages do not satisfy isMessageEvent. Suppress their
+  // echoes before the coarse fallback, which would otherwise refetch the chat.
+  if (
+    (event.getType() === EventType.RoomMessage ||
+      event.getType() === EventType.RoomMessageEncrypted) &&
+    isOwnEcho(event)
+  ) {
+    return [];
+  }
   if (event.getType() === EventType.Reaction) {
     return reactionEventToChatEvent(event, room, selfUserId);
   }
@@ -774,9 +853,6 @@ export const timelineEventToChatEvent = (
     relation?.rel_type === RelationType.Replace &&
     relation.event_id
   ) {
-    if (isOwnEcho(event)) {
-      return [];
-    }
     // Keep the ORIGINAL send time. `matrixEventToChatMessage` (history reads)
     // dates an edited message from its original event, so using the edit event's
     // ts here would make the bubble's time jump live, then revert on refetch.
@@ -836,12 +912,6 @@ export const timelineEventToChatEvent = (
   // Non-text activity (redactions, membership, other state) stays coarse.
   if (!isMessageEvent(event)) {
     return [{ type: "chat:changed", chatId: room.roomId }];
-  }
-
-  // Our own echo is already on screen via the optimistic bubble; suppressing it
-  // here is what keeps a Hub-sent message from rendering twice.
-  if (isOwnEcho(event)) {
-    return [];
   }
 
   // A thread reply never becomes a top-level bubble. Refresh the thread slices
