@@ -25,8 +25,10 @@ import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
 import { useEditChatMessage } from "../../hooks/useEditChatMessage";
 import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
+import { useCanSendToChat } from "../../hooks/useChatSecurity";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
+import { ChatEncryptionPrompt } from "../ChatEncryptionPrompt";
 
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
@@ -49,6 +51,7 @@ export const ThreadDetail = ({
   composerFocusSignal,
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
+  const canSend = useCanSendToChat(chatRef);
   const { thread, isInitialLoading, refetch } = useChatThread(
     chatRef,
     threadId,
@@ -267,6 +270,7 @@ export const ThreadDetail = ({
           })}
         </div>
         <div className="hub__thread-detail__composer">
+          {!canSend && <ChatEncryptionPrompt accountId={chatRef.accountId} />}
           <ChatComposer
             conversationId={threadId}
             placeholder={
@@ -275,7 +279,7 @@ export const ThreadDetail = ({
                 : t("Replying isn't available on this account yet.")
             }
             inputLabel={t("Answer")}
-            disabled={!isSupported}
+            disabled={!isSupported || !canSend}
             isSubmitting={isSending || isEditing}
             focusSignal={isOpen ? composerFocusSignal : undefined}
             errorMessage={

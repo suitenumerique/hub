@@ -17,12 +17,14 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { ChatSecuritySendError } from "@/features/drivers/security";
 import type { ChatAttachment } from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
 import { MAX_PENDING_ATTACHMENTS } from "../attachments";
 import type { UploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { usePendingAttachments } from "../hooks/usePendingAttachments";
+import { securityFailureMessage } from "../securityMessages";
 
 import { ComposerAttachments } from "./ComposerAttachments";
 
@@ -203,6 +205,7 @@ export const ChatComposer = ({
     }
     setDraft(editDraft.content);
     const raf = requestAnimationFrame(() => {
+      if (document.querySelector('[role="dialog"]')) return;
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(
         editDraft.content.length,
@@ -218,6 +221,8 @@ export const ChatComposer = ({
     }
 
     const raf = requestAnimationFrame(() => {
+      // Becoming ready after SAS must not steal focus from its open modal.
+      if (document.querySelector('[role="dialog"]')) return;
       inputRef.current?.focus();
     });
 
@@ -235,6 +240,7 @@ export const ChatComposer = ({
       return;
     }
     const raf = requestAnimationFrame(() => {
+      if (document.querySelector('[role="dialog"]')) return;
       inputRef.current?.focus();
       // Only consume the request after focusing: effect cleanup can cancel the
       // frame before it runs, including during React Strict Mode's first mount.
@@ -278,14 +284,27 @@ export const ChatComposer = ({
           }
           onSubmitted?.();
         }
-      } catch {
+      } catch (error) {
         // Keep the draft so the user can retry, and surface the failure: the
         // send mutations silence the global error handler (noGlobalError), so
         // without this toast a failed send would vanish with no feedback.
-        notify.error(
+        let message =
           errorMessage ??
-            t("Your message could not be sent. Please try again."),
-        );
+          t("Your message could not be sent. Please try again.");
+        if (error instanceof ChatSecuritySendError) {
+          if (error.reason === "not-ready") {
+            message = t(
+              "Verify this device and wait for its keys before sending messages.",
+            );
+          } else if (error.reason === "send-failed") {
+            message = t(
+              "The encrypted message was rejected or interrupted. Check your connection and device security, then try again. Your draft is saved.",
+            );
+          } else {
+            message = securityFailureMessage(error.reason, t);
+          }
+        }
+        notify.error(message);
       } finally {
         setIsSubmittingDraft(false);
       }
