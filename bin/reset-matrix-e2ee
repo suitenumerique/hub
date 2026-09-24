@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Reset only the disposable local Matrix stack, never browser storage."""
+
+from __future__ import annotations
+
+import http.client
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SERVICES = {"synapse", "mas", "element", "matrix_postgresql"}
+COMPOSE = ["docker", "compose", "-f", "compose.yml", "-f", "compose.matrix.yml"]
+
+
+def make_local(target: str) -> None:
+    # A caller's `make COMPOSE=...` must not change the command after preflight.
+    environment = os.environ.copy()
+    for variable in [
+        "MAKEFLAGS",
+        "MAKEOVERRIDES",
+        "MFLAGS",
+        "GNUMAKEFLAGS",
+        "MAKEFILES",
+    ]:
+        environment.pop(variable, None)
+    compose = f"DOCKER_USER={os.getuid()}:{os.getgid()} docker compose -f compose.yml"
+    subprocess.run(
+        [
+            "make",
+            target,
+            f"COMPOSE={compose}",
+            f"COMPOSE_MATRIX={compose} -f compose.matrix.yml",
+            "MATRIX_SERVICES=matrix_postgresql synapse mas element",
+        ],
+        cwd=ROOT,
+        env=environment,
+        check=True,
+    )
+
+
+def fail(message: str) -> None:
+    raise SystemExit(f"reset-matrix-e2ee: REFUS — {message}")
+
+
+def read_json(command: list[str]):
+    result = subprocess.run(
+        command, cwd=ROOT, check=True, capture_output=True, text=True
+    )
+    return json.loads(result.stdout)
+
+
+def local_path(path: Path) -> Path:
+    # Reject symlinks even when they currently point inside the disposable tree.
+    for candidate in [path, *path.parents]:
+        if candidate == ROOT.parent:
+            break
+        if candidate.is_symlink():
+            fail(f"lien symbolique dans {path.relative_to(ROOT)}")
+    return path.resolve()
+
+
+def preflight() -> Path:
+    if os.environ.get("DOCKER_HOST", "").startswith(("tcp:", "ssh:", "http:")):
+        fail("DOCKER_HOST distant ; seul un moteur Docker local est autorisé")
+    contexts = read_json(["docker", "context", "inspect"])
+    endpoint = contexts[0]["Endpoints"]["docker"]["Host"]
+    endpoint = os.environ.get("DOCKER_HOST") or endpoint
+    if not endpoint.startswith("unix://"):
+        fail("le contexte Docker actif ne pointe pas vers un socket Unix local")
+    target = local_path(ROOT / "data/matrix/synapse")
+    if target != ROOT / "data/matrix/synapse":
+        fail("le chemin des données Synapse sort du répertoire local attendu")
+    for config in [
+        "compose.yml",
+        "compose.matrix.yml",
+        "docker/matrix/synapse/homeserver.yaml",
+        "docker/matrix/mas/config.yaml",
+        "docker/matrix/element/config.json",
+        "bin/seed-matrix",
+    ]:
+        local_path(ROOT / config)
+    # Inspect the resolved Compose configuration: overrides must not redirect
+    # this destructive operation to different mounts, ports or services.
+    config = read_json([*COMPOSE, "config", "--format", "json"])
+    if config.get("name") != "hub":
+        fail("projet Compose inattendu")
+    services = config["services"]
+    expected_mounts = {
+        "synapse": {
+            ("/config", str(ROOT / "docker/matrix/synapse")),
+            ("/data", str(target)),
+        },
+        "mas": {
+            ("/config", str(ROOT / "docker/matrix/mas")),
+            ("/secrets", str(ROOT / "data/matrix/mas")),
+        },
+        "element": {
+            ("/app/config.json", str(ROOT / "docker/matrix/element/config.json"))
+        },
+        "matrix_postgresql": set(),
+    }
+    expected_ports = {
+        "synapse": [("9808", 8008)],
+        "mas": [("9810", 8080)],
+        "element": [("9807", 8080)],
+        "matrix_postgresql": [],
+    }
+    for name in SERVICES:
+        service = services[name]
+        mounts = service.get("volumes", [])
+        if any(mount.get("type") != "bind" for mount in mounts):
+            fail(f"volume Compose inattendu pour {name}")
+        if {(mount["target"], mount["source"]) for mount in mounts} != expected_mounts[
+            name
+        ]:
+            fail(f"montages inattendus pour {name}")
+        if sorted(
+            (str(port["published"]), port["target"])
+            for port in service.get("ports", [])
+        ) != sorted(expected_ports[name]):
+            fail(f"ports inattendus pour {name}")
+        if service.get("network_mode") or service.get("external_links"):
+            fail(f"réseau externe inattendu pour {name}")
+    for _, sources in expected_mounts.items():
+        for _, source in sources:
+            local_path(Path(source))
+    element = json.loads((ROOT / "docker/matrix/element/config.json").read_text())
+    if element["default_server_config"]["m.homeserver"] != {
+        "base_url": "http://localhost:9808",
+        "server_name": "localhost",
+    }:
+        fail("Element n'utilise pas le homeserver local attendu")
+    mas = (ROOT / "docker/matrix/mas/config.yaml").read_text()
+    for setting in [
+        "public_base: http://localhost:9810/",
+        "issuer: http://localhost:9810/",
+        "homeserver: localhost",
+        "endpoint: http://synapse:8008/",
+        "host: matrix_postgresql",
+    ]:
+        if setting not in mas:
+            fail("configuration MAS non locale ou inconnue")
+    synapse = (ROOT / "docker/matrix/synapse/homeserver.yaml").read_text()
+    if (
+        'server_name: "localhost"' not in synapse
+        and "server_name: localhost\n" not in synapse
+    ):
+        fail("nom de serveur Synapse non local")
+    # Check actual anonymous volumes, including those created by image VOLUME.
+    ids = subprocess.run(
+        ["docker", "ps", "-aq"], check=True, capture_output=True, text=True
+    ).stdout.split()
+    containers = read_json(["docker", "inspect", *ids]) if ids else []
+    owned_volumes: set[str] = set()
+    other_volumes: set[str] = set()
+    for container in containers:
+        labels = container["Config"].get("Labels") or {}
+        ours = (
+            labels.get("com.docker.compose.project") == "hub"
+            and labels.get("com.docker.compose.service") in SERVICES
+        )
+        volumes = {
+            mount["Name"]
+            for mount in container.get("Mounts", [])
+            if mount["Type"] == "volume"
+        }
+        (owned_volumes if ours else other_volumes).update(volumes)
+        if ours and labels["com.docker.compose.service"] == "matrix_postgresql":
+            if any(
+                mount["Type"] != "volume"
+                or mount["Destination"] != "/var/lib/postgresql/data"
+                for mount in container.get("Mounts", [])
+            ):
+                fail("stockage réel MAS inattendu")
+    if owned_volumes & other_volumes:
+        fail("un volume Matrix est partagé avec un autre service")
+    return target
+
+
+def wait_ready() -> None:
+    # Synapse 1.136 serves the MSC2965 path, as configured in homeserver.yaml.
+    # Listening ports are not enough: seeding needs working discovery endpoints
+    # with the expected local issuer, not just running containers.
+    urls = [
+        "http://localhost:9808/_matrix/client/versions",
+        "http://localhost:9808/_matrix/client/unstable/org.matrix.msc2965/auth_metadata",
+        "http://localhost:9810/.well-known/openid-configuration",
+    ]
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        try:
+            for url in urls:
+                with urllib.request.urlopen(url, timeout=5) as response:
+                    data = json.load(response)
+                    if "issuer" in data and data["issuer"] != "http://localhost:9810/":
+                        fail("issuer OIDC inattendu")
+            return
+        except (OSError, http.client.HTTPException, json.JSONDecodeError):
+            time.sleep(2)
+    fail("Synapse/MAS OIDC indisponibles après 180 secondes")
+
+
+def main() -> None:
+    if len(sys.argv) > 1:
+        fail("cette commande ne prend aucun endpoint ni argument")
+    target = preflight()
+    print(
+        "Reset local : Synapse, MAS, Element et PostgreSQL MAS uniquement.", flush=True
+    )
+    make_local("down-matrix")
+    # Validate again immediately before removal; never follow a replaced path.
+    if local_path(target) != ROOT / "data/matrix/synapse":
+        fail("chemin Synapse modifié pendant l'arrêt")
+    if target.exists():
+        shutil.rmtree(target)
+    make_local("run-matrix")
+    wait_ready()
+    subprocess.run(
+        [sys.executable, "bin/seed-matrix", "--users-only"], cwd=ROOT, check=True
+    )
+    print("Stack Matrix réinitialisée ; nettoyage navigateur requis.")
+    print(
+        "Nettoyer séparément http://localhost:9800 et http://localhost:9807, sans cookies localhost."
+    )
+    print("Procédure : docs/frontend/matrix-e2ee-quick-guide.md")
+
+
+if __name__ == "__main__":
+    main()
