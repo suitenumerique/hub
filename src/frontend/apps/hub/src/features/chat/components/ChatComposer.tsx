@@ -11,6 +11,8 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { notify } from "@/features/ui/components/toast";
+import { ChatSecuritySendError } from "@/features/drivers/security";
+import { securityFailureMessage } from "../securityMessages";
 
 const TYPING_STOP_WAIT_MS = 400;
 
@@ -132,6 +134,7 @@ export const ChatComposer = ({
     }
     setDraft(editDraft.content);
     const raf = requestAnimationFrame(() => {
+      if (document.querySelector('[role="dialog"]')) return;
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(
         editDraft.content.length,
@@ -147,6 +150,8 @@ export const ChatComposer = ({
     }
 
     const raf = requestAnimationFrame(() => {
+      // Becoming ready after SAS must not steal focus from its open modal.
+      if (document.querySelector('[role="dialog"]')) return;
       inputRef.current?.focus();
     });
 
@@ -164,6 +169,7 @@ export const ChatComposer = ({
       return;
     }
     const raf = requestAnimationFrame(() => {
+      if (document.querySelector('[role="dialog"]')) return;
       inputRef.current?.focus();
       // Only consume the request after focusing: effect cleanup can cancel the
       // frame before it runs, including during React Strict Mode's first mount.
@@ -196,14 +202,27 @@ export const ChatComposer = ({
         }
         await onSubmit(trimmedDraft);
         setDraft("");
-      } catch {
+      } catch (error) {
         // Keep the draft so the user can retry, and surface the failure: the
         // send mutations silence the global error handler (noGlobalError), so
         // without this toast a failed send would vanish with no feedback.
-        notify.error(
+        let message =
           errorMessage ??
-            t("Your message could not be sent. Please try again."),
-        );
+          t("Your message could not be sent. Please try again.");
+        if (error instanceof ChatSecuritySendError) {
+          if (error.reason === "not-ready") {
+            message = t(
+              "Verify this device and wait for its keys before sending messages.",
+            );
+          } else if (error.reason === "send-failed") {
+            message = t(
+              "The encrypted message was rejected or interrupted. Check your connection and device security, then try again. Your draft is saved.",
+            );
+          } else {
+            message = securityFailureMessage(error.reason, t);
+          }
+        }
+        notify.error(message);
       } finally {
         setIsSubmittingDraft(false);
       }
@@ -274,7 +293,8 @@ export const ChatComposer = ({
           <button
             type="button"
             className="hub__chat-composer__attach"
-            disabled={disabled}
+            disabled
+            title={t("Attachments are not supported yet.")}
           >
             <span className="material-icons" aria-hidden="true">
               attach_file

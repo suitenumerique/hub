@@ -229,6 +229,26 @@ const ChatRow = ({
   const { t } = useTranslation();
   const router = useRouter();
   const isActive = sameChatRef(readChatRef(router.query), chat.ref);
+  const renderAvatar = () => {
+    switch (chat.visual.kind) {
+      case "emoji":
+        return (
+          <Avatar label={chat.name} variant="soft" decorative>
+            {chat.visual.emoji}
+          </Avatar>
+        );
+      case "icon":
+        return (
+          <Avatar label={chat.name} decorative>
+            <span className="material-icons" aria-hidden="true">
+              {chat.visual.icon}
+            </span>
+          </Avatar>
+        );
+      default:
+        return <Avatar label={chat.name} decorative />;
+    }
+  };
 
   return (
     <Link
@@ -253,19 +273,7 @@ const ChatRow = ({
         )}
         aria-hidden="true"
       />
-      {chat.visual.kind === "emoji" ? (
-        <Avatar label={chat.name} variant="soft" decorative>
-          {chat.visual.emoji}
-        </Avatar>
-      ) : chat.visual.kind === "icon" ? (
-        <Avatar label={chat.name} decorative>
-          <span className="material-icons" aria-hidden="true">
-            {chat.visual.icon}
-          </span>
-        </Avatar>
-      ) : (
-        <Avatar label={chat.name} decorative />
-      )}
+      {renderAvatar()}
       <span className="hub__left-panel__chat__text">
         <span
           className={clsx(

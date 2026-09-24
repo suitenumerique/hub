@@ -10,8 +10,10 @@ import type {
 } from "../../ChatPanelContext";
 import { chatKeys } from "../../chatKeys";
 import { useStartChatThread } from "../../hooks/useStartChatThread";
+import { useCanSendToChat } from "../../hooks/useChatSecurity";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
+import { ChatEncryptionPrompt } from "../ChatEncryptionPrompt";
 
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
@@ -35,6 +37,7 @@ export const DraftThreadDetail = ({
   onCreated,
 }: DraftThreadDetailProps) => {
   const { t } = useTranslation();
+  const canSend = useCanSendToChat(chatRef);
   const { startThread, isStarting, isSupported } = useStartChatThread(chatRef);
   // The draft root is a snapshot from when Reply was clicked. Subscribe to
   // its cached message so reactions stay live before the first reply is sent.
@@ -115,6 +118,7 @@ export const DraftThreadDetail = ({
           </Fragment>
         </div>
         <div className="hub__thread-detail__composer">
+          {!canSend && <ChatEncryptionPrompt accountId={chatRef.accountId} />}
           <ChatComposer
             conversationId={root.message.id}
             placeholder={
@@ -123,7 +127,7 @@ export const DraftThreadDetail = ({
                 : t("Replying isn't available on this account yet.")
             }
             inputLabel={t("Answer")}
-            disabled={!isSupported}
+            disabled={!isSupported || !canSend}
             isSubmitting={isStarting}
             focusSignal={isOpen ? composerFocusSignal : undefined}
             onSubmit={handleSubmit}

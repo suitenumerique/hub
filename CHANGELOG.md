@@ -8,6 +8,10 @@ and this project adheres to
 
 ### Added
 
+- 💄(frontend) Move encryption settings into the avatar dropdown, show setup
+  actions above blocked composers and an encryption notice in the timeline.
+  Organize encryption settings into device and backup sections with contextual
+  actions and collapsible technical details.
 - ✨(frontend) Add Matrix device verification with SAS, existing key-backup
   recovery, exclusive browser-session ownership and encrypted private rooms.
   Preserve crypto stores on connection failures and show unavailable messages.
@@ -65,6 +69,9 @@ and this project adheres to
 - 🐛(frontend) Keep encryption settings closed after cancellation failures,
   clean stored search data safely on logout and batch decryption refreshes.
   Preserve acknowledged sends and suppress local message echoes.
+- 🐛(frontend) Preserve drafts on Matrix outages and exclude failed SDK echoes
+  from delivered messages. Use the registered OIDC callback from deep links
+  and keep the development indicator clear of the account menu.
 - 🐛(frontend) Distinguish Matrix backup outages from missing backups, check
   signed reference devices and preserve actionable encryption failure causes.
   Reuse local security state before sending and restore full history only after
@@ -72,6 +79,8 @@ and this project adheres to
 - 🌐(frontend) Use English source messages throughout the encryption flow and
   keep French translations in the locale dictionary.
 
+- 🐛(frontend) Let clicks pass through the empty UI-kit toast container so the
+  account avatar menu opens with the mouse.
 - 🐛(frontend) Require notification permission before playing 
   notification sounds.
 - 🐛(frontend) Keep the toolbar open beside short messages after hovering

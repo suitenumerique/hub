@@ -27,6 +27,9 @@ import { useChatTyping } from "../hooks/useChatTyping";
 import { useEditChatMessage } from "../hooks/useEditChatMessage";
 import { useChatThreads } from "../hooks/useChatThreads";
 import { useSendChatMessage } from "../hooks/useSendChatMessage";
+import { useCanSendToChat, useChatSecurity } from "../hooks/useChatSecurity";
+import { useComposerAccountId } from "../hooks/useChatAccounts";
+import { ChatEncryptionPrompt } from "./ChatEncryptionPrompt";
 
 import { ChatComposer } from "./ChatComposer";
 import { ChatConversation } from "./ChatConversation";
@@ -87,6 +90,13 @@ export const ChatView = ({
 }: ChatViewProps) => {
   const { t } = useTranslation();
   const { chat } = useChat(chatRef);
+  const canSendToChat = useCanSendToChat(chatRef);
+  const composerAccountId = useComposerAccountId();
+  const securityAccountId = chatRef?.accountId ?? composerAccountId;
+  const { security: draftSecurity } = useChatSecurity(composerAccountId);
+  const securityBlocked = chatRef
+    ? !canSendToChat
+    : draftSecurity.supported && !draftSecurity.canSendEncrypted;
   // A pending incoming invitation replaces the timeline/composer/tools surfaces
   // with the invitation detail view until it is accepted.
   const invitationChat = isInvitationChat(chat) ? chat : null;
@@ -219,6 +229,29 @@ export const ChatView = ({
   );
   const editContext = useMemo(() => ({ startEditing: setEditingMessage }), []);
 
+  const renderConversation = () => {
+    if (invitationChat && chatRef) {
+      return <ChatInvitationView chatRef={chatRef} chat={invitationChat} />;
+    }
+    if (chatRef) {
+      return (
+        <ChatConversation
+          chatRef={chatRef}
+          onUnreadBannerChange={handleUnreadBannerChange}
+        />
+      );
+    }
+    return renderEmpty?.();
+  };
+  let composerPlaceholder: string | undefined;
+  if (securityBlocked) {
+    composerPlaceholder = t("Verify encryption before sending a message.");
+  } else if (chatRef && !isCompositionSupported) {
+    composerPlaceholder = t(
+      "Sending messages isn't available on this account yet.",
+    );
+  }
+
   return (
     <ChatMessageEditProvider value={editContext}>
       <ChatPanelProvider value={panelContext}>
@@ -248,17 +281,13 @@ export const ChatView = ({
 
           <div className="hub__chat-view__main">
             <div className="hub__chat-view__content">
-              {invitationChat && chatRef ? (
-                <ChatInvitationView chatRef={chatRef} chat={invitationChat} />
-              ) : chatRef ? (
-                <ChatConversation
-                  chatRef={chatRef}
-                  onUnreadBannerChange={handleUnreadBannerChange}
-                />
-              ) : (
-                renderEmpty?.()
-              )}
+              {renderConversation()}
             </div>
+            {chat?.encryption === "plaintext" && (
+              <p className="hub__room-security" role="status">
+                {t("This conversation is not encrypted.")}
+              </p>
+            )}
             {/* An invitation suppresses the composer until it is accepted. */}
             {!isInvitation && (
               <div className="hub__chat-view__composer">
@@ -266,6 +295,9 @@ export const ChatView = ({
                   transition so an in-progress draft and the input focus survive
                   when a conversation resolves. */}
                 <div className="hub__chat-composer-stack">
+                  {securityBlocked && securityAccountId && (
+                    <ChatEncryptionPrompt accountId={securityAccountId} />
+                  )}
                   <div className="hub__chat-composer-overlay-anchor">
                     <ComposerFloatingArea key={chatKey ?? "draft"}>
                       <TypingIndicator users={typingUsers} />
@@ -280,15 +312,10 @@ export const ChatView = ({
                     </ComposerFloatingArea>
                     <ChatComposer
                       conversationId={chatKey ?? undefined}
-                      placeholder={
-                        chatRef && !isCompositionSupported
-                          ? t(
-                              "Sending messages isn't available on this account yet.",
-                            )
-                          : undefined
-                      }
+                      placeholder={composerPlaceholder}
                       disabled={
-                        chatRef ? !isCompositionSupported : !canComposeDraft
+                        securityBlocked ||
+                        (chatRef ? !isCompositionSupported : !canComposeDraft)
                       }
                       isSubmitting={isSendingMessage || isEditing}
                       focusSignal={composerFocusSignal}
