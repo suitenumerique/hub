@@ -136,6 +136,35 @@ describe("useChatEvents", () => {
     expect(data?.pages[0].messages).toHaveLength(1);
   });
 
+  it("patches decrypted messages without refetching lists for every event", () => {
+    seedMessages(queryClient, CHAT_REF, [message("m1"), message("m2")], []);
+    mount();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    for (const id of ["m1", "m2"]) {
+      emit({
+        type: "message:reconciled",
+        chatId: "c1",
+        messageId: id,
+        message: { ...message(id), content: "decrypted" },
+      });
+    }
+
+    const data = queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(
+      chatKeys.messages(CHAT_REF),
+    );
+    expect(data?.pages[0].messages.map((m) => m.content)).toEqual([
+      "decrypted",
+      "decrypted",
+    ]);
+    expect(invalidate).not.toHaveBeenCalled();
+
+    emit({ type: "chats:changed" });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: chatKeys.chatsOf(CHAT_REF.accountId),
+    });
+  });
+
   it("PATCHES reactions on reaction:updated", () => {
     seedMessages(queryClient, CHAT_REF, [message("m1")], [author("a-1")]);
     mount();

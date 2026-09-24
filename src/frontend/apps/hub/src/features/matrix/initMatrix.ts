@@ -4,7 +4,6 @@ import {
   IndexedDBCryptoStore,
   IndexedDBStore,
   MatrixClient,
-  MatrixError,
   RoomNameType,
   SyncState,
   type RoomNameState,
@@ -15,8 +14,11 @@ import {
 import i18n from "@/i18n/initI18n";
 
 import { MatrixUserInterface } from "./types";
+import { ownSyncStore } from "./ownedSyncStore";
 
 type InitClientOptions = {
+  /** Recheck ownership and client generation after asynchronous startup steps. */
+  assertActive?: () => void;
   syncStoreDbName?: string;
   cryptoStoreDbName?: string;
   /**
@@ -36,6 +38,28 @@ type MatrixClientStores = {
 
 const DEFAULT_SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const DEFAULT_CRYPTO_STORE_DB_NAME = "crypto-store";
+const stores = new WeakMap<MatrixClient, () => Promise<void>>();
+const startingClients = new WeakMap<MatrixClient, Promise<void>>();
+const closingClients = new WeakMap<MatrixClient, Promise<void>>();
+
+export class MatrixStorageContinuityError extends Error {}
+
+/** Stop crypto first, then close (never delete) the independent sync database. */
+export const closeMatrixClient = (mx: MatrixClient): Promise<void> => {
+  const existing = closingClients.get(mx);
+  if (existing) return existing;
+  // startClient awaits server capabilities before constructing its sync loop.
+  // Stopping before that prelude finishes would allow the loop to start late.
+  mx.http.abort();
+  const work = (async () => {
+    await Promise.allSettled([startingClients.get(mx)]);
+    mx.stopClient();
+    mx.http.abort();
+    await stores.get(mx)?.();
+  })();
+  closingClients.set(mx, work);
+  return work;
+};
 
 const localizedRoomNameGenerator = (
   _roomId: string,
@@ -84,22 +108,71 @@ const buildClient = (
     verificationMethods: ["m.sas.v1"],
   });
 
+  stores.set(mx, ownSyncStore(indexedDBStore));
   return { mx, indexedDBStore, cryptoStoreDbName };
 };
 
-const startupClient = async ({
-  mx,
-  indexedDBStore,
-  cryptoStoreDbName,
-}: MatrixClientStores): Promise<MatrixClient> => {
+const startupClient = async (
+  { mx, indexedDBStore, cryptoStoreDbName }: MatrixClientStores,
+  user: MatrixUserInterface,
+  assertActive: () => void,
+): Promise<MatrixClient> => {
   // Validate (and refresh when possible) the persisted OIDC session before
   // opening either IndexedDB store. A local MAS/Synapse reset invalidates both
   // tokens; letting Rust Crypto discover that first produces several failing
   // key requests before the driver can start a fresh login.
-  await mx.whoami();
+  const identity = await mx.whoami();
+  assertActive();
+  if (
+    !user.deviceId ||
+    identity.user_id !== user.mxId ||
+    identity.device_id !== user.deviceId
+  ) {
+    throw new MatrixStorageContinuityError(
+      "Matrix session identity does not match this device.",
+    );
+  }
+  // Query public keys before Rust can create/upload any device identity. A
+  // published device with a missing local store requires explicit recovery.
+  const keys = await mx.downloadKeysForUsers([user.mxId]);
+  assertActive();
+  const published = keys.device_keys?.[user.mxId]?.[user.deviceId]?.keys;
+  if (published) {
+    if (!indexedDB.databases) {
+      throw new MatrixStorageContinuityError(
+        "Cannot check existing crypto storage in this browser.",
+      );
+    }
+    const databases = await indexedDB.databases();
+    assertActive();
+    if (
+      !databases.some(
+        ({ name }) => name === `${cryptoStoreDbName}::matrix-sdk-crypto`,
+      )
+    ) {
+      throw new MatrixStorageContinuityError(
+        "The keys for this device are missing from this browser.",
+      );
+    }
+  }
   await indexedDBStore.startup();
-  await discardStaleJoinedRooms(mx, indexedDBStore);
+  assertActive();
+  await discardStaleJoinedRooms(mx, indexedDBStore, assertActive);
+  assertActive();
   await mx.initRustCrypto({ cryptoDatabasePrefix: cryptoStoreDbName });
+  assertActive();
+  if (published) {
+    const own = await mx.getCrypto()!.getOwnDeviceKeys();
+    assertActive();
+    if (
+      published[`ed25519:${user.deviceId}`] !== own.ed25519 ||
+      published[`curve25519:${user.deviceId}`] !== own.curve25519
+    ) {
+      throw new MatrixStorageContinuityError(
+        "The local device keys do not match the published identity.",
+      );
+    }
+  }
   return mx;
 };
 
@@ -117,14 +190,17 @@ const startupClient = async ({
 const discardStaleJoinedRooms = async (
   mx: MatrixClient,
   indexedDBStore: IndexedDBStore,
+  assertActive: () => void,
 ): Promise<void> => {
   const savedSync = await indexedDBStore.getSavedSync();
+  assertActive();
   const cachedJoinedRoomIds = Object.keys(savedSync?.roomsData.join ?? {});
   if (cachedJoinedRoomIds.length === 0) {
     return;
   }
 
   const { joined_rooms: serverJoinedRooms } = await mx.getJoinedRooms();
+  assertActive();
   const serverJoinedRoomIds = new Set(serverJoinedRooms);
   const hasStaleJoinedRoom = cachedJoinedRoomIds.some(
     (roomId) => !serverJoinedRoomIds.has(roomId),
@@ -149,30 +225,17 @@ export const initClient = async (
   options: InitClientOptions = {},
 ): Promise<MatrixClient> => {
   const client = buildClient(user, options);
-  let mx: MatrixClient;
   try {
-    mx = await startupClient(client);
+    const assertActive = options.assertActive ?? (() => {});
+    assertActive();
+    const mx = await startupClient(client, user, assertActive);
+    await options.onSyncStoreReady?.(mx);
+    assertActive();
+    return mx;
   } catch (error) {
-    // A homeserver response cannot be repaired by deleting IndexedDB. In
-    // particular, let M_UNKNOWN_TOKEN/401 reach MatrixDriver so it can clear
-    // the stored session and restart OIDC after `make reset-matrix`.
-    if (error instanceof MatrixError) {
-      throw error;
-    }
-    // A corrupt local store is the usual cause; reset it and retry once so the
-    // user is not stuck behind a broken cache.
-    console.error(
-      "initClient: store startup failed, clearing and retrying",
-      error,
-    );
-    await client.mx.clearStores({
-      cryptoDatabasePrefix: client.cryptoStoreDbName,
-    });
-    mx = await startupClient(buildClient(user, options));
+    await closeMatrixClient(client.mx);
+    throw error;
   }
-  // A projection failure must not enter the sync/crypto repair catch above.
-  await options.onSyncStoreReady?.(mx);
-  return mx;
 };
 
 const INITIAL_SYNC_LIMIT = 50;
@@ -182,7 +245,11 @@ const INITIAL_SYNC_LIMIT = 50;
  * only from IndexedDB; waiting for `SYNCING` avoids exposing stale cached rooms
  * after a local homeserver reset.
  */
-const waitForInitialSync = (mx: MatrixClient): Promise<void> => {
+const waitForInitialSync = (
+  mx: MatrixClient,
+  signal?: AbortSignal,
+): Promise<void> => {
+  signal?.throwIfAborted();
   const current = mx.getSyncState();
   const currentData = mx.getSyncStateData();
   if (
@@ -193,6 +260,14 @@ const waitForInitialSync = (mx: MatrixClient): Promise<void> => {
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      mx.off(ClientEvent.Sync, onSync);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException("Client stopped", "AbortError"));
+    };
     const onSync = (
       state: SyncState,
       _previousState: SyncState | null,
@@ -203,24 +278,32 @@ const waitForInitialSync = (mx: MatrixClient): Promise<void> => {
         data?.fromCache !== true &&
         data?.catchingUp !== true
       ) {
-        mx.off(ClientEvent.Sync, onSync);
+        cleanup();
         resolve();
       } else if (state === SyncState.Error || state === SyncState.Stopped) {
-        mx.off(ClientEvent.Sync, onSync);
+        cleanup();
         reject(new Error(`Matrix initial sync failed: ${state}`));
       }
     };
     mx.on(ClientEvent.Sync, onSync);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 };
 
-export const startClient = async (mx: MatrixClient): Promise<void> => {
-  await mx.startClient({
+export const startClient = async (
+  mx: MatrixClient,
+  signal?: AbortSignal,
+): Promise<void> => {
+  signal?.throwIfAborted();
+  const starting = mx.startClient({
     initialSyncLimit: INITIAL_SYNC_LIMIT,
     lazyLoadMembers: true,
     // Without this opt-in the SDK leaves m.thread replies in the main timeline
     // and never builds Room/Thread models.
     threadSupport: true,
   });
-  await waitForInitialSync(mx);
+  startingClients.set(mx, starting);
+  await starting;
+  signal?.throwIfAborted();
+  await waitForInitialSync(mx, signal);
 };

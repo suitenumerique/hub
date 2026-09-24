@@ -1,4 +1,5 @@
 import type { ConversationSearchRequest } from "@/features/chat/search/types";
+import { EMPTY_SECURITY, type ChatSecurityCommand } from "../security";
 
 import {
   Driver as BaseDriver,
@@ -38,6 +39,8 @@ import type {
 
 import {
   clearStoredConversationSearch,
+  MATRIX_USER_STORAGE_KEY,
+  matrixStorageKey,
   matrixStorageOwner,
 } from "./matrixStorage";
 
@@ -47,6 +50,23 @@ import {
  * thin proxy.
  */
 export class LazyMatrixDriver extends BaseDriver {
+  private readonly securityListeners = new Set<() => void>();
+  private detachSecurity: () => void = () => {};
+  // React's external-store snapshot must keep the same reference between
+  // updates, including before the real driver has finished loading.
+  private readonly initialSecurity = { ...EMPTY_SECURITY, supported: true };
+  override getSecuritySnapshot = () =>
+    this.target?.getSecuritySnapshot() ?? this.initialSecurity;
+  override subscribeToSecurity = (listener: () => void): (() => void) => {
+    this.securityListeners.add(listener);
+    return () => {
+      this.securityListeners.delete(listener);
+    };
+  };
+  override securityCommand(command: ChatSecurityCommand): Promise<void> {
+    return this.withTarget((driver) => driver.securityCommand(command));
+  }
+  private shutdownWork: Promise<void> | null = null;
   override readonly supportsConversationSearch = true;
 
   override searchConversations(request: ConversationSearchRequest) {
@@ -126,6 +146,10 @@ export class LazyMatrixDriver extends BaseDriver {
           );
         });
         this.target = driver;
+        this.detachSecurity = driver.subscribeToSecurity(() =>
+          this.securityListeners.forEach((listener) => listener()),
+        );
+        this.securityListeners.forEach((listener) => listener());
         return driver;
       });
     }
@@ -270,6 +294,10 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.connect(user));
   }
 
+  override replaceLostDeviceSession(user: User): Promise<ChatConnectionState> {
+    return this.withTarget((driver) => driver.replaceLostDeviceSession(user));
+  }
+
   subscribeToEvents(listener: ChatEventListener): () => void {
     this.listeners.add(listener);
     if (this.target) {
@@ -304,14 +332,63 @@ export class LazyMatrixDriver extends BaseDriver {
   }
 
   destroy(): void {
+    void this.shutdown();
+  }
+
+  override async logout(): Promise<void> {
+    const driver = this.target;
+    const loading = this.targetPromise;
+    // Stop a pending import from starting a connection after logout begins.
     this.disposed = true;
+    try {
+      await (driver ?? (await loading))?.logout();
+    } finally {
+      try {
+        await this.shutdown();
+      } finally {
+        // A never-connected or blocked target cannot clean its projection.
+        // Once it has stopped, clean stored data only if no other tab owns it.
+        if (navigator.locks) {
+          const key = matrixStorageKey(
+            this.accountId,
+            MATRIX_USER_STORAGE_KEY,
+            this.storageOwner,
+          );
+          await navigator.locks.request(
+            `hub-matrix:session:${key}`,
+            { mode: "exclusive", ifAvailable: true },
+            async (lock) => {
+              if (lock)
+                await clearStoredConversationSearch(
+                  this.accountId,
+                  this.storageOwner,
+                );
+            },
+          );
+        }
+      }
+    }
+  }
+
+  override shutdown(): Promise<void> {
+    if (this.shutdownWork) return this.shutdownWork;
+    this.disposed = true;
+    this.detachSecurity();
+    this.securityListeners.clear();
     this.unsubscriptions.forEach((unsubscribe) => unsubscribe());
     this.unsubscriptions.clear();
     this.listeners.clear();
     this.typingSubscriptions.forEach(({ unsubscribe }) => unsubscribe());
     this.typingSubscriptions.clear();
-    this.target?.destroy();
+    const target = this.target;
+    const loading = this.targetPromise;
+    target?.destroy();
     this.target = null;
     this.targetPromise = null;
+    this.shutdownWork = (async () => {
+      const driver = target ?? (await loading);
+      await driver?.shutdown();
+    })();
+    return this.shutdownWork;
   }
 }

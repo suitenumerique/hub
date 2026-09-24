@@ -13,6 +13,7 @@ import {
 } from "matrix-js-sdk/lib/matrix";
 
 import { ChatInvitation, LocalChat } from "../types";
+import { roomSecurity } from "@/features/matrix/roomSecurity";
 
 export const MATRIX_FAVOURITE_TAG = "m.favourite";
 
@@ -103,14 +104,18 @@ export const matrixJoinedRoomToLocalChat = (
   // localized empty-room label so the historical identity stays visible
   // without suggesting the person is still present. A group uses its explicit
   // name when set, otherwise the active members' display names.
-  const name = isDirect
-    ? isEmptyDirect && currentUserId
-      ? room.getDefaultRoomName(currentUserId)
-      : otherNames[0] || participantIds[0] || room.roomId
-    : explicitRoomName(room) || otherNames.join(", ") || room.roomId;
+  let name: string;
+  if (!isDirect) {
+    name = explicitRoomName(room) || otherNames.join(", ") || room.roomId;
+  } else if (isEmptyDirect && currentUserId) {
+    name = room.getDefaultRoomName(currentUserId);
+  } else {
+    name = otherNames[0] || participantIds[0] || room.roomId;
+  }
 
   return {
     id: room.roomId,
+    encryption: roomSecurity(room),
     name,
     ...(timestamp > 0
       ? { lastActivityAt: new Date(timestamp).toISOString() }

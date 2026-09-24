@@ -8,6 +8,9 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Add Matrix device verification with SAS, existing key-backup
+  recovery, exclusive browser-session ownership and encrypted private rooms.
+  Preserve crypto stores on connection failures and show unavailable messages.
 - 💄(frontend) Show the platform-specific search shortcut on sidebar hover.
 - ✨(frontend) Search joined conversations by name and current participants.
   Persist the search index separately and prepare small rooms progressively.
@@ -59,6 +62,10 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Distinguish Matrix backup outages from missing backups, check
+  signed reference devices and preserve actionable encryption failure causes.
+  Reuse local security state before sending and restore full history only after
+  verification or an explicit recovery request.
 - 🐛(frontend) Require notification permission before playing 
   notification sounds.
 - 🐛(frontend) Keep the toolbar open beside short messages after hovering

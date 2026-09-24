@@ -14,6 +14,7 @@ import {
   appendMessageToNewestPage,
   type ChatMessagesData,
   createOptimisticMessage,
+  removeMessageFromPages,
   replaceMessageInPages,
 } from "./chatCompositionCache";
 import { useChatCompositionSupport } from "./useChatCompositionSupport";
@@ -23,7 +24,6 @@ type SendMessageVariables = { ref: ChatRef; content: string };
 type SendMessageContext = {
   ref: ChatRef;
   messagesKey: QueryKey;
-  previousMessages: ChatMessagesData | undefined;
   optimisticId: string;
 };
 
@@ -56,8 +56,6 @@ export const useSendChatMessage = (
     onMutate: async ({ ref: targetRef, content }) => {
       const messagesKey: QueryKey = chatKeys.messages(targetRef);
       await queryClient.cancelQueries({ queryKey: messagesKey });
-      const previousMessages =
-        queryClient.getQueryData<ChatMessagesData>(messagesKey);
       const optimistic = createOptimisticMessage(content, "optimistic-message");
 
       queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
@@ -67,17 +65,37 @@ export const useSendChatMessage = (
       return {
         ref: targetRef,
         messagesKey,
-        previousMessages,
         optimisticId: optimistic.id,
       };
     },
-    onSuccess: (message, _variables, context) => {
+    onSuccess: async (message, _variables, context) => {
       if (!context) {
         return;
       }
-      queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) =>
-        old ? replaceMessageInPages(old, context.optimisticId, message) : old,
-      );
+      // A reconnect can refetch the room before /sync includes our send and
+      // remove its optimistic row. Cancel that stale read, then retain the
+      // confirmed event even when there is no optimistic row left to replace.
+      await queryClient.cancelQueries({ queryKey: context.messagesKey });
+      queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) => {
+        if (!old) return old;
+        if (
+          old.pages.some((page) =>
+            page.messages.some((row) => row.id === message.id),
+          )
+        ) {
+          return removeMessageFromPages(old, context.optimisticId);
+        }
+        if (
+          old.pages.some((page) =>
+            page.messages.some((row) => row.id === context.optimisticId),
+          )
+        ) {
+          return replaceMessageInPages(old, context.optimisticId, message);
+        }
+        return old.pages[0]?.isAtLiveEnd === false
+          ? old
+          : appendMessageToNewestPage(old, message);
+      });
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(context.ref.accountId),
       });
@@ -85,7 +103,13 @@ export const useSendChatMessage = (
     },
     onError: (_error, _variables, context) => {
       if (context) {
-        queryClient.setQueryData(context.messagesKey, context.previousMessages);
+        // Remove only this failed send. Restoring an earlier cache snapshot
+        // would discard messages or decrypted content received in the meantime.
+        queryClient.setQueryData<ChatMessagesData>(
+          context.messagesKey,
+          (old) =>
+            old ? removeMessageFromPages(old, context.optimisticId) : old,
+        );
       }
     },
     meta: { noGlobalError: true },

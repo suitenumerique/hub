@@ -1,4 +1,5 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import { chatKeys } from "@/features/chat/chatKeys";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
@@ -20,12 +21,37 @@ export const useChatConnections = (
 ): ChatConnectionState => {
   const entries = useDriverEntries();
   const userId = user?.id ?? null;
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const cleanups = entries.map((entry) =>
+      entry.driver.subscribeToEvents((event) => {
+        if (event.type !== "connection:invalidated") return;
+        const queryKey = [
+          ...chatKeys.connection(entry.accountId, userId),
+          entry.generation,
+        ];
+        // Connection results otherwise stay fresh indefinitely. Hide the old
+        // connected state while this driver revalidates its saved session.
+        queryClient.setQueryData<ChatConnectionState>(queryKey, {
+          status: "connecting",
+          chatUser: null,
+        });
+        void queryClient.invalidateQueries({ queryKey, exact: true });
+      }),
+    );
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [entries, userId, queryClient]);
 
   return useQueries({
     queries: entries.map((entry) => ({
-      queryKey: chatKeys.connection(entry.accountId, userId),
+      queryKey: [
+        ...chatKeys.connection(entry.accountId, userId),
+        entry.generation,
+      ],
       queryFn: () => entry.driver.connect(user),
-      enabled: user !== undefined && user !== null,
+      enabled:
+        user !== undefined && user !== null && entry.sessionOwner === userId,
       staleTime: Infinity,
       meta: { noGlobalError: true },
     })),
@@ -41,6 +67,10 @@ export const useChatConnections = (
       const requiredError = requiredResults.find(
         ({ result }) => result?.isError || result?.data?.status === "error",
       );
+      const blocked = requiredResults.find(
+        ({ result }) => result?.data?.status === "blocked",
+      );
+      if (blocked?.result.data) return blocked.result.data;
       if (requiredError) {
         return {
           status: "error",

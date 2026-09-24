@@ -24,6 +24,8 @@ export const subscribeToIncomingMatrixEvents = (
 ): (() => void) => {
   const self = mx.getUserId();
   let active = true;
+  let acceptingLive = true;
+  const currentBatch = new Map<string, MatrixEvent>();
   const joined = new Set(
     mx
       .getRooms()
@@ -32,7 +34,7 @@ export const subscribeToIncomingMatrixEvents = (
   );
   const seen = new Set<string>();
   const pendingJoined = new Set<string>();
-  const pendingInvitations = new Map<string, symbol>();
+  const pendingInvitations = new Map<string, Room>();
   const pendingEncrypted = new Map<
     string,
     { event: MatrixEvent; at: number }
@@ -52,6 +54,7 @@ export const subscribeToIncomingMatrixEvents = (
       seen.has(id) ||
       event.isState() ||
       event.isRedacted() ||
+      event.isDecryptionFailure() ||
       isOwnEcho(event) ||
       event.getType() !== EventType.RoomMessage ||
       event.getRelation()?.rel_type === RelationType.Replace ||
@@ -74,6 +77,7 @@ export const subscribeToIncomingMatrixEvents = (
     const roomId = event.getRoomId();
     if (
       !id ||
+      !acceptingLive ||
       !roomId ||
       !joined.has(roomId) ||
       event.isState() ||
@@ -82,6 +86,12 @@ export const subscribeToIncomingMatrixEvents = (
       isOwnEcho(event)
     )
       return;
+    currentBatch.set(id, event);
+    if (currentBatch.size > 512)
+      currentBatch.delete(currentBatch.keys().next().value!);
+  };
+  const queueLiveMessage = (event: MatrixEvent) => {
+    const id = event.getId()!;
     if (
       event.isEncrypted() &&
       (event.isBeingDecrypted() ||
@@ -101,7 +111,8 @@ export const subscribeToIncomingMatrixEvents = (
     const pending = id ? pendingEncrypted.get(id) : undefined;
     if (!id || !pending || error || event.isDecryptionFailure()) return;
     pendingEncrypted.delete(id);
-    if (Date.now() - pending.at < 60_000) publishMessage(event);
+    if (acceptingLive && Date.now() - pending.at < 60_000)
+      publishMessage(event);
   };
   const onMembership = (room: Room, membership: string, previous?: string) => {
     if (membership === previous) return;
@@ -111,28 +122,45 @@ export const subscribeToIncomingMatrixEvents = (
     if (membership === KnownMembership.Join) pendingJoined.add(room.roomId);
     else pendingJoined.delete(room.roomId);
     if (membership !== KnownMembership.Invite) return;
-    const invitation = Symbol();
-    pendingInvitations.set(room.roomId, invitation);
-    // MyMembership fires during recalculate(), before the final room name.
-    queueMicrotask(() => {
-      if (!active || pendingInvitations.get(room.roomId) !== invitation) return;
-      pendingInvitations.delete(room.roomId);
-      if (room.getMyMembership() !== KnownMembership.Invite) return;
-      const chat = matrixRoomToLocalChat(room, self ?? undefined);
-      emit({
-        type: "invitation:received",
-        chatId: room.roomId,
-        chatName: chat.name,
-        inviterName: chat.invitation?.inviterName || chat.invitation?.inviterId,
-      });
-    });
+    if (!acceptingLive) return;
+    // Wait for the completed sync batch: the final name and delivery provenance
+    // are not known yet when MyMembership fires during recalculate().
+    pendingInvitations.set(room.roomId, room);
   };
   const onSync = (
     state: SyncState,
     _previous: SyncState | null,
     data?: SyncStateData,
   ) => {
-    if (state !== SyncState.Syncing || data?.fromCache) return;
+    if (state !== SyncState.Syncing) {
+      acceptingLive = false;
+      currentBatch.clear();
+      pendingInvitations.clear();
+      pendingEncrypted.clear();
+      return;
+    }
+    // Timeline callbacks arrive before the batch's sync metadata. Only notify
+    // after that metadata confirms these are live events, not cache/catch-up.
+    const live =
+      acceptingLive && data?.fromCache !== true && data?.catchingUp !== true;
+    if (live) currentBatch.forEach(queueLiveMessage);
+    currentBatch.clear();
+    if (live) {
+      pendingInvitations.forEach((room) => {
+        if (room.getMyMembership() !== KnownMembership.Invite) return;
+        const chat = matrixRoomToLocalChat(room, self ?? undefined);
+        emit({
+          type: "invitation:received",
+          chatId: room.roomId,
+          chatName: chat.name,
+          inviterName:
+            chat.invitation?.inviterName || chat.invitation?.inviterId,
+        });
+      });
+    }
+    pendingInvitations.clear();
+    // A successful catch-up resumes delivery only for the *following* batch.
+    acceptingLive = data?.fromCache !== true && data?.catchingUp !== true;
     // The first batch of a newly joined room is history, including on acceptance.
     pendingJoined.forEach((roomId) => {
       if (mx.getRoom(roomId)?.getMyMembership() === KnownMembership.Join)
@@ -157,5 +185,6 @@ export const subscribeToIncomingMatrixEvents = (
     mx.off(ClientEvent.Sync, onSync);
     pendingInvitations.clear();
     pendingEncrypted.clear();
+    currentBatch.clear();
   };
 };

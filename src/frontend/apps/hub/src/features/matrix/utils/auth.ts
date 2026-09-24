@@ -18,6 +18,12 @@ import { CompleteOidcLoginResponse } from "../types";
 const RESPONSE_MODE = "query";
 // Nonce length, in characters. OIDC recommends a high-entropy value.
 const NONCE_LENGTH = 32;
+
+// Use one registered callback even when login starts from a deep link. A
+// pathname such as /home is not necessarily registered with the OIDC issuer.
+export const getOidcRedirectUri = (): string =>
+  new URL("/", window.location.origin).href;
+
 /**
  * Builds the OIDC authorization URL for a client already registered on the
  * configured Matrix account's delegated-auth issuer.
@@ -32,8 +38,7 @@ export const getOIDCAuthUrl = async (
     throw new Error("OIDC metadata not available for this server");
   }
 
-  const redirectUri = new URL(window.location.origin + window.location.pathname)
-    .href;
+  const redirectUri = getOidcRedirectUri();
   return generateOidcAuthorizationUrl({
     metadata: delegatedAuthConfig,
     redirectUri,

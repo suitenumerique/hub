@@ -10,6 +10,14 @@ export type DriverEntry = ChatAccountConfig & {
   settingsFingerprint: string;
 };
 
+/** Lifecycle metadata exists only after the registry owns an entry. */
+export type RegisteredDriverEntry = DriverEntry & {
+  /** Hub user owning this driver; an account id alone can span several logins. */
+  sessionOwner: string | null;
+  /** Included in connection query keys so a new driver cannot reuse old results. */
+  generation: number;
+};
+
 const snapshotEquals = (a: DriverEntry[], b: DriverEntry[]): boolean =>
   a.length === b.length &&
   a.every((entry, index) => {
@@ -36,8 +44,9 @@ const fingerprintSettings = (
 };
 
 export class DriverRegistry {
-  private entries = new Map<AccountId, DriverEntry>();
-  private snapshot: DriverEntry[] = [];
+  private generation = 0;
+  private entries = new Map<AccountId, RegisteredDriverEntry>();
+  private snapshot: RegisteredDriverEntry[] = [];
   private listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
@@ -47,7 +56,7 @@ export class DriverRegistry {
     };
   };
 
-  getSnapshot = (): DriverEntry[] => this.snapshot;
+  getSnapshot = (): RegisteredDriverEntry[] => this.snapshot;
 
   get(accountId: AccountId): Driver {
     const entry = this.entries.get(accountId);
@@ -57,15 +66,20 @@ export class DriverRegistry {
     return entry.driver;
   }
 
-  reconcile(configs: ChatAccountConfig[]): void {
+  reconcile(
+    configs: ChatAccountConfig[],
+    sessionOwner: string | null = null,
+  ): void {
     const enabledConfigs = this.prepareConfigs(configs);
-    const nextEntries = new Map<AccountId, DriverEntry>();
+    const nextEntries = new Map<AccountId, RegisteredDriverEntry>();
 
     enabledConfigs.forEach((config) => {
       const existing = this.entries.get(config.accountId);
       const settingsFingerprint = fingerprintSettings(config.settings);
       const canReuseDriver =
-        existing && existing.settingsFingerprint === settingsFingerprint;
+        existing &&
+        existing.settingsFingerprint === settingsFingerprint &&
+        existing.sessionOwner === sessionOwner;
       const driver = canReuseDriver
         ? existing.driver
         : createDriver(config.accountId, config.settings ?? {});
@@ -81,6 +95,8 @@ export class DriverRegistry {
         ...config,
         driver,
         settingsFingerprint,
+        sessionOwner,
+        generation: canReuseDriver ? existing.generation : ++this.generation,
       });
     });
 
@@ -91,7 +107,7 @@ export class DriverRegistry {
     });
 
     const nextSnapshot = enabledConfigs.map(
-      (config) => nextEntries.get(config.accountId) as DriverEntry,
+      (config) => nextEntries.get(config.accountId) as RegisteredDriverEntry,
     );
 
     this.entries = nextEntries;
@@ -108,6 +124,12 @@ export class DriverRegistry {
       this.snapshot = [];
       this.emit();
     }
+  }
+
+  async shutdownAll(): Promise<void> {
+    const work = this.snapshot.map(({ driver }) => driver.shutdown());
+    this.destroyAll();
+    await Promise.allSettled(work);
   }
 
   private prepareConfigs(configs: ChatAccountConfig[]): ChatAccountConfig[] {
@@ -132,7 +154,7 @@ let registry = new DriverRegistry();
 
 export const getRegistry = (): DriverRegistry => registry;
 
-export const useDriverEntries = (): DriverEntry[] => {
+export const useDriverEntries = (): RegisteredDriverEntry[] => {
   const currentRegistry = getRegistry();
   return useSyncExternalStore(
     currentRegistry.subscribe,
