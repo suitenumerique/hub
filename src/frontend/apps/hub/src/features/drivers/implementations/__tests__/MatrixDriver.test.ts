@@ -9,6 +9,8 @@ import {
 } from "matrix-js-sdk/lib/matrix";
 import { describe, expect, it, vi } from "vitest";
 
+import { MatrixSessionOwnership } from "@/features/matrix/sessionOwnership";
+
 import { timelineEventToChatEvent } from "../matrixEventMapping";
 import { MatrixDriver } from "../MatrixDriver";
 import {
@@ -70,6 +72,7 @@ const makeMessageEvent = (opts: {
 }): MatrixEvent =>
   ({
     getType: () => opts.type ?? "m.room.message",
+    isEncrypted: () => false,
     isRedacted: () => false,
     getId: () => opts.id ?? "$ev:localhost",
     getSender: () => opts.sender,
@@ -95,8 +98,12 @@ const makeRoom = (
 ): Room =>
   ({
     roomId: ROOM_ID,
+    hasEncryptionStateEvent: () => false,
     getMember: (id: string) => ({ name: id === SELF_ID ? "Me" : id }),
-    currentState: { maySendRedactionForEvent: () => false },
+    currentState: {
+      getStateEvents: () => null,
+      maySendRedactionForEvent: () => false,
+    },
     getThread: (threadId: string) => threadsById[threadId] ?? null,
     findEventById: (eventId: string) => eventsById[eventId],
     relations: {
@@ -127,10 +134,22 @@ const makeThread = (
     },
   }) as unknown as Thread;
 
-/** Injects a live client without driving the OIDC/`connect` flow. */
+/** Injects a client and its acquired ownership without the OIDC/connect flow. */
 const driverWithClient = (mx: MatrixClient | null): MatrixDriver => {
   const driver = new MatrixDriver();
-  (driver as unknown as { mx: MatrixClient | null }).mx = mx;
+  const internals = driver as unknown as {
+    mx: MatrixClient | null;
+    ownership: MatrixSessionOwnership;
+  };
+  internals.mx = mx;
+  vi.spyOn(internals.ownership, "held", "get").mockReturnValue(true);
+  if (mx) {
+    // The send/reaction fixtures use plaintext rooms with no encryption state.
+    mx.roomState = vi.fn().mockResolvedValue([]);
+    mx.getCrypto = vi.fn().mockReturnValue({
+      isEncryptionEnabledInRoom: vi.fn().mockResolvedValue(false),
+    });
+  }
   return driver;
 };
 
@@ -173,23 +192,30 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
     });
   });
 
-  it("suppresses this session's own echo so it is not duplicated", () => {
-    const txnTagged = makeMessageEvent({
-      sender: SELF_ID,
-      body: "mine",
-      transactionId: "m1729-1",
-    });
-    const inFlight = makeMessageEvent({
-      sender: SELF_ID,
-      body: "mine",
-      status: "sending",
-    });
+  it.each([EventType.RoomMessage, EventType.RoomMessageEncrypted])(
+    "suppresses this session's %s echoes before the coarse fallback",
+    (type) => {
+      const txnTagged = makeMessageEvent({
+        sender: SELF_ID,
+        body: "mine",
+        type,
+        transactionId: "m1729-1",
+      });
+      const inFlight = makeMessageEvent({
+        sender: SELF_ID,
+        body: "mine",
+        type,
+        status: "sending",
+      });
 
-    expect(timelineEventToChatEvent(txnTagged, makeRoom(), SELF_ID)).toEqual(
-      [],
-    );
-    expect(timelineEventToChatEvent(inFlight, makeRoom(), SELF_ID)).toEqual([]);
-  });
+      expect(timelineEventToChatEvent(txnTagged, makeRoom(), SELF_ID)).toEqual(
+        [],
+      );
+      expect(timelineEventToChatEvent(inFlight, makeRoom(), SELF_ID)).toEqual(
+        [],
+      );
+    },
+  );
 
   it("maps an edit (m.replace) to message:updated on the target", () => {
     const targetId = "$target:localhost";
@@ -304,6 +330,33 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
 });
 
 describe("MatrixDriver.sendChatMessage", () => {
+  it.each(["disposed", "replaced"])(
+    "keeps the server acknowledgement when the client is %s during a send",
+    async (state) => {
+      const room = makeRoom();
+      const sendTextMessage = vi.fn();
+      const mx = {
+        getRoom: () => room,
+        sendTextMessage,
+      } as unknown as MatrixClient;
+      const driver = driverWithClient(mx);
+      const internals = driver as unknown as {
+        disposed: boolean;
+        mx: MatrixClient | null;
+      };
+      sendTextMessage.mockImplementation(async () => {
+        if (state === "disposed") internals.disposed = true;
+        else internals.mx = null;
+        return { event_id: SENT_EVENT_ID };
+      });
+
+      await expect(
+        driver.sendChatMessage({ chatId: ROOM_ID, content: "accepted" }),
+      ).resolves.toMatchObject({ id: SENT_EVENT_ID, content: "accepted" });
+      expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("sends the text and returns the message under the real server id", async () => {
     const room = makeRoom();
     const sendTextMessage = vi.fn(async () => ({ event_id: SENT_EVENT_ID }));
@@ -340,6 +393,7 @@ describe("MatrixDriver room metadata", () => {
     const room = {
       roomId: ROOM_ID,
       tags: { [MATRIX_FAVOURITE_TAG]: {} },
+      hasEncryptionStateEvent: () => false,
       getMembers: () => [
         {
           userId: OTHER_ID,

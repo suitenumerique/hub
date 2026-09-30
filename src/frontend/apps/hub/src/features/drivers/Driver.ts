@@ -24,6 +24,11 @@ import {
   LocalChatSections,
   User,
 } from "./types";
+import {
+  EMPTY_SECURITY,
+  type ChatSecurityCommand,
+  type ChatSecuritySnapshot,
+} from "./security";
 
 export type ChatUserFilters = {
   q?: string;
@@ -128,6 +133,7 @@ export type ChatConnectionStatus =
   | "idle"
   | "connecting"
   | "connected"
+  | "blocked"
   | "error";
 
 export type ChatConnectionState = {
@@ -137,6 +143,7 @@ export type ChatConnectionState = {
   /** Optional redirect coordinated by the connection layer. */
   redirectTo?: string;
   error?: unknown;
+  reason?: "another-tab" | "unsupported" | "storage-continuity";
 };
 
 /**
@@ -152,7 +159,14 @@ export type ChatConnectionState = {
  * (or none, for list-level changes) so the bridge can target the right cache.
  */
 export type ChatEvent =
+  | { type: "connection:invalidated" }
   | { type: "search:changed" }
+  | {
+      type: "message:reconciled";
+      chatId: string;
+      messageId: string;
+      message: ChatMessage | null;
+    }
   // Delivery signals are independent from timeline/cache patches.
   | {
       type: "message:received";
@@ -207,6 +221,16 @@ export type ChatEvent =
 export type ChatEventListener = (event: ChatEvent) => void;
 
 export abstract class Driver {
+  getSecuritySnapshot(): ChatSecuritySnapshot {
+    return EMPTY_SECURITY;
+  }
+  subscribeToSecurity(_listener: () => void): () => void {
+    void _listener;
+    return () => {};
+  }
+  async securityCommand(_command: ChatSecurityCommand): Promise<void> {
+    void _command;
+  }
   readonly accountId: AccountId;
   readonly supportsConversationSearch: boolean = false;
 
@@ -422,6 +446,21 @@ export abstract class Driver {
 
   /** Run on teardown (logout / unmount). Releases listeners, stops clients. */
   destroy(): void {}
+
+  /** Awaitable barrier used before leaving the account/origin. */
+  async shutdown(): Promise<void> {
+    this.destroy();
+  }
+
+  async logout(): Promise<void> {
+    await this.shutdown();
+  }
+
+  /** Explicit recovery after lost local device keys; keeps the old stores. */
+  async replaceLostDeviceSession(_user: User): Promise<ChatConnectionState> {
+    void _user;
+    throw new Error("Device recovery is not available.");
+  }
 
   /**
    * Opens the chat-backend connection for the given Hub user (auth handshake,

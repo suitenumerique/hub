@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ActiveChatProvider } from "@/features/chat/ActiveChatContext";
+import { EncryptionSettingsProvider } from "@/features/chat/EncryptionSettingsContext";
 import { useChatEvents } from "@/features/chat/hooks/useChatEvents";
 import { useChatNotifications } from "@/features/chat/notifications/useChatNotifications";
 import { ConversationSearchModal } from "@/features/chat/search/ConversationSearchModal";
@@ -10,6 +11,7 @@ import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { ChatRef } from "@/features/drivers/types";
 
 import { LeftPanel } from "./LeftPanel/LeftPanel";
+import { ChatSecurity } from "@/features/chat/components/ChatSecurity";
 
 type HubLayoutProps = {
   children: ReactNode;
@@ -62,20 +64,27 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
   }
 
   return (
-    <div className="hub__layout">
-      <a href="#hub__layout__main" className="hub__layout__skip-link">
-        {t("Skip to main content")}
-      </a>
-      {user && <LeftPanel onSearch={() => setSearchOpen(true)} />}
-      {user && searchOpen && (
-        <ConversationSearchModal onClose={() => setSearchOpen(false)} />
-      )}
+    <EncryptionSettingsProvider>
+      <div className="hub__layout">
+        <a href="#hub__layout__main" className="hub__layout__skip-link">
+          {t("Skip to main content")}
+        </a>
+        {user && <LeftPanel onSearch={() => setSearchOpen(true)} />}
+        {user && searchOpen && (
+          <ConversationSearchModal onClose={() => setSearchOpen(false)} />
+        )}
 
-      <main id="hub__layout__main" className="hub__layout__main" tabIndex={-1}>
-        <ActiveChatProvider value={activeChatRef}>
-          {children}
-        </ActiveChatProvider>
-      </main>
-    </div>
+        <main
+          id="hub__layout__main"
+          className="hub__layout__main"
+          tabIndex={-1}
+        >
+          {user && <ChatSecurity />}
+          <ActiveChatProvider value={activeChatRef}>
+            {children}
+          </ActiveChatProvider>
+        </main>
+      </div>
+    </EncryptionSettingsProvider>
   );
 };

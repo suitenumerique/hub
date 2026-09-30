@@ -5,24 +5,22 @@ import { MATRIX_LOCAL_SETTINGS, parseMatrixDriverSettings } from "../config";
 describe("parseMatrixDriverSettings", () => {
   it("reads a fixed Matrix account configuration", () => {
     const settings = parseMatrixDriverSettings({
-      baseUrl: "http://localhost:9808",
-      serverName: "localhost",
+      ...MATRIX_LOCAL_SETTINGS,
       loginHint: "hub@example.com",
-      oidcClientId: "01J00000000000000000000000",
     });
 
     expect(settings).toEqual({
-      baseUrl: "http://localhost:9808",
-      serverName: "localhost",
+      ...MATRIX_LOCAL_SETTINGS,
+      externalClientUrl: "http://localhost:9807/",
       loginHint: "hub@example.com",
-      oidcClientId: "01J00000000000000000000000",
     });
   });
 
   it("accepts the local manifest", () => {
-    expect(parseMatrixDriverSettings(MATRIX_LOCAL_SETTINGS)).toEqual(
-      MATRIX_LOCAL_SETTINGS,
-    );
+    expect(parseMatrixDriverSettings(MATRIX_LOCAL_SETTINGS)).toEqual({
+      ...MATRIX_LOCAL_SETTINGS,
+      externalClientUrl: "http://localhost:9807/",
+    });
   });
 
   it("rejects a manifest without a fixed server or MAS client", () => {

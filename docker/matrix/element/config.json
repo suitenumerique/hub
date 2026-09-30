@@ -6,12 +6,12 @@
       "server_name": "localhost"
     },
     "io.element.e2ee": {
-      "default": false
+      "default": true
     }
   },
   "disable_guests": true,
   "disable_custom_urls": true,
   "io.element.e2ee": {
-    "default": false
+    "default": true
   }
 }
