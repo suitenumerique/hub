@@ -7,12 +7,18 @@ export type MatrixDriverSettings = {
   oidcClientId: string;
   /** Optional OIDC login hint; defaults to the authenticated Hub email. */
   loginHint?: string;
+  /**
+   * Largest file, in bytes, users may attach. The homeserver's own limit
+   * (`m.upload.size`) still applies when it is lower.
+   */
+  maxUploadSize?: number;
 };
 
 export const MATRIX_LOCAL_SETTINGS = {
   baseUrl: "http://localhost:9808",
   serverName: "localhost",
   oidcClientId: "01J00000000000000000000000",
+  maxUploadSize: 20 * 1024 * 1024,
 } satisfies MatrixDriverSettings;
 
 const readRequiredString = (
@@ -26,6 +32,22 @@ const readRequiredString = (
   return value;
 };
 
+const readOptionalByteSize = (
+  raw: Record<string, unknown>,
+  key: keyof MatrixDriverSettings,
+): number | undefined => {
+  const value = raw[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(
+      `Matrix account setting "${key}" must be a positive number of bytes.`,
+    );
+  }
+  return value;
+};
+
 /**
  * Validates one fixed Matrix account manifest. There is deliberately no remote
  * preset or discovery fallback: a malformed account must fail explicitly
@@ -33,11 +55,15 @@ const readRequiredString = (
  */
 export const parseMatrixDriverSettings = (
   raw: Record<string, unknown>,
-): MatrixDriverSettings => ({
-  baseUrl: readRequiredString(raw, "baseUrl"),
-  serverName: readRequiredString(raw, "serverName"),
-  oidcClientId: readRequiredString(raw, "oidcClientId"),
-  ...(typeof raw.loginHint === "string" && raw.loginHint.length > 0
-    ? { loginHint: raw.loginHint }
-    : {}),
-});
+): MatrixDriverSettings => {
+  const maxUploadSize = readOptionalByteSize(raw, "maxUploadSize");
+  return {
+    baseUrl: readRequiredString(raw, "baseUrl"),
+    serverName: readRequiredString(raw, "serverName"),
+    oidcClientId: readRequiredString(raw, "oidcClientId"),
+    ...(typeof raw.loginHint === "string" && raw.loginHint.length > 0
+      ? { loginHint: raw.loginHint }
+      : {}),
+    ...(maxUploadSize !== undefined ? { maxUploadSize } : {}),
+  };
+};

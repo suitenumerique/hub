@@ -1727,7 +1727,11 @@ export class MatrixDriver extends Driver {
     return fetchMedia(mx, source, attachment.mimetype, signal);
   }
 
-  private getMediaUploadLimit(mx: MatrixClient): Promise<number | null> {
+  /**
+   * Largest file this account accepts: the Hub's own limit (`maxUploadSize`
+   * setting), lowered to the homeserver's `m.upload.size` when smaller.
+   */
+  private async getMediaUploadLimit(mx: MatrixClient): Promise<number | null> {
     this.mediaUploadLimit ??= mx
       .getMediaConfig(true)
       .then((config) => config["m.upload.size"] ?? null)
@@ -1737,7 +1741,11 @@ export class MatrixDriver extends Driver {
         this.mediaUploadLimit = null;
         return null;
       });
-    return this.mediaUploadLimit;
+    const serverLimit = await this.mediaUploadLimit;
+    const limits = [serverLimit, this.settings.maxUploadSize].filter(
+      (limit): limit is number => typeof limit === "number" && limit > 0,
+    );
+    return limits.length > 0 ? Math.min(...limits) : null;
   }
 
   private async isRoomEncrypted(

@@ -12,6 +12,7 @@ and this project adheres to
   Upload files picked, pasted or dropped on the conversation before sending.
   Send files in threads and in a new conversation not created yet.
   Show upload progress and retry failed uploads.
+  Refuse files above the account upload limit, set to 20 MB for now.
   Show images inline and other files with their type icon.
   Open files in the design-system preview and download them from it.
   Encrypt attachments and image thumbnails in end-to-end encrypted rooms.
