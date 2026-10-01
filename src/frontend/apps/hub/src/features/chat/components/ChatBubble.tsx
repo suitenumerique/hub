@@ -3,6 +3,7 @@ import { type PointerEvent, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
+  ChatAttachment,
   ChatRef,
   ChatMessage,
   ChatMessageAuthor,
@@ -16,11 +17,13 @@ import { useChatMessageEdit } from "../ChatMessageEditContext";
 import { copyTextToClipboard } from "../copyTextToClipboard";
 import { formatChatGroupTimestamp } from "../formatTimestamp";
 import { isOptimisticThreadId } from "../hooks/chatCompositionCache";
+import { useDownloadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
 import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
 import { useToggleReaction } from "../hooks/useToggleReaction";
 import { notify } from "@/features/ui/components/toast";
 
+import { MessageAttachment } from "./MessageAttachment";
 import { MessageHoverToolbar } from "./MessageHoverToolbar";
 import { MessageReactions } from "./MessageReactions";
 import { ThreadButton } from "./ThreadButton";
@@ -30,6 +33,7 @@ type ChatBubbleReceivedProps = {
   chatRef: ChatRef;
   messageId: string;
   content: string;
+  attachment?: ChatAttachment;
   author: ChatMessageAuthor;
   timestamp: string;
   reactions: ChatReaction[];
@@ -52,6 +56,7 @@ type ChatBubbleSentProps = {
   chatRef: ChatRef;
   messageId: string;
   content: string;
+  attachment?: ChatAttachment;
   timestamp: string;
   reactions: ChatReaction[];
   isDeleted?: boolean;
@@ -115,11 +120,12 @@ const ChatBubbleFooter = ({
 export const ChatBubble = (props: ChatBubbleProps) => {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? i18n.language;
-  const { chatRef, messageId, reactions, thread, threadId } = props;
+  const { attachment, chatRef, messageId, reactions, thread, threadId } = props;
   const { openThread, openDraftThread } = useChatPanel();
   const { startEditing } = useChatMessageEdit();
   const isCompositionSupported = useChatCompositionSupport(chatRef);
   const { deleteMessage } = useDeleteChatMessage(chatRef, threadId);
+  const downloadAttachment = useDownloadChatAttachment(chatRef.accountId);
 
   // Single integration point with the data layer: the hover toolbar and the
   // reactions bar both receive the bound `onReact` callback and stay purely
@@ -141,6 +147,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       id: messageId,
       authorId: rootAuthorId,
       content: props.content,
+      attachment,
       timestamp: props.timestamp,
       reactions,
       thread,
@@ -150,6 +157,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       canDelete: props.canDelete,
     }),
     [
+      attachment,
       messageId,
       props.canDelete,
       props.canEdit,
@@ -169,6 +177,11 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       notify.error(t("Failed to copy to clipboard"));
     }
   }, [props.content, t]);
+  const onDownload = useCallback(() => {
+    if (attachment) {
+      void downloadAttachment(attachment);
+    }
+  }, [attachment, downloadAttachment]);
   const onEdit = useCallback(
     () => startEditing({ id: messageId, content: props.content }),
     [messageId, props.content, startEditing],
@@ -194,6 +207,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         id: messageId,
         authorId: rootAuthorId,
         content: props.content,
+        attachment,
         timestamp: props.timestamp,
         reactions,
         thread,
@@ -201,6 +215,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       author: rootAuthor,
     });
   }, [
+    attachment,
     messageId,
     openDraftThread,
     openThread,
@@ -212,6 +227,40 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     thread,
   ]);
 
+  // Files render without the text bubble chrome; a caption stays below.
+  const attachmentKind =
+    attachment && !props.isDeleted ? attachment.kind : undefined;
+  const renderBody = () => (
+    <>
+      {attachment ? (
+        <>
+          <MessageAttachment
+            accountId={chatRef.accountId}
+            messageId={messageId}
+            attachment={attachment}
+          />
+          {props.content && (
+            <span className="hub__chat-bubble__caption">{props.content}</span>
+          )}
+        </>
+      ) : (
+        props.content
+      )}
+      {props.isEdited && (
+        <span className="hub__chat-bubble__edited">{t("edited")}</span>
+      )}
+      <MessageHoverToolbar
+        onReact={onReact}
+        onReply={canReply ? onReply : undefined}
+        onCopy={props.content ? onCopy : undefined}
+        onDownload={attachment ? onDownload : undefined}
+        onEdit={props.canEdit ? onEdit : undefined}
+        onDelete={props.canDelete ? onDelete : undefined}
+        compact={compactToolbar}
+      />
+    </>
+  );
+
   if (props.variant === "sent") {
     return (
       <div
@@ -221,6 +270,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         <div
           className="hub__chat-bubble__body"
           data-deleted={props.isDeleted || undefined}
+          data-attachment={attachmentKind}
           onPointerEnter={updateToolbarHoverWidth}
         >
           {props.isDeleted ? (
@@ -229,20 +279,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
               {t("Message deleted")}
             </span>
           ) : (
-            <>
-              {props.content}
-              {props.isEdited && (
-                <span className="hub__chat-bubble__edited">{t("edited")}</span>
-              )}
-              <MessageHoverToolbar
-                onReact={onReact}
-                onReply={canReply ? onReply : undefined}
-                onCopy={onCopy}
-                onEdit={props.canEdit ? onEdit : undefined}
-                onDelete={props.canDelete ? onDelete : undefined}
-                compact={compactToolbar}
-              />
-            </>
+            renderBody()
           )}
         </div>
         <ChatBubbleFooter
@@ -259,7 +296,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     );
   }
 
-  const { author, content, timestamp, showHeader, showAvatar } = props;
+  const { author, timestamp, showHeader, showAvatar } = props;
 
   return (
     <div
@@ -291,6 +328,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         <div
           className="hub__chat-bubble__body"
           data-deleted={props.isDeleted || undefined}
+          data-attachment={attachmentKind}
           onPointerEnter={updateToolbarHoverWidth}
         >
           {props.isDeleted ? (
@@ -299,20 +337,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
               {t("Message deleted")}
             </span>
           ) : (
-            <>
-              {content}
-              {props.isEdited && (
-                <span className="hub__chat-bubble__edited">{t("edited")}</span>
-              )}
-              <MessageHoverToolbar
-                onReact={onReact}
-                onReply={canReply ? onReply : undefined}
-                onCopy={onCopy}
-                onEdit={props.canEdit ? onEdit : undefined}
-                onDelete={props.canDelete ? onDelete : undefined}
-                compact={compactToolbar}
-              />
-            </>
+            renderBody()
           )}
         </div>
       </div>

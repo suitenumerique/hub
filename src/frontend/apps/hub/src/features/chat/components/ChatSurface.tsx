@@ -34,6 +34,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     urlChatRef,
   });
   const {
+    accountId,
     selectedUsers,
     query,
     searchInputRef,
@@ -104,6 +105,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
       onSent={isNew ? handleSent : undefined}
       composerFocusSignal={composerFocusSignal}
       canComposeDraft={canComposeDraft}
+      draftAccountId={isNew ? (accountId ?? undefined) : undefined}
       onSubmitDraft={canComposeDraft ? submitDraft : undefined}
       renderHeader={isNew ? renderNewChatHeader : undefined}
       renderEmpty={isNew ? renderNewChatEmpty : undefined}

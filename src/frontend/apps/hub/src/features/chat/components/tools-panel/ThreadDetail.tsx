@@ -9,13 +9,18 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatMessageAuthor, ChatRef } from "@/features/drivers/types";
+import type {
+  ChatAttachment,
+  ChatMessageAuthor,
+  ChatRef,
+} from "@/features/drivers/types";
 
 import {
   ChatMessageEditProvider,
   type EditingChatMessage,
 } from "../../ChatMessageEditContext";
 import { isSameChatDay } from "../../formatTimestamp";
+import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
 import { useEditChatMessage } from "../../hooks/useEditChatMessage";
@@ -57,6 +62,8 @@ export const ThreadDetail = ({
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  // Files dropped anywhere on the thread go to its composer.
+  const detailRef = useRef<HTMLDivElement>(null);
   const previousMessagesRef = useRef<{
     threadId: string | null;
     messageCount: number;
@@ -82,6 +89,11 @@ export const ThreadDetail = ({
     },
     [editMessage, editingMessage, sendReply],
   );
+  const handleSendAttachment = useCallback(
+    (attachment: ChatAttachment) => sendReply("", attachment),
+    [sendReply],
+  );
+  const uploadAttachment = useUploadChatAttachment(chatRef);
   const editContext = useMemo(() => ({ startEditing: setEditingMessage }), []);
 
   // On open, jump to the first unread reply — or to the latest message when the
@@ -190,7 +202,7 @@ export const ThreadDetail = ({
     }
 
     return (
-      <div className="hub__thread-detail">
+      <div className="hub__thread-detail" ref={detailRef}>
         <div className="hub__thread-detail__messages" ref={messagesRef}>
           {thread.messages.map((message, index) => {
             const prev = thread.messages[index - 1];
@@ -219,6 +231,7 @@ export const ThreadDetail = ({
                     chatRef={chatRef}
                     messageId={message.id}
                     content={message.content}
+                    attachment={message.attachment}
                     timestamp={message.timestamp}
                     reactions={message.reactions}
                     isDeleted={message.isDeleted}
@@ -235,6 +248,7 @@ export const ThreadDetail = ({
                       chatRef={chatRef}
                       messageId={message.id}
                       content={message.content}
+                      attachment={message.attachment}
                       author={author}
                       timestamp={message.timestamp}
                       reactions={message.reactions}
@@ -272,6 +286,9 @@ export const ThreadDetail = ({
             editDraft={editingMessage}
             onCancelEdit={() => setEditingMessage(null)}
             onSubmit={handleSubmit}
+            onSendAttachment={handleSendAttachment}
+            onUploadAttachment={isSupported ? uploadAttachment : undefined}
+            dropTargetRef={detailRef}
           />
         </div>
       </div>

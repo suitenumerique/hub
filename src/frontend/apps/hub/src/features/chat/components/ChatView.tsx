@@ -9,8 +9,18 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { Chat, ChatRef } from "@/features/drivers/types";
+import type {
+  AccountId,
+  Chat,
+  ChatAttachment,
+  ChatRef,
+} from "@/features/drivers/types";
 
+import {
+  ChatAttachmentPreviewProvider,
+  type ChatAttachmentPreviewContextValue,
+  type PreviewedAttachment,
+} from "../ChatAttachmentPreviewContext";
 import { isInvitationChat } from "../chatMembership";
 import {
   ChatMessageEditProvider,
@@ -23,11 +33,14 @@ import {
   type OpenThreadOptions,
 } from "../ChatPanelContext";
 import { useChat } from "../hooks/useChat";
+import { useUploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useChatTyping } from "../hooks/useChatTyping";
 import { useEditChatMessage } from "../hooks/useEditChatMessage";
+import { useIgnoreStrayFileDrops } from "../hooks/useIgnoreStrayFileDrops";
 import { useChatThreads } from "../hooks/useChatThreads";
 import { useSendChatMessage } from "../hooks/useSendChatMessage";
 
+import { ChatAttachmentPreview } from "./ChatAttachmentPreview";
 import { ChatComposer } from "./ChatComposer";
 import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
@@ -66,8 +79,16 @@ type ChatViewProps = {
   composerFocusSignal?: number;
   /** Enables drafting before a selected participant set has a conversation. */
   canComposeDraft?: boolean;
-  /** Resolves or creates that conversation, then sends the draft. */
-  onSubmitDraft?: (content: string) => Promise<unknown>;
+  /** Account of that draft, so files can be uploaded before it exists. */
+  draftAccountId?: AccountId;
+  /**
+   * Resolves or creates that conversation, then sends the draft text or one
+   * of its files.
+   */
+  onSubmitDraft?: (
+    content: string,
+    attachment?: ChatAttachment,
+  ) => Promise<unknown>;
 };
 
 /**
@@ -83,6 +104,7 @@ export const ChatView = ({
   onSent,
   composerFocusSignal,
   canComposeDraft = false,
+  draftAccountId,
   onSubmitDraft,
 }: ChatViewProps) => {
   const { t } = useTranslation();
@@ -93,9 +115,20 @@ export const ChatView = ({
   const isInvitation = invitationChat !== null;
   const {
     sendMessage,
+    sendAttachment,
     isSending: isSendingMessage,
     isSupported: isCompositionSupported,
   } = useSendChatMessage(chatRef);
+  // Before a New Chat draft has a conversation, files go to its account only.
+  const uploadAttachment = useUploadChatAttachment(
+    chatRef ?? (draftAccountId ? { accountId: draftAccountId } : null),
+  );
+  const canUploadAttachments = chatRef
+    ? isCompositionSupported
+    : canComposeDraft;
+  // Files dropped anywhere on the conversation go to its composer.
+  const mainRef = useRef<HTMLDivElement>(null);
+  useIgnoreStrayFileDrops();
   const { editMessage, isEditing } = useEditChatMessage(chatRef);
   const { users: typingUsers, onTypingActivity } = useChatTyping(chatRef);
   const [editingMessage, setEditingMessage] =
@@ -145,6 +178,32 @@ export const ChatView = ({
     [chatRef, editMessage, editingMessage, onSent, onSubmitDraft, sendMessage],
   );
 
+  const handleSendAttachment = useCallback(
+    async (attachment: ChatAttachment) => {
+      if (!chatRef) {
+        if (!onSubmitDraft) {
+          throw new Error("Draft composition is not available.");
+        }
+        return onSubmitDraft("", attachment);
+      }
+      const message = await sendAttachment(attachment);
+      onSent?.(chatRef);
+      return message;
+    },
+    [chatRef, onSent, onSubmitDraft, sendAttachment],
+  );
+
+  const [previewedAttachment, setPreviewedAttachment] =
+    useState<PreviewedAttachment | null>(null);
+  const closeAttachmentPreview = useCallback(
+    () => setPreviewedAttachment(null),
+    [],
+  );
+  const attachmentPreviewContext = useMemo<ChatAttachmentPreviewContextValue>(
+    () => ({ openAttachment: setPreviewedAttachment }),
+    [],
+  );
+
   const [activeTool, setActiveTool] = useState<ChatTool | null>(null);
   const [displayedTool, setDisplayedTool] = useState<ChatTool | null>(null);
   // Thread whose detail view is open; `null` keeps the threads tool on its
@@ -165,6 +224,7 @@ export const ChatView = ({
     setThreadComposerFocusSignal(0);
     setDraftThreadRoot(null);
     setEditingMessage(null);
+    setPreviewedAttachment(null);
   }, [chatRef?.accountId, chatRef?.chatId]);
 
   const toggleTool = (tool: ChatTool) => {
@@ -221,113 +281,128 @@ export const ChatView = ({
 
   return (
     <ChatMessageEditProvider value={editContext}>
-      <ChatPanelProvider value={panelContext}>
-        <div
-          className="hub__chat-view"
-          data-panel-open={activeTool !== null}
-          data-header-variant={renderHeader ? "search" : "chat"}
-        >
-          {renderHeader ? (
-            <>
-              {renderHeader({
-                chat,
-                activeTool,
-                onToggleTool: toggleTool,
-              })}
-            </>
-          ) : (
-            <>
-              <ChatHeader
-                chat={chat}
-                activeTool={activeTool}
-                onToggleTool={toggleTool}
-                showTools={!isInvitation}
-              />
-            </>
-          )}
-
-          <div className="hub__chat-view__main">
-            <div className="hub__chat-view__content">
-              {invitationChat && chatRef ? (
-                <ChatInvitationView chatRef={chatRef} chat={invitationChat} />
-              ) : chatRef ? (
-                <ChatConversation
-                  chatRef={chatRef}
-                  onUnreadBannerChange={handleUnreadBannerChange}
+      <ChatAttachmentPreviewProvider value={attachmentPreviewContext}>
+        <ChatPanelProvider value={panelContext}>
+          <div
+            className="hub__chat-view"
+            data-panel-open={activeTool !== null}
+            data-header-variant={renderHeader ? "search" : "chat"}
+          >
+            {renderHeader ? (
+              <>
+                {renderHeader({
+                  chat,
+                  activeTool,
+                  onToggleTool: toggleTool,
+                })}
+              </>
+            ) : (
+              <>
+                <ChatHeader
+                  chat={chat}
+                  activeTool={activeTool}
+                  onToggleTool={toggleTool}
+                  showTools={!isInvitation}
                 />
-              ) : (
-                renderEmpty?.()
-              )}
-            </div>
-            {/* An invitation suppresses the composer until it is accepted. */}
-            {!isInvitation && (
-              <div className="hub__chat-view__composer">
-                {/* The composer keeps a single instance across the empty → chat
+              </>
+            )}
+
+            <div className="hub__chat-view__main" ref={mainRef}>
+              <div className="hub__chat-view__content">
+                {invitationChat && chatRef ? (
+                  <ChatInvitationView chatRef={chatRef} chat={invitationChat} />
+                ) : chatRef ? (
+                  <ChatConversation
+                    chatRef={chatRef}
+                    onUnreadBannerChange={handleUnreadBannerChange}
+                  />
+                ) : (
+                  renderEmpty?.()
+                )}
+              </div>
+              {/* An invitation suppresses the composer until it is accepted. */}
+              {!isInvitation && (
+                <div className="hub__chat-view__composer">
+                  {/* The composer keeps a single instance across the empty → chat
                   transition so an in-progress draft and the input focus survive
                   when a conversation resolves. */}
-                <div className="hub__chat-composer-stack">
-                  <div className="hub__chat-composer-overlay-anchor">
-                    <ComposerFloatingArea key={chatKey ?? "draft"}>
-                      <TypingIndicator users={typingUsers} />
-                      <div className="hub__chat-composer-floating-banners">
-                        {chatRef && (
-                          <ConversationUnreadBanner chatRef={chatRef} />
-                        )}
-                        <UnreadMessagesBannerTransition
-                          banner={activeUnreadMessagesBanner}
-                        />
-                      </div>
-                    </ComposerFloatingArea>
-                    <ChatComposer
-                      conversationId={chatKey ?? undefined}
-                      placeholder={
-                        chatRef && !isCompositionSupported
-                          ? t(
-                              "Sending messages isn't available on this account yet.",
-                            )
-                          : undefined
-                      }
-                      disabled={
-                        chatRef ? !isCompositionSupported : !canComposeDraft
-                      }
-                      isSubmitting={isSendingMessage || isEditing}
-                      focusSignal={composerFocusSignal}
-                      errorMessage={
-                        editingMessage
-                          ? t(
-                              "Your message could not be edited. Please try again.",
-                            )
-                          : undefined
-                      }
-                      editDraft={editingMessage}
-                      onCancelEdit={() => setEditingMessage(null)}
-                      onTypingActivity={onTypingActivity}
-                      onSubmit={
-                        chatRef || canComposeDraft ? handleSubmit : undefined
-                      }
-                    />
+                  <div className="hub__chat-composer-stack">
+                    <div className="hub__chat-composer-overlay-anchor">
+                      <ComposerFloatingArea key={chatKey ?? "draft"}>
+                        <TypingIndicator users={typingUsers} />
+                        <div className="hub__chat-composer-floating-banners">
+                          {chatRef && (
+                            <ConversationUnreadBanner chatRef={chatRef} />
+                          )}
+                          <UnreadMessagesBannerTransition
+                            banner={activeUnreadMessagesBanner}
+                          />
+                        </div>
+                      </ComposerFloatingArea>
+                      <ChatComposer
+                        conversationId={chatKey ?? undefined}
+                        placeholder={
+                          chatRef && !isCompositionSupported
+                            ? t(
+                                "Sending messages isn't available on this account yet.",
+                              )
+                            : undefined
+                        }
+                        disabled={
+                          chatRef ? !isCompositionSupported : !canComposeDraft
+                        }
+                        isSubmitting={isSendingMessage || isEditing}
+                        focusSignal={composerFocusSignal}
+                        errorMessage={
+                          editingMessage
+                            ? t(
+                                "Your message could not be edited. Please try again.",
+                              )
+                            : undefined
+                        }
+                        editDraft={editingMessage}
+                        onCancelEdit={() => setEditingMessage(null)}
+                        onTypingActivity={onTypingActivity}
+                        onSubmit={
+                          chatRef || canComposeDraft ? handleSubmit : undefined
+                        }
+                        onSendAttachment={handleSendAttachment}
+                        onUploadAttachment={
+                          canUploadAttachments ? uploadAttachment : undefined
+                        }
+                        dropTargetRef={mainRef}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+            <div className="hub__chat-view__panel">
+              {chatRef && !isInvitation && (
+                <ChatToolsPanel
+                  tool={activeTool ?? displayedTool}
+                  isOpen={activeTool !== null}
+                  chatRef={chatRef}
+                  threadId={activeThreadId}
+                  threadComposerFocusSignal={threadComposerFocusSignal}
+                  draftThreadRoot={draftThreadRoot}
+                  onClose={closePanel}
+                  onOpenThread={openThread}
+                  onCloseThread={closeThread}
+                />
+              )}
+            </div>
           </div>
-          <div className="hub__chat-view__panel">
-            {chatRef && !isInvitation && (
-              <ChatToolsPanel
-                tool={activeTool ?? displayedTool}
-                isOpen={activeTool !== null}
-                chatRef={chatRef}
-                threadId={activeThreadId}
-                threadComposerFocusSignal={threadComposerFocusSignal}
-                draftThreadRoot={draftThreadRoot}
-                onClose={closePanel}
-                onOpenThread={openThread}
-                onCloseThread={closeThread}
-              />
-            )}
-          </div>
-        </div>
-      </ChatPanelProvider>
+          {previewedAttachment && (
+            <ChatAttachmentPreview
+              // A new file opens with fresh loading and error state.
+              key={`${previewedAttachment.accountId}:${previewedAttachment.messageId}`}
+              {...previewedAttachment}
+              onClose={closeAttachmentPreview}
+            />
+          )}
+        </ChatPanelProvider>
+      </ChatAttachmentPreviewProvider>
     </ChatMessageEditProvider>
   );
 };

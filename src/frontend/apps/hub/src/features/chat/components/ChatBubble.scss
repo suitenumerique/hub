@@ -101,6 +101,18 @@
     );
   }
 
+  // A file brings its own frame: drop the text bubble chrome around it.
+  & &__body[data-attachment] {
+    padding: 0;
+    background: transparent;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__caption {
+    display: block;
+    margin-top: var(--c--globals--spacings--xxxs, 4px);
+  }
+
   &--received &__body[data-deleted="true"] {
     color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
   }

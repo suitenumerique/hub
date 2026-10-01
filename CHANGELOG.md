@@ -8,6 +8,13 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Attach, preview and download files in conversations.
+  Upload files picked, pasted or dropped on the conversation before sending.
+  Send files in threads and in a new conversation not created yet.
+  Show upload progress and retry failed uploads.
+  Show images inline and other files with their type icon.
+  Open files in the design-system preview and download them from it.
+  Encrypt attachments and image thumbnails in end-to-end encrypted rooms.
 - 💄(frontend) Show the platform-specific search shortcut on sidebar hover.
 - ✨(frontend) Search joined conversations by name and current participants.
   Persist the search index separately and prepare small rooms progressively.

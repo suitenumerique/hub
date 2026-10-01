@@ -1,14 +1,19 @@
 import { type InfiniteData, skipToken, useQuery } from "@tanstack/react-query";
-import { Fragment } from "react";
+import { Fragment, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatMessagesPage, ChatRef } from "@/features/drivers/types";
+import type {
+  ChatAttachment,
+  ChatMessagesPage,
+  ChatRef,
+} from "@/features/drivers/types";
 
 import type {
   DraftThreadRoot,
   OpenThreadOptions,
 } from "../../ChatPanelContext";
 import { chatKeys } from "../../chatKeys";
+import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useStartChatThread } from "../../hooks/useStartChatThread";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
@@ -52,17 +57,31 @@ export const DraftThreadDetail = ({
   });
   const message = cachedMessage ?? root.message;
   const { author } = root;
+  const uploadAttachment = useUploadChatAttachment(chatRef);
+  const createdThreadIdRef = useRef<string | null>(null);
+  // Files dropped anywhere on the thread go to its composer.
+  const detailRef = useRef<HTMLDivElement>(null);
 
-  const handleSubmit = (content: string) =>
+  // Text and files sent together each relate to the root: the first one starts
+  // the thread, the next ones reply in it (Matrix threads are keyed by root).
+  const send = (content: string, attachment?: ChatAttachment) =>
     startThread(message, content, {
       rootAuthor: author,
-      // Stay on the draft until Matrix confirms the real root id. Opening the
-      // optimistic id would enable a second composer that could send a reply to
-      // a relation target which does not exist on the homeserver.
+      attachment,
       onCreated: (threadId) => {
-        onCreated(threadId, { focusComposer: true });
+        createdThreadIdRef.current = threadId;
       },
     });
+
+  // Stay on the draft until Matrix confirms the real root id and everything
+  // is sent: opening the thread unmounts this composer, and opening the
+  // optimistic id would enable a second composer that could send a reply to a
+  // relation target which does not exist on the homeserver.
+  const openCreatedThread = () => {
+    if (createdThreadIdRef.current) {
+      onCreated(createdThreadIdRef.current, { focusComposer: true });
+    }
+  };
 
   return (
     <>
@@ -72,7 +91,7 @@ export const DraftThreadDetail = ({
         onClose={onClose}
         onBack={onBack}
       />
-      <div className="hub__thread-detail">
+      <div className="hub__thread-detail" ref={detailRef}>
         <div className="hub__thread-detail__messages">
           <Fragment>
             {message.authorId === "me" ? (
@@ -81,6 +100,7 @@ export const DraftThreadDetail = ({
                 chatRef={chatRef}
                 messageId={message.id}
                 content={message.content}
+                attachment={message.attachment}
                 timestamp={message.timestamp}
                 reactions={message.reactions}
                 isDeleted={message.isDeleted}
@@ -98,6 +118,7 @@ export const DraftThreadDetail = ({
                   chatRef={chatRef}
                   messageId={message.id}
                   content={message.content}
+                  attachment={message.attachment}
                   author={author}
                   timestamp={message.timestamp}
                   reactions={message.reactions}
@@ -126,7 +147,11 @@ export const DraftThreadDetail = ({
             disabled={!isSupported}
             isSubmitting={isStarting}
             focusSignal={isOpen ? composerFocusSignal : undefined}
-            onSubmit={handleSubmit}
+            onSubmit={(content) => send(content)}
+            onSendAttachment={(attachment) => send("", attachment)}
+            onUploadAttachment={isSupported ? uploadAttachment : undefined}
+            dropTargetRef={detailRef}
+            onSubmitted={openCreatedThread}
           />
         </div>
       </div>

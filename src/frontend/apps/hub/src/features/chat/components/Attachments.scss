@@ -1,0 +1,360 @@
+@keyframes hub-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hub__spinning-icon {
+  flex: 0 0 auto;
+  animation: hub-spin 0.8s linear infinite;
+}
+
+// --- Files queued in the composer (Figma 1304:89723) ----------------------
+
+.hub__composer-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--c--globals--spacings--xs, 8px);
+
+  &__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--c--globals--spacings--xxs, 6px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+}
+
+.hub__composer-attachment {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+  border-radius: var(--c--globals--spacings--xxxs, 4px);
+  overflow: hidden;
+
+  // Thumbnail (Figma 1304:90010).
+  &--image {
+    width: 185px;
+    height: 123px;
+    background: var(
+      --c--contextuals--background--semantic--neutral--secondary,
+      #dfe2ea
+    );
+  }
+
+  &__thumbnail {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  // Uploading or failed thumbnail content, centered in the tile.
+  &__state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--c--globals--spacings--xxs, 6px);
+    height: 100%;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+
+  &__uploading,
+  &__error {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxs, 6px);
+  }
+
+  &__uploading,
+  &__progress {
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  }
+
+  &__progress {
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__error {
+    color: var(--c--contextuals--content--semantic--error--primary, #b60000);
+  }
+
+  &__retry {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+    height: 24px;
+    padding: 0 var(--c--globals--spacings--xxs, 6px);
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-radius: var(--c--globals--spacings--xxxs, 4px);
+    background: var(--c--contextuals--background--surface--primary, #fff);
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+    font: inherit;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--c--contextuals--background--surface--tertiary, #f6f8f9);
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: 2px;
+    }
+  }
+
+  // File chip (Figma 1304:89846).
+  &--file {
+    --hub-composer-attachment-background: var(
+      --c--contextuals--background--semantic--neutral--secondary,
+      #dfe2ea
+    );
+
+    display: inline-flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxs, 6px);
+    max-width: 240px;
+    height: 32px;
+    padding: var(--c--globals--spacings--xs, 8px);
+    background: var(--hub-composer-attachment-background);
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+
+    &[data-status="uploading"] {
+      color: var(
+        --c--contextuals--content--semantic--neutral--tertiary,
+        #626a80
+      );
+    }
+
+    &[data-status="failed"] {
+      --hub-composer-attachment-background: var(
+        --c--contextuals--background--semantic--error--tertiary,
+        #fff4f3
+      );
+
+      gap: var(--c--globals--spacings--xxxs, 4px);
+      padding-right: var(--c--globals--spacings--xxxs, 4px);
+    }
+  }
+
+  &__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // Hidden until the item is hovered or the button itself is focused.
+  &__remove {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  &--image &__remove {
+    top: 50%;
+    left: 50%;
+    width: 32px;
+    height: 32px;
+    transform: translate(-50%, -50%);
+    border: 1px solid
+      var(--c--contextuals--border--semantic--overlay--primary, #f6f8f933);
+    border-radius: var(--c--globals--spacings--xxxs, 4px);
+    background: var(
+      --c--contextuals--content--semantic--overlay--primary,
+      #f6f8f9f2
+    );
+  }
+
+  // The chip name fades out under the button instead of being cut.
+  &--file &__remove {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    justify-content: flex-end;
+    width: 42px;
+    padding-right: var(--c--globals--spacings--xxxs, 4px);
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--hub-composer-attachment-background) 14px
+    );
+  }
+
+  &:hover &__remove,
+  &:focus-within &__remove {
+    opacity: 1;
+  }
+
+  // A failed chip keeps both actions in the row, always visible.
+  &--file[data-status="failed"] &__remove {
+    position: static;
+    width: auto;
+    padding: 0;
+    background: none;
+    opacity: 1;
+  }
+
+  &__icon-button {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--c--globals--spacings--xxxs, 4px);
+    background: transparent;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+    cursor: pointer;
+
+    &:hover {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: -2px;
+    }
+  }
+}
+
+// --- Files in the conversation (Figma 1290:94114) -------------------------
+
+.hub__message-attachment {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid
+      var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+    outline-offset: 2px;
+  }
+
+  &[aria-busy="true"] {
+    cursor: progress;
+  }
+
+  &--image {
+    position: relative;
+    display: block;
+    max-width: 100%;
+    border-radius: var(--c--globals--spacings--xs, 8px);
+    overflow: hidden;
+    cursor: zoom-in;
+  }
+
+  // The component sizes the image to fit 380x480 through its attributes; it
+  // only shrinks further when the column is narrower.
+  &__image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    object-fit: cover;
+    background: var(
+      --c--contextuals--background--semantic--neutral--tertiary,
+      #eef1f4
+    );
+  }
+
+  &__status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+    pointer-events: none;
+
+    // Loading the original over the displayed thumbnail: keep it readable.
+    &[data-over-image] > * {
+      box-sizing: content-box;
+      padding: var(--c--globals--spacings--xs, 8px);
+      border-radius: 50%;
+      background: var(
+        --c--contextuals--content--semantic--overlay--primary,
+        #f6f8f9f2
+      );
+    }
+  }
+
+  &--file {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--4xs, 2px);
+    box-sizing: border-box;
+    max-width: 380px;
+    min-height: 44px;
+    padding: 1px var(--c--globals--spacings--xs, 8px) 1px 1px;
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-radius: var(--c--globals--spacings--xs, 8px);
+    background: var(--c--contextuals--background--surface--primary, #fff);
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+
+    &:hover {
+      background: var(--c--contextuals--background--surface--tertiary, #f6f8f9);
+    }
+  }
+
+  &__icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  }
+
+  &__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+}
+
+// --- File preview, while the file downloads ------------------------------
+
+.hub__attachment-preview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__spinning-icon {
+    animation-duration: 2.4s;
+  }
+
+  .hub__composer-attachment__remove {
+    transition: none;
+  }
+}

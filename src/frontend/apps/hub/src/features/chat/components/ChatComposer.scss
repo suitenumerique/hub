@@ -130,6 +130,7 @@
 }
 
 .hub__chat-composer {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--c--globals--spacings--md, 24px);
@@ -141,10 +142,52 @@
   font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
   overflow: clip;
 
-  &__field {
+  // Queued files sit above the text; the actions then align with its line.
+  &[data-has-attachments] {
+    align-items: flex-end;
+  }
+
+  &__main {
+    display: flex;
     flex: 1 1 0;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  &__field {
     min-width: 0;
     padding: 0 var(--c--globals--spacings--xxs, 6px);
+  }
+
+  // Drop target (Figma 1304:89699): the composer keeps its size and swaps
+  // its content for the instruction.
+  &[data-dragging] {
+    border-color: var(
+      --c--contextuals--border--semantic--brand--primary,
+      #3e5de7
+    );
+    background: var(
+      --c--contextuals--background--semantic--brand--tertiary,
+      #edf0ff
+    );
+
+    > :not(.hub__chat-composer__dropzone) {
+      visibility: hidden;
+    }
+  }
+
+  &__dropzone {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c--contextuals--content--semantic--brand--primary, #223e9e);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 22px;
+    pointer-events: none;
   }
 
   &__input {
@@ -209,10 +252,6 @@
     font-weight: 500;
     line-height: 16px;
 
-    .material-icons {
-      font-size: 16px;
-    }
-
     &:hover {
       background: var(
         --c--contextuals--background--semantic--overlay--primary,
@@ -223,6 +262,10 @@
     &:disabled {
       cursor: not-allowed;
       opacity: 0.55;
+
+      &:hover {
+        background: transparent;
+      }
     }
 
     &:focus-visible {

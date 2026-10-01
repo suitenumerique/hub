@@ -1,0 +1,30 @@
+import { createContext, useContext } from "react";
+
+import type { AccountId, ChatAttachment } from "@/features/drivers/types";
+
+export type PreviewedAttachment = {
+  accountId: AccountId;
+  messageId: string;
+  attachment: ChatAttachment;
+};
+
+/**
+ * Lets message bubbles open the file preview without owning it. `ChatView`
+ * renders the single preview: a bubble lives in a virtualized row, which can
+ * unmount (scrolling, or an optimistic id replaced by the server one) while
+ * its file is still open.
+ */
+export type ChatAttachmentPreviewContextValue = {
+  openAttachment: (target: PreviewedAttachment) => void;
+};
+
+const ChatAttachmentPreviewContext =
+  createContext<ChatAttachmentPreviewContextValue>({
+    openAttachment: () => {},
+  });
+
+export const ChatAttachmentPreviewProvider =
+  ChatAttachmentPreviewContext.Provider;
+
+export const useChatAttachmentPreview = (): ChatAttachmentPreviewContextValue =>
+  useContext(ChatAttachmentPreviewContext);

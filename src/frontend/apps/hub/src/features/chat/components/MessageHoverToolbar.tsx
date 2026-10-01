@@ -5,6 +5,7 @@ import {
 } from "@gouvfr-lasuite/ui-components";
 import {
   Copy,
+  Download,
   Edit,
   EmojiAdd,
   More,
@@ -22,7 +23,10 @@ type MessageHoverToolbarProps = {
   onReact: (emoji: string) => void;
   /** Opens a reply flow for this message. Omitted when reply is unavailable. */
   onReply?: () => void;
+  /** Omitted for a file without caption: there is no text to copy. */
   onCopy?: () => void | Promise<void>;
+  /** Saves the file carried by the message. */
+  onDownload?: () => void;
   onEdit?: () => void;
   onDelete?: () => void | Promise<unknown>;
   /**
@@ -49,6 +53,7 @@ export const MessageHoverToolbar = ({
   onReact,
   onReply,
   onCopy,
+  onDownload,
   onEdit,
   onDelete,
   compact = false,
@@ -86,17 +91,36 @@ export const MessageHoverToolbar = ({
 
   const anchor = addButtonRef.current;
   const hasMutationAction = Boolean(onEdit || onDelete);
+  const hasReadAction = Boolean(onDownload || onCopy);
   const actionOptions = useMemo<DropdownMenuItem[]>(
     () => [
-      {
-        icon: <Copy />,
-        label: t("Copy"),
-        callback: () => {
-          setAreActionsPinned(false);
-          void onCopy?.();
-        },
-      },
-      ...(hasMutationAction ? ([{ type: "separator" }] as const) : []),
+      ...(onDownload
+        ? [
+            {
+              icon: <Download />,
+              label: t("Download"),
+              callback: () => {
+                setAreActionsPinned(false);
+                onDownload();
+              },
+            },
+          ]
+        : []),
+      ...(onCopy
+        ? [
+            {
+              icon: <Copy />,
+              label: t("Copy"),
+              callback: () => {
+                setAreActionsPinned(false);
+                void onCopy();
+              },
+            },
+          ]
+        : []),
+      ...(hasReadAction && hasMutationAction
+        ? ([{ type: "separator" }] as const)
+        : []),
       ...(onEdit
         ? [
             {
@@ -126,7 +150,7 @@ export const MessageHoverToolbar = ({
           ]
         : []),
     ],
-    [hasMutationAction, onCopy, onDelete, onEdit, t],
+    [hasMutationAction, hasReadAction, onCopy, onDelete, onDownload, onEdit, t],
   );
 
   return (
