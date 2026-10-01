@@ -28,6 +28,7 @@ import { hashAvatarColor } from "@/features/ui/components/avatar/palette";
 
 import { ChatEvent } from "../Driver";
 import {
+  ChatAttachment,
   ChatMessage,
   ChatMessageAuthor,
   ChatReaction,
@@ -36,6 +37,7 @@ import {
   ChatUnread,
 } from "../types";
 import { initialsFor } from "./matrixIdentity";
+import { parseMatrixAttachment } from "./matrixMedia";
 
 type ReactionRelations = NonNullable<
   ReturnType<Room["relations"]["getChildEventsForEvent"]>
@@ -582,6 +584,7 @@ export const matrixEventToChatMessage = (
   const isDeleted = event.isRedacted();
   const content = event.getContent<{ body?: string; msgtype?: string }>();
   const body = content.body;
+  const media = isDeleted ? null : parseMatrixAttachment(content);
   const eventId = event.getId() ?? "";
   const canEdit = Boolean(
     !isDeleted &&
@@ -597,7 +600,12 @@ export const matrixEventToChatMessage = (
   const message: ChatMessage = {
     id: eventId,
     authorId: toAuthorId(event.getSender(), selfUserId),
-    content: !isDeleted && typeof body === "string" ? body : "",
+    content: media
+      ? media.caption
+      : !isDeleted && typeof body === "string"
+        ? body
+        : "",
+    ...(media ? { attachment: media.attachment } : {}),
     timestamp: new Date(event.getTs()).toISOString(),
     reactions: isDeleted
       ? []
@@ -705,15 +713,18 @@ export const buildAuthors = (
 export const sendResponseToChatMessage = (
   eventId: string,
   content: string,
+  attachment?: ChatAttachment,
 ): ChatMessage => ({
   id: eventId,
   authorId: SELF_AUTHOR_ID,
   content,
+  ...(attachment ? { attachment } : {}),
   timestamp: new Date().toISOString(),
   reactions: [],
   isDeleted: false,
   isEdited: false,
-  canEdit: true,
+  // Only text bodies can be replaced in place.
+  canEdit: !attachment,
   canDelete: true,
 });
 
@@ -770,9 +781,10 @@ export const timelineEventToChatEvent = (
     // dates an edited message from its original event, so using the edit event's
     // ts here would make the bubble's time jump live, then revert on refetch.
     const original = room.findEventById(relation.event_id);
-    const newBody = event.getContent<{
-      "m.new_content"?: { body?: string };
-    }>()["m.new_content"]?.body;
+    const newContent = event.getContent<{
+      "m.new_content"?: { body?: string; msgtype?: string };
+    }>()["m.new_content"];
+    const newBody = newContent?.body;
     // Matrix servers accept relation events from any joined member. The SDK's
     // Relations collection filters replacements to the original sender before
     // applying them; this direct live bridge must enforce the same rule instead
@@ -803,7 +815,10 @@ export const timelineEventToChatEvent = (
           ...originalMessage,
           id: relation.event_id,
           authorId: toAuthorId(original.getSender(), selfUserId),
-          content: newBody,
+          // A file edit only changes its caption; the attachment stays.
+          content: originalMessage.attachment
+            ? (parseMatrixAttachment(newContent ?? {})?.caption ?? "")
+            : newBody,
           timestamp: new Date(original.getTs()).toISOString(),
           reactions: aggregateReactions(room, relation.event_id, selfUserId),
           isDeleted: false,

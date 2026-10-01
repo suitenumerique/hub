@@ -7,6 +7,7 @@ import {
   type ChatTypingListener,
   type ChatUserFilters,
   type DeleteChatMessageParams,
+  type DownloadChatAttachmentParams,
   type Driver,
   type EditChatMessageParams,
   type GetChatMessagesParams,
@@ -19,9 +20,11 @@ import {
   type StartChatThreadParams,
   type ToggleChatReactionParams,
   type ToggleChatThreadReactionParams,
+  type UploadChatAttachmentParams,
 } from "../Driver";
 import type {
   AccountId,
+  ChatAttachment,
   ChatMainTimelineUnread,
   ChatMessage,
   ChatMessagesPage,
@@ -80,6 +83,7 @@ export class LazyMatrixDriver extends BaseDriver {
   // Static capability mirroring the real `MatrixDriver`, read synchronously by
   // the New Chat composer before the SDK lazy-loads.
   override readonly supportsConversationCreation = true;
+  override readonly supportsAttachments = true;
 
   private target: Driver | null = null;
   private targetPromise: Promise<Driver> | null = null;
@@ -236,6 +240,18 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async sendChatMessage(params: SendChatMessageParams): Promise<ChatMessage> {
     return this.withTarget((driver) => driver.sendChatMessage(params));
+  }
+
+  async uploadChatAttachment(
+    params: UploadChatAttachmentParams,
+  ): Promise<ChatAttachment> {
+    return this.withTarget((driver) => driver.uploadChatAttachment(params));
+  }
+
+  async downloadChatAttachment(
+    params: DownloadChatAttachmentParams,
+  ): Promise<Blob> {
+    return this.withTarget((driver) => driver.downloadChatAttachment(params));
   }
 
   async editChatMessage(params: EditChatMessageParams): Promise<ChatMessage> {

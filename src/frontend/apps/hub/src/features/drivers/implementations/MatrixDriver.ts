@@ -53,12 +53,14 @@ import {
   getUserIdFromAccessToken,
 } from "@/features/matrix/utils/auth";
 import {
+  ChatAttachmentTooLargeError,
   ChatConnectionState,
   ChatEvent,
   ChatEventListener,
   ChatTypingListener,
   ChatUserFilters,
   DeleteChatMessageParams,
+  DownloadChatAttachmentParams,
   Driver,
   EditChatMessageParams,
   GetChatThreadParams,
@@ -71,9 +73,11 @@ import {
   StartChatThreadParams,
   ToggleChatReactionParams,
   ToggleChatThreadReactionParams,
+  UploadChatAttachmentParams,
 } from "../Driver";
 import {
   AccountId,
+  ChatAttachment,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -118,6 +122,18 @@ import {
 } from "./matrixEventMapping";
 import { matrixDirectoryUserToChatUser } from "./matrixIdentity";
 import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
+import {
+  createEncryptedThumbnail,
+  encryptAttachment,
+  fetchMedia,
+  fetchServerThumbnail,
+  isInlineImage,
+  type MatrixAttachmentSource,
+  matrixAttachmentContent,
+  needsThumbnail,
+  readImageDimensions,
+  uploadThumbnail,
+} from "./matrixMedia";
 import { MatrixConversationSearch } from "./MatrixConversationSearch";
 import {
   clearStoredConversationSearch,
@@ -259,6 +275,7 @@ export class MatrixDriver extends Driver {
   override readonly supportsThreadComposition: boolean = true;
   override readonly supportsConversationHistoryRemoval: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
+  override readonly supportsAttachments: boolean = true;
 
   private mx: MatrixClient | null = null;
   /** Subscribers to the single global event stream. */
@@ -269,6 +286,8 @@ export class MatrixDriver extends Driver {
   private typingRoomPreparations = new Map<string, Promise<void>>();
   /** Server ids sent by this driver, used to pair local and remote echoes. */
   private sentThreadReplyEventIds = new Set<string>();
+  /** Homeserver upload limit in bytes, read once per client. */
+  private mediaUploadLimit: Promise<number | null> | null = null;
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
   /** Parsed per-account config; source of truth for the fixed server and OIDC. */
@@ -1540,20 +1559,196 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * Sends a text message as an `m.room.message` / `m.text` and resolves with the
-   * final `ChatMessage`. The id is the REAL server event id, so the composer
-   * hook replaces its optimistic bubble with a `/sync`-consistent message (see
-   * {@link sendResponseToChatMessage}); the `/sync` echo of this same event is
-   * suppressed as our own (see {@link isOwnEcho}), so it never double-renders.
-   * The conversation rises in the list for free once the hook invalidates it.
+   * Sends a text (`m.text`) or file (`m.image` / `m.file`) message and resolves
+   * with the final `ChatMessage`. The id is the REAL server event id, so the
+   * composer hook replaces its optimistic bubble with a `/sync`-consistent
+   * message (see {@link sendResponseToChatMessage}); the `/sync` echo of this
+   * same event is suppressed as our own (see {@link isOwnEcho}), so it never
+   * double-renders. The conversation rises in the list for free once the hook
+   * invalidates it.
    */
   async sendChatMessage({
     chatId,
     content,
+    attachment,
   }: SendChatMessageParams): Promise<ChatMessage> {
     const { mx } = this.requireRoom("sendChatMessage", chatId);
-    const { event_id: eventId } = await mx.sendTextMessage(chatId, content);
-    return sendResponseToChatMessage(eventId, content);
+    const eventId = await this.sendRoomMessage(
+      mx,
+      chatId,
+      null,
+      content,
+      attachment,
+    );
+    return sendResponseToChatMessage(eventId, content, attachment);
+  }
+
+  /** Posts text or an uploaded file, at the room level or inside a thread. */
+  private async sendRoomMessage(
+    mx: MatrixClient,
+    chatId: string,
+    threadId: string | null,
+    content: string,
+    attachment: ChatAttachment | undefined,
+  ): Promise<string> {
+    if (!attachment) {
+      const { event_id: eventId } = await mx.sendTextMessage(
+        chatId,
+        threadId,
+        content,
+      );
+      return eventId;
+    }
+    // A file uploaded in clear for an unencrypted room must never be posted
+    // once the room turned encrypted (or was resolved as such afterwards).
+    const source = attachment.source as MatrixAttachmentSource;
+    if (!source.file && (await this.isRoomEncrypted(mx, chatId))) {
+      throw new Error(
+        "MatrixDriver: this conversation is encrypted; the file was uploaded unencrypted.",
+      );
+    }
+    const { event_id: eventId } = await mx.sendMessage(
+      chatId,
+      threadId,
+      matrixAttachmentContent(attachment, content) as RoomMessageEventContent,
+    );
+    return eventId;
+  }
+
+  /**
+   * Uploads a file to the homeserver media repository. In an encrypted room the
+   * bytes are encrypted first and the key travels inside the (encrypted) event;
+   * a large image also gets an encrypted thumbnail, as the server cannot make
+   * one from bytes it cannot read. Without a room yet (New Chat draft) the file
+   * is encrypted too: an encrypted attachment can be posted in any room, a
+   * clear one cannot.
+   */
+  async uploadChatAttachment({
+    chatId,
+    file,
+    signal,
+    onProgress,
+  }: UploadChatAttachmentParams): Promise<ChatAttachment> {
+    const mx = chatId
+      ? this.requireRoom("uploadChatAttachment", chatId).mx
+      : this.requireClient("uploadChatAttachment");
+    const maxSize = await this.getMediaUploadLimit(mx);
+    if (maxSize !== null && file.size > maxSize) {
+      throw new ChatAttachmentTooLargeError(maxSize);
+    }
+    const mimetype = file.type || "application/octet-stream";
+    const [dimensions, isEncrypted] = await Promise.all([
+      isInlineImage(mimetype) ? readImageDimensions(file) : undefined,
+      chatId ? this.isRoomEncrypted(mx, chatId) : true,
+    ]);
+    const [encryption, thumbnail] = isEncrypted
+      ? await Promise.all([
+          encryptAttachment(await file.arrayBuffer()),
+          dimensions &&
+          needsThumbnail(mimetype, dimensions.width, dimensions.height)
+            ? createEncryptedThumbnail(file)
+            : null,
+        ])
+      : [null, null];
+    signal?.throwIfAborted();
+
+    const abortController = new AbortController();
+    const abort = () => abortController.abort(signal?.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      const [{ content_uri: url }, thumbnailSource] = await Promise.all([
+        mx.uploadContent(encryption ? new Blob([encryption.data]) : file, {
+          name: file.name,
+          type: encryption ? "application/octet-stream" : mimetype,
+          // The name of an encrypted file must not leak in clear text.
+          includeFilename: !encryption,
+          abortController,
+          progressHandler: ({ loaded, total }) =>
+            onProgress?.(total > 0 ? loaded / total : 0),
+        }),
+        thumbnail ? uploadThumbnail(mx, thumbnail, abortController) : undefined,
+      ]);
+      const source: MatrixAttachmentSource = {
+        url,
+        ...(encryption ? { file: encryption.file } : {}),
+        ...(thumbnailSource ? { thumbnail: thumbnailSource } : {}),
+      };
+      return {
+        kind: dimensions ? "image" : "file",
+        name: file.name || "file",
+        mimetype,
+        size: file.size,
+        ...dimensions,
+        source,
+      };
+    } catch (error) {
+      // One transfer failed: stop the other one.
+      abortController.abort();
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+    }
+  }
+
+  /**
+   * Fetches an attachment, or for `preview` a thumbnail sized for the
+   * timeline: the server's for a clear image, the sender's for an encrypted
+   * one. The original is the fallback when no thumbnail can be had.
+   */
+  async downloadChatAttachment({
+    attachment,
+    variant = "original",
+    signal,
+  }: DownloadChatAttachmentParams): Promise<Blob> {
+    const mx = this.requireClient("downloadChatAttachment");
+    const source = attachment.source as MatrixAttachmentSource;
+    if (
+      variant === "preview" &&
+      attachment.kind === "image" &&
+      needsThumbnail(attachment.mimetype, attachment.width, attachment.height)
+    ) {
+      try {
+        if (!source.file) {
+          return await fetchServerThumbnail(mx, source.url, signal);
+        }
+        if (source.thumbnail) {
+          return await fetchMedia(
+            mx,
+            source.thumbnail,
+            source.thumbnail.info?.mimetype ?? "",
+            signal,
+          );
+        }
+      } catch {
+        // Thumbnails are best effort: the server may not have generated one.
+        signal?.throwIfAborted();
+      }
+    }
+    return fetchMedia(mx, source, attachment.mimetype, signal);
+  }
+
+  private getMediaUploadLimit(mx: MatrixClient): Promise<number | null> {
+    this.mediaUploadLimit ??= mx
+      .getMediaConfig(true)
+      .then((config) => config["m.upload.size"] ?? null)
+      .catch(() => {
+        // Unknown limit: let the upload itself report a refusal, and retry
+        // reading the configuration on the next file.
+        this.mediaUploadLimit = null;
+        return null;
+      });
+    return this.mediaUploadLimit;
+  }
+
+  private async isRoomEncrypted(
+    mx: MatrixClient,
+    roomId: string,
+  ): Promise<boolean> {
+    const crypto = mx.getCrypto();
+    if (crypto) {
+      return crypto.isEncryptionEnabledInRoom(roomId);
+    }
+    return Boolean(mx.getRoom(roomId)?.hasEncryptionStateEvent());
   }
 
   /** Sends an `m.replace` relation targeting the stable original event id. */
@@ -1649,6 +1844,7 @@ export class MatrixDriver extends Driver {
     chatId,
     threadId,
     content,
+    attachment,
   }: SendChatThreadReplyParams): Promise<ChatThreadMutationResult> {
     const { mx, room } = this.requireRoom("sendChatThreadReply", chatId);
     if (!threadId.startsWith("$")) {
@@ -1656,19 +1852,29 @@ export class MatrixDriver extends Driver {
         `MatrixDriver.sendChatThreadReply: invalid Matrix thread id "${threadId}".`,
       );
     }
-    const { event_id: eventId } = await mx.sendTextMessage(
+    const eventId = await this.sendRoomMessage(
+      mx,
       chatId,
       threadId,
       content,
+      attachment,
     );
     this.sentThreadReplyEventIds.add(eventId);
-    return this.buildThreadMutationResult(mx, room, threadId, eventId, content);
+    return this.buildThreadMutationResult(
+      mx,
+      room,
+      threadId,
+      eventId,
+      content,
+      attachment,
+    );
   }
 
   async startChatThread({
     chatId,
     rootMessageId,
     content,
+    attachment,
   }: StartChatThreadParams): Promise<ChatThreadMutationResult> {
     const { mx, room } = this.requireRoom("startChatThread", chatId);
     if (!rootMessageId.startsWith("$")) {
@@ -1681,10 +1887,12 @@ export class MatrixDriver extends Driver {
         `MatrixDriver.startChatThread: root message "${rootMessageId}" not found in room "${chatId}".`,
       );
     }
-    const { event_id: eventId } = await mx.sendTextMessage(
+    const eventId = await this.sendRoomMessage(
+      mx,
       chatId,
       rootMessageId,
       content,
+      attachment,
     );
     this.sentThreadReplyEventIds.add(eventId);
     return this.buildThreadMutationResult(
@@ -1693,6 +1901,7 @@ export class MatrixDriver extends Driver {
       rootMessageId,
       eventId,
       content,
+      attachment,
     );
   }
 
@@ -1703,9 +1912,14 @@ export class MatrixDriver extends Driver {
     rootMessageId: string,
     replyEventId: string,
     content: string,
+    attachment?: ChatAttachment,
   ): ChatThreadMutationResult {
     const selfUserId = mx.getUserId() ?? undefined;
-    const message = sendResponseToChatMessage(replyEventId, content);
+    const message = sendResponseToChatMessage(
+      replyEventId,
+      content,
+      attachment,
+    );
     const liveThread = room.getThread(rootMessageId);
     const rootEvent =
       liveThread?.rootEvent ?? room.findEventById(rootMessageId);
@@ -1753,7 +1967,8 @@ export class MatrixDriver extends Driver {
       rootMessageId,
       author: authorForSender(room, mx.getUserId() ?? "", selfUserId),
       lastReplyAt: message.timestamp,
-      lastReplyPreview: content,
+      // Matches the event body other clients and `threadToChatThread` read.
+      lastReplyPreview: content || attachment?.name || "",
       replyCount,
       unreadCount: 0,
     };
@@ -2514,6 +2729,7 @@ export class MatrixDriver extends Driver {
     this.mx = null;
     this.joinedRoomIds = null;
     this.sentThreadReplyEventIds.clear();
+    this.mediaUploadLimit = null;
     this.confirmedMainReadBoundaries.clear();
     this.exactMainTimelineUnreadRooms.clear();
   }
