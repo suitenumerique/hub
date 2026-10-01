@@ -132,8 +132,6 @@ class UserViewSet(
         """
         Limit listed users by querying the email field with a trigram similarity
         search if a query is provided.
-        Limit listed users by excluding users already in the document if a document_id
-        is provided.
         """
         queryset = self.queryset
 
@@ -145,10 +143,6 @@ class UserViewSet(
         )
         if not filterset.is_valid():
             raise drf.exceptions.ValidationError(filterset.errors)
-
-        # Exclude all users already in the given document
-        if document_id := self.request.query_params.get("document_id", ""):
-            queryset = queryset.exclude(documentaccess__document_id=document_id)
 
         filter_data = filterset.form.cleaned_data
         query = remove_accents(filter_data["q"])

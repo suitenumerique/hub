@@ -332,6 +332,25 @@ def test_api_users_list_query_inactive():
     assert user_ids == [str(lennon.id)]
 
 
+def test_api_users_list_query_document_id_ignored():
+    """The document_id parameter from Docs is not supported and should be ignored."""
+    user = factories.UserFactory(email="user@example.com", full_name="Paul")
+    client = APIClient()
+    client.force_login(user)
+
+    lennon = factories.UserFactory(
+        email="john.lennon@example.com", full_name="John Lennon"
+    )
+
+    response = client.get(
+        "/api/v1.0/users/?q=john.&document_id=2e1d3c6a-1f4b-4c8e-9d2a-7b5e6f8a9c0d"
+    )
+
+    assert response.status_code == 200
+    user_ids = [user["id"] for user in response.json()]
+    assert user_ids == [str(lennon.id)]
+
+
 def test_api_users_retrieve_me_anonymous():
     """Anonymous users should not be allowed to list users."""
     factories.UserFactory.create_batch(2)
