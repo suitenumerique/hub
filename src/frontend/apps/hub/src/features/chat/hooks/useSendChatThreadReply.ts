@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
+  ChatAttachment,
   ChatRef,
   ChatThread,
   ChatThreadDetail,
@@ -28,12 +29,17 @@ import {
   removeThread,
   removeThreadMessage,
   replaceOrAppendThreadMessage,
+  replyPreview,
   rollbackOptimisticRootThreadSummary,
   upsertThread,
 } from "./chatCompositionCache";
 import { useChatThreadCompositionSupport } from "./useChatThreadCompositionSupport";
 
-type SendThreadReplyVariables = { content: string };
+type SendThreadReplyVariables = {
+  content: string;
+  /** Posts this uploaded file; `content` is then its caption. */
+  attachment?: ChatAttachment;
+};
 
 type SendThreadReplyContext = {
   threadKey: QueryKey;
@@ -53,7 +59,10 @@ type SendThreadReplyContext = {
 };
 
 export type UseSendChatThreadReplyResult = {
-  sendReply: (content: string) => Promise<ChatThreadMutationResult>;
+  sendReply: (
+    content: string,
+    attachment?: ChatAttachment,
+  ) => Promise<ChatThreadMutationResult>;
   isSending: boolean;
   isSupported: boolean;
 };
@@ -76,15 +85,18 @@ export const useSendChatThreadReply = (
     SendThreadReplyVariables,
     SendThreadReplyContext
   >({
-    mutationFn: ({ content }) => {
+    mutationFn: ({ content, attachment }) => {
       if (!isSupported) {
         throw new Error("Thread reply composition is not available.");
       }
-      return getRegistry()
-        .get(ref.accountId)
-        .sendChatThreadReply({ chatId: ref.chatId, threadId, content });
+      return getRegistry().get(ref.accountId).sendChatThreadReply({
+        chatId: ref.chatId,
+        threadId,
+        content,
+        attachment,
+      });
     },
-    onMutate: async ({ content }) => {
+    onMutate: async ({ content, attachment }) => {
       const threadKey: QueryKey = chatKeys.thread(ref, threadId);
       const threadsKey: QueryKey = chatKeys.threads(ref);
       const messagesKey: QueryKey = chatKeys.messages(ref);
@@ -103,6 +115,7 @@ export const useSendChatThreadReply = (
       const optimistic = createOptimisticMessage(
         content,
         "optimistic-thread-reply",
+        attachment,
       );
       const previousThreadListEntry = previousThreads?.find(
         (thread) => thread.id === threadId,
@@ -136,7 +149,7 @@ export const useSendChatThreadReply = (
           ...current,
           author: currentUserAuthor,
           lastReplyAt: optimistic.timestamp,
-          lastReplyPreview: optimistic.content,
+          lastReplyPreview: replyPreview(optimistic),
           replyCount: Math.max(current.replyCount + 1, expectedReplyCount),
           unreadCount: 0,
         });
@@ -293,7 +306,8 @@ export const useSendChatThreadReply = (
   });
 
   const sendReply = useCallback(
-    (content: string) => mutateAsync({ content }),
+    (content: string, attachment?: ChatAttachment) =>
+      mutateAsync({ content, attachment }),
     [mutateAsync],
   );
 

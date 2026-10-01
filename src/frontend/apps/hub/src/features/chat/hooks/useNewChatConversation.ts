@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatRef, ChatUser } from "@/features/drivers/types";
+import type {
+  ChatAttachment,
+  ChatRef,
+  ChatUser,
+} from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
 import { useComposerAccountId } from "./useChatAccounts";
@@ -31,6 +35,10 @@ export const useNewChatConversation = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const inFlightCreationsRef = useRef<Map<string, Promise<ChatRef>>>(new Map());
   const creationTargetRef = useRef<string | null>(null);
+  // The conversation resolved for a selection. A draft sending text then files
+  // calls the resolver from callbacks captured before the first send resolved
+  // it, so the answer is shared through a ref rather than render state.
+  const resolvedChatRef = useRef<{ target: string; ref: ChatRef } | null>(null);
 
   const selectedUserIds = useMemo(
     () => selectedUsers.map((user) => user.id),
@@ -54,6 +62,7 @@ export const useNewChatConversation = ({
     setQuery("");
     setCreatedChatRef(null);
     creationTargetRef.current = null;
+    resolvedChatRef.current = null;
     inFlightCreationsRef.current.clear();
   }, []);
 
@@ -77,6 +86,7 @@ export const useNewChatConversation = ({
   const clearResolvedConversation = useCallback(() => {
     setCreatedChatRef(null);
     creationTargetRef.current = null;
+    resolvedChatRef.current = null;
   }, []);
 
   const addUser = useCallback(
@@ -112,6 +122,12 @@ export const useNewChatConversation = ({
     if (createdChatRef) {
       return createdChatRef;
     }
+    if (
+      selectionTarget &&
+      resolvedChatRef.current?.target === selectionTarget
+    ) {
+      return resolvedChatRef.current.ref;
+    }
     if (!selectionTarget || !isCreationSupported) {
       throw new Error("Conversation creation is not available.");
     }
@@ -126,6 +142,7 @@ export const useNewChatConversation = ({
     try {
       const ref = await creation;
       if (creationTargetRef.current === selectionTarget) {
+        resolvedChatRef.current = { target: selectionTarget, ref };
         setCreatedChatRef(ref);
       }
       return ref;
@@ -178,7 +195,7 @@ export const useNewChatConversation = ({
   ]);
 
   const submitDraft = useCallback(
-    async (content: string) => {
+    async (content: string, attachment?: ChatAttachment) => {
       const target = selectionTarget;
       if (!target) {
         throw new Error("Conversation creation requires participants.");
@@ -187,7 +204,7 @@ export const useNewChatConversation = ({
       if (creationTargetRef.current !== target) {
         throw new Error("The conversation participants changed before send.");
       }
-      await sendMessageTo(ref, content);
+      await sendMessageTo(ref, content, attachment);
       onSent(ref);
     },
     [onSent, resolveSelectionChat, selectionTarget, sendMessageTo],
@@ -202,6 +219,7 @@ export const useNewChatConversation = ({
     isCompositionSupported;
 
   return {
+    accountId,
     selectedUsers,
     query,
     searchInputRef,

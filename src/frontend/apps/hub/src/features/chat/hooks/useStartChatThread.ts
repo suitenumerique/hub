@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
+  ChatAttachment,
   ChatMessage,
   ChatMessageAuthor,
   ChatRef,
@@ -27,7 +28,9 @@ import {
   mergeRootThreadSummary,
   OPTIMISTIC_THREAD_ID_PREFIX,
   removeThread,
+  replaceOrAppendThreadMessage,
   replaceRootMessageInPages,
+  replyPreview,
   rollbackOptimisticRootThreadSummary,
   upsertThread,
 } from "./chatCompositionCache";
@@ -49,6 +52,8 @@ type StartThreadContext = {
   rootMessageId: string;
   previousRootThreadSummary: ChatMessage["thread"];
   optimisticRootThreadMarker: string;
+  /** Replies the thread holds once this one is posted. */
+  expectedReplyCount: number;
 };
 
 export type StartThreadCallbacks = {
@@ -58,6 +63,8 @@ export type StartThreadCallbacks = {
 
 export type StartThreadOptions = StartThreadCallbacks & {
   rootAuthor?: ChatMessageAuthor;
+  /** Posts this uploaded file as the first reply; `content` is its caption. */
+  attachment?: ChatAttachment;
 };
 
 export type UseStartChatThreadResult = {
@@ -85,7 +92,7 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
     StartThreadVariables,
     StartThreadContext
   >({
-    mutationFn: ({ rootMessage, content }) => {
+    mutationFn: ({ rootMessage, content, options }) => {
       if (!isSupported) {
         throw new Error("Thread creation is not available.");
       }
@@ -93,12 +100,17 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         chatId: ref.chatId,
         rootMessageId: rootMessage.id,
         content,
+        attachment: options?.attachment,
       });
     },
     onMutate: async ({ rootMessage, content, options }) => {
       const messagesKey: QueryKey = chatKeys.messages(ref);
       const threadsKey: QueryKey = chatKeys.threads(ref);
-      const reply = createOptimisticMessage(content, "optimistic-thread-start");
+      const reply = createOptimisticMessage(
+        content,
+        "optimistic-thread-start",
+        options?.attachment,
+      );
       const tempThreadId = `${OPTIMISTIC_THREAD_ID_PREFIX}${reply.id}`;
       const tempThreadKey: QueryKey = chatKeys.thread(ref, tempThreadId);
       await Promise.all([
@@ -114,10 +126,13 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         previousMessages,
         rootMessage.id,
       );
+      // Usually 1; more when a draft already started this thread with an
+      // earlier message of the same submission.
+      const replyCount = (previousRootThreadSummary?.replyCount ?? 0) + 1;
       const rootWithThread: ChatMessage = {
         ...rootMessage,
         thread: markOptimisticRootThreadSummary(
-          { id: tempThreadId, replyCount: 1, unreadCount: 0 },
+          { id: tempThreadId, replyCount, unreadCount: 0 },
           tempThreadId,
         ),
       };
@@ -126,8 +141,8 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         rootMessageId: rootMessage.id,
         author: currentUserAuthor,
         lastReplyAt: reply.timestamp,
-        lastReplyPreview: reply.content,
-        replyCount: 1,
+        lastReplyPreview: replyPreview(reply),
+        replyCount,
         unreadCount: 0,
       };
       const detail: ChatThreadDetail = {
@@ -163,25 +178,42 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         rootMessageId: rootMessage.id,
         previousRootThreadSummary,
         optimisticRootThreadMarker: tempThreadId,
+        expectedReplyCount: replyCount,
       };
     },
     onSuccess: (result, variables, context) => {
       if (!context) {
         return;
       }
+      // The server snapshot can miss replies posted just before this one.
+      const thread: ChatThread = {
+        ...result.thread,
+        replyCount: Math.max(
+          result.thread.replyCount,
+          context.expectedReplyCount,
+        ),
+      };
       queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) =>
-        old
-          ? mergeRootThreadSummary(old, result.rootMessage.id, result.thread)
-          : old,
+        old ? mergeRootThreadSummary(old, result.rootMessage.id, thread) : old,
       );
       queryClient.setQueryData<ChatThread[]>(context.threadsKey, (old) =>
         old
-          ? upsertThread(removeThread(old, context.tempThreadId), result.thread)
-          : [result.thread],
+          ? upsertThread(removeThread(old, context.tempThreadId), thread)
+          : [thread],
       );
-      queryClient.setQueryData(
+      // A draft sending text then files starts the thread once, then each
+      // next start replies in it: append to the detail already cached, whose
+      // earlier replies the server snapshot may not include yet.
+      queryClient.setQueryData<ChatThreadDetail>(
         chatKeys.thread(ref, result.thread.id),
-        result.threadDetail,
+        (old) =>
+          old
+            ? replaceOrAppendThreadMessage(
+                old,
+                result.message.id,
+                result.message,
+              )
+            : result.threadDetail,
       );
       queryClient.removeQueries({
         queryKey: context.tempThreadKey,

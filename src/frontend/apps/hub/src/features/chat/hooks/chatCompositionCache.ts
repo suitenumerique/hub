@@ -2,6 +2,7 @@ import type { InfiniteData } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 
 import type {
+  ChatAttachment,
   ChatMessage,
   ChatMessagesPage,
   ChatThread,
@@ -53,16 +54,22 @@ export const markOptimisticRootThreadSummary = (
 export const createOptimisticMessage = (
   content: string,
   prefix: string,
+  attachment?: ChatAttachment,
 ): ChatMessage => {
   optimisticId += 1;
   return {
     id: `${prefix}-${optimisticId}`,
     authorId: "me",
     content,
+    ...(attachment ? { attachment } : {}),
     timestamp: new Date().toISOString(),
     reactions: [],
   };
 };
+
+/** Thread-list preview of a reply: its text, or the name of its file. */
+export const replyPreview = ({ content, attachment }: ChatMessage): string =>
+  content || attachment?.name || "";
 
 export const appendMessageToNewestPage = (
   data: ChatMessagesData,

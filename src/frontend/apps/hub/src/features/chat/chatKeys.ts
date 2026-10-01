@@ -1,4 +1,8 @@
-import type { AccountId, ChatRef } from "@/features/drivers/types";
+import type {
+  AccountId,
+  ChatAttachment,
+  ChatRef,
+} from "@/features/drivers/types";
 
 export const chatKeys = {
   chatsAll: () => ["chats"] as const,
@@ -28,6 +32,12 @@ export const chatKeys = {
     ["chat-thread", ref.accountId, ref.chatId] as const,
   members: (ref: ChatRef) =>
     ["chat-members", ref.accountId, ref.chatId] as const,
+  /** Bytes of one attachment; the driver-owned source identifies the file. */
+  attachment: (
+    accountId: AccountId,
+    attachment: ChatAttachment,
+    variant: "original" | "preview",
+  ) => ["chat-attachment", accountId, attachment.source, variant] as const,
   connection: (accountId: AccountId, userId: string | null) =>
     ["chat-connection", accountId, userId] as const,
 };

@@ -21,3 +21,20 @@ export const useAccountChatCompositionSupport = (
 
 export const useChatCompositionSupport = (ref: ChatRef | null): boolean =>
   useAccountChatCompositionSupport(ref?.accountId ?? null);
+
+/** Whether this account can upload files and send them. */
+export const useAccountChatAttachmentSupport = (
+  accountId: AccountId | null,
+): boolean => {
+  const entries = useDriverEntries();
+
+  return useMemo(() => {
+    if (!accountId) {
+      return false;
+    }
+    return (
+      entries.find((entry) => entry.accountId === accountId)?.driver
+        .supportsAttachments ?? false
+    );
+  }, [accountId, entries]);
+};
