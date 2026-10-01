@@ -1,7 +1,7 @@
 {
   "name": "packages-i18n",
   "version": "0.0.1",
-  "repository": "https://github.com/suitenumerique/docs",
+  "repository": "https://github.com/suitenumerique/hub",
   "author": "DINUM",
   "license": "MIT",
   "private": true,
