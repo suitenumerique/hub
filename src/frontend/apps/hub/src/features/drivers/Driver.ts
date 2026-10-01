@@ -7,6 +7,7 @@ import {
 
 import {
   AccountId,
+  ChatAttachment,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -73,8 +74,49 @@ export type MarkChatThreadReadParams = {
 
 export type SendChatMessageParams = {
   chatId: string;
+  /** Message text, or the caption of `attachment` (usually empty). */
   content: string;
+  /** Posts a file previously stored through `uploadChatAttachment`. */
+  attachment?: ChatAttachment;
 };
+
+export type UploadChatAttachmentParams = {
+  /**
+   * Conversation the file is meant for. Omitted while it does not exist yet
+   * (New Chat draft): the driver then stores the file so that it can be posted
+   * whatever the conversation turns out to be, e.g. encrypted for Matrix.
+   */
+  chatId?: string;
+  file: File;
+  /** Aborts the transfer, e.g. when the user removes the pending file. */
+  signal?: AbortSignal;
+  /** Reports the uploaded fraction, from 0 to 1. */
+  onProgress?: (fraction: number) => void;
+};
+
+export type DownloadChatAttachmentParams = {
+  attachment: ChatAttachment;
+  /**
+   * `preview` lets the driver return a lighter rendition sized for the
+   * timeline (an image thumbnail); `original` is always the stored file.
+   */
+  variant?: "original" | "preview";
+  signal?: AbortSignal;
+};
+
+/**
+ * Raised by `uploadChatAttachment` when a file exceeds the account's upload
+ * limit, so the composer can explain it instead of a generic failure.
+ */
+export class ChatAttachmentTooLargeError extends Error {
+  readonly maxSize: number;
+
+  constructor(maxSize: number) {
+    super(`The file exceeds the ${maxSize} bytes upload limit.`);
+    this.name = "ChatAttachmentTooLargeError";
+    this.maxSize = maxSize;
+  }
+}
 
 export type EditChatMessageParams = {
   chatId: string;
@@ -110,13 +152,17 @@ export type ChatTypingListener = (users: ChatTypingUser[]) => void;
 export type SendChatThreadReplyParams = {
   chatId: string;
   threadId: string;
+  /** Reply text, or the caption of `attachment` (usually empty). */
   content: string;
+  attachment?: ChatAttachment;
 };
 
 export type StartChatThreadParams = {
   chatId: string;
   rootMessageId: string;
+  /** First reply text, or the caption of `attachment` (usually empty). */
   content: string;
+  attachment?: ChatAttachment;
 };
 
 /**
@@ -231,6 +277,8 @@ export abstract class Driver {
   async clearConversationSearch(): Promise<void> {}
   readonly supportsComposition: boolean = false;
   readonly supportsThreadComposition: boolean = false;
+  /** Whether files can be uploaded and sent to a conversation. */
+  readonly supportsAttachments: boolean = false;
   /** Whether the driver can leave and forget a conversation for this account. */
   readonly supportsConversationHistoryRemoval: boolean = false;
   /**
@@ -313,6 +361,30 @@ export abstract class Driver {
     void _params;
     throw new Error(
       `${this.constructor.name}.sendChatMessage: composition is not supported by this driver.`,
+    );
+  }
+
+  /**
+   * Stores a file on the backend without posting anything yet, so the composer
+   * can show it as pending until the user sends the message. The send methods
+   * then post it through their `attachment` parameter.
+   */
+  async uploadChatAttachment(
+    _params: UploadChatAttachmentParams,
+  ): Promise<ChatAttachment> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.uploadChatAttachment: attachments are not supported by this driver.`,
+    );
+  }
+
+  /** Fetches the content of an attachment carried by a message. */
+  async downloadChatAttachment(
+    _params: DownloadChatAttachmentParams,
+  ): Promise<Blob> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.downloadChatAttachment: attachments are not supported by this driver.`,
     );
   }
 

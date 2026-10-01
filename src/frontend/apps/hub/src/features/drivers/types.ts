@@ -210,10 +210,36 @@ export type ChatThreadSummary = {
   unreadCount: number;
 };
 
+/**
+ * Driver-owned locator of a stored file. Serializable so it can live in the
+ * React Query cache; the UI never inspects it and only hands it back to
+ * `Driver.downloadChatAttachment`.
+ */
+export type ChatAttachmentSource = Readonly<Record<string, unknown>>;
+
+/**
+ * A file carried by a message. `image` attachments render inline in the
+ * timeline; every other file renders as a card with its type icon.
+ */
+export type ChatAttachment = {
+  kind: "image" | "file";
+  name: string;
+  mimetype: string;
+  /** Size in bytes, when the sender declared it. */
+  size?: number;
+  /** Intrinsic image dimensions, when known; used to reserve layout space. */
+  width?: number;
+  height?: number;
+  source: ChatAttachmentSource;
+};
+
 export type ChatMessage = {
   id: string;
   authorId: string;
+  /** Text of the message, or the caption of an attachment (often empty). */
   content: string;
+  /** Present when the message carries a file instead of plain text. */
+  attachment?: ChatAttachment;
   /** ISO 8601 string. Use `formatChatTime` from @/features/chat/formatTimestamp for display. */
   timestamp: string;
   /** Aggregated reactions, in stable insertion order. Empty when none. */
