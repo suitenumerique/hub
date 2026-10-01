@@ -317,7 +317,8 @@ describe("MatrixDriver.sendChatMessage", () => {
       content: "bonjour",
     });
 
-    expect(sendTextMessage).toHaveBeenCalledWith(ROOM_ID, "bonjour");
+    // `null` thread: the message goes to the main timeline.
+    expect(sendTextMessage).toHaveBeenCalledWith(ROOM_ID, null, "bonjour");
     expect(message).toMatchObject({
       id: SENT_EVENT_ID,
       authorId: "me",
