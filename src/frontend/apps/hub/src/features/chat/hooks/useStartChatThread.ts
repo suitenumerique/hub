@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
   ChatMessage,
+  ChatAttachment,
   ChatMessageAuthor,
   ChatRef,
   ChatThread,
@@ -58,6 +59,7 @@ export type StartThreadCallbacks = {
 
 export type StartThreadOptions = StartThreadCallbacks & {
   rootAuthor?: ChatMessageAuthor;
+  attachment?: ChatAttachment;
 };
 
 export type UseStartChatThreadResult = {
@@ -85,7 +87,7 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
     StartThreadVariables,
     StartThreadContext
   >({
-    mutationFn: ({ rootMessage, content }) => {
+    mutationFn: ({ rootMessage, content, options }) => {
       if (!isSupported) {
         throw new Error("Thread creation is not available.");
       }
@@ -93,12 +95,18 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
         chatId: ref.chatId,
         rootMessageId: rootMessage.id,
         content,
+        attachment: options?.attachment,
       });
     },
     onMutate: async ({ rootMessage, content, options }) => {
       const messagesKey: QueryKey = chatKeys.messages(ref);
       const threadsKey: QueryKey = chatKeys.threads(ref);
-      const reply = createOptimisticMessage(content, "optimistic-thread-start");
+      const reply = createOptimisticMessage(
+        options?.attachment?.name ?? content,
+        "optimistic-thread-start",
+      );
+      reply.attachment = options?.attachment;
+      if (options?.attachment) reply.canEdit = false;
       const tempThreadId = `${OPTIMISTIC_THREAD_ID_PREFIX}${reply.id}`;
       const tempThreadKey: QueryKey = chatKeys.thread(ref, tempThreadId);
       await Promise.all([

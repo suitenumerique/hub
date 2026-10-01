@@ -7,6 +7,7 @@ import {
 
 import {
   AccountId,
+  ChatAttachment,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -74,6 +75,14 @@ export type MarkChatThreadReadParams = {
 export type SendChatMessageParams = {
   chatId: string;
   content: string;
+  attachment?: ChatAttachment;
+};
+
+export type UploadChatAttachmentParams = {
+  chatId?: string;
+  file: File;
+  abortController: AbortController;
+  onProgress?: (progress: number) => void;
 };
 
 export type EditChatMessageParams = {
@@ -111,12 +120,14 @@ export type SendChatThreadReplyParams = {
   chatId: string;
   threadId: string;
   content: string;
+  attachment?: ChatAttachment;
 };
 
 export type StartChatThreadParams = {
   chatId: string;
   rootMessageId: string;
   content: string;
+  attachment?: ChatAttachment;
 };
 
 /**
@@ -230,6 +241,7 @@ export abstract class Driver {
   /** Explicit Hub logout erases search; an ordinary destroy preserves it. */
   async clearConversationSearch(): Promise<void> {}
   readonly supportsComposition: boolean = false;
+  readonly supportsAttachments: boolean = false;
   readonly supportsThreadComposition: boolean = false;
   /** Whether the driver can leave and forget a conversation for this account. */
   readonly supportsConversationHistoryRemoval: boolean = false;
@@ -314,6 +326,22 @@ export abstract class Driver {
     throw new Error(
       `${this.constructor.name}.sendChatMessage: composition is not supported by this driver.`,
     );
+  }
+
+  async uploadChatAttachment(
+    _params: UploadChatAttachmentParams,
+  ): Promise<ChatAttachment> {
+    void _params;
+    throw new Error("File uploads are not supported by this driver.");
+  }
+
+  async getChatAttachment(
+    _attachment: ChatAttachment,
+    _signal?: AbortSignal,
+  ): Promise<Blob> {
+    void _attachment;
+    void _signal;
+    throw new Error("File downloads are not supported by this driver.");
   }
 
   async editChatMessage(_params: EditChatMessageParams): Promise<ChatMessage> {

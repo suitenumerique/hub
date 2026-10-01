@@ -5,6 +5,7 @@ import {
 } from "@gouvfr-lasuite/ui-components";
 import {
   Copy,
+  Download,
   Edit,
   EmojiAdd,
   More,
@@ -22,6 +23,7 @@ type MessageHoverToolbarProps = {
   onReact: (emoji: string) => void;
   /** Opens a reply flow for this message. Omitted when reply is unavailable. */
   onReply?: () => void;
+  onDownload?: () => Promise<void>;
   onCopy?: () => void | Promise<void>;
   onEdit?: () => void;
   onDelete?: () => void | Promise<unknown>;
@@ -49,6 +51,7 @@ export const MessageHoverToolbar = ({
   onReact,
   onReply,
   onCopy,
+  onDownload,
   onEdit,
   onDelete,
   compact = false,
@@ -96,6 +99,18 @@ export const MessageHoverToolbar = ({
           void onCopy?.();
         },
       },
+      ...(onDownload
+        ? [
+            {
+              icon: <Download />,
+              label: t("Download"),
+              callback: () => {
+                setAreActionsPinned(false);
+                void onDownload();
+              },
+            },
+          ]
+        : []),
       ...(hasMutationAction ? ([{ type: "separator" }] as const) : []),
       ...(onEdit
         ? [
@@ -126,7 +141,7 @@ export const MessageHoverToolbar = ({
           ]
         : []),
     ],
-    [hasMutationAction, onCopy, onDelete, onEdit, t],
+    [hasMutationAction, onDownload, onCopy, onDelete, onEdit, t],
   );
 
   return (

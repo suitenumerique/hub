@@ -11,6 +11,10 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { notify } from "@/features/ui/components/toast";
+import { getRegistry } from "@/features/drivers/DriverRegistry";
+import type { ChatAttachment } from "@/features/drivers/types";
+import { useComposerAttachments } from "../hooks/useComposerAttachments";
+import { ComposerAttachments } from "./ComposerAttachments";
 
 const TYPING_STOP_WAIT_MS = 400;
 
@@ -26,6 +30,8 @@ type ChatComposerProps = {
    * switch — it is the new-chat → resolved-chat handoff — and keeps the draft.
    */
   conversationId?: string;
+  attachmentAccountId?: string;
+  attachmentChatId?: string;
   disabled?: boolean;
   isSubmitting?: boolean;
   autoFocus?: boolean;
@@ -37,7 +43,11 @@ type ChatComposerProps = {
   focusSignal?: number;
   /** Message shown in the error toast on send failure. Defaults to a generic one. */
   errorMessage?: string;
-  onSubmit?: (content: string) => Promise<unknown> | unknown;
+  onSubmit?: (
+    content: string,
+    attachment?: ChatAttachment,
+    isLast?: boolean,
+  ) => Promise<unknown> | unknown;
   /** Message whose current text should be edited by this composer. */
   editDraft?: { id: string; content: string } | null;
   onCancelEdit?: () => void;
@@ -49,6 +59,8 @@ export const ChatComposer = ({
   placeholder,
   inputLabel,
   conversationId,
+  attachmentAccountId,
+  attachmentChatId,
   disabled = false,
   isSubmitting = false,
   autoFocus = false,
@@ -61,14 +73,39 @@ export const ChatComposer = ({
 }: ChatComposerProps) => {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const attachments = useComposerAttachments(
+    attachmentAccountId,
+    attachmentChatId,
+    conversationId,
+  );
+  const canAttach =
+    Boolean(
+      attachmentAccountId &&
+      getRegistry().get(attachmentAccountId).supportsAttachments,
+    ) && !editDraft;
   const [draft, setDraft] = useState("");
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
+  const submissionGeneration = useRef(0);
   const lastConcreteConversationId = useRef(conversationId);
   const handledFocusSignalRef = useRef<number | undefined>(undefined);
   const trimmedDraft = useMemo(() => draft.trim(), [draft]);
   const isBusy = isSubmitting || isSubmittingDraft;
+  const pendingAttachments = editDraft ? [] : attachments.entries;
   const canSubmit =
-    Boolean(onSubmit) && !disabled && !isBusy && trimmedDraft.length > 0;
+    Boolean(onSubmit) &&
+    !disabled &&
+    !isBusy &&
+    (trimmedDraft.length > 0 || pendingAttachments.length > 0) &&
+    pendingAttachments.every((entry) => entry.status === "ready");
+
+  useEffect(() => {
+    return () => {
+      submissionGeneration.current += 1;
+    };
+  }, [attachmentAccountId, conversationId, editDraft?.id]);
 
   const resizeInput = useCallback(() => {
     const input = inputRef.current;
@@ -181,6 +218,9 @@ export const ChatComposer = ({
       }
 
       setIsSubmittingDraft(true);
+      const generation = submissionGeneration.current;
+      const isCurrentSubmission = () =>
+        submissionGeneration.current === generation;
       try {
         // Order typing=false before the message request. Apart from preventing
         // stale indicators, this gives the next non-empty change a clean
@@ -194,8 +234,22 @@ export const ChatComposer = ({
             ),
           ]);
         }
-        await onSubmit(trimmedDraft);
-        setDraft("");
+        for (let index = 0; index < pendingAttachments.length; index += 1) {
+          if (!isCurrentSubmission()) return;
+          const entry = pendingAttachments[index];
+          await onSubmit(
+            "",
+            entry.attachment,
+            !trimmedDraft && index === pendingAttachments.length - 1,
+          );
+          if (!isCurrentSubmission()) return;
+          // Forget each confirmed send immediately: a later failure must not
+          // resend files which are already visible to the other participants.
+          attachments.remove(entry.id);
+        }
+        if (!isCurrentSubmission()) return;
+        if (trimmedDraft) await onSubmit(trimmedDraft, undefined, true);
+        if (isCurrentSubmission()) setDraft("");
       } catch {
         // Keep the draft so the user can retry, and surface the failure: the
         // send mutations silence the global error handler (noGlobalError), so
@@ -208,7 +262,16 @@ export const ChatComposer = ({
         setIsSubmittingDraft(false);
       }
     },
-    [canSubmit, errorMessage, onSubmit, onTypingActivity, t, trimmedDraft],
+    [
+      canSubmit,
+      errorMessage,
+      onSubmit,
+      onTypingActivity,
+      t,
+      trimmedDraft,
+      attachments,
+      pendingAttachments,
+    ],
   );
 
   const cancelEdit = useCallback(() => {
@@ -235,8 +298,59 @@ export const ChatComposer = ({
           </button>
         </div>
       )}
-      <form className="hub__chat-composer" onSubmit={handleSubmit}>
+      <form
+        className="hub__chat-composer"
+        onSubmit={handleSubmit}
+        data-dragging={isDragging || undefined}
+        onDragEnter={(event) => {
+          if (
+            !canAttach ||
+            disabled ||
+            isBusy ||
+            !event.dataTransfer.types.includes("Files")
+          )
+            return;
+          event.preventDefault();
+          dragDepth.current += 1;
+          setIsDragging(true);
+        }}
+        onDragOver={(event) => {
+          if (
+            !canAttach ||
+            disabled ||
+            isBusy ||
+            !event.dataTransfer.types.includes("Files")
+          )
+            return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (!dragDepth.current) setIsDragging(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          dragDepth.current = 0;
+          setIsDragging(false);
+          if (canAttach && !disabled && !isBusy)
+            attachments.addFiles(Array.from(event.dataTransfer.files));
+        }}
+      >
+        {isDragging && (
+          <div className="hub__chat-composer__drop-target">
+            {t("Drop your files here")}
+          </div>
+        )}
         <div className="hub__chat-composer__field">
+          {attachments.entries.length > 0 && !editDraft && (
+            <ComposerAttachments
+              entries={attachments.entries}
+              disabled={isBusy}
+              onRemove={attachments.remove}
+              onRetry={attachments.retry}
+            />
+          )}
           <textarea
             ref={inputRef}
             rows={1}
@@ -252,6 +366,17 @@ export const ChatComposer = ({
               const value = event.currentTarget.value;
               setDraft(value);
               void onTypingActivity?.(value.trim().length > 0);
+            }}
+            onPaste={(event) => {
+              if (
+                !canAttach ||
+                disabled ||
+                isBusy ||
+                !event.clipboardData.files.length
+              )
+                return;
+              event.preventDefault();
+              attachments.addFiles(Array.from(event.clipboardData.files));
             }}
             onKeyDown={(event) => {
               if (event.key === "Escape" && editDraft) {
@@ -271,10 +396,24 @@ export const ChatComposer = ({
           />
         </div>
         <div className="hub__chat-composer__actions">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            hidden
+            aria-label={t("Choose files")}
+            onChange={(event) => {
+              attachments.addFiles(Array.from(event.currentTarget.files ?? []));
+              event.currentTarget.value = "";
+              inputRef.current?.focus();
+            }}
+          />
           <button
             type="button"
             className="hub__chat-composer__attach"
-            disabled={disabled}
+            disabled={disabled || isBusy || !canAttach}
+            aria-label={t("Attach a file")}
+            onClick={() => fileInputRef.current?.click()}
           >
             <span className="material-icons" aria-hidden="true">
               attach_file

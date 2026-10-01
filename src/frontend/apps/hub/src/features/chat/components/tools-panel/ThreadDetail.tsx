@@ -9,7 +9,11 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatMessageAuthor, ChatRef } from "@/features/drivers/types";
+import type {
+  ChatAttachment,
+  ChatMessageAuthor,
+  ChatRef,
+} from "@/features/drivers/types";
 
 import {
   ChatMessageEditProvider,
@@ -72,13 +76,13 @@ export const ThreadDetail = ({
   useEffect(() => setEditingMessage(null), [threadId]);
 
   const handleSubmit = useCallback(
-    async (content: string) => {
+    async (content: string, attachment?: ChatAttachment) => {
       if (editingMessage) {
         const message = await editMessage(editingMessage.id, content);
         setEditingMessage(null);
         return message;
       }
-      return sendReply(content);
+      return sendReply(content, attachment);
     },
     [editMessage, editingMessage, sendReply],
   );
@@ -219,6 +223,7 @@ export const ThreadDetail = ({
                     chatRef={chatRef}
                     messageId={message.id}
                     content={message.content}
+                    attachment={message.attachment}
                     timestamp={message.timestamp}
                     reactions={message.reactions}
                     isDeleted={message.isDeleted}
@@ -235,6 +240,7 @@ export const ThreadDetail = ({
                       chatRef={chatRef}
                       messageId={message.id}
                       content={message.content}
+                      attachment={message.attachment}
                       author={author}
                       timestamp={message.timestamp}
                       reactions={message.reactions}
@@ -255,6 +261,8 @@ export const ThreadDetail = ({
         <div className="hub__thread-detail__composer">
           <ChatComposer
             conversationId={threadId}
+            attachmentAccountId={chatRef.accountId}
+            attachmentChatId={chatRef.chatId}
             placeholder={
               isSupported
                 ? t("Answer")

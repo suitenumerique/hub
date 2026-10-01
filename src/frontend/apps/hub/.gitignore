@@ -34,3 +34,9 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# Copied from the PDF viewer dependency before dev/build.
+/public/pdf.worker.min.mjs
+/public/cmaps/
+/public/standard_fonts/
+/public/wasm/

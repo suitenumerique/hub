@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatRef, ChatUser } from "@/features/drivers/types";
+import type {
+  ChatRef,
+  ChatUser,
+  ChatAttachment,
+} from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
 import { useComposerAccountId } from "./useChatAccounts";
@@ -178,7 +182,7 @@ export const useNewChatConversation = ({
   ]);
 
   const submitDraft = useCallback(
-    async (content: string) => {
+    async (content: string, attachment?: ChatAttachment, isLast = true) => {
       const target = selectionTarget;
       if (!target) {
         throw new Error("Conversation creation requires participants.");
@@ -187,8 +191,8 @@ export const useNewChatConversation = ({
       if (creationTargetRef.current !== target) {
         throw new Error("The conversation participants changed before send.");
       }
-      await sendMessageTo(ref, content);
-      onSent(ref);
+      await sendMessageTo(ref, content, attachment);
+      if (isLast) onSent(ref);
     },
     [onSent, resolveSelectionChat, selectionTarget, sendMessageTo],
   );
@@ -202,6 +206,8 @@ export const useNewChatConversation = ({
     isCompositionSupported;
 
   return {
+    accountId,
+    composerDraftKey: selectionTarget,
     selectedUsers,
     query,
     searchInputRef,

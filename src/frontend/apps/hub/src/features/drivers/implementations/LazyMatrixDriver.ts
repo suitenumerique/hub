@@ -19,9 +19,11 @@ import {
   type StartChatThreadParams,
   type ToggleChatReactionParams,
   type ToggleChatThreadReactionParams,
+  type UploadChatAttachmentParams,
 } from "../Driver";
 import type {
   AccountId,
+  ChatAttachment,
   ChatMainTimelineUnread,
   ChatMessage,
   ChatMessagesPage,
@@ -75,6 +77,7 @@ export class LazyMatrixDriver extends BaseDriver {
   // before the SDK lazy-loads. It must mirror the real `MatrixDriver`; the actual
   // `sendChatMessage` still routes through `withTarget`, loading the driver on demand.
   override readonly supportsComposition = true;
+  override readonly supportsAttachments = true;
   override readonly supportsThreadComposition = true;
   override readonly supportsConversationHistoryRemoval = true;
   // Static capability mirroring the real `MatrixDriver`, read synchronously by
@@ -232,6 +235,21 @@ export class LazyMatrixDriver extends BaseDriver {
     chatId: string,
   ): Promise<RemoveChatFromHistoryResult> {
     return this.withTarget((driver) => driver.removeChatFromHistory(chatId));
+  }
+
+  async uploadChatAttachment(
+    params: UploadChatAttachmentParams,
+  ): Promise<ChatAttachment> {
+    return this.withTarget((driver) => driver.uploadChatAttachment(params));
+  }
+
+  async getChatAttachment(
+    attachment: ChatAttachment,
+    signal?: AbortSignal,
+  ): Promise<Blob> {
+    return this.withTarget((driver) =>
+      driver.getChatAttachment(attachment, signal),
+    );
   }
 
   async sendChatMessage(params: SendChatMessageParams): Promise<ChatMessage> {

@@ -6,7 +6,11 @@ import {
 import { useCallback } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
-import type { ChatMessage, ChatRef } from "@/features/drivers/types";
+import type {
+  ChatAttachment,
+  ChatMessage,
+  ChatRef,
+} from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
 
@@ -18,7 +22,11 @@ import {
 } from "./chatCompositionCache";
 import { useChatCompositionSupport } from "./useChatCompositionSupport";
 
-type SendMessageVariables = { ref: ChatRef; content: string };
+type SendMessageVariables = {
+  ref: ChatRef;
+  content: string;
+  attachment?: ChatAttachment;
+};
 
 type SendMessageContext = {
   ref: ChatRef;
@@ -28,8 +36,15 @@ type SendMessageContext = {
 };
 
 export type UseSendChatMessageResult = {
-  sendMessage: (content: string) => Promise<ChatMessage>;
-  sendMessageTo: (ref: ChatRef, content: string) => Promise<ChatMessage>;
+  sendMessage: (
+    content: string,
+    attachment?: ChatAttachment,
+  ) => Promise<ChatMessage>;
+  sendMessageTo: (
+    ref: ChatRef,
+    content: string,
+    attachment?: ChatAttachment,
+  ) => Promise<ChatMessage>;
   isSending: boolean;
   isSupported: boolean;
 };
@@ -46,19 +61,30 @@ export const useSendChatMessage = (
     SendMessageVariables,
     SendMessageContext
   >({
-    mutationFn: ({ ref: targetRef, content }) => {
+    mutationFn: ({ ref: targetRef, content, attachment }) => {
       const driver = getRegistry().get(targetRef.accountId);
       if (!driver.supportsComposition) {
         throw new Error("Conversation message composition is not available.");
       }
-      return driver.sendChatMessage({ chatId: targetRef.chatId, content });
+      return driver.sendChatMessage({
+        chatId: targetRef.chatId,
+        content,
+        attachment,
+      });
     },
-    onMutate: async ({ ref: targetRef, content }) => {
+    onMutate: async ({ ref: targetRef, content, attachment }) => {
       const messagesKey: QueryKey = chatKeys.messages(targetRef);
       await queryClient.cancelQueries({ queryKey: messagesKey });
       const previousMessages =
         queryClient.getQueryData<ChatMessagesData>(messagesKey);
-      const optimistic = createOptimisticMessage(content, "optimistic-message");
+      const optimistic = {
+        ...createOptimisticMessage(
+          attachment?.name ?? content,
+          "optimistic-message",
+        ),
+        attachment,
+        canEdit: !attachment,
+      };
 
       queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
         old ? appendMessageToNewestPage(old, optimistic) : old,
@@ -92,20 +118,20 @@ export const useSendChatMessage = (
   });
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, attachment?: ChatAttachment) => {
       if (!ref) {
         return Promise.reject(
           new Error("Conversation message composition requires a chat."),
         );
       }
-      return mutateAsync({ ref, content });
+      return mutateAsync({ ref, content, attachment });
     },
     [mutateAsync, ref],
   );
 
   const sendMessageTo = useCallback(
-    (targetRef: ChatRef, content: string) =>
-      mutateAsync({ ref: targetRef, content }),
+    (targetRef: ChatRef, content: string, attachment?: ChatAttachment) =>
+      mutateAsync({ ref: targetRef, content, attachment }),
     [mutateAsync],
   );
 

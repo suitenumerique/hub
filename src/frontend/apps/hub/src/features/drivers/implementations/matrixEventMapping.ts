@@ -36,6 +36,7 @@ import {
   ChatUnread,
 } from "../types";
 import { initialsFor } from "./matrixIdentity";
+import type { ChatAttachment } from "../types";
 
 type ReactionRelations = NonNullable<
   ReturnType<Room["relations"]["getChildEventsForEvent"]>
@@ -580,7 +581,14 @@ export const matrixEventToChatMessage = (
   selfUserId: string | undefined,
 ): ChatMessage => {
   const isDeleted = event.isRedacted();
-  const content = event.getContent<{ body?: string; msgtype?: string }>();
+  const content = event.getContent<{
+    body?: string;
+    filename?: string;
+    msgtype?: string;
+    url?: string;
+    file?: ChatAttachment["encryptedFile"];
+    info?: { mimetype?: string; size?: number; w?: number; h?: number };
+  }>();
   const body = content.body;
   const eventId = event.getId() ?? "";
   const canEdit = Boolean(
@@ -607,6 +615,26 @@ export const matrixEventToChatMessage = (
     canEdit,
     canDelete,
   };
+  const mediaUrl = content.file?.url ?? content.url;
+  if (
+    !isDeleted &&
+    mediaUrl?.startsWith("mxc://") &&
+    ["m.image", "m.file", "m.video", "m.audio"].includes(content.msgtype ?? "")
+  ) {
+    message.attachment = {
+      name: content.filename ?? body ?? "File",
+      url: mediaUrl,
+      mimetype:
+        content.info?.mimetype ||
+        (content.msgtype === "m.image"
+          ? "image/unknown"
+          : "application/octet-stream"),
+      size: content.info?.size ?? 0,
+      width: content.info?.w,
+      height: content.info?.h,
+      encryptedFile: content.file,
+    };
+  }
   const thread = room.getThread(eventId);
   if (thread) {
     message.thread = {

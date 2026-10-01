@@ -71,9 +71,11 @@ import {
   StartChatThreadParams,
   ToggleChatReactionParams,
   ToggleChatThreadReactionParams,
+  UploadChatAttachmentParams,
 } from "../Driver";
 import {
   AccountId,
+  ChatAttachment,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -119,6 +121,11 @@ import {
 import { matrixDirectoryUserToChatUser } from "./matrixIdentity";
 import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
 import { MatrixConversationSearch } from "./MatrixConversationSearch";
+import {
+  attachmentMessageContent,
+  downloadMatrixAttachment,
+  uploadMatrixAttachment,
+} from "./matrixAttachments";
 import {
   clearStoredConversationSearch,
   MATRIX_USER_STORAGE_KEY,
@@ -256,6 +263,7 @@ export class MatrixDriver extends Driver {
     else await clearStoredConversationSearch(this.accountId, this.storageOwner);
   }
   override readonly supportsComposition: boolean = true;
+  override readonly supportsAttachments = true;
   override readonly supportsThreadComposition: boolean = true;
   override readonly supportsConversationHistoryRemoval: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
@@ -1540,8 +1548,8 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * Sends a text message as an `m.room.message` / `m.text` and resolves with the
-   * final `ChatMessage`. The id is the REAL server event id, so the composer
+   * Sends a text or attachment event and resolves with the final `ChatMessage`.
+   * The id is the REAL server event id, so the composer
    * hook replaces its optimistic bubble with a `/sync`-consistent message (see
    * {@link sendResponseToChatMessage}); the `/sync` echo of this same event is
    * suppressed as our own (see {@link isOwnEcho}), so it never double-renders.
@@ -1550,10 +1558,53 @@ export class MatrixDriver extends Driver {
   async sendChatMessage({
     chatId,
     content,
+    attachment,
   }: SendChatMessageParams): Promise<ChatMessage> {
     const { mx } = this.requireRoom("sendChatMessage", chatId);
-    const { event_id: eventId } = await mx.sendTextMessage(chatId, content);
-    return sendResponseToChatMessage(eventId, content);
+    this.checkAttachmentEncryption(mx, chatId, attachment);
+    const { event_id: eventId } = attachment
+      ? await mx.sendMessage(chatId, attachmentMessageContent(attachment))
+      : await mx.sendTextMessage(chatId, content);
+    return {
+      ...sendResponseToChatMessage(eventId, attachment?.name ?? content),
+      attachment,
+      canEdit: !attachment,
+    };
+  }
+
+  async uploadChatAttachment(
+    params: UploadChatAttachmentParams,
+  ): Promise<ChatAttachment> {
+    return uploadMatrixAttachment(
+      this.requireClient("uploadChatAttachment"),
+      params,
+    );
+  }
+
+  async getChatAttachment(
+    attachment: ChatAttachment,
+    signal?: AbortSignal,
+  ): Promise<Blob> {
+    return downloadMatrixAttachment(
+      this.requireClient("getChatAttachment"),
+      attachment,
+      signal,
+    );
+  }
+
+  private checkAttachmentEncryption(
+    mx: MatrixClient,
+    chatId: string,
+    attachment?: ChatAttachment,
+  ): void {
+    if (
+      attachment &&
+      mx.isRoomEncrypted(chatId) !== Boolean(attachment.encryptedFile)
+    ) {
+      throw new Error(
+        "The room's encryption changed. Please attach the file again.",
+      );
+    }
   }
 
   /** Sends an `m.replace` relation targeting the stable original event id. */
@@ -1630,6 +1681,7 @@ export class MatrixDriver extends Driver {
       content: "",
       reactions: [],
       isDeleted: true,
+      attachment: undefined,
       isEdited: false,
       canEdit: false,
       canDelete: false,
@@ -1649,6 +1701,7 @@ export class MatrixDriver extends Driver {
     chatId,
     threadId,
     content,
+    attachment,
   }: SendChatThreadReplyParams): Promise<ChatThreadMutationResult> {
     const { mx, room } = this.requireRoom("sendChatThreadReply", chatId);
     if (!threadId.startsWith("$")) {
@@ -1656,19 +1709,30 @@ export class MatrixDriver extends Driver {
         `MatrixDriver.sendChatThreadReply: invalid Matrix thread id "${threadId}".`,
       );
     }
-    const { event_id: eventId } = await mx.sendTextMessage(
-      chatId,
-      threadId,
-      content,
-    );
+    this.checkAttachmentEncryption(mx, chatId, attachment);
+    const { event_id: eventId } = attachment
+      ? await mx.sendMessage(
+          chatId,
+          threadId,
+          attachmentMessageContent(attachment),
+        )
+      : await mx.sendTextMessage(chatId, threadId, content);
     this.sentThreadReplyEventIds.add(eventId);
-    return this.buildThreadMutationResult(mx, room, threadId, eventId, content);
+    return this.buildThreadMutationResult(
+      mx,
+      room,
+      threadId,
+      eventId,
+      content,
+      attachment,
+    );
   }
 
   async startChatThread({
     chatId,
     rootMessageId,
     content,
+    attachment,
   }: StartChatThreadParams): Promise<ChatThreadMutationResult> {
     const { mx, room } = this.requireRoom("startChatThread", chatId);
     if (!rootMessageId.startsWith("$")) {
@@ -1681,11 +1745,14 @@ export class MatrixDriver extends Driver {
         `MatrixDriver.startChatThread: root message "${rootMessageId}" not found in room "${chatId}".`,
       );
     }
-    const { event_id: eventId } = await mx.sendTextMessage(
-      chatId,
-      rootMessageId,
-      content,
-    );
+    this.checkAttachmentEncryption(mx, chatId, attachment);
+    const { event_id: eventId } = attachment
+      ? await mx.sendMessage(
+          chatId,
+          rootMessageId,
+          attachmentMessageContent(attachment),
+        )
+      : await mx.sendTextMessage(chatId, rootMessageId, content);
     this.sentThreadReplyEventIds.add(eventId);
     return this.buildThreadMutationResult(
       mx,
@@ -1693,6 +1760,7 @@ export class MatrixDriver extends Driver {
       rootMessageId,
       eventId,
       content,
+      attachment,
     );
   }
 
@@ -1703,9 +1771,15 @@ export class MatrixDriver extends Driver {
     rootMessageId: string,
     replyEventId: string,
     content: string,
+    attachment?: ChatAttachment,
   ): ChatThreadMutationResult {
     const selfUserId = mx.getUserId() ?? undefined;
     const message = sendResponseToChatMessage(replyEventId, content);
+    if (attachment) {
+      message.attachment = attachment;
+      message.content = attachment.name;
+      message.canEdit = false;
+    }
     const liveThread = room.getThread(rootMessageId);
     const rootEvent =
       liveThread?.rootEvent ?? room.findEventById(rootMessageId);

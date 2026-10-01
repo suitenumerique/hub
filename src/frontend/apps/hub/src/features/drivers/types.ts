@@ -210,10 +210,34 @@ export type ChatThreadSummary = {
   unreadCount: number;
 };
 
+export type ChatAttachment = {
+  name: string;
+  mimetype: string;
+  size: number;
+  /** Matrix content URI; access tokens never enter message caches. */
+  url: string;
+  width?: number;
+  height?: number;
+  encryptedFile?: {
+    url: string;
+    key: {
+      alg: string;
+      key_ops: string[];
+      kty: string;
+      k: string;
+      ext: boolean;
+    };
+    iv: string;
+    hashes: Record<string, string>;
+    v: string;
+  };
+};
+
 export type ChatMessage = {
   id: string;
   authorId: string;
   content: string;
+  attachment?: ChatAttachment;
   /** ISO 8601 string. Use `formatChatTime` from @/features/chat/formatTimestamp for display. */
   timestamp: string;
   /** Aggregated reactions, in stable insertion order. Empty when none. */

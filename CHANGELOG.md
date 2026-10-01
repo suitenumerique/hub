@@ -8,6 +8,8 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Upload, preview and download local files in Matrix conversations.
+
 - 💄(frontend) Show the platform-specific search shortcut on sidebar hover.
 - ✨(frontend) Search joined conversations by name and current participants.
   Persist the search index separately and prepare small rooms progressively.

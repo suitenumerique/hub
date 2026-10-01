@@ -34,6 +34,7 @@ type DeleteContext = {
 const toTombstone = (message: ChatMessage): ChatMessage => ({
   ...message,
   content: "",
+  attachment: undefined,
   reactions: [],
   isDeleted: true,
   isEdited: false,
@@ -61,6 +62,7 @@ const rollbackOptimisticDeletion = (
     ? {
         ...current,
         content: previous.content,
+        attachment: previous.attachment,
         reactions:
           current.reactions === optimisticReactions
             ? previous.reactions

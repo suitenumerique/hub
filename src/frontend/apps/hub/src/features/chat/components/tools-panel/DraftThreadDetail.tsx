@@ -2,7 +2,11 @@ import { type InfiniteData, skipToken, useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatMessagesPage, ChatRef } from "@/features/drivers/types";
+import type {
+  ChatAttachment,
+  ChatMessagesPage,
+  ChatRef,
+} from "@/features/drivers/types";
 
 import type {
   DraftThreadRoot,
@@ -53,14 +57,19 @@ export const DraftThreadDetail = ({
   const message = cachedMessage ?? root.message;
   const { author } = root;
 
-  const handleSubmit = (content: string) =>
+  const handleSubmit = (
+    content: string,
+    attachment?: ChatAttachment,
+    isLast = true,
+  ) =>
     startThread(message, content, {
       rootAuthor: author,
+      attachment,
       // Stay on the draft until Matrix confirms the real root id. Opening the
       // optimistic id would enable a second composer that could send a reply to
       // a relation target which does not exist on the homeserver.
       onCreated: (threadId) => {
-        onCreated(threadId, { focusComposer: true });
+        if (isLast) onCreated(threadId, { focusComposer: true });
       },
     });
 
@@ -81,6 +90,7 @@ export const DraftThreadDetail = ({
                 chatRef={chatRef}
                 messageId={message.id}
                 content={message.content}
+                attachment={message.attachment}
                 timestamp={message.timestamp}
                 reactions={message.reactions}
                 isDeleted={message.isDeleted}
@@ -98,6 +108,7 @@ export const DraftThreadDetail = ({
                   chatRef={chatRef}
                   messageId={message.id}
                   content={message.content}
+                  attachment={message.attachment}
                   author={author}
                   timestamp={message.timestamp}
                   reactions={message.reactions}
@@ -117,6 +128,8 @@ export const DraftThreadDetail = ({
         <div className="hub__thread-detail__composer">
           <ChatComposer
             conversationId={root.message.id}
+            attachmentAccountId={chatRef.accountId}
+            attachmentChatId={chatRef.chatId}
             placeholder={
               isSupported
                 ? t("Answer")
