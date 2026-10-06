@@ -414,6 +414,7 @@ export const ChatComposer = ({
         className="hub__chat-composer"
         data-has-attachments={attachments.length > 0 || undefined}
         data-dragging={isDraggingFiles || undefined}
+        data-full={(isDraggingFiles && isAttachmentQueueFull) || undefined}
         onSubmit={handleSubmit}
       >
         <div className="hub__chat-composer__main">
@@ -525,8 +526,9 @@ export const ChatComposer = ({
           </Tooltip>
         </div>
         {isDraggingFiles && (
+          // A full queue would refuse the drop: say so before it happens.
           <div className="hub__chat-composer__dropzone" aria-hidden="true">
-            {t("Drop your files here")}
+            {isAttachmentQueueFull ? limitMessage : t("Drop your files here")}
           </div>
         )}
       </form>
