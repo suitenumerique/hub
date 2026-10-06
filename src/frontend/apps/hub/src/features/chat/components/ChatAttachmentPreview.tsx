@@ -3,6 +3,7 @@ import {
   FileIcon,
   FilePreview,
   type FilePreviewType,
+  getExtensionFromName,
   Icon,
   IconSize,
   Modal,
@@ -16,7 +17,11 @@ import { useTranslation } from "react-i18next";
 import type { ChatAttachment } from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
-import { isPreviewableAttachment, isSvgAttachment } from "../attachments";
+import {
+  formatFileSize,
+  isPreviewableAttachment,
+  isSvgAttachment,
+} from "../attachments";
 import type { PreviewedAttachment } from "../ChatAttachmentPreviewContext";
 import { useDownloadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useChatAttachmentUrl } from "../hooks/useChatAttachmentUrl";
@@ -89,6 +94,47 @@ const LoadingPreview = ({
   );
 };
 
+/** What the preview's information panel tells about the file. */
+const AttachmentDetails = ({
+  attachment,
+  senderName,
+  sentAt,
+}: Pick<PreviewedAttachment, "attachment" | "senderName" | "sentAt">) => {
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language;
+  const extension = getExtensionFromName(attachment.name);
+  const sentDate = new Date(sentAt);
+  const rows: [label: string, value: string][] = [
+    [t("Name"), attachment.name],
+    [t("Type"), extension ? extension.toUpperCase() : attachment.mimetype],
+  ];
+  if (attachment.size !== undefined) {
+    rows.push([t("Size"), formatFileSize(attachment.size, locale)]);
+  }
+  rows.push([t("Sent by"), senderName]);
+  if (!Number.isNaN(sentDate.getTime())) {
+    const format = new Intl.DateTimeFormat(locale, {
+      dateStyle: "long",
+      timeStyle: "short",
+    });
+    rows.push([t("Sent on"), format.format(sentDate)]);
+  }
+
+  return (
+    <section className="hub__attachment-details">
+      <h2 className="hub__attachment-details__title">{t("File details")}</h2>
+      <dl className="hub__attachment-details__list">
+        {rows.map(([label, value]) => (
+          <div key={label} className="hub__attachment-details__row">
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+};
+
 /**
  * The design-system file preview for one attachment, behind a loading view
  * until the bytes it needs are available.
@@ -97,6 +143,8 @@ export const ChatAttachmentPreview = ({
   accountId,
   messageId,
   attachment,
+  senderName,
+  sentAt,
   onClose,
 }: ChatAttachmentPreviewProps) => {
   const { t } = useTranslation();
@@ -148,6 +196,13 @@ export const ChatAttachmentPreview = ({
       openedFileId={messageId}
       onClose={onClose}
       handleDownloadFile={() => void download(attachment)}
+      sidebarContent={
+        <AttachmentDetails
+          attachment={attachment}
+          senderName={senderName}
+          sentAt={sentAt}
+        />
+      }
     />
   );
 };

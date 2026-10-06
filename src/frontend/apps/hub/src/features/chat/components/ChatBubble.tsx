@@ -238,6 +238,8 @@ export const ChatBubble = (props: ChatBubbleProps) => {
             accountId={chatRef.accountId}
             messageId={messageId}
             attachment={attachment}
+            senderName={rootAuthor?.name ?? t("You")}
+            sentAt={props.timestamp}
           />
           {props.content && (
             <span className="hub__chat-bubble__caption">{props.content}</span>
