@@ -1,3 +1,4 @@
+import { Button, Tooltip } from "@gouvfr-lasuite/ui-components";
 import {
   ArrowUp,
   AttachFile,
@@ -372,6 +373,9 @@ export const ChatComposer = ({
     };
   }, [canAttach, dropTargetRef]);
 
+  const attachLabel = t("Attach a file");
+  const submitLabel = editDraft ? t("Save changes") : t("Send message");
+
   const cancelEdit = useCallback(() => {
     setDraft("");
     void onTypingActivity?.(false);
@@ -471,28 +475,40 @@ export const ChatComposer = ({
                   event.currentTarget.value = "";
                 }}
               />
-              <button
-                type="button"
-                className="hub__chat-composer__attach"
-                disabled={!canAttach}
-                onClick={() => fileInputRef.current?.click()}
+              <Tooltip
+                content={attachLabel}
+                placement="top"
+                className="hub__delayed-tooltip"
               >
-                <AttachFile size={16} aria-hidden="true" />
-                <span className="hub__chat-composer__attach-label">
-                  {t("Attach a file")}
-                </span>
-              </button>
+                <Button
+                  type="button"
+                  size="nano"
+                  variant="tertiary"
+                  color="neutral"
+                  aria-label={attachLabel}
+                  icon={<AttachFile size={16} aria-hidden="true" />}
+                  disabled={!canAttach}
+                  onClick={() => fileInputRef.current?.click()}
+                />
+              </Tooltip>
             </>
           )}
-          <button
-            type="submit"
-            className="hub__chat-composer__send"
-            aria-label={editDraft ? t("Save changes") : t("Send message")}
-            disabled={!canSubmit}
-            aria-disabled={!canSubmit}
+          <Tooltip
+            content={submitLabel}
+            placement="top"
+            className="hub__delayed-tooltip"
           >
-            <ArrowUp size={16} />
-          </button>
+            <Button
+              type="submit"
+              size="nano"
+              variant="primary"
+              color="brand"
+              aria-label={submitLabel}
+              icon={<ArrowUp size={16} aria-hidden="true" />}
+              disabled={!canSubmit}
+              aria-disabled={!canSubmit}
+            />
+          </Tooltip>
         </div>
         {isDraggingFiles && (
           <div className="hub__chat-composer__dropzone" aria-hidden="true">

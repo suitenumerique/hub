@@ -129,6 +129,21 @@
   }
 }
 
+// The design-system tooltip opens at once: wait before showing it so a
+// pointer passing over the composer actions does not flash it. Closing hides
+// it at once, including before it ever showed. Positioned inside the
+// composer, it keeps its own width (up to the design-system maximum) rather
+// than shrinking against the composer's right edge.
+.c__tooltip.hub__delayed-tooltip {
+  width: max-content;
+  animation: slide var(--animation-duration) 0.5s both;
+
+  &.c__tooltip--exiting {
+    animation: none;
+    visibility: hidden;
+  }
+}
+
 .hub__chat-composer {
   position: relative;
   display: flex;
@@ -140,7 +155,6 @@
   border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
   border-radius: var(--c--globals--spacings--xs, 8px);
   font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
-  overflow: clip;
 
   // Queued files sit above the text; the actions then align with its line.
   &[data-has-attachments] {
@@ -233,83 +247,5 @@
     display: inline-flex;
     align-items: center;
     gap: var(--c--globals--spacings--xs, 8px);
-  }
-
-  &__attach {
-    appearance: none;
-    background: transparent;
-    border: 0;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--c--globals--spacings--xxxs, 4px);
-    height: 24px;
-    padding: 0 var(--c--globals--spacings--xxxs, 4px);
-    border-radius: 4px;
-    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 16px;
-
-    &:hover {
-      background: var(
-        --c--contextuals--background--semantic--overlay--primary,
-        rgba(24, 27, 36, 0.05)
-      );
-    }
-
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.55;
-
-      &:hover {
-        background: transparent;
-      }
-    }
-
-    &:focus-visible {
-      outline: 2px solid
-        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
-      outline-offset: 2px;
-    }
-  }
-
-  &__send {
-    appearance: none;
-    border: 0;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 24px;
-    min-width: 24px;
-    padding: 0 var(--c--globals--spacings--xxxs, 4px);
-    border-radius: 4px;
-    background: var(
-      --c--contextuals--background--semantic--brand--primary,
-      #3e5de7
-    );
-    color: var(--c--contextuals--content--semantic--neutral--on-neutral, #fff);
-
-    .material-icons {
-      font-size: 16px;
-    }
-
-    &:hover {
-      filter: brightness(1.08);
-    }
-
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.55;
-      filter: none;
-    }
-
-    &:focus-visible {
-      outline: 2px solid
-        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
-      outline-offset: 2px;
-    }
   }
 }
