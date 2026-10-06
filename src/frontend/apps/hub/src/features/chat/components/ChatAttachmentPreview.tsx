@@ -1,20 +1,11 @@
 import {
-  Button,
-  FileIcon,
   FilePreview,
   type FilePreviewType,
   getExtensionFromName,
-  Icon,
-  IconSize,
-  Modal,
-  ModalSize,
-  removeFileExtension,
-  Spinner,
 } from "@gouvfr-lasuite/ui-components";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatAttachment } from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
 import {
@@ -28,70 +19,6 @@ import { useChatAttachmentUrl } from "../hooks/useChatAttachmentUrl";
 
 type ChatAttachmentPreviewProps = PreviewedAttachment & {
   onClose: () => void;
-};
-
-/**
- * Opens with the click, laid out like the design-system preview it hands
- * over to, so a slow download never opens a dialog later on its own. Closing
- * it cancels the download: its query loses its only observer.
- */
-const LoadingPreview = ({
-  attachment,
-  onClose,
-}: {
-  attachment: ChatAttachment;
-  onClose: () => void;
-}) => {
-  const { t } = useTranslation();
-  return (
-    <Modal
-      isOpen
-      onClose={onClose}
-      size={ModalSize.FULL}
-      hideCloseButton
-      aria-label={attachment.name}
-    >
-      <div className="file-preview__container">
-        <div className="file-preview__header">
-          <div className="file-preview__header__content">
-            <div className="file-preview__header__content__left">
-              <Button
-                variant="tertiary"
-                size="small"
-                aria-label={t("Close")}
-                icon={<Icon name="close" />}
-                onClick={onClose}
-              />
-              <div className="file-preview__title-wrapper">
-                <FileIcon
-                  file={{
-                    mimetype: attachment.mimetype,
-                    title: attachment.name,
-                  }}
-                  type="mini"
-                  size={IconSize.SMALL}
-                />
-                <h1 className="file-preview__title">
-                  {removeFileExtension(attachment.name)}
-                </h1>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="file-preview__content">
-          <div
-            className="file-preview__main hub__attachment-preview-loading"
-            role="status"
-          >
-            <Spinner size="xl" />
-            <span className="c__offscreen">
-              {t("Loading {{name}}", { name: attachment.name })}
-            </span>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
 };
 
 /** What the preview's information panel tells about the file. */
@@ -136,8 +63,11 @@ const AttachmentDetails = ({
 };
 
 /**
- * The design-system file preview for one attachment, behind a loading view
- * until the bytes it needs are available.
+ * The design-system file preview for one attachment, opened once the bytes
+ * it needs are downloaded: until then nothing shows but the spinner of its
+ * message (the timeline watches the same download), so no loading dialog
+ * hands over to the preview. Escape, another file or another conversation
+ * cancels the wait — the download loses its only observer.
  */
 export const ChatAttachmentPreview = ({
   accountId,
@@ -160,13 +90,28 @@ export const ChatAttachmentPreview = ({
     isPreviewable,
   );
   const previewUrl = original.url;
+  const isReady = !isPreviewable || previewUrl !== undefined;
 
   useEffect(() => {
-    if (original.isError && !previewUrl) {
+    if (original.isError && !isReady) {
       notify.error(t("The file could not be opened. Please try again."));
       onClose();
     }
-  }, [onClose, original.isError, previewUrl, t]);
+  }, [isReady, onClose, original.isError, t]);
+
+  // Nothing is on screen yet to close: Escape cancels the wait.
+  useEffect(() => {
+    if (isReady) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isReady, onClose]);
 
   const files = useMemo<FilePreviewType[]>(
     () => [
@@ -186,8 +131,8 @@ export const ChatAttachmentPreview = ({
     [attachment, messageId, previewUrl],
   );
 
-  if (isPreviewable && !previewUrl) {
-    return <LoadingPreview attachment={attachment} onClose={onClose} />;
+  if (!isReady) {
+    return null;
   }
   return (
     <FilePreview

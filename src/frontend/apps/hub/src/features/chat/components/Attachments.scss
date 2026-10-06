@@ -399,15 +399,7 @@
   }
 }
 
-// --- File preview, while the file downloads ------------------------------
-
-.hub__attachment-preview-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-// --- File preview: information panel -------------------------------------
+// --- File preview: information panel and arrows --------------------------
 
 .hub__attachment-details {
   display: flex;
