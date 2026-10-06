@@ -461,7 +461,8 @@ export const ChatComposer = ({
           </div>
         </div>
         <div className="hub__chat-composer__actions">
-          {onSendAttachment && (
+          {/* Attaching makes no sense while editing: the button leaves. */}
+          {showsAttachments && (
             <>
               <input
                 ref={fileInputRef}
