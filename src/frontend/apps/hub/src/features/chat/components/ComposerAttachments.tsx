@@ -47,91 +47,128 @@ const RemoveButton = ({
   );
 };
 
-const PendingImage = ({
+const PendingImageState = ({
   item,
-  onRemove,
   onRetry,
   formatProgress,
   compact,
-}: ComposerAttachmentProps) => {
+}: Omit<ComposerAttachmentProps, "onRemove">) => {
   const { t } = useTranslation();
-  return (
-    <li
-      className="hub__composer-attachment hub__composer-attachment--image"
-      data-status={item.status}
-    >
-      {item.status === "ready" && item.previewUrl ? (
-        <img
-          className="hub__composer-attachment__thumbnail"
-          src={item.previewUrl}
-          alt={item.file.name}
-          draggable={false}
+  if (item.status === "ready" && item.previewUrl) {
+    return (
+      <img
+        className="hub__composer-attachment__thumbnail"
+        src={item.previewUrl}
+        alt={item.file.name}
+        draggable={false}
+      />
+    );
+  }
+  if (compact && item.status === "failed") {
+    // No room for the wording in a small tile: icons only.
+    return (
+      <span className="hub__composer-attachment__state">
+        <WarningFilled
+          className="hub__composer-attachment__error"
+          size={16}
+          aria-label={t("Upload failed")}
         />
-      ) : compact && item.status === "failed" ? (
-        // No room for the wording in a small tile: icons only.
-        <span className="hub__composer-attachment__state">
-          <WarningFilled
-            className="hub__composer-attachment__error"
-            size={16}
-            aria-label={t("Upload failed")}
-          />
-          <button
-            type="button"
-            className="hub__composer-attachment__icon-button"
-            aria-label={t("Retry uploading {{name}}", { name: item.file.name })}
-            onClick={() => onRetry(item.id)}
-          >
-            <Retry size={16} aria-hidden="true" />
-          </button>
-        </span>
-      ) : compact ? (
-        <span className="hub__composer-attachment__state">
-          <Loader
-            className="hub__spinning-icon"
-            size={16}
-            aria-label={t("Uploading")}
-          />
-          {item.status === "uploading" && item.progress > 0 && (
-            <span className="hub__composer-attachment__progress">
-              {formatProgress(item.progress)}
-            </span>
-          )}
-        </span>
-      ) : item.status === "failed" ? (
-        <span className="hub__composer-attachment__state">
-          <span className="hub__composer-attachment__error">
-            <WarningFilled size={16} aria-hidden="true" />
-            {t("Upload failed")}
+        <button
+          type="button"
+          className="hub__composer-attachment__icon-button"
+          aria-label={t("Retry uploading {{name}}", { name: item.file.name })}
+          onClick={() => onRetry(item.id)}
+        >
+          <Retry size={16} aria-hidden="true" />
+        </button>
+      </span>
+    );
+  }
+  if (compact) {
+    return (
+      <span className="hub__composer-attachment__state">
+        <Loader
+          className="hub__spinning-icon"
+          size={16}
+          aria-label={t("Uploading")}
+        />
+        {item.status === "uploading" && item.progress > 0 && (
+          <span className="hub__composer-attachment__progress">
+            {formatProgress(item.progress)}
           </span>
-          <button
-            type="button"
-            className="hub__composer-attachment__retry"
-            aria-label={t("Retry uploading {{name}}", { name: item.file.name })}
-            onClick={() => onRetry(item.id)}
-          >
-            <Retry size={16} aria-hidden="true" />
-            {t("Retry")}
-          </button>
+        )}
+      </span>
+    );
+  }
+  if (item.status === "failed") {
+    return (
+      <span className="hub__composer-attachment__state">
+        <span className="hub__composer-attachment__error">
+          <WarningFilled size={16} aria-hidden="true" />
+          {t("Upload failed")}
         </span>
-      ) : (
-        <span className="hub__composer-attachment__state">
-          <span className="hub__composer-attachment__uploading">
-            <Loader
-              className="hub__spinning-icon"
-              size={16}
-              aria-hidden="true"
-            />
-            {t("Uploading")}
-            {item.status === "uploading" && item.progress > 0 && (
-              <span className="hub__composer-attachment__progress">
-                {formatProgress(item.progress)}
-              </span>
-            )}
+        <button
+          type="button"
+          className="hub__composer-attachment__retry"
+          aria-label={t("Retry uploading {{name}}", { name: item.file.name })}
+          onClick={() => onRetry(item.id)}
+        >
+          <Retry size={16} aria-hidden="true" />
+          {t("Retry")}
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="hub__composer-attachment__state">
+      <span className="hub__composer-attachment__uploading">
+        <Loader className="hub__spinning-icon" size={16} aria-hidden="true" />
+        {t("Uploading")}
+        {item.status === "uploading" && item.progress > 0 && (
+          <span className="hub__composer-attachment__progress">
+            {formatProgress(item.progress)}
           </span>
-        </span>
-      )}
-      <RemoveButton item={item} onRemove={onRemove} />
-    </li>
+        )}
+      </span>
+    </span>
+  );
+};
+
+const PendingImage = ({ onRemove, ...props }: ComposerAttachmentProps) => (
+  <li
+    className="hub__composer-attachment hub__composer-attachment--image"
+    data-status={props.item.status}
+  >
+    <PendingImageState {...props} />
+    <RemoveButton item={props.item} onRemove={onRemove} />
+  </li>
+);
+
+const PendingFileIcon = ({ item }: Pick<ComposerAttachmentProps, "item">) => {
+  const { t } = useTranslation();
+  if (item.status === "uploading") {
+    return (
+      <Loader className="hub__spinning-icon" size={16} aria-hidden="true" />
+    );
+  }
+  if (item.status === "failed") {
+    return (
+      <WarningFilled
+        className="hub__composer-attachment__error"
+        size={16}
+        aria-label={t("Upload failed")}
+      />
+    );
+  }
+  return (
+    <FileIcon
+      file={{
+        mimetype: item.file.type || "application/octet-stream",
+        title: item.file.name,
+      }}
+      type="mini"
+      size={IconSize.SMALL}
+    />
   );
 };
 
@@ -147,24 +184,7 @@ const PendingFile = ({
       className="hub__composer-attachment hub__composer-attachment--file"
       data-status={item.status}
     >
-      {item.status === "uploading" ? (
-        <Loader className="hub__spinning-icon" size={16} aria-hidden="true" />
-      ) : item.status === "failed" ? (
-        <WarningFilled
-          className="hub__composer-attachment__error"
-          size={16}
-          aria-label={t("Upload failed")}
-        />
-      ) : (
-        <FileIcon
-          file={{
-            mimetype: item.file.type || "application/octet-stream",
-            title: item.file.name,
-          }}
-          type="mini"
-          size={IconSize.SMALL}
-        />
-      )}
+      <PendingFileIcon item={item} />
       <span className="hub__composer-attachment__name" title={item.file.name}>
         {item.file.name}
       </span>
@@ -226,17 +246,17 @@ export const ComposerAttachments = ({
     (item) => item.status === "uploading",
   ).length;
   const failedCount = items.filter((item) => item.status === "failed").length;
-  const status = [
+  const uploadingStatus =
     uploadingCount === 1
       ? t("Uploading 1 file")
-      : uploadingCount > 1
-        ? t("Uploading {{count}} files", { count: uploadingCount })
-        : "",
+      : t("Uploading {{count}} files", { count: uploadingCount });
+  const failedStatus =
     failedCount === 1
       ? t("1 file could not be uploaded")
-      : failedCount > 1
-        ? t("{{count}} files could not be uploaded", { count: failedCount })
-        : "",
+      : t("{{count}} files could not be uploaded", { count: failedCount });
+  const status = [
+    uploadingCount > 0 ? uploadingStatus : "",
+    failedCount > 0 ? failedStatus : "",
     limitNotice ?? "",
   ]
     .filter(Boolean)
