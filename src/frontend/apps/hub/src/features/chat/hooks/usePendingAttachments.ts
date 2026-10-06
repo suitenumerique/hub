@@ -5,7 +5,11 @@ import { ChatAttachmentTooLargeError } from "@/features/drivers/Driver";
 import type { ChatAttachment } from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
-import { formatFileSize, isInlineImageType } from "../attachments";
+import {
+  formatFileSize,
+  isInlineImageType,
+  MAX_PENDING_ATTACHMENTS,
+} from "../attachments";
 
 import type { UploadChatAttachment } from "./useChatAttachmentActions";
 
@@ -35,6 +39,7 @@ let pendingAttachmentId = 0;
 
 export type UsePendingAttachmentsResult = {
   items: PendingAttachment[];
+  /** Queues files up to `MAX_PENDING_ATTACHMENTS`; the rest are refused. */
   addFiles: (files: Iterable<File>) => void;
   /** Drops one file, cancelling its upload when still in flight. */
   remove: (id: string) => void;
@@ -42,6 +47,10 @@ export type UsePendingAttachmentsResult = {
   retry: (id: string) => void;
   /** Drops every file, e.g. when the composer switches conversation. */
   clear: () => void;
+  /** The queue holds `MAX_PENDING_ATTACHMENTS` files: no more can be added. */
+  isFull: boolean;
+  /** The last files added did not all fit; cleared once one leaves. */
+  hasRefusedFiles: boolean;
 };
 
 /**
@@ -53,6 +62,7 @@ export const usePendingAttachments = (
 ): UsePendingAttachmentsResult => {
   const { t, i18n } = useTranslation();
   const [items, setItems] = useState<PendingAttachment[]>([]);
+  const [hasRefusedFiles, setHasRefusedFiles] = useState(false);
   const controllers = useRef(new Map<string, AbortController>());
   const previewUrls = useRef(new Map<string, string>());
 
@@ -70,6 +80,7 @@ export const usePendingAttachments = (
     (id: string) => {
       dispose(id);
       setItems((current) => current.filter((item) => item.id !== id));
+      setHasRefusedFiles(false);
     },
     [dispose],
   );
@@ -79,6 +90,7 @@ export const usePendingAttachments = (
       dispose,
     );
     setItems((current) => (current.length > 0 ? [] : current));
+    setHasRefusedFiles(false);
   }, [dispose]);
 
   // Abort uploads and release thumbnails when the composer unmounts.
@@ -167,7 +179,13 @@ export const usePendingAttachments = (
       if (!upload) {
         return;
       }
-      for (const file of files) {
+      const added = Array.from(files);
+      const accepted = added.slice(
+        0,
+        Math.max(0, MAX_PENDING_ATTACHMENTS - items.length),
+      );
+      setHasRefusedFiles(accepted.length < added.length);
+      for (const file of accepted) {
         pendingAttachmentId += 1;
         const item = {
           id: `pending-attachment-${pendingAttachmentId}`,
@@ -181,7 +199,7 @@ export const usePendingAttachments = (
         startUpload(item);
       }
     },
-    [startUpload, upload],
+    [items.length, startUpload, upload],
   );
 
   const retry = useCallback(
@@ -203,5 +221,13 @@ export const usePendingAttachments = (
     [items, startUpload],
   );
 
-  return { items, addFiles, remove, retry, clear };
+  return {
+    items,
+    addFiles,
+    remove,
+    retry,
+    clear,
+    isFull: items.length >= MAX_PENDING_ATTACHMENTS,
+    hasRefusedFiles,
+  };
 };
