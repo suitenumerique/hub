@@ -73,6 +73,7 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(backend) Ignore the unsupported document_id filter on the users list #71
 - 🐛(frontend) Require notification permission before playing 
   notification sounds.
 - 🐛(frontend) Keep the toolbar open beside short messages after hovering
