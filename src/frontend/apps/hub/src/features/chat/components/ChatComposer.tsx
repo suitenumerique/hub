@@ -513,7 +513,7 @@ export const ChatComposer = ({
         </div>
         {isDraggingFiles && (
           <div className="hub__chat-composer__dropzone" aria-hidden="true">
-            {t("Drop your file here")}
+            {t("Drop your files here")}
           </div>
         )}
       </form>
