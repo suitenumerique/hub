@@ -345,24 +345,26 @@ export class MatrixSecurity {
         });
       }
       const matching = backup.matching;
-      // SAS completion alone is insufficient for first use: signing secrets and
-      // the key matching the trusted, active backup must also have arrived.
+      // SAS completion alone is insufficient for first use: signing secrets
+      // must have arrived and new keys must reach the trusted backup. Its
+      // decryption key only serves history recovery, so it never gates sending:
+      // a backup replaced while this device was unverified is not re-shared.
       const ready =
-        verified &&
-        haveSigningSecrets &&
-        matching &&
-        !!version &&
-        backup.state === "active";
+        verified && haveSigningSecrets && !!version && backup.uploading;
       if (ready) this.operational = true;
       this.inspectionFailure = undefined;
       this.publish({
         issue: undefined,
-        secrets: haveSigningSecrets && matching ? "ready" : "waiting",
+        // A stale key is not awaited: no other device will send a new one.
+        secrets:
+          haveSigningSecrets && (matching || backup.state === "stale-key")
+            ? "ready"
+            : "waiting",
         backupVersion: version,
         backup: backup.state,
         canSendEncrypted: verified && this.operational,
       });
-      if (ready && this.restoreRequested && !this.restoring)
+      if (ready && matching && this.restoreRequested && !this.restoring)
         this.restore(version!);
     } catch (cause) {
       if (this.stopped || revision !== this.identityRevision) return;

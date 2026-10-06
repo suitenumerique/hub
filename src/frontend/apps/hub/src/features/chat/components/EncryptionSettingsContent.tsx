@@ -88,6 +88,8 @@ export const EncryptionSettingsContent = ({
       return { type: "neutral", label: t("Checking…") };
     if (security.backup === "waiting-key")
       return { type: "neutral", label: t("Waiting for keys") };
+    if (security.backup === "stale-key")
+      return { type: "warning", label: t("History unavailable") };
     return { type: "warning", label: t("Needs attention") };
   };
   const deviceStatus = getDeviceStatus();
@@ -147,6 +149,10 @@ export const EncryptionSettingsContent = ({
               "Keep {{client}} open and unlocked while the backup key is shared with this browser.",
               { client: clientLabel },
             );
+      case "stale-key":
+        return t(
+          "Your backup was replaced on another device and this browser cannot read it. New messages are still backed up, but earlier history cannot be recovered here.",
+        );
       case "unavailable":
         return t(
           "The backup is temporarily unavailable. Keys already on this device are kept; try again when the connection is restored.",

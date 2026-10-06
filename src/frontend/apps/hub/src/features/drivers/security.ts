@@ -12,11 +12,16 @@ export type ChatSecuritySnapshot = {
     | "verified"
     | "changed";
   secrets: "waiting" | "delayed" | "ready";
+  /**
+   * `stale-key`: this device only holds the key of a replaced backup. New keys
+   * are still backed up, but history cannot be recovered on this device.
+   */
   backup:
     | "checking"
     | "missing"
     | "untrusted"
     | "waiting-key"
+    | "stale-key"
     | "active"
     | "unavailable";
   backupVersion?: string;
