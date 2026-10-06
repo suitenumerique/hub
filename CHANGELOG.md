@@ -73,6 +73,7 @@ and this project adheres to
 
 ### Fixed
 
+- ✅(backend) Make the users API tests deterministic #70
 - 🐛(frontend) Require notification permission before playing 
   notification sounds.
 - 🐛(frontend) Keep the toolbar open beside short messages after hovering
