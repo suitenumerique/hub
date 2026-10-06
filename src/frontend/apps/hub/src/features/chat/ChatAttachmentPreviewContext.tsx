@@ -6,6 +6,10 @@ export type PreviewedAttachment = {
   accountId: AccountId;
   messageId: string;
   attachment: ChatAttachment;
+  /** Display name of whoever posted the file, shown in its details. */
+  senderName: string;
+  /** ISO timestamp of the message carrying the file. */
+  sentAt: string;
 };
 
 /**
