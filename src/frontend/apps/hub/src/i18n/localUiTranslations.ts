@@ -107,6 +107,9 @@ export const localUiTranslations: Record<string, Record<string, string>> = {
     Active: "Active",
     "Pending verification": "Après vérification",
     "Waiting for keys": "En attente des clés",
+    "History unavailable": "Historique indisponible",
+    "Your backup was replaced on another device and this browser cannot read it. New messages are still backed up, but earlier history cannot be recovered here.":
+      "Votre sauvegarde a été remplacée sur un autre appareil et ce navigateur ne peut pas la lire. Les nouveaux messages restent sauvegardés, mais l’historique antérieur ne peut pas être récupéré ici.",
     "Needs attention": "Action nécessaire",
     "Only messages whose keys are in the backup can be recovered. Keep the recovery key provided by {{client}} in a safe place.":
       "Seuls les messages dont les clés ont été sauvegardées pourront être retrouvés. Conservez en lieu sûr la clé de récupération fournie par {{client}}.",

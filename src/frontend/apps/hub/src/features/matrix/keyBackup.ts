@@ -8,6 +8,8 @@ type BackupInspection = {
   version?: string;
   state: ChatSecuritySnapshot["backup"];
   matching: boolean;
+  /** New room keys of this device are uploaded to the trusted backup. */
+  uploading: boolean;
 };
 
 /** Cache public metadata only; decryption keys remain owned by Rust Crypto. */
@@ -34,7 +36,8 @@ export class MatrixKeyBackup {
     }
     assertCurrent();
     if (this.failure) throw this.failure.cause;
-    if (!this.info) return { state: "missing", matching: false };
+    if (!this.info)
+      return { state: "missing", matching: false, uploading: false };
     const version = this.info.version;
     if (!version) throw new Error("Backup response has no version");
 
@@ -56,12 +59,18 @@ export class MatrixKeyBackup {
     }
     let state: BackupInspection["state"] = "unavailable";
     if (!trust.trusted) state = "untrusted";
-    else if (!trust.matchesDecryptionKey) state = "waiting-key";
-    else if (active === version) state = "active";
+    else if (!trust.matchesDecryptionKey) {
+      // The SDK asks other devices for a backup key only when none is stored:
+      // a key left from a replaced backup prevents requesting the new one.
+      const storedKey = await crypto.getSessionBackupPrivateKey();
+      assertCurrent();
+      state = storedKey ? "stale-key" : "waiting-key";
+    } else if (active === version) state = "active";
     return {
       version,
       state,
       matching: trust.trusted && trust.matchesDecryptionKey,
+      uploading: trust.trusted && active === version,
     };
   }
 
