@@ -52,6 +52,11 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Refine chat attachments after QA.
+  Show the attach button as an icon, with tooltips on attach and send.
+  Keep queued files on one scrolling row and cap them at 20 per message.
+  Show smaller inline images and the file details in the preview.
+  Open the preview once the file is downloaded and close it on deletion.
 - 🔧(docker) Replace MinIO with RustFS for development and CI storage
 - 💄(frontend) Hide the unavailable thread follow control
 - ✨(frontend) Expand the message composer up to eight lines

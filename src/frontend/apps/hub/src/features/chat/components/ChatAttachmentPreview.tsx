@@ -6,6 +6,7 @@ import {
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+import type { ChatRef } from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
 import {
@@ -16,8 +17,10 @@ import {
 import type { PreviewedAttachment } from "../ChatAttachmentPreviewContext";
 import { useDownloadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useChatAttachmentUrl } from "../hooks/useChatAttachmentUrl";
+import { useIsChatMessageDeleted } from "../hooks/useIsChatMessageDeleted";
 
 type ChatAttachmentPreviewProps = PreviewedAttachment & {
+  chatRef: ChatRef;
   onClose: () => void;
 };
 
@@ -67,14 +70,17 @@ const AttachmentDetails = ({
  * it needs are downloaded: until then nothing shows but the spinner of its
  * message (the timeline watches the same download), so no loading dialog
  * hands over to the preview. Escape, another file or another conversation
- * cancels the wait — the download loses its only observer.
+ * cancels the wait — the download loses its only observer. The preview
+ * closes should the message be deleted meanwhile.
  */
 export const ChatAttachmentPreview = ({
+  chatRef,
   accountId,
   messageId,
   attachment,
   senderName,
   sentAt,
+  threadId,
   onClose,
 }: ChatAttachmentPreviewProps) => {
   const { t } = useTranslation();
@@ -91,6 +97,13 @@ export const ChatAttachmentPreview = ({
   );
   const previewUrl = original.url;
   const isReady = !isPreviewable || previewUrl !== undefined;
+  const isDeleted = useIsChatMessageDeleted(chatRef, threadId, messageId);
+
+  useEffect(() => {
+    if (isDeleted) {
+      onClose();
+    }
+  }, [isDeleted, onClose]);
 
   useEffect(() => {
     if (original.isError && !isReady) {
@@ -131,7 +144,7 @@ export const ChatAttachmentPreview = ({
     [attachment, messageId, previewUrl],
   );
 
-  if (!isReady) {
+  if (!isReady || isDeleted) {
     return null;
   }
   return (

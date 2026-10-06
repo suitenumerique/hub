@@ -393,10 +393,11 @@ export const ChatView = ({
               )}
             </div>
           </div>
-          {previewedAttachment && (
+          {previewedAttachment && chatRef && (
             <ChatAttachmentPreview
               // A new file opens with fresh loading and error state.
               key={`${previewedAttachment.accountId}:${previewedAttachment.messageId}`}
+              chatRef={chatRef}
               {...previewedAttachment}
               onClose={closeAttachmentPreview}
             />

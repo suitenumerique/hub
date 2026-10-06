@@ -240,6 +240,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
             attachment={attachment}
             senderName={rootAuthor?.name ?? t("You")}
             sentAt={props.timestamp}
+            threadId={threadId}
           />
           {props.content && (
             <span className="hub__chat-bubble__caption">{props.content}</span>
