@@ -5,7 +5,7 @@ import {
   WarningFilled,
   XMark,
 } from "@gouvfr-lasuite/ui-components/icons";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { PendingAttachment } from "../hooks/usePendingAttachments";
@@ -22,6 +22,8 @@ type ComposerAttachmentProps = {
   onRetry: (id: string) => void;
   /** Localized "42 %"-style upload progress. */
   formatProgress: (fraction: number) => string;
+  /** Several files are queued: the tile shrinks to a small square. */
+  compact: boolean;
 };
 
 const RemoveButton = ({
@@ -48,6 +50,7 @@ const PendingImage = ({
   onRemove,
   onRetry,
   formatProgress,
+  compact,
 }: ComposerAttachmentProps) => {
   const { t } = useTranslation();
   return (
@@ -62,6 +65,36 @@ const PendingImage = ({
           alt={item.file.name}
           draggable={false}
         />
+      ) : compact && item.status === "failed" ? (
+        // No room for the wording in a small tile: icons only.
+        <span className="hub__composer-attachment__state">
+          <WarningFilled
+            className="hub__composer-attachment__error"
+            size={16}
+            aria-label={t("Upload failed")}
+          />
+          <button
+            type="button"
+            className="hub__composer-attachment__icon-button"
+            aria-label={t("Retry uploading {{name}}", { name: item.file.name })}
+            onClick={() => onRetry(item.id)}
+          >
+            <Retry size={16} aria-hidden="true" />
+          </button>
+        </span>
+      ) : compact ? (
+        <span className="hub__composer-attachment__state">
+          <Loader
+            className="hub__spinning-icon"
+            size={16}
+            aria-label={t("Uploading")}
+          />
+          {item.status === "uploading" && item.progress > 0 && (
+            <span className="hub__composer-attachment__progress">
+              {formatProgress(item.progress)}
+            </span>
+          )}
+        </span>
       ) : item.status === "failed" ? (
         <span className="hub__composer-attachment__state">
           <span className="hub__composer-attachment__error">
@@ -154,9 +187,11 @@ const PendingFile = ({
 };
 
 /**
- * Files queued in the composer before sending: image thumbnails on a first
- * row, other files as chips below. Hovering one reveals its remove button; a
- * failed upload shows its retry action.
+ * Files queued in the composer before sending, in the order they will be
+ * sent: image thumbnails and file chips on one row that scrolls sideways, so
+ * the text field always stays in view. Past one file, thumbnails shrink to
+ * small squares. Hovering one reveals its remove button; a failed upload
+ * shows its retry action.
  */
 export const ComposerAttachments = ({
   items,
@@ -164,6 +199,8 @@ export const ComposerAttachments = ({
   onRetry,
 }: ComposerAttachmentsProps) => {
   const { t, i18n } = useTranslation();
+  const listRef = useRef<HTMLUListElement>(null);
+  const previousCount = useRef(items.length);
   const language = i18n.resolvedLanguage ?? i18n.language;
   const formatProgress = useMemo(() => {
     const format = new Intl.NumberFormat(language, {
@@ -172,8 +209,16 @@ export const ComposerAttachments = ({
     });
     return (fraction: number) => format.format(fraction);
   }, [language]);
-  const images = items.filter((item) => item.isImage);
-  const files = items.filter((item) => !item.isImage);
+
+  // Bring the files just added into view, at the end of the row.
+  useEffect(() => {
+    const list = listRef.current;
+    if (list && items.length > previousCount.current) {
+      list.scrollLeft = list.scrollWidth;
+    }
+    previousCount.current = items.length;
+  }, [items.length]);
+
   const uploadingCount = items.filter(
     (item) => item.status === "uploading",
   ).length;
@@ -197,29 +242,24 @@ export const ComposerAttachments = ({
     return null;
   }
 
-  const itemProps = { onRemove, onRetry, formatProgress };
+  const compact = items.length > 1;
+  const itemProps = { onRemove, onRetry, formatProgress, compact };
   return (
     <div className="hub__composer-attachments">
-      {images.length > 0 && (
-        <ul
-          className="hub__composer-attachments__list"
-          aria-label={t("Attached images")}
-        >
-          {images.map((item) => (
+      <ul
+        ref={listRef}
+        className="hub__composer-attachments__list"
+        data-compact={compact || undefined}
+        aria-label={t("Attached files")}
+      >
+        {items.map((item) =>
+          item.isImage ? (
             <PendingImage key={item.id} item={item} {...itemProps} />
-          ))}
-        </ul>
-      )}
-      {files.length > 0 && (
-        <ul
-          className="hub__composer-attachments__list"
-          aria-label={t("Attached files")}
-        >
-          {files.map((item) => (
+          ) : (
             <PendingFile key={item.id} item={item} {...itemProps} />
-          ))}
-        </ul>
-      )}
+          ),
+        )}
+      </ul>
       <span className="c__offscreen" role="status">
         {status}
       </span>
