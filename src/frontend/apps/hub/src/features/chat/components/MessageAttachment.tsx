@@ -10,9 +10,13 @@ import { useChatAttachmentPreview } from "../ChatAttachmentPreviewContext";
 import { chatKeys } from "../chatKeys";
 import { useChatAttachmentUrl } from "../hooks/useChatAttachmentUrl";
 
-/** Inline images fit in this box; the height follows the image ratio. */
-const INLINE_IMAGE_MAX_WIDTH = 380;
-const INLINE_IMAGE_MAX_HEIGHT = 480;
+/**
+ * Inline images fit in this box; the height follows the image ratio. Low
+ * enough that a tall image does not fill the conversation, wide enough (the
+ * bubble's own limit) that a landscape one stays legible.
+ */
+const INLINE_IMAGE_MAX_WIDTH = 500;
+const INLINE_IMAGE_MAX_HEIGHT = 332;
 /** Box reserved for an image whose sender did not declare its size. */
 const UNKNOWN_IMAGE_SIZE = { width: 380, height: 214 };
 
@@ -53,7 +57,7 @@ type MessageAttachmentProps = {
 };
 
 /**
- * File carried by a message: images render inline (at most 380px wide), other
+ * File carried by a message: images render inline (at most 500x332), other
  * files as a card with their type icon. Both open the design-system preview,
  * owned by `ChatView` (see `ChatAttachmentPreviewContext`).
  */
