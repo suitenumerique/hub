@@ -14,6 +14,8 @@ type ComposerAttachmentsProps = {
   items: PendingAttachment[];
   onRemove: (id: string) => void;
   onRetry: (id: string) => void;
+  /** Explains why the last files added were refused. */
+  limitNotice?: string;
 };
 
 type ComposerAttachmentProps = {
@@ -197,6 +199,7 @@ export const ComposerAttachments = ({
   items,
   onRemove,
   onRetry,
+  limitNotice,
 }: ComposerAttachmentsProps) => {
   const { t, i18n } = useTranslation();
   const listRef = useRef<HTMLUListElement>(null);
@@ -234,6 +237,7 @@ export const ComposerAttachments = ({
       : failedCount > 1
         ? t("{{count}} files could not be uploaded", { count: failedCount })
         : "",
+    limitNotice ?? "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -246,6 +250,13 @@ export const ComposerAttachments = ({
   const itemProps = { onRemove, onRetry, formatProgress, compact };
   return (
     <div className="hub__composer-attachments">
+      {limitNotice && (
+        // Announced through the status below.
+        <p className="hub__composer-attachments__notice" aria-hidden="true">
+          <WarningFilled size={16} aria-hidden="true" />
+          {limitNotice}
+        </p>
+      )}
       <ul
         ref={listRef}
         className="hub__composer-attachments__list"

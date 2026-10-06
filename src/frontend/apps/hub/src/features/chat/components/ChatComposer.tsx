@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import type { ChatAttachment } from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
+import { MAX_PENDING_ATTACHMENTS } from "../attachments";
 import type { UploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { usePendingAttachments } from "../hooks/usePendingAttachments";
 
@@ -117,6 +118,8 @@ export const ChatComposer = ({
     remove: removeAttachment,
     retry: retryAttachment,
     clear: clearAttachments,
+    isFull: isAttachmentQueueFull,
+    hasRefusedFiles,
   } = usePendingAttachments(onUploadAttachment);
   const isBusy = isSubmitting || isSubmittingDraft;
   // An edit only replaces text: queued files stay aside until it is done.
@@ -373,7 +376,14 @@ export const ChatComposer = ({
     };
   }, [canAttach, dropTargetRef]);
 
-  const attachLabel = t("Attach a file");
+  const attachLabel = isAttachmentQueueFull
+    ? t("{{count}} files maximum per message", {
+        count: MAX_PENDING_ATTACHMENTS,
+      })
+    : t("Attach a file");
+  const limitMessage = t("You can attach up to {{count}} files per message.", {
+    count: MAX_PENDING_ATTACHMENTS,
+  });
   const submitLabel = editDraft ? t("Save changes") : t("Send message");
 
   const cancelEdit = useCallback(() => {
@@ -411,6 +421,9 @@ export const ChatComposer = ({
             items={attachments}
             onRemove={removeAttachment}
             onRetry={retryAttachment}
+            limitNotice={
+              showsAttachments && hasRefusedFiles ? limitMessage : undefined
+            }
           />
           <div className="hub__chat-composer__field">
             <textarea
@@ -488,7 +501,7 @@ export const ChatComposer = ({
                   color="neutral"
                   aria-label={attachLabel}
                   icon={<AttachFile size={16} aria-hidden="true" />}
-                  disabled={!canAttach}
+                  disabled={!canAttach || isAttachmentQueueFull}
                   onClick={() => fileInputRef.current?.click()}
                 />
               </Tooltip>

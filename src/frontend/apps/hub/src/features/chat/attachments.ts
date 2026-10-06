@@ -52,6 +52,12 @@ export const primeChatAttachment = (
   }
 };
 
+/**
+ * Files one message can carry. Each becomes its own chat message, so the cap
+ * keeps a single send from flooding the conversation.
+ */
+export const MAX_PENDING_ATTACHMENTS = 20;
+
 /** Image types every browser renders, shown as thumbnails in the composer. */
 const INLINE_IMAGE_TYPES = new Set([
   "image/jpeg",
