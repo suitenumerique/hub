@@ -597,7 +597,8 @@ export const matrixEventToChatMessage = (
     (event.isDecryptionFailure() ||
       event.isBeingDecrypted() ||
       event.getType() === EventType.RoomMessageEncrypted);
-  const media = isDeleted || unavailable ? null : parseMatrixAttachment(content);
+  const media =
+    isDeleted || unavailable ? null : parseMatrixAttachment(content);
   const unsupportedMedia =
     !unavailable &&
     !media &&
