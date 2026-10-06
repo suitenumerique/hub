@@ -453,6 +453,15 @@
   }
 }
 
+// The preview shows one file at a time: its arrows would only ever be
+// disabled, so they leave until there is somewhere to go.
+.file-preview__previous-button,
+.file-preview__next-button {
+  &:has(> button:disabled) {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hub__spinning-icon {
     animation-duration: 2.4s;
