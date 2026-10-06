@@ -191,6 +191,22 @@
     }
   }
 
+  // The queue is full: the drop would be refused, so the target says no.
+  &[data-full] {
+    border-color: var(
+      --c--contextuals--border--semantic--error--primary,
+      #e1000f
+    );
+    background: var(
+      --c--contextuals--background--semantic--error--tertiary,
+      #fff4f3
+    );
+  }
+
+  &[data-full] &__dropzone {
+    color: var(--c--contextuals--content--semantic--error--primary, #b60000);
+  }
+
   &__dropzone {
     position: absolute;
     inset: 0;
