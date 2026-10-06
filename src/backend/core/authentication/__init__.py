@@ -49,4 +49,4 @@ class ServerToServerAuthentication(BaseAuthentication):
 
     def authenticate_header(self, request):
         """Return the WWW-Authenticate header value."""
-        return f"{self.TOKEN_TYPE} realm='Create document server to server'"
+        return f"{self.TOKEN_TYPE} realm='Hub server to server'"

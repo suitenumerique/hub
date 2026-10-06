@@ -73,6 +73,7 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(project) Point license and repository links to Hub instead of Docs #72
 - 🐛(frontend) Require notification permission before playing 
   notification sounds.
 - 🐛(frontend) Keep the toolbar open beside short messages after hovering
@@ -106,4 +107,4 @@ and this project adheres to
 - 🐛(frontend) Reuse pending direct invitations when starting a conversation
 - 🌐(frontend) Translate the current user's optimistic thread author
 
-[unreleased]: https://github.com/suitenumerique/docs/compare/main
+[unreleased]: https://github.com/suitenumerique/hub/compare/main

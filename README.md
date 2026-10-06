@@ -238,7 +238,7 @@ databases untouched.
 
 ## License 📝
 
-This work is released under the MIT License (see [LICENSE](https://github.com/suitenumerique/docs/blob/main/LICENSE)).
+This work is released under the MIT License (see [LICENSE](https://github.com/suitenumerique/hub/blob/main/LICENSE)).
 
 While Hub is a public-driven initiative, our license choice is an invitation for private sector actors to use, sell and contribute to the project.
 
