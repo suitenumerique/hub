@@ -10,6 +10,8 @@ export type PreviewedAttachment = {
   senderName: string;
   /** ISO timestamp of the message carrying the file. */
   sentAt: string;
+  /** Thread the message belongs to, where its deletion shows up. */
+  threadId?: string;
 };
 
 /**

@@ -56,6 +56,7 @@ type MessageAttachmentProps = {
   attachment: ChatAttachment;
   senderName: string;
   sentAt: string;
+  threadId?: string;
 };
 
 /**
@@ -69,6 +70,7 @@ export const MessageAttachment = ({
   attachment,
   senderName,
   sentAt,
+  threadId,
 }: MessageAttachmentProps) => {
   const { t } = useTranslation();
   const { openAttachment } = useChatAttachmentPreview();
@@ -88,7 +90,14 @@ export const MessageAttachment = ({
     }) > 0;
 
   const openPreview = () =>
-    openAttachment({ accountId, messageId, attachment, senderName, sentAt });
+    openAttachment({
+      accountId,
+      messageId,
+      attachment,
+      senderName,
+      sentAt,
+      threadId,
+    });
   // Sized through `width`/`height` attributes rather than a percentage
   // max-width, which shrink-to-fit bubbles ignore when measuring content.
   const imageSize =
