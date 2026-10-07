@@ -1,23 +1,19 @@
-import { DEFAULT_LOCALE } from "@gouvfr-lasuite/ui-components";
+import { DEFAULT_LOCALE, Locales } from "@gouvfr-lasuite/ui-components";
 import { useTranslation } from "react-i18next";
 
-enum Locales {
-  enUS = "en-US",
-  frFR = "fr-FR",
-  deDE = "de-DE",
-  nlNL = "nl-NL",
-}
+import { convertLocaleToISO639_1 } from "@/features/language/utils/locale";
 
-const LOCALE_BY_LANGUAGE: Record<string, Locales> = {
-  en: Locales.enUS,
-  fr: Locales.frFR,
-  de: Locales.deDE,
-  nl: Locales.nlNL,
-};
-
+/**
+ * The ui-kit locale (fr-FR, de-DE...) matching the interface language.
+ */
 export function useLocales() {
   const { i18n } = useTranslation();
-  const resolvedLanguage = i18n.resolvedLanguage ?? i18n.language;
-  const lang = (resolvedLanguage || "en").slice(0, 2).toLowerCase();
-  return LOCALE_BY_LANGUAGE[lang] ?? DEFAULT_LOCALE;
+  const language = convertLocaleToISO639_1(
+    i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_LOCALE,
+  );
+  return (
+    Object.values(Locales).find(
+      (locale) => convertLocaleToISO639_1(locale) === language,
+    ) ?? DEFAULT_LOCALE
+  );
 }
