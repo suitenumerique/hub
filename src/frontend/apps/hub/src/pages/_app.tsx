@@ -22,6 +22,7 @@ import { Auth, prefetchCurrentUser } from "@/features/auth/Auth";
 import { ChatEmptyIllustration } from "@/features/chat/components/ChatEmptyIllustration";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
+import { useLocales } from "@/i18n/useLocale";
 
 const onError = (error: Error, query: unknown) => {
   if ((query as Query).meta?.noGlobalError) {
@@ -55,6 +56,7 @@ const queryClient = new QueryClient({
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { t, i18n } = useTranslation();
+  const currentLocale = useLocales();
 
   useEffect(() => {
     document.documentElement.lang = i18n.language;
@@ -78,7 +80,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       </Head>
       <div className="hub__desktop-app">
         <QueryClientProvider client={queryClient}>
-          <CunninghamProvider currentLocale={i18n.language} theme="dsfr-light">
+          <CunninghamProvider currentLocale={currentLocale} theme="dsfr-light">
             <ConfigProvider>
               <AnalyticsProvider>
                 <Auth>{getLayout(<Component {...pageProps} />)}</Auth>
