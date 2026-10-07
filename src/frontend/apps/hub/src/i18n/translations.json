@@ -39,14 +39,19 @@
   "en": {
     "translation": {
       "401 Unauthorized": "401 Unauthorized",
+      "Uploading {{count}} files_one": "Uploading {{count}} file",
+      "You can attach up to {{count}} files per message._one": "You can attach up to {{count}} file per message.",
       "You have been invited to join this conversation.": "You have been invited to join this conversation.",
+      "{{count}} files could not be uploaded_one": "{{count}} file could not be uploaded",
+      "{{count}} files maximum per message_one": "{{count}} file maximum per message",
+      "{{count}} replies_one": "{{count}} reply",
+      "{{count}} unread messages_one": "{{count}} unread message",
+      "{{count}} unread threads_one": "{{count}} unread thread",
       "{{name}} invites you to join this conversation.": "{{name}} invites you to join this conversation."
     }
   },
   "fr": {
     "translation": {
-      "1 reply": "1 réponse",
-      "1 unread thread": "1 discussion non lue",
       "401 Unauthorized": "401 Non autorisé",
       "Add": "Ajouter",
       "Add people to get started": "Ajoutez des personnes pour commencer",
@@ -136,9 +141,15 @@
       "home-content-mon-compte-open-source-part2": "Vous pouvez facilement auto-héberger LaSuite Hub (consultez notre <0>documentation</0> d'installation). Aujourd’hui, il centralise l’accès aux services et, demain, il permettra aussi de gérer les informations liées au compte.<2/>Mon compte utilise une <1>licence</1> (MIT) adaptée à l’innovation et aux entreprises.",
       "just now": "à l'instant",
       "new window": "nouvelle fenêtre",
-      "{{count}} replies": "{{count}} réponses",
-      "{{count}} unread": "{{count}} non lues",
-      "{{count}} unread threads": "{{count}} discussions non lues",
+      "{{count}} replies_many": "{{count}} réponses",
+      "{{count}} replies_one": "{{count}} réponse",
+      "{{count}} replies_other": "{{count}} réponses",
+      "{{count}} unread threads_many": "{{count}} discussions non lues",
+      "{{count}} unread threads_one": "{{count}} discussion non lue",
+      "{{count}} unread threads_other": "{{count}} discussions non lues",
+      "{{count}} unread_many": "{{count}} non lues",
+      "{{count}} unread_one": "{{count}} non lue",
+      "{{count}} unread_other": "{{count}} non lues",
       "{{name}} invites you to join this conversation.": "{{name}} vous invite à rejoindre cette conversation."
     }
   },

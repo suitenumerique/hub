@@ -246,14 +246,12 @@ export const ComposerAttachments = ({
     (item) => item.status === "uploading",
   ).length;
   const failedCount = items.filter((item) => item.status === "failed").length;
-  const uploadingStatus =
-    uploadingCount === 1
-      ? t("Uploading 1 file")
-      : t("Uploading {{count}} files", { count: uploadingCount });
-  const failedStatus =
-    failedCount === 1
-      ? t("1 file could not be uploaded")
-      : t("{{count}} files could not be uploaded", { count: failedCount });
+  const uploadingStatus = t("Uploading {{count}} files", {
+    count: uploadingCount,
+  });
+  const failedStatus = t("{{count}} files could not be uploaded", {
+    count: failedCount,
+  });
   const status = [
     uploadingCount > 0 ? uploadingStatus : "",
     failedCount > 0 ? failedStatus : "",
