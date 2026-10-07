@@ -68,6 +68,7 @@ export const UserProfile = () => {
             label: language.label,
             value: language.value,
             isChecked: language.isChecked,
+            testId: "hub-user-menu-language-option",
             callback: () => onChange(language.value),
           })),
         },
