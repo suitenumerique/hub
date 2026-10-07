@@ -412,10 +412,12 @@ i18n-compile: \
 	frontend-i18n-compile
 .PHONY: i18n-compile
 
+# Downloading the Crowdin sources also restores django.pot, so the backend
+# messages must be generated afterwards.
 i18n-generate: ## create the .pot files and extract frontend messages
 i18n-generate: \
-	back-i18n-generate \
-	frontend-i18n-generate
+	frontend-i18n-generate \
+	back-i18n-generate
 .PHONY: i18n-generate
 
 i18n-download-and-compile: ## download all translated messages and compile them to be used by all applications
@@ -508,7 +510,7 @@ frontend-i18n-generate: \
 	frontend-i18n-extract
 .PHONY: frontend-i18n-generate
 
-frontend-i18n-compile: ## Format the crowin json files used deploy to the apps
+frontend-i18n-compile: ## Format the crowdin json files used deploy to the apps
 	@$(FRONT_YARN) i18n:deploy
 .PHONY: frontend-i18n-compile
 
