@@ -10,7 +10,7 @@
     "extract-translation:hub": "yarn i18next ../../apps/hub/**/*.{ts,tsx} -c ./i18next-parser.config.mjs -o ./locales/hub/translations-crowdin.json",
     "format-deploy": "yarn format-deploy:hub",
     "format-deploy:hub": "node ./format-deploy.mjs --app=hub --output=../../apps/hub/src/i18n/translations.json",
-    "format-rebuild-fr:hub": "node ./rebuild-translations.mjs --language=fr --app=hub --output=../../apps/hub/src/i18n/translations.json",
+    "format-rebuild:hub": "node ./rebuild-translations.mjs --app=hub --output=../../apps/hub/src/i18n/translations.json",
     "lint": "eslint",
     "test": "jest"
   },
