@@ -116,6 +116,8 @@ and this project adheres to
 - ⚡️(frontend) Jump to the first unread message faster: load the messages
   above and below it at once, show a spinner in the banner while waiting, and
   open on the next message when the read marker is on a hidden event.
+- 🌐(i18n) Align the Crowdin workflow with Docs and document the translation
+  rules.
 - 🌐(frontend) Offer the languages configured on the backend and apply the
   language saved on the profile at login.
 - 💄(frontend) Refine chat attachments after QA.
