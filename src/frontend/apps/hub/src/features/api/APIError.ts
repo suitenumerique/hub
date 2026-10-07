@@ -37,10 +37,10 @@ export const errorToString = (error: unknown): string => {
         .map(([, value]) => `${value}`)
         .join("\n");
     }
-    return i18n.t("api.error.unexpected");
+    return i18n.t("An unexpected error occurred.");
   }
   if (error instanceof AppError) {
     return error.message;
   }
-  return i18n.t("api.error.unexpected");
+  return i18n.t("An unexpected error occurred.");
 };
