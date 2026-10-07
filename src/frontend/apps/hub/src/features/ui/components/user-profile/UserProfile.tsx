@@ -66,11 +66,8 @@ export const UserProfile = () => {
           testId: "hub-user-menu-language",
           children: languages.map((language) => ({
             label: language.label,
-            icon: language.isChecked ? (
-              <span className="material-icons" aria-hidden="true">
-                check
-              </span>
-            ) : undefined,
+            value: language.value,
+            isChecked: language.isChecked,
             callback: () => onChange(language.value),
           })),
         },
