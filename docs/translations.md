@@ -88,14 +88,16 @@ CI uses the repository secrets `CROWDIN_PROJECT_ID` and
 
 ## Languages
 
-- The backend `LANGUAGES` setting lists the languages offered in the user
-  menu, ordered by priority: the first one is the fallback. Override it with
-  `DJANGO_LANGUAGES=en-us,English;fr-fr,Français`.
-- The interface uses the closest translated language. The choice is saved on
-  the user profile, applied again at login, and stored in the `hub_language`
-  cookie shared with Django.
-- To add a language, ask the maintainers to add it on Crowdin, then add it to
-  `LANGUAGES`.
+- The backend `LANGUAGES` setting lists the languages offered to users,
+  ordered by priority: the first one is the fallback. Only English and French
+  are offered for now, even if Crowdin has more translations.
+- The interface only uses these languages: a browser or profile language that
+  is not offered falls back to the first one. The choice is saved on the user
+  profile, applied again at login, and stored in the `hub_language` cookie
+  shared with Django.
+- `LANGUAGES` also defines the choices of the user `language` field. To add a
+  language, ask the maintainers to add it on Crowdin, add it to the default
+  `LANGUAGES`, then generate the migration with `make makemigrations`.
 
 ## Recovering translations on Crowdin
 

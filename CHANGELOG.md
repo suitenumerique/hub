@@ -64,6 +64,7 @@ and this project adheres to
   rules.
 - 🌐(frontend) Offer the languages configured on the backend and apply the
   language saved on the profile at login.
+- 🌐(backend) Only offer English and French for now.
 - 💄(frontend) Refine chat attachments after QA.
   Show the attach button as an icon, with tooltips on attach and send.
   Keep queued files on one scrolling row and cap them at 20 per message.

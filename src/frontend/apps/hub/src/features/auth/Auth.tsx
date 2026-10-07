@@ -113,14 +113,15 @@ export const Auth = ({ children }: PropsWithChildren) => {
   }, [user]);
 
   // Apply the language saved on the profile once logged in, or save the
-  // detected one when the profile has none yet.
+  // detected one when the profile has none yet. Visitors get the detected
+  // language when it is offered.
   useEffect(() => {
-    if (!user || isLanguageSynchronized.current) {
+    if (user === undefined || isLanguageSynchronized.current) {
       return;
     }
     isLanguageSynchronized.current = true;
     changeLanguageSynchronized(
-      user.language ?? i18n.resolvedLanguage ?? i18n.language,
+      user?.language ?? i18n.resolvedLanguage ?? i18n.language,
       user,
     )
       .then((updatedUser) => {

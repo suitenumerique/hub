@@ -9,20 +9,25 @@ import { getMatchingLocales } from "@/features/language/utils/locale";
 /**
  * Keeps the interface language and the language saved on the user profile in
  * sync: the frontend uses the closest translated language, the backend the
- * closest language of its LANGUAGES setting.
+ * closest language of its LANGUAGES setting. Only the languages offered by the
+ * backend are used, the first one being the fallback.
  */
 export const useSynchronizedLanguage = () => {
   const { i18n } = useTranslation();
   const { config } = useConfig();
   const isSynchronizingLanguage = useRef(false);
 
-  const availableFrontendLanguages = useMemo(
-    () => Object.keys(i18n?.options?.resources || { en: "<- fallback" }),
-    [i18n?.options?.resources],
-  );
   const availableBackendLanguages = useMemo(
     () => config.LANGUAGES.map(([locale]) => locale),
     [config.LANGUAGES],
+  );
+  const availableFrontendLanguages = useMemo(
+    () =>
+      getMatchingLocales(
+        Object.keys(i18n?.options?.resources || { en: "<- fallback" }),
+        availableBackendLanguages,
+      ),
+    [i18n?.options?.resources, availableBackendLanguages],
   );
 
   const changeBackendLanguage = useCallback(
@@ -73,14 +78,18 @@ export const useSynchronizedLanguage = () => {
         return undefined;
       }
       isSynchronizingLanguage.current = true;
+      const offeredLanguage =
+        getMatchingLocales(availableBackendLanguages, [language])[0] ??
+        availableBackendLanguages[0] ??
+        language;
       try {
-        await changeFrontendLanguage(language);
-        return await changeBackendLanguage(language, user);
+        await changeFrontendLanguage(offeredLanguage);
+        return await changeBackendLanguage(offeredLanguage, user);
       } finally {
         isSynchronizingLanguage.current = false;
       }
     },
-    [changeBackendLanguage, changeFrontendLanguage],
+    [availableBackendLanguages, changeBackendLanguage, changeFrontendLanguage],
   );
 
   return {
