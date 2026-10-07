@@ -14,8 +14,7 @@ import { useChatAccountProfile } from "@/features/chat/hooks/useChatAccountProfi
 import { useComposerAccountId } from "@/features/chat/hooks/useChatAccounts";
 import { useChatSecurity } from "@/features/chat/hooks/useChatSecurity";
 import type { AccountId, ChatUser, User } from "@/features/drivers/types";
-
-import { useUserLanguage } from "./LanguagePickerUserMenu";
+import { useUserLanguage } from "@/features/language/hooks/useUserLanguage";
 
 const TERMS_OF_SERVICE_URL =
   "https://docs.numerique.gouv.fr/docs/8e298e03-c95f-44c7-be4a-ffb618af1854/";

@@ -1,7 +1,7 @@
 import { Button } from "@gouvfr-lasuite/ui-components";
 import { useTranslation } from "react-i18next";
 import { posthog } from "posthog-js";
-import React, { PropsWithChildren, useEffect, useState } from "react";
+import React, { PropsWithChildren, useEffect, useRef, useState } from "react";
 
 import { fetchAPI } from "@/features/api/fetchApi";
 import { User } from "@/features/auth/types";
@@ -13,6 +13,7 @@ import { useConfig } from "../config/ConfigProvider";
 import { getRegistry } from "../drivers/DriverRegistry";
 import { AppLoader } from "../layouts/components/AppLoader/AppLoader";
 import { ChatLocalUser } from "../drivers/types";
+import { useSynchronizedLanguage } from "../language/hooks/useSynchronizedLanguage";
 import { authUrl } from "./authUrl";
 import { ChatSignIn } from "./components/ChatSignIn/ChatSignIn";
 import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
@@ -65,8 +66,10 @@ export const AuthContext = React.createContext<AuthContextInterface>({});
 export const useAuth = () => React.useContext(AuthContext);
 
 export const Auth = ({ children }: PropsWithChildren) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [user, setUser] = useState<User | null>();
+  const { changeLanguageSynchronized } = useSynchronizedLanguage();
+  const isLanguageSynchronized = useRef(false);
   const [replacingDevice, setReplacingDevice] = useState(false);
   const [replacementFailed, setReplacementFailed] = useState(false);
   const { config } = useConfig();
@@ -132,6 +135,29 @@ export const Auth = ({ children }: PropsWithChildren) => {
         email: user.email,
       });
     }
+  }, [user]);
+
+  // Apply the language saved on the profile once logged in, or save the
+  // detected one when the profile has none yet.
+  useEffect(() => {
+    if (!user || isLanguageSynchronized.current) {
+      return;
+    }
+    isLanguageSynchronized.current = true;
+    changeLanguageSynchronized(
+      user.language ?? i18n.resolvedLanguage ?? i18n.language,
+      user,
+    )
+      .then((updatedUser) => {
+        if (updatedUser) {
+          setUser((current) =>
+            current ? { ...current, language: updatedUser.language } : current,
+          );
+        }
+      })
+      .catch(() => {
+        // The interface keeps its language when the profile cannot be saved.
+      });
   }, [user]);
 
   useEffect(() => {
