@@ -18,6 +18,5 @@ apps/e2e/playwright-report
 apps/hub/public
 
 # Generated files
-apps/hub/src/i18n/translations.json
 apps/hub/src/styles/cunningham-tokens*
 **/*.min.*

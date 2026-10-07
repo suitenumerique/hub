@@ -17,7 +17,7 @@ export const LoginButton = () => {
         login();
       }}
     >
-      {t("login")}
+      {t("Login")}
     </Button>
   );
 };

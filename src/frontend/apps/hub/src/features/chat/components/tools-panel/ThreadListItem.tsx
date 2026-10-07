@@ -25,10 +25,9 @@ export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
   const isUnread = thread.unreadCount > 0;
   const isPending = isOptimisticThreadId(thread.id);
 
-  const replies =
-    thread.replyCount <= 1
-      ? t("1 reply")
-      : t("{{count}} replies", { count: thread.replyCount });
+  const replies = t("{{count}} replies", {
+    count: Math.max(thread.replyCount, 1),
+  });
   const repliesLabel = isUnread
     ? `${replies} • ${t("{{count}} unread", { count: thread.unreadCount })}`
     : replies;

@@ -82,3 +82,17 @@
     transform: rotate(90deg);
   }
 }
+
+// The package gives submenus the tiny variant of their menu, whose fixed item
+// height squeezes the labels: the language list keeps the default menu look.
+.c__dropdown-menu--tiny:has([data-testid="hub-user-menu-language-option"]) {
+  background-color: var(--c--contextuals--background--surface--primary);
+
+  .c__dropdown-menu-item {
+    gap: 8px;
+    height: auto;
+    padding: 8px;
+    font-size: var(--c--globals--font--sizes--sm, 0.875rem);
+    line-height: 19px;
+  }
+}
