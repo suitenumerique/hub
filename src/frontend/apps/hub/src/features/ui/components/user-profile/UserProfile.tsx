@@ -11,8 +11,7 @@ import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useEncryptionSettings } from "@/features/chat/EncryptionSettingsContext";
 import { useComposerAccountId } from "@/features/chat/hooks/useChatAccounts";
 import { useChatSecurity } from "@/features/chat/hooks/useChatSecurity";
-
-import { useUserLanguage } from "./LanguagePickerUserMenu";
+import { useUserLanguage } from "@/features/language/hooks/useUserLanguage";
 
 const TERMS_OF_SERVICE_URL =
   "https://docs.numerique.gouv.fr/docs/8e298e03-c95f-44c7-be4a-ffb618af1854/";

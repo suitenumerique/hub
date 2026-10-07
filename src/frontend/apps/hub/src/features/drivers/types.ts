@@ -143,6 +143,8 @@ export type ApiConfig = {
   FRONTEND_EXTERNAL_HOME_URL?: string;
   FRONTEND_CSS_URL?: string;
   FRONTEND_JS_URL?: string;
+  LANGUAGES: [string, string][];
+  LANGUAGE_CODE: string;
   theme_customization?: ThemeCustomization;
 };
 
