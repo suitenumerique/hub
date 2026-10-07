@@ -6,7 +6,7 @@ export const LogoutButton = () => {
   const { t } = useTranslation();
   return (
     <Button variant="tertiary" onClick={logout} fullWidth={true}>
-      {t("logout")}
+      {t("Logout")}
     </Button>
   );
 };
