@@ -60,6 +60,8 @@ and this project adheres to
 
 ### Changed
 
+- 🌐(i18n) Align the Crowdin workflow with Docs and document the translation
+  rules.
 - 🌐(frontend) Offer the languages configured on the backend and apply the
   language saved on the profile at login.
 - 💄(frontend) Refine chat attachments after QA.
