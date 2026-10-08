@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { MATRIX_LOCAL_ACCOUNTS } from "@/features/config/Config";
+import { MATRIX_ACCOUNTS } from "@/features/config/Config";
 import {
   getRegistry,
   useDriverEntries,
@@ -9,9 +9,10 @@ import {
 import type { AccountId } from "@/features/drivers/types";
 
 /**
- * Reconciles the single runtime manifest. The manifest remains an array and the
- * registry remains account-scoped so another fixed Matrix server can be added
- * later without changing routes, hooks, or query keys.
+ * Reconciles the runtime manifest of the configured Matrix environment. The
+ * manifest remains an array and the registry remains account-scoped so another
+ * Matrix server can be added later without changing routes, hooks, or query
+ * keys.
  */
 export const useChatAccountsBootstrap = (
   sessionOwner: string | null = null,
@@ -28,13 +29,13 @@ export const useChatAccountsBootstrap = (
         (query.queryKey[0].startsWith("chat") ||
           query.queryKey[0].startsWith("conversation-search")),
     });
-    getRegistry().reconcile(MATRIX_LOCAL_ACCOUNTS, sessionOwner);
+    getRegistry().reconcile(MATRIX_ACCOUNTS, sessionOwner);
     return () => getRegistry().destroyAll();
   }, [queryClient, sessionOwner]);
 
   return {
     isReconciling:
-      entries.length !== MATRIX_LOCAL_ACCOUNTS.length ||
+      entries.length !== MATRIX_ACCOUNTS.length ||
       entries.some((entry) => entry.sessionOwner !== sessionOwner),
   };
 };

@@ -63,6 +63,8 @@ clients:
       - http://localhost:9800/
       - http://localhost:9800/chat
       - http://localhost:9800/chat/new
+      # HTTPS dev origin (`make run-tchap`), usable with the local environment.
+      - https://hub.localhost:9814/
     grant_types:
       - authorization_code
       - refresh_token

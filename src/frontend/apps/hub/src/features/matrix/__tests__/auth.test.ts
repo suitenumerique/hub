@@ -59,7 +59,9 @@ describe("getOIDCAuthUrl", () => {
       "http://localhost:9810/authorize",
     );
 
-    await getOIDCAuthUrl(HOMESERVER, "hub@example.com", OIDC_CLIENT_ID);
+    await getOIDCAuthUrl(HOMESERVER, "hub@example.com", {
+      clientId: OIDC_CLIENT_ID,
+    });
 
     expect(generateOidcAuthorizationUrl).toHaveBeenCalledWith(
       expect.objectContaining({

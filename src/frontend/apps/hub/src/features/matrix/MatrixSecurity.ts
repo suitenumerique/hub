@@ -28,6 +28,8 @@ import { securityFailureReason, securitySendError } from "./securityErrors";
 
 const SECRET_WAIT_TIMEOUT = 60_000;
 const SERVER_CHECK_INTERVAL = 60_000;
+// Before an encrypted send, a local inspection older than this is redone.
+const SEND_INSPECTION_MAX_AGE = 30_000;
 
 /** One controller per owned client. The SDK is the sole authority on trust. */
 export class MatrixSecurity {
@@ -257,7 +259,12 @@ export class MatrixSecurity {
       if (cause) throw securitySendError(cause);
       throw new ChatSecuritySendError("network");
     }
-    await this.refresh();
+    // SDK security events refresh the snapshot as they happen. A send waits for
+    // an inspection already running, and only re-inspects when the last one is
+    // old, so consecutive messages do not each pay a full inspection.
+    if (this.inspection) await this.inspection;
+    else if (Date.now() - this.lastInspection >= SEND_INSPECTION_MAX_AGE)
+      await this.refresh();
     if (this.stopped) throw new ChatSecuritySendError("not-ready");
     if (this.inspectionFailure?.area === "trust")
       throw securitySendError(this.inspectionFailure.cause);

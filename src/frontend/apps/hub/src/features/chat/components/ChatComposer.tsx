@@ -28,8 +28,6 @@ import { securityFailureMessage } from "../securityMessages";
 
 import { ComposerAttachments } from "./ComposerAttachments";
 
-const TYPING_STOP_WAIT_MS = 400;
-
 type ChatComposerProps = {
   /** Input placeholder. Defaults to the conversation composer wording. */
   placeholder?: string;
@@ -258,22 +256,19 @@ export const ChatComposer = ({
       }
 
       setIsSubmittingDraft(true);
+      // Like Element, empty the field at once: the message already shows as an
+      // optimistic bubble while it is encrypted and sent, and a failure puts
+      // the text back below.
+      const text = trimmedDraft;
+      const sentFrom = lastConcreteConversationId.current;
+      if (text.length > 0) setDraft("");
+      let textSent = text.length === 0;
+      // useChatTyping keeps typing writes ordered; the send never waits for it.
+      void onTypingActivity?.(false);
       try {
-        // Order typing=false before the message request. Apart from preventing
-        // stale indicators, this gives the next non-empty change a clean
-        // false→true transition without moving focus away from the input.
-        const stopTypingPromise = onTypingActivity?.(false);
-        if (stopTypingPromise) {
-          await Promise.race([
-            Promise.resolve(stopTypingPromise),
-            new Promise<void>((resolve) =>
-              window.setTimeout(resolve, TYPING_STOP_WAIT_MS),
-            ),
-          ]);
-        }
-        if (trimmedDraft.length > 0) {
-          await onSubmit(trimmedDraft);
-          setDraft("");
+        if (!textSent) {
+          await onSubmit(text);
+          textSent = true;
         }
         // The text goes first, as in a message with files below it. Each file
         // leaves the queue once posted so a failure only keeps the rest.
@@ -285,9 +280,17 @@ export const ChatComposer = ({
           onSubmitted?.();
         }
       } catch (error) {
-        // Keep the draft so the user can retry, and surface the failure: the
-        // send mutations silence the global error handler (noGlobalError), so
-        // without this toast a failed send would vanish with no feedback.
+        // Give the draft back so the user can retry, ahead of anything typed
+        // meanwhile, and surface the failure: the send mutations silence the
+        // global error handler (noGlobalError), so without this toast a failed
+        // send would vanish with no feedback. Never into another conversation.
+        const sameConversation =
+          !sentFrom || lastConcreteConversationId.current === sentFrom;
+        if (!textSent && sameConversation) {
+          setDraft((current) =>
+            current.trim() ? `${text}\n${current}` : text,
+          );
+        }
         let message =
           errorMessage ??
           t("Your message could not be sent. Please try again.");
@@ -455,7 +458,7 @@ export const ChatComposer = ({
               enterKeyHint="send"
               value={draft}
               disabled={disabled}
-              readOnly={isBusy}
+              readOnly={isSubmitting}
               aria-busy={isBusy || undefined}
               onChange={(event) => {
                 const value = event.currentTarget.value;

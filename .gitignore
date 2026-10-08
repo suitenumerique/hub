@@ -28,6 +28,7 @@ share/python-wheels/
 MANIFEST
 .DS_Store
 .next/
+.next-tchap/
 out/
 
 # Translations	# Translations

@@ -8,6 +8,17 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Connect the chat to Tchap preprod or prod, selected with
+  `NEXT_PUBLIC_MATRIX_ENVIRONMENT`. Find the homeserver from the email, register
+  the OAuth client on its authentication service and explain sign-in failures.
+- 🔧(docker) Serve the Hub at `https://hub.localhost:9814` for Tchap sign-in in
+  development, with `make run-tchap` and a local certificate authority.
+- 🐛(frontend) Keep direct conversation names when the homeserver leaves a
+  member out of the room state, and never show a Matrix id as a name.
+- ⚡️(frontend) Empty the composer as soon as a message is sent and put it back
+  if sending fails. Share encryption keys while typing and skip waiting for
+  the typing notice, so encrypted messages leave faster.
+
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.
   Organize encryption settings into device and backup sections with contextual

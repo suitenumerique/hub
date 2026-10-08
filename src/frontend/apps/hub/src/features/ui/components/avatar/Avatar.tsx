@@ -1,14 +1,8 @@
 import clsx from "clsx";
 import { ReactNode } from "react";
 
+import { deriveInitials } from "./initials";
 import { AvatarColor, hashAvatarColor } from "./palette";
-
-const deriveInitials = (label: string): string => {
-  const words = label.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "";
-  if (words.length === 1) return words[0].charAt(0).toUpperCase();
-  return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
-};
 
 export type AvatarSize = "sm" | "md" | "lg";
 

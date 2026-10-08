@@ -12,6 +12,8 @@ import {
   type RoomMember,
 } from "matrix-js-sdk/lib/matrix";
 
+import i18n from "@/i18n/initI18n";
+
 import { ChatInvitation, LocalChat } from "../types";
 import { roomSecurity } from "@/features/matrix/roomSecurity";
 
@@ -75,6 +77,52 @@ const explicitRoomName = (room: Room): string | undefined => {
   return typeof name === "string" && name.trim() ? name.trim() : undefined;
 };
 
+/**
+ * Before lazy-loaded members arrive, the sync summary still names the other
+ * person of a two-person room (its "hero"). Undefined once members are known.
+ */
+const pendingCounterpartId = (
+  room: Room,
+  currentUserId: string | undefined,
+): string | undefined => {
+  if (
+    roomConversationMembers(room, currentUserId).length > 0 ||
+    room.getInvitedAndJoinedMemberCount() !== 2
+  ) {
+    return undefined;
+  }
+  const userId = room.guessDMUserId();
+  return userId && userId !== currentUserId ? userId : undefined;
+};
+
+/**
+ * Display name from the user's latest `m.room.member` event in the loaded
+ * timeline. With `state_after`, Synapse can leave a membership out of the room
+ * state while it is in the timeline, which the SDK then ignores as state
+ * (element-hq/synapse#20278). Remove once Tchap's Synapse fixes it.
+ */
+const timelineDisplayName = (
+  room: Room,
+  userId: string,
+): string | undefined => {
+  const displayName = room
+    .getLiveTimeline()
+    .getEvents()
+    .findLast(
+      (event) =>
+        event.getType() === EventType.RoomMember &&
+        event.getStateKey() === userId,
+    )
+    ?.getContent().displayname;
+  return typeof displayName === "string" && displayName.trim()
+    ? displayName.trim()
+    : undefined;
+};
+
+/** A room id (`!abc:server`) or user ids (`@alice:server…`): never a label. */
+const isTechnicalName = (name: string): boolean =>
+  /^[!@][^\s:]+:\S+/.test(name);
+
 /** Maps a joined room to a normal conversation row. */
 export const matrixJoinedRoomToLocalChat = (
   room: Room,
@@ -82,6 +130,7 @@ export const matrixJoinedRoomToLocalChat = (
 ): LocalChat => {
   const activeOthers = roomOtherMembers(room, currentUserId);
   const conversationMembers = roomConversationMembers(room, currentUserId);
+  const counterpartId = pendingCounterpartId(room, currentUserId);
   // A DM keeps its sole counterpart after they leave. A group remains a group
   // when its active member count drops to one because former members remain in
   // current room state. Only active members participate in an unnamed group's
@@ -89,28 +138,42 @@ export const matrixJoinedRoomToLocalChat = (
   // With lazy-loaded members, one known counterpart does not prove this is a
   // DM. The sync summary can already establish that more people are present.
   const isDirect =
-    conversationMembers.length === 1 &&
-    room.getInvitedAndJoinedMemberCount() <= 2;
+    counterpartId !== undefined ||
+    (conversationMembers.length === 1 &&
+      room.getInvitedAndJoinedMemberCount() <= 2);
   const displayedOthers = isDirect ? conversationMembers : activeOthers;
-  const participantIds = displayedOthers.map((member) => member.userId);
+  const participantIds = counterpartId
+    ? [counterpartId]
+    : displayedOthers.map((member) => member.userId);
   const otherNames = displayedOthers.map(
     (member) => member.name || member.userId,
   );
-  const isEmptyDirect = isDirect && activeOthers.length === 0;
+  const isEmptyDirect =
+    isDirect && counterpartId === undefined && activeOthers.length === 0;
   const timestamp = room.getLastActiveTimestamp();
 
   // A 1:1 is identified by the other person and ignores any room name (DMs
   // aren't renameable). Once its counterpart leaves, reuse the client's
   // localized empty-room label so the historical identity stays visible
   // without suggesting the person is still present. A group uses its explicit
-  // name when set, otherwise the active members' display names.
+  // name when set, otherwise the active members' display names. Until members
+  // load, the SDK's summary-based name avoids showing the room id.
   let name: string;
   if (!isDirect) {
-    name = explicitRoomName(room) || otherNames.join(", ") || room.roomId;
+    name = explicitRoomName(room) || otherNames.join(", ") || room.name;
   } else if (isEmptyDirect && currentUserId) {
     name = room.getDefaultRoomName(currentUserId);
   } else {
-    name = otherNames[0] || participantIds[0] || room.roomId;
+    name =
+      otherNames[0] ||
+      (counterpartId && timelineDisplayName(room, counterpartId)) ||
+      room.name;
+  }
+  // Without any display name, a neutral label rather than a Matrix id.
+  if (!name || isTechnicalName(name)) {
+    name = isDirect
+      ? i18n.t("Private conversation")
+      : i18n.t("Group conversation");
   }
 
   return {

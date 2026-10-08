@@ -11,6 +11,14 @@ export const localUiTranslations: Record<string, Record<string, string>> = {
       "Les clés locales de cet appareil sont absentes ou ne correspondent plus à sa session. Les données conservées n’ont pas été effacées. Une nouvelle session d’appareil est nécessaire.",
     "The server or storage is unavailable. Your keys are preserved. Try again when the connection is restored.":
       "Le serveur ou le stockage est indisponible. Vos clés sont conservées. Réessayez lorsque la connexion est rétablie.",
+    "Signing in to the chat did not succeed. Try again, or contact your administrator if the problem persists.":
+      "La connexion à la messagerie n’a pas abouti. Réessayez, ou contactez votre administrateur si le problème persiste.",
+    "The chat server found for your email is not allowed in this environment.":
+      "Le serveur de messagerie associé à votre adresse e-mail n’est pas autorisé dans cet environnement.",
+    "Your chat account has expired. Renew it with the link sent to you by email, then try again.":
+      "Votre compte de messagerie a expiré. Renouvelez-le avec le lien reçu par e-mail, puis réessayez.",
+    "Private conversation": "Conversation privée",
+    "Group conversation": "Conversation de groupe",
     "Chat connection interrupted": "Connexion à la messagerie interrompue",
     "Try again": "Réessayer",
     "Reconnect Hub with a new device":

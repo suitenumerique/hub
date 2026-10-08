@@ -189,7 +189,15 @@ export type ChatConnectionState = {
   /** Optional redirect coordinated by the connection layer. */
   redirectTo?: string;
   error?: unknown;
-  reason?: "another-tab" | "unsupported" | "storage-continuity";
+  reason?:
+    | "another-tab"
+    | "unsupported"
+    | "storage-continuity"
+    | "sign-in-failed"
+    | "unknown-server"
+    | "account-expired";
+  /** Server-provided explanation shown as is, e.g. an OAuth error description. */
+  detail?: string;
 };
 
 /**
@@ -431,6 +439,14 @@ export abstract class Driver {
   /** Sends a volatile typing state. Unsupported drivers silently ignore it. */
   async sendChatTyping(_params: SendChatTypingParams): Promise<void> {
     void _params;
+  }
+
+  /**
+   * The user started composing in this conversation. A driver may prepare the
+   * next send ahead of time, so sending only posts the message. Best effort.
+   */
+  prepareChatSend(_chatId: string): void {
+    void _chatId;
   }
 
   /**

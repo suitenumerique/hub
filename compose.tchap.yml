@@ -1,0 +1,42 @@
+# DEV ONLY - HTTPS origin to connect the Hub chat to Tchap preprod or prod.
+# Merged under the same `hub` project as compose.yml so it shares the default
+# network and resolves `app-dev`. Only the `*-tchap` Make targets pass
+# `-f compose.tchap.yml`; `run`/`run-backend`/`stop` ignore these services.
+name: hub
+
+services:
+  # Next dev server built with the Tchap environment. Its port is not
+  # published: the browser reaches it through the HTTPS proxy only.
+  frontend-tchap:
+    image: node:22
+    user: "${DOCKER_USER:-1000}"
+    working_dir: /app/src/frontend/apps/hub
+    command: ["yarn", "dev"]
+    environment:
+      HOME: /tmp
+      # Empty: the frontend calls the API on its own origin, through the proxy.
+      NEXT_PUBLIC_API_ORIGIN: ""
+      # Separate build directory, so `yarn dev` on :9800 can run alongside.
+      NEXT_DIST_DIR: .next-tchap
+    env_file:
+      # Personal settings (environment, Tchap email), see `make tchap-env`.
+      - src/frontend/apps/hub/.env.tchap.local
+    volumes:
+      - ".:/app"
+
+  # TLS proxy for https://hub.localhost:9814. Caddy generates its certificate
+  # authority in data/caddy/ on first start.
+  hub-https:
+    image: caddy:2
+    # Runs as the developer so `make tchap-trust` can read the authority.
+    user: "${DOCKER_USER:-1000}"
+    environment:
+      XDG_CONFIG_HOME: /data/config
+    ports:
+      - "9814:9814"
+    volumes:
+      - ./docker/tchap/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data
+    depends_on:
+      frontend-tchap:
+        condition: service_started

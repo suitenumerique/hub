@@ -457,6 +457,10 @@ class Base(Configuration):
     OIDC_REDIRECT_ALLOWED_HOSTS = values.ListValue(
         default=[], environ_name="OIDC_REDIRECT_ALLOWED_HOSTS", environ_prefix=None
     )
+    # Query parameter holding the URL to return to after login.
+    OIDC_REDIRECT_FIELD_NAME = values.Value(
+        "next", environ_name="OIDC_REDIRECT_FIELD_NAME", environ_prefix=None
+    )
     OIDC_STORE_ID_TOKEN = values.BooleanValue(
         default=True, environ_name="OIDC_STORE_ID_TOKEN", environ_prefix=None
     )
@@ -694,7 +698,14 @@ class Development(Base):
 
     ALLOWED_HOSTS = ["*"]
     CORS_ALLOW_ALL_ORIGINS = True
-    CSRF_TRUSTED_ORIGINS = ["http://localhost:9801", "http://localhost:9800"]
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:9801",
+        "http://localhost:9800",
+        # HTTPS proxy used to sign in to Tchap (`make run-tchap`)
+        "https://hub.localhost:9814",
+    ]
+    # The Tchap HTTPS proxy terminates TLS; OIDC callbacks must stay https.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     DEBUG = True
 
     USE_SWAGGER = True

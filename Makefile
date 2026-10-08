@@ -47,6 +47,12 @@ COMPOSE             = DOCKER_USER=$(DOCKER_USER) docker compose
 # Element). Only the *-matrix targets use it, so the normal stack ignores it.
 COMPOSE_MATRIX      = $(COMPOSE) -f compose.yml -f compose.matrix.yml
 MATRIX_SERVICES     = matrix_postgresql synapse mas element
+# Overlay file set for the dev-only HTTPS origin used to sign in to Tchap
+# (https://hub.localhost:9814). Only the *-tchap targets use it.
+COMPOSE_TCHAP       = $(COMPOSE) -f compose.yml -f compose.tchap.yml
+TCHAP_SERVICES      = frontend-tchap hub-https
+TCHAP_ENV_FILE      = src/frontend/apps/hub/.env.tchap.local
+TCHAP_ROOT_CA       = data/caddy/caddy/pki/authorities/local/root.crt
 COMPOSE_EXEC        = $(COMPOSE) exec
 COMPOSE_EXEC_APP    = $(COMPOSE_EXEC) app-dev
 COMPOSE_RUN         = $(COMPOSE) run --rm
@@ -84,6 +90,9 @@ data/postgresql.local:
 
 data/matrix/synapse:
 	@mkdir -p data/matrix/synapse
+
+data/caddy:
+	@mkdir -p data/caddy
 
 data/matrix/mas: ## generate the MAS private signing keys (kept out of git)
 	@mkdir -p data/matrix/mas
@@ -224,6 +233,10 @@ down-matrix: ## stop and remove the local Matrix stack (keeps the base stack)
 	@$(COMPOSE_MATRIX) rm -sfv $(MATRIX_SERVICES)
 .PHONY: down-matrix
 
+down-tchap: ## stop and remove the Tchap HTTPS origin (keeps its certificate authority)
+	@$(COMPOSE_TCHAP) rm -sfv $(TCHAP_SERVICES)
+.PHONY: down-tchap
+
 logs: ## display app-dev logs (follow mode)
 	@$(COMPOSE) logs -f app-dev
 .PHONY: logs
@@ -258,6 +271,33 @@ run-matrix: \
 	@$(COMPOSE_MATRIX) up -d --wait --wait-timeout 180 $(MATRIX_SERVICES)
 .PHONY: run-matrix
 
+tchap-env: ## create the personal Tchap settings file (environment and email)
+	@if [ -f $(TCHAP_ENV_FILE) ]; then \
+		echo "$(TCHAP_ENV_FILE) already exists."; \
+	else \
+		cp src/frontend/apps/hub/.env.tchap.example $(TCHAP_ENV_FILE); \
+		echo "Created $(TCHAP_ENV_FILE): set your Tchap email in it."; \
+	fi
+.PHONY: tchap-env
+
+run-tchap: ## start the backend and the HTTPS origin to sign in to Tchap
+run-tchap: data/caddy
+	@test -f $(TCHAP_ENV_FILE) || \
+		{ echo "Missing $(TCHAP_ENV_FILE): run 'make tchap-env' first."; exit 1; }
+	@$(MAKE) run-backend
+	@$(COMPOSE_TCHAP) up -d --force-recreate $(TCHAP_SERVICES)
+	@echo "Open https://hub.localhost:9814 once the frontend has compiled"
+	@echo "(make logs-tchap). First time on this machine: make tchap-trust."
+.PHONY: run-tchap
+
+logs-tchap: ## display the Tchap frontend logs (follow mode)
+	@$(COMPOSE_TCHAP) logs -f frontend-tchap
+.PHONY: logs-tchap
+
+tchap-trust: ## show how to trust the certificate authority of the Tchap HTTPS origin
+	@bin/tchap-trust $(TCHAP_ROOT_CA)
+.PHONY: tchap-trust
+
 seed-matrix: ## seed the local Matrix stack with a DM and a group room (needs run-matrix)
 	@python3 bin/seed-matrix
 .PHONY: seed-matrix
@@ -288,6 +328,10 @@ stop: ## stop the development server using Docker
 stop-matrix: ## stop the local Matrix stack without touching the base stack
 	@$(COMPOSE_MATRIX) stop $(MATRIX_SERVICES)
 .PHONY: stop-matrix
+
+stop-tchap: ## stop the Tchap HTTPS origin without touching the base stack
+	@$(COMPOSE_TCHAP) stop $(TCHAP_SERVICES)
+.PHONY: stop-tchap
 
 # -- Backend
 

@@ -5,15 +5,14 @@
  * bubbles. Kept free of React and of the SDK's `Room`/`MatrixEvent` types so the
  * mapping layer can depend on it without a cycle.
  */
+import { deriveInitials } from "@/features/ui/components/avatar/initials";
 import { hashAvatarColor } from "@/features/ui/components/avatar/palette";
 
 import { ChatUser } from "../types";
 
-export const initialsFor = (name: string): string => {
-  const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
-  const letters = parts.map((part) => part.charAt(0).toUpperCase()).join("");
-  return letters || "?";
-};
+/** Same initials as the `Avatar` component, so a person looks identical. */
+export const initialsFor = (name: string): string =>
+  deriveInitials(name) || "?";
 
 /** The localpart of `@alice:server` → `alice`; a sensible fallback display name. */
 const localpartOf = (userId: string): string =>

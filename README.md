@@ -197,6 +197,16 @@ $ make run-frontend-development
 [`docs/frontend/matrix-local-runtime.md`](docs/frontend/matrix-local-runtime.md)
 for the frontend runtime and extension seams.
 
+To run the chat against Tchap preprod or prod instead, served at
+`https://hub.localhost:9814` by a dev-only HTTPS proxy, see
+[`docs/frontend/tchap-connection.md`](docs/frontend/tchap-connection.md):
+
+```shellscript
+$ make tchap-env    # once: your Tchap environment and email
+$ make run-tchap
+$ make tchap-trust  # once per machine: trust the local certificate authority
+```
+
 Then open <http://localhost:9807>, click **Sign in** then SSO, and log in with
 a Keycloak realm user such as `hub` / `hub`. Element returns connected as
 `@hub:localhost`.

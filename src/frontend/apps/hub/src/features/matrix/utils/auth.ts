@@ -7,6 +7,7 @@ import {
   MatrixError,
   OidcClientConfig,
   OidcTokenRefresher,
+  registerOidcClient,
   type TokenRefreshFunction,
 } from "matrix-js-sdk/lib/matrix";
 import { secureRandomString } from "matrix-js-sdk/lib/randomstring";
@@ -25,13 +26,40 @@ export const getOidcRedirectUri = (): string =>
   new URL("/", window.location.origin).href;
 
 /**
- * Builds the OIDC authorization URL for a client already registered on the
- * configured Matrix account's delegated-auth issuer.
+ * OAuth client used to sign in: either registered in advance on the issuer, or
+ * registered dynamically under this name.
+ */
+export type OidcClient = { clientId: string } | { clientName: string };
+
+/**
+ * Dynamic registration (MSC2966). MAS returns the same client id when the
+ * registration body is identical, so registering again at each login is cheap
+ * and recovers by itself if the issuer forgets the client.
+ */
+const registerClient = (
+  metadata: OidcClientConfig,
+  clientName: string,
+  redirectUri: string,
+): Promise<string> =>
+  registerOidcClient(metadata, {
+    clientName,
+    clientUri: window.location.origin,
+    redirectUris: [redirectUri],
+    applicationType: "web",
+    contacts: undefined,
+    tosUri: undefined,
+    policyUri: undefined,
+  });
+
+/**
+ * Builds the OIDC authorization URL on the homeserver's delegated-auth issuer.
+ * The homeserver URL travels with the authorization state and comes back from
+ * {@link completeOidcLogin}.
  */
 export const getOIDCAuthUrl = async (
   homeserverUrl: string,
   email: string,
-  oidcClientId: string,
+  client: OidcClient,
 ): Promise<string> => {
   const delegatedAuthConfig = await fetchDelegatedAuthMetadata(homeserverUrl);
   if (!delegatedAuthConfig) {
@@ -39,10 +67,18 @@ export const getOIDCAuthUrl = async (
   }
 
   const redirectUri = getOidcRedirectUri();
+  const clientId =
+    "clientId" in client
+      ? client.clientId
+      : await registerClient(
+          delegatedAuthConfig,
+          client.clientName,
+          redirectUri,
+        );
   return generateOidcAuthorizationUrl({
     metadata: delegatedAuthConfig,
     redirectUri,
-    clientId: oidcClientId,
+    clientId,
     homeserverUrl,
     identityServerUrl: homeserverUrl,
     nonce: secureRandomString(NONCE_LENGTH),
@@ -83,10 +119,11 @@ export const completeOidcLogin = async (params: {
   state: string;
 }): Promise<CompleteOidcLoginResponse> => {
   const { code, state } = params;
-  const { tokenResponse, idTokenClaims, oidcClientSettings } =
+  const { homeserverUrl, tokenResponse, idTokenClaims, oidcClientSettings } =
     await completeAuthorizationCodeGrant(code, state, RESPONSE_MODE);
 
   return {
+    homeserverUrl,
     accessToken: tokenResponse.access_token,
     refreshToken: tokenResponse.refresh_token,
     idToken: tokenResponse.id_token,
@@ -162,6 +199,8 @@ export const getUserIdFromAccessToken = async (
     return await client.whoami();
   } catch (error) {
     console.error("Failed to retrieve userId using accessToken", error);
+    // Keep Matrix errors: their errcode (e.g. an expired account) matters.
+    if (error instanceof MatrixError) throw error;
     throw new Error("Failed to retrieve userId using accessToken");
   }
 };

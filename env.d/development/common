@@ -48,7 +48,10 @@ LOGIN_REDIRECT_URL=http://localhost:9800
 LOGIN_REDIRECT_URL_FAILURE=http://localhost:9800
 LOGOUT_REDIRECT_URL=http://localhost:9800
 
-OIDC_REDIRECT_ALLOWED_HOSTS="localhost:9803,localhost:9800"
+OIDC_REDIRECT_ALLOWED_HOSTS="localhost:9803,localhost:9800,hub.localhost:9814"
+# Return to the origin the login started from (localhost:9800 or the Tchap
+# HTTPS origin hub.localhost:9814) instead of LOGIN_REDIRECT_URL.
+OIDC_REDIRECT_FIELD_NAME=returnTo
 OIDC_AUTH_REQUEST_EXTRA_PARAMS={"acr_values": "eidas1"}
 
 # Store OIDC tokens in the session. Needed by search/ endpoint.
