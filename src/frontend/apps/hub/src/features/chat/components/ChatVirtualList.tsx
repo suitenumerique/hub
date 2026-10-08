@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { type ListRange, Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import type {
   ChatMessage,
@@ -70,6 +70,10 @@ const TimelineHeader = ({ context }: { context?: TimelineContext }) => {
 };
 
 const DEFAULT_ITEM_HEIGHT = 72;
+// Request the previous page while this many rows remain above the rendered
+// ones: it is then inserted off screen, where Virtuoso's estimated heights
+// cannot move the messages being read.
+const OLDER_PREFETCH_ROWS = 50;
 // Debounce viewport checks until Virtuoso scrolling and layout have settled.
 const VISIBILITY_SETTLE_MS = 150;
 // After measuring, require focused visibility before marking a message read.
@@ -542,6 +546,20 @@ export const ChatVirtualList = ({
     [fetchOlder, hasOlder],
   );
 
+  const handleRangeChanged = useCallback(
+    ({ startIndex }: ListRange) => {
+      if (
+        hasOlder &&
+        hasUserInteractedRef.current &&
+        startIndex - firstItemIndex < OLDER_PREFETCH_ROWS
+      ) {
+        fetchOlder();
+      }
+      scheduleVisibilityMeasurement();
+    },
+    [fetchOlder, firstItemIndex, hasOlder, scheduleVisibilityMeasurement],
+  );
+
   const handleEndReached = useCallback(() => {
     if (hasUserInteractedRef.current) {
       fetchNewer();
@@ -600,6 +618,11 @@ export const ChatVirtualList = ({
           firstItemIndex={firstItemIndex}
           computeItemKey={(_index, message) => message.id}
           defaultItemHeight={DEFAULT_ITEM_HEIGHT}
+          // Measure rows before paint. By default Virtuoso waits a frame, so a
+          // row rendered above the viewport first shifts the visible ones by
+          // its estimation error. This may log benign "ResizeObserver loop"
+          // errors.
+          skipAnimationFrameInResizeObserver
           initialTopMostItemIndex={
             initialWindowIndex >= 0
               ? { index: initialWindowIndex, align: "center" }
@@ -623,7 +646,7 @@ export const ChatVirtualList = ({
             }
             scheduleVisibilityMeasurement();
           }}
-          rangeChanged={scheduleVisibilityMeasurement}
+          rangeChanged={handleRangeChanged}
           totalListHeightChanged={() => {
             if (shouldStickToBottomRef.current && isAtLiveEndRef.current) {
               scrollToBottom();

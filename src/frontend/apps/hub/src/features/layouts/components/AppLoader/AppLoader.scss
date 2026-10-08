@@ -1,0 +1,63 @@
+// Tchap blue, as in the logo mark.
+$hub-app-loader-accent: #2845c1;
+
+.hub__app-loader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  // Optical centre: the pair sits slightly above the middle of the screen.
+  padding-bottom: 8vh;
+  background: var(--c--contextuals--background--surface--primary, #fff);
+
+  &__bar {
+    position: relative;
+    width: 160px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: rgba($hub-app-loader-accent, 0.12);
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 40%;
+      border-radius: inherit;
+      background: $hub-app-loader-accent;
+      animation: hub-app-loader-slide 1.4s cubic-bezier(0.65, 0, 0.35, 1)
+        infinite;
+    }
+  }
+}
+
+@keyframes hub-app-loader-slide {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes hub-app-loader-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__app-loader__bar::after {
+    width: 100%;
+    animation: hub-app-loader-pulse 2s ease-in-out infinite;
+  }
+}

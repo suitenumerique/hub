@@ -24,6 +24,14 @@ and this project adheres to
 - ⚡️(frontend) Empty the composer as soon as a message is sent and put it back
   if sending fails. Share encryption keys while typing and skip waiting for
   the typing notice, so encrypted messages leave faster.
+- 🐛(frontend) Keep messages still while scrolling up: measure rows before
+  they are painted and load older pages before the top is reached.
+- 🐛(frontend) Decrypt older messages before showing them, so they no longer
+  stay stuck on "Encrypted message awaiting decryption…".
+- 💄(frontend) Show a Tchap splash screen with a loading bar while the Hub
+  and the chat connection start.
+- ⚡️(frontend) Start the chat faster: load the encryption module and the
+  session checks in parallel instead of one after the other.
 
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.

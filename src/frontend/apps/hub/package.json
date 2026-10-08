@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@gouvfr-lasuite/ui-components": "1.0.0",
+    "@matrix-org/matrix-sdk-crypto-wasm": "^18.2.0",
     "@tanstack/react-query": "5.90.10",
     "clsx": "2.1.1",
     "frimousse": "0.3.0",

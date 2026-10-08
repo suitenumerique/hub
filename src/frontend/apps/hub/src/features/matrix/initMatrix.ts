@@ -114,6 +114,18 @@ const buildClient = (
   return { mx, indexedDBStore, cryptoStoreDbName };
 };
 
+/**
+ * Rust Crypto otherwise downloads and compiles its WebAssembly (several MB)
+ * only when `initRustCrypto` runs, after the session checks below. Starting it
+ * first overlaps both; the package shares this single load with the SDK.
+ */
+const preloadRustCrypto = (): void => {
+  void import("@matrix-org/matrix-sdk-crypto-wasm")
+    .then(({ initAsync }) => initAsync())
+    // initRustCrypto awaits the same load and reports its failure.
+    .catch(() => {});
+};
+
 const startupClient = async (
   { mx, indexedDBStore, cryptoStoreDbName }: MatrixClientStores,
   user: MatrixUserInterface,
@@ -123,7 +135,15 @@ const startupClient = async (
   // opening either IndexedDB store. A local MAS/Synapse reset invalidates both
   // tokens; letting Rust Crypto discover that first produces several failing
   // key requests before the driver can start a fresh login.
-  const identity = await mx.whoami();
+  // The public keys and joined rooms do not depend on that check and load in
+  // parallel: the SDK shares one token refresh between the requests, and a
+  // failed check still wins (closing the client aborts the others).
+  const identityRequest = mx.whoami();
+  const keysRequest = mx.downloadKeysForUsers([user.mxId]);
+  const joinedRoomsRequest = mx.getJoinedRooms();
+  keysRequest.catch(() => {});
+  joinedRoomsRequest.catch(() => {});
+  const identity = await identityRequest;
   assertActive();
   if (
     !user.deviceId ||
@@ -136,7 +156,7 @@ const startupClient = async (
   }
   // Query public keys before Rust can create/upload any device identity. A
   // published device with a missing local store requires explicit recovery.
-  const keys = await mx.downloadKeysForUsers([user.mxId]);
+  const keys = await keysRequest;
   assertActive();
   const published = keys.device_keys?.[user.mxId]?.[user.deviceId]?.keys;
   if (published) {
@@ -159,7 +179,11 @@ const startupClient = async (
   }
   await indexedDBStore.startup();
   assertActive();
-  await discardStaleJoinedRooms(mx, indexedDBStore, assertActive);
+  await discardStaleJoinedRooms(
+    indexedDBStore,
+    joinedRoomsRequest,
+    assertActive,
+  );
   assertActive();
   await mx.initRustCrypto({ cryptoDatabasePrefix: cryptoStoreDbName });
   assertActive();
@@ -190,8 +214,8 @@ const startupClient = async (
  * and the separate Rust Crypto store.
  */
 const discardStaleJoinedRooms = async (
-  mx: MatrixClient,
   indexedDBStore: IndexedDBStore,
+  joinedRoomsRequest: ReturnType<MatrixClient["getJoinedRooms"]>,
   assertActive: () => void,
 ): Promise<void> => {
   const savedSync = await indexedDBStore.getSavedSync();
@@ -201,7 +225,7 @@ const discardStaleJoinedRooms = async (
     return;
   }
 
-  const { joined_rooms: serverJoinedRooms } = await mx.getJoinedRooms();
+  const { joined_rooms: serverJoinedRooms } = await joinedRoomsRequest;
   assertActive();
   const serverJoinedRoomIds = new Set(serverJoinedRooms);
   const hasStaleJoinedRoom = cachedJoinedRoomIds.some(
@@ -226,6 +250,7 @@ export const initClient = async (
   user: MatrixUserInterface,
   options: InitClientOptions = {},
 ): Promise<MatrixClient> => {
+  preloadRustCrypto();
   const client = buildClient(user, options);
   try {
     const assertActive = options.assertActive ?? (() => {});

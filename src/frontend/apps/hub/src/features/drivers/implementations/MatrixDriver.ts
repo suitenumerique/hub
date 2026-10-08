@@ -947,20 +947,28 @@ export class MatrixDriver extends Driver {
   ): Promise<ChatMessagesPage> {
     const mx = this.requireClient("mapMainTimelinePage");
     const selfUserId = mx.getUserId() ?? undefined;
-    const mappedMessages = pageEvents.map((event) =>
-      matrixEventToChatMessage(event, room, selfUserId),
+    // Paginated events decrypt in the background. Mapped before that ends,
+    // they would stay placeholders: their decryption patch can arrive before
+    // the page is in the cache, where it finds no row to update.
+    await Promise.all(
+      pageEvents.map((event) => mx.decryptEventIfNeeded(event)),
     );
-    const messages = await Promise.all(
-      mappedMessages.map((message, index) =>
+    const reconciled = await Promise.all(
+      pageEvents.map((event) =>
         reconcileMessageReactions(
           mx,
           room,
-          pageEvents[index],
-          message,
+          event,
+          matrixEventToChatMessage(event, room, selfUserId),
           selfUserId,
         ),
       ),
     );
+    // A missing key can still arrive while reactions load: map content last.
+    const messages = pageEvents.map((event, index) => ({
+      ...matrixEventToChatMessage(event, room, selfUserId),
+      reactions: reconciled[index].reactions,
+    }));
     return {
       messages,
       authors: buildAuthors(room, pageEvents, selfUserId),

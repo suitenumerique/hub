@@ -1,7 +1,18 @@
+import clsx from "clsx";
 import Image from "next/image";
 
-export const TchapLogo = () => (
-  <span className="hub__tchap-logo" role="img" aria-label="Tchap">
+type TchapLogoProps = {
+  size?: "medium" | "large";
+};
+
+export const TchapLogo = ({ size = "medium" }: TchapLogoProps) => (
+  <span
+    className={clsx("hub__tchap-logo", {
+      "hub__tchap-logo--large": size === "large",
+    })}
+    role="img"
+    aria-label="Tchap"
+  >
     <span className="hub__tchap-logo__mark" aria-hidden="true">
       <span className="hub__tchap-logo__asset hub__tchap-logo__asset--primary">
         <Image

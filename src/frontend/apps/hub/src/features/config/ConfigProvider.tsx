@@ -1,9 +1,9 @@
-import { Spinner } from "@gouvfr-lasuite/ui-components";
 import Head from "next/head";
 import Script from "next/script";
 import { createContext, useContext } from "react";
 
 import { ApiConfig } from "@/features/drivers/types";
+import { AppLoader } from "@/features/layouts/components/AppLoader/AppLoader";
 import { useApiConfig } from "./useApiConfig";
 
 export interface ConfigContextType {
@@ -26,11 +26,7 @@ export const ConfigProvider = ({ children }: { children: React.ReactNode }) => {
   const { data: config } = useApiConfig();
 
   if (!config) {
-    return (
-      <div className="hub-config-loader">
-        <Spinner size="xl" />
-      </div>
-    );
+    return <AppLoader />;
   }
 
   return (

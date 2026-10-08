@@ -1,4 +1,4 @@
-import { Button, Spinner } from "@gouvfr-lasuite/ui-components";
+import { Button } from "@gouvfr-lasuite/ui-components";
 import { useTranslation } from "react-i18next";
 import { posthog } from "posthog-js";
 import React, { PropsWithChildren, useEffect, useState } from "react";
@@ -11,6 +11,7 @@ import { useChatAccountsBootstrap } from "../chat/hooks/useChatAccounts";
 import { useChatConnections } from "../chat/hooks/useChatConnection";
 import { useConfig } from "../config/ConfigProvider";
 import { getRegistry } from "../drivers/DriverRegistry";
+import { AppLoader } from "../layouts/components/AppLoader/AppLoader";
 import { ChatLocalUser } from "../drivers/types";
 import { authUrl } from "./authUrl";
 import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
@@ -121,11 +122,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     chatAccounts.isReconciling ||
     chatStatus === "connecting"
   ) {
-    return (
-      <div className="hub-auth-loader">
-        <Spinner size="xl" />
-      </div>
-    );
+    return <AppLoader />;
   }
 
   if (chatStatus === "blocked" || chatStatus === "error") {
