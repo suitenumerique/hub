@@ -217,8 +217,8 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px;
+    gap: 4px;
+    padding: 6px 6px 6px 4px;
     border-radius: var(--hub-lp-radius);
     color: inherit;
     font: inherit;
@@ -270,6 +270,14 @@
           #ce0500
         );
       }
+    }
+
+    &__content {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     &__text {

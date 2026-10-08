@@ -38,6 +38,9 @@ export const chatKeys = {
     attachment: ChatAttachment,
     variant: "original" | "preview",
   ) => ["chat-attachment", accountId, attachment.source, variant] as const,
+  /** Image of a conversation avatar; the driver-owned URL identifies it. */
+  avatar: (accountId: AccountId, avatarUrl: string) =>
+    ["chat-avatar", accountId, avatarUrl] as const,
   connection: (accountId: AccountId, userId: string | null) =>
     ["chat-connection", accountId, userId] as const,
 };

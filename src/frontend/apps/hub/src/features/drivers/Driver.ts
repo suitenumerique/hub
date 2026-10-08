@@ -99,6 +99,14 @@ export type UploadChatAttachmentParams = {
   onProgress?: (fraction: number) => void;
 };
 
+export type GetChatAvatarParams = {
+  /** `LocalChat.avatarUrl` of the conversation. */
+  avatarUrl: string;
+  /** Square size requested, in device pixels. */
+  size: number;
+  signal?: AbortSignal;
+};
+
 export type DownloadChatAttachmentParams = {
   attachment: ChatAttachment;
   /**
@@ -417,6 +425,14 @@ export abstract class Driver {
     void _params;
     throw new Error(
       `${this.constructor.name}.downloadChatAttachment: attachments are not supported by this driver.`,
+    );
+  }
+
+  /** Image of a conversation's avatar. Without one, the UI keeps its visual. */
+  async getChatAvatar(_params: GetChatAvatarParams): Promise<Blob> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.getChatAvatar: avatars are not supported by this driver.`,
     );
   }
 

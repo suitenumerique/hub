@@ -15,6 +15,12 @@ and this project adheres to
   development, with `make run-tchap` and a local certificate authority.
 - 🐛(frontend) Keep direct conversation names when the homeserver leaves a
   member out of the room state, and never show a Matrix id as a name.
+- ✨(frontend) Show conversation avatars: the room's own picture, or the other
+  person's in a direct conversation, in the list, header and search results.
+- 💄(frontend) Align conversation rows and avatars with the design: spacing,
+  full-size pictures under the ring, icon size and background sheen.
+- 💄(frontend) List direct conversations first in search results, then named
+  conversations, then conversations named after their members.
 - ⚡️(frontend) Empty the composer as soon as a message is sent and put it back
   if sending fails. Share encryption keys while typing and skip waiting for
   the typing notice, so encrypted messages leave faster.

@@ -11,6 +11,7 @@ import { ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
+import { ChatVisualAvatar } from "@/features/chat/components/ChatVisualAvatar";
 import {
   type ChatUnreadLookup,
   useChatUnread,
@@ -19,7 +20,6 @@ import { useChats } from "@/features/chat/hooks/useChats";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatUnread } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
-import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { TchapLogo } from "./TchapLogo";
 
@@ -229,26 +229,6 @@ const ChatRow = ({
   const { t } = useTranslation();
   const router = useRouter();
   const isActive = sameChatRef(readChatRef(router.query), chat.ref);
-  const renderAvatar = () => {
-    switch (chat.visual.kind) {
-      case "emoji":
-        return (
-          <Avatar label={chat.name} variant="soft" decorative>
-            {chat.visual.emoji}
-          </Avatar>
-        );
-      case "icon":
-        return (
-          <Avatar label={chat.name} decorative>
-            <span className="material-icons" aria-hidden="true">
-              {chat.visual.icon}
-            </span>
-          </Avatar>
-        );
-      default:
-        return <Avatar label={chat.name} decorative />;
-    }
-  };
 
   return (
     <Link
@@ -273,20 +253,24 @@ const ChatRow = ({
         )}
         aria-hidden="true"
       />
-      {renderAvatar()}
-      <span className="hub__left-panel__chat__text">
-        <span
-          className={clsx(
-            "hub__left-panel__chat__name",
-            (unread.unread || isActive) &&
-              "hub__left-panel__chat__name--strong",
+      <span className="hub__left-panel__chat__content">
+        <ChatVisualAvatar chat={chat} />
+        <span className="hub__left-panel__chat__text">
+          <span
+            className={clsx(
+              "hub__left-panel__chat__name",
+              (unread.unread || isActive) &&
+                "hub__left-panel__chat__name--strong",
+            )}
+          >
+            {chat.name}
+          </span>
+          {showAccountLabel && accountLabel && (
+            <span className="hub__left-panel__chat__account">
+              {accountLabel}
+            </span>
           )}
-        >
-          {chat.name}
         </span>
-        {showAccountLabel && accountLabel && (
-          <span className="hub__left-panel__chat__account">{accountLabel}</span>
-        )}
       </span>
       {unread.unread && (
         <span className="hub__visually-hidden">{t("Unread message")}</span>

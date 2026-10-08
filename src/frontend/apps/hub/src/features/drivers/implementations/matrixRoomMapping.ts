@@ -95,17 +95,21 @@ const pendingCounterpartId = (
   return userId && userId !== currentUserId ? userId : undefined;
 };
 
+/** A Matrix content URI, the only avatar reference the driver resolves. */
+const mxcUrl = (value: unknown): string | undefined =>
+  typeof value === "string" && value.startsWith("mxc://") ? value : undefined;
+
 /**
- * Display name from the user's latest `m.room.member` event in the loaded
- * timeline. With `state_after`, Synapse can leave a membership out of the room
- * state while it is in the timeline, which the SDK then ignores as state
+ * Profile from the user's latest `m.room.member` event in the loaded timeline.
+ * With `state_after`, Synapse can leave a membership out of the room state
+ * while it is in the timeline, which the SDK then ignores as state
  * (element-hq/synapse#20278). Remove once Tchap's Synapse fixes it.
  */
-const timelineDisplayName = (
+const timelineProfile = (
   room: Room,
   userId: string,
-): string | undefined => {
-  const displayName = room
+): { displayName?: string; avatarUrl?: string } => {
+  const content = room
     .getLiveTimeline()
     .getEvents()
     .findLast(
@@ -113,11 +117,31 @@ const timelineDisplayName = (
         event.getType() === EventType.RoomMember &&
         event.getStateKey() === userId,
     )
-    ?.getContent().displayname;
-  return typeof displayName === "string" && displayName.trim()
-    ? displayName.trim()
-    : undefined;
+    ?.getContent();
+  const displayName = content?.displayname;
+  return {
+    displayName:
+      typeof displayName === "string" && displayName.trim()
+        ? displayName.trim()
+        : undefined,
+    avatarUrl: mxcUrl(content?.avatar_url),
+  };
 };
+
+/**
+ * Avatar of a conversation, as Element picks it: the room's own avatar, else
+ * the other person's in a direct chat, else none.
+ */
+const roomAvatarUrl = (
+  room: Room,
+  counterpart: RoomMember | undefined,
+  pendingCounterpartId: string | undefined,
+): string | undefined =>
+  mxcUrl(room.getMxcAvatarUrl()) ??
+  mxcUrl(counterpart?.getMxcAvatarUrl()) ??
+  (pendingCounterpartId
+    ? timelineProfile(room, pendingCounterpartId).avatarUrl
+    : undefined);
 
 /** A room id (`!abc:server`) or user ids (`@alice:server…`): never a label. */
 const isTechnicalName = (name: string): boolean =>
@@ -166,7 +190,7 @@ export const matrixJoinedRoomToLocalChat = (
   } else {
     name =
       otherNames[0] ||
-      (counterpartId && timelineDisplayName(room, counterpartId)) ||
+      (counterpartId && timelineProfile(room, counterpartId).displayName) ||
       room.name;
   }
   // Without any display name, a neutral label rather than a Matrix id.
@@ -187,6 +211,9 @@ export const matrixJoinedRoomToLocalChat = (
     kind: isDirect ? "direct" : "group",
     participantIds,
     visual: isDirect ? { kind: "initials" } : { kind: "icon", icon: "groups" },
+    avatarUrl: isDirect
+      ? roomAvatarUrl(room, displayedOthers[0], counterpartId)
+      : mxcUrl(room.getMxcAvatarUrl()),
     membership: "join",
   };
 };

@@ -91,6 +91,7 @@ import {
   DeleteChatMessageParams,
   DownloadChatAttachmentParams,
   Driver,
+  GetChatAvatarParams,
   EditChatMessageParams,
   GetChatThreadParams,
   GetChatMessagesParams,
@@ -154,6 +155,7 @@ import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
 import {
   createEncryptedThumbnail,
   encryptAttachment,
+  fetchAvatarThumbnail,
   fetchMedia,
   fetchServerThumbnail,
   isInlineImage,
@@ -1880,6 +1882,15 @@ export class MatrixDriver extends Driver {
     return fetchMedia(mx, source, attachment.mimetype, signal);
   }
 
+  async getChatAvatar({
+    avatarUrl,
+    size,
+    signal,
+  }: GetChatAvatarParams): Promise<Blob> {
+    const mx = this.requireClient("getChatAvatar");
+    return fetchAvatarThumbnail(mx, avatarUrl, size, signal);
+  }
+
   /**
    * Largest file this account accepts: the Hub's own limit (`maxUploadSize`
    * setting), lowered to the homeserver's `m.upload.size` when smaller.
@@ -2895,6 +2906,13 @@ export class MatrixDriver extends Driver {
       emitCurrent({ type: "chat:changed", chatId: room.roomId });
       emitCurrent({ type: "chats:changed" });
     };
+    // A new room avatar is state, not a name or member change.
+    const onRoomAvatar = (event: MatrixEvent) => {
+      const roomId = event.getRoomId();
+      if (event.getType() !== EventType.RoomAvatar || !roomId) return;
+      emitCurrent({ type: "chat:changed", chatId: roomId });
+      emitCurrent({ type: "chats:changed" });
+    };
     const onTags = (_event: MatrixEvent, room: Room) => {
       emitCurrent({ type: "tags:changed", chatId: room.roomId });
     };
@@ -3002,6 +3020,7 @@ export class MatrixDriver extends Driver {
     mx.on(RoomMemberEvent.PowerLevel, onPowerLevel);
     mx.on(RoomStateEvent.Members, onMembers);
     mx.on(RoomEvent.Name, onName);
+    mx.on(RoomStateEvent.Events, onRoomAvatar);
     mx.on(RoomEvent.Tags, onTags);
     mx.on(RoomEvent.AccountData, onAccountData);
     mx.on(ClientEvent.Room, onRoom);
@@ -3114,6 +3133,7 @@ export class MatrixDriver extends Driver {
       mx.off(RoomMemberEvent.PowerLevel, onPowerLevel);
       mx.off(RoomStateEvent.Members, onMembers);
       mx.off(RoomEvent.Name, onName);
+      mx.off(RoomStateEvent.Events, onRoomAvatar);
       mx.off(RoomEvent.Tags, onTags);
       mx.off(RoomEvent.AccountData, onAccountData);
       mx.off(ClientEvent.Room, onRoom);

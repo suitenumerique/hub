@@ -856,20 +856,23 @@ export class MatrixConversationSearch {
           sliceStart = performance.now();
         }
       }
-      // Adapt local chats to the shared comparator: activity, name, account, and ID.
-      results.sort((a, b) =>
-        compareChats(
-          {
-            ...a.chat,
-            accountId: this.accountId,
-            ref: { accountId: this.accountId, chatId: a.chat.id },
-          },
-          {
-            ...b.chat,
-            accountId: this.accountId,
-            ref: { accountId: this.accountId, chatId: b.chat.id },
-          },
-        ),
+      // Result group first, then the shared comparator adapted to local chats:
+      // activity, name, account, and ID.
+      results.sort(
+        (a, b) =>
+          a.rank - b.rank ||
+          compareChats(
+            {
+              ...a.chat,
+              accountId: this.accountId,
+              ref: { accountId: this.accountId, chatId: a.chat.id },
+            },
+            {
+              ...b.chat,
+              accountId: this.accountId,
+              ref: { accountId: this.accountId, chatId: b.chat.id },
+            },
+          ),
       );
       // A publication during a yield prevents caching this calculation.
       if (revision === this.revision)
@@ -880,7 +883,7 @@ export class MatrixConversationSearch {
     return {
       results: results
         .slice(0, limit)
-        .map(({ chat, subtitle }) => ({ chat, subtitle })),
+        .map(({ chat, subtitle, rank }) => ({ chat, subtitle, rank })),
       total: results.length,
     };
   }

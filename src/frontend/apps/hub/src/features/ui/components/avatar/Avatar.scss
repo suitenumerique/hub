@@ -3,9 +3,9 @@ $avatar-colors:
   "purple", "red", "yellow";
 
 .hub__avatar {
+  position: relative;
   flex: 0 0 auto;
   border-radius: 50%;
-  border: 1.5px solid var(--c--contextuals--border--semantic--overlay--primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -17,29 +17,62 @@ $avatar-colors:
   text-align: center;
   color: var(--c--contextuals--content--semantic--overlay--primary);
 
+  // The ring is drawn over the background and the picture, so a picture
+  // fills the whole avatar as in the design.
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid var(--c--contextuals--border--semantic--overlay--primary);
+    pointer-events: none;
+  }
+
+  &__image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  // Icons take 15/24 of the avatar, as the group icon in the design.
   &--sm {
     width: 24px;
     height: 24px;
     font-size: 10px;
+
+    .material-icons {
+      font-size: 15px;
+    }
   }
 
   &--md {
     width: 32px;
     height: 32px;
     font-size: 13px;
+
+    .material-icons {
+      font-size: 20px;
+    }
   }
 
   &--lg {
     width: 40px;
     height: 40px;
     font-size: 17px;
+
+    .material-icons {
+      font-size: 25px;
+    }
   }
 
+  // Palette colour under a light sheen toward the bottom, as in the design.
   @each $color in $avatar-colors {
     &--#{$color} {
-      background: var(
-        --c--contextuals--background--palette--#{$color}--primary
-      );
+      background:
+        linear-gradient(180deg, transparent 51%, rgba(255, 255, 255, 0.2) 100%),
+        var(--c--contextuals--background--palette--#{$color}--primary);
     }
   }
 
