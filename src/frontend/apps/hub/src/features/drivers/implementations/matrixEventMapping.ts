@@ -29,6 +29,7 @@ import { hashAvatarColor } from "@/features/ui/components/avatar/palette";
 import { ChatEvent } from "../Driver";
 import {
   ChatAttachment,
+  ChatComposedMessage,
   ChatMessage,
   ChatMessageAuthor,
   ChatReaction,
@@ -816,12 +817,13 @@ export const buildAuthors = (
  */
 export const sendResponseToChatMessage = (
   eventId: string,
-  content: string,
+  { content, htmlContent }: ChatComposedMessage,
   attachment?: ChatAttachment,
 ): ChatMessage => ({
   id: eventId,
   authorId: SELF_AUTHOR_ID,
   content,
+  ...(htmlContent ? { htmlContent } : {}),
   ...(attachment ? { attachment } : {}),
   timestamp: new Date().toISOString(),
   reactions: [],

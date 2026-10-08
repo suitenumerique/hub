@@ -109,6 +109,7 @@ import {
 import {
   AccountId,
   ChatAttachment,
+  ChatComposedMessage,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -125,6 +126,11 @@ import {
   LocalChatSections,
   User,
 } from "../types";
+import {
+  matrixCaptionContent,
+  matrixEditContent,
+  matrixTextContent,
+} from "./matrixComposedContent";
 import {
   authorForSender,
   buildAuthors,
@@ -258,11 +264,20 @@ const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   refreshToken: user.refreshToken,
 });
 
-const toChatMember = (member: RoomMember): ChatMember => ({
-  id: member.userId,
-  name: member.name || member.userId,
-  secondaryText: member.userId,
-});
+const toChatMember = (
+  member: RoomMember,
+  currentUserId: string | undefined,
+): ChatMember => {
+  const avatarUrl = mxcUrl(member.getMxcAvatarUrl());
+  return {
+    id: member.userId,
+    name: member.name || member.userId,
+    secondaryText: member.userId,
+    rawName: member.rawDisplayName || member.name || member.userId,
+    ...(avatarUrl ? { avatarUrl } : {}),
+    ...(member.userId === currentUserId ? { isCurrentUser: true } : {}),
+  };
+};
 
 const sortChatMembers = (
   members: ChatMember[],
@@ -532,13 +547,13 @@ export class MatrixDriver extends Driver {
       present: sortChatMembers(
         members
           .filter((member) => member.membership === KnownMembership.Join)
-          .map(toChatMember),
+          .map((member) => toChatMember(member, currentUserId)),
         currentUserId,
       ),
       pendingInvites: sortChatMembers(
         members
           .filter((member) => member.membership === KnownMembership.Invite)
-          .map(toChatMember),
+          .map((member) => toChatMember(member, currentUserId)),
         currentUserId,
       ),
     };
@@ -1685,18 +1700,18 @@ export class MatrixDriver extends Driver {
    */
   async sendChatMessage({
     chatId,
-    content,
     attachment,
+    ...message
   }: SendChatMessageParams): Promise<ChatMessage> {
     const { mx, room } = this.requireRoom("sendChatMessage", chatId);
     const eventId = await this.sendRoomMessage(
       mx,
       room,
       null,
-      content,
+      message,
       attachment,
     );
-    return sendResponseToChatMessage(eventId, content, attachment);
+    return sendResponseToChatMessage(eventId, message, attachment);
   }
 
   /** Posts text or an uploaded file, at the room level or inside a thread. */
@@ -1704,13 +1719,17 @@ export class MatrixDriver extends Driver {
     mx: MatrixClient,
     room: Room,
     threadId: string | null,
-    content: string,
+    message: ChatComposedMessage,
     attachment: ChatAttachment | undefined,
   ): Promise<string> {
     const chatId = room.roomId;
     if (!attachment) {
       const { event_id: eventId } = await this.sendContent(mx, room, () =>
-        mx.sendTextMessage(chatId, threadId, content),
+        mx.sendMessage(
+          chatId,
+          threadId,
+          matrixTextContent(message, mx.getUserId()),
+        ),
       );
       return eventId;
     }
@@ -1723,11 +1742,10 @@ export class MatrixDriver extends Driver {
       );
     }
     const { event_id: eventId } = await this.sendContent(mx, room, () =>
-      mx.sendMessage(
-        chatId,
-        threadId,
-        matrixAttachmentContent(attachment, content) as RoomMessageEventContent,
-      ),
+      mx.sendMessage(chatId, threadId, {
+        ...matrixAttachmentContent(attachment, message.content),
+        ...matrixCaptionContent(message, mx.getUserId()),
+      } as RoomMessageEventContent),
     );
     return eventId;
   }
@@ -1890,7 +1908,7 @@ export class MatrixDriver extends Driver {
     chatId,
     messageId,
     threadId,
-    content,
+    ...message
   }: EditChatMessageParams): Promise<ChatMessage> {
     const { mx, room, event } = await this.requireMessage("editChatMessage", {
       chatId,
@@ -1909,16 +1927,13 @@ export class MatrixDriver extends Driver {
       );
     }
 
-    const newContent = { body: content, msgtype: MsgType.Text } as const;
-    const editContent: RoomMessageEventContent = {
-      body: `* ${content}`,
-      msgtype: MsgType.Text,
-      "m.new_content": newContent,
-      "m.relates_to": {
-        rel_type: RelationType.Replace,
-        event_id: messageId,
-      },
-    };
+    // The latest version: the SDK applies the last edit to the original.
+    const editContent = matrixEditContent(
+      message,
+      messageId,
+      event.getContent(),
+      selfUserId,
+    );
     await this.sendContent(mx, room, () =>
       threadId
         ? mx.sendMessage(chatId, threadId, editContent)
@@ -1927,9 +1942,9 @@ export class MatrixDriver extends Driver {
 
     return {
       ...matrixEventToChatMessage(event, room, selfUserId),
-      content,
-      // The edit is plain text: the original's formatting must not survive.
-      htmlContent: undefined,
+      content: message.content,
+      // Set even when absent: the original's formatting must not survive.
+      htmlContent: message.htmlContent,
       isEdited: true,
     };
   }
@@ -2003,8 +2018,8 @@ export class MatrixDriver extends Driver {
   async sendChatThreadReply({
     chatId,
     threadId,
-    content,
     attachment,
+    ...message
   }: SendChatThreadReplyParams): Promise<ChatThreadMutationResult> {
     const { mx, room } = this.requireRoom("sendChatThreadReply", chatId);
     if (!threadId.startsWith("$")) {
@@ -2016,7 +2031,7 @@ export class MatrixDriver extends Driver {
       mx,
       room,
       threadId,
-      content,
+      message,
       attachment,
     );
     this.sentThreadReplyEventIds.add(eventId);
@@ -2025,7 +2040,7 @@ export class MatrixDriver extends Driver {
       room,
       threadId,
       eventId,
-      content,
+      message,
       attachment,
     );
   }
@@ -2033,8 +2048,8 @@ export class MatrixDriver extends Driver {
   async startChatThread({
     chatId,
     rootMessageId,
-    content,
     attachment,
+    ...message
   }: StartChatThreadParams): Promise<ChatThreadMutationResult> {
     const { mx, room } = this.requireRoom("startChatThread", chatId);
     if (!rootMessageId.startsWith("$")) {
@@ -2051,7 +2066,7 @@ export class MatrixDriver extends Driver {
       mx,
       room,
       rootMessageId,
-      content,
+      message,
       attachment,
     );
     this.sentThreadReplyEventIds.add(eventId);
@@ -2060,7 +2075,7 @@ export class MatrixDriver extends Driver {
       room,
       rootMessageId,
       eventId,
-      content,
+      message,
       attachment,
     );
   }
@@ -2071,13 +2086,13 @@ export class MatrixDriver extends Driver {
     room: Room,
     rootMessageId: string,
     replyEventId: string,
-    content: string,
+    composed: ChatComposedMessage,
     attachment?: ChatAttachment,
   ): ChatThreadMutationResult {
     const selfUserId = mx.getUserId() ?? undefined;
     const message = sendResponseToChatMessage(
       replyEventId,
-      content,
+      composed,
       attachment,
     );
     const liveThread = room.getThread(rootMessageId);
@@ -2128,7 +2143,7 @@ export class MatrixDriver extends Driver {
       author: authorForSender(room, mx.getUserId() ?? "", selfUserId),
       lastReplyAt: message.timestamp,
       // Matches the event body other clients and `threadToChatThread` read.
-      lastReplyPreview: content || attachment?.name || "",
+      lastReplyPreview: composed.content || attachment?.name || "",
       replyCount,
       unreadCount: 0,
     };

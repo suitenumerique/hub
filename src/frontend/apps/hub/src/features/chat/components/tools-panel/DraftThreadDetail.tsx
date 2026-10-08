@@ -1,9 +1,10 @@
 import { type InfiniteData, skipToken, useQuery } from "@tanstack/react-query";
-import { Fragment, useRef } from "react";
+import { Fragment, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
   ChatAttachment,
+  ChatComposedMessage,
   ChatMessagesPage,
   ChatRef,
 } from "@/features/drivers/types";
@@ -43,6 +44,10 @@ export const DraftThreadDetail = ({
 }: DraftThreadDetailProps) => {
   const { t } = useTranslation();
   const canSend = useCanSendToChat(chatRef);
+  const mentionSource = useMemo(
+    () => ({ accountId: chatRef.accountId, chatRef }),
+    [chatRef],
+  );
   const { startThread, isStarting, isSupported } = useStartChatThread(chatRef);
   // The draft root is a snapshot from when Reply was clicked. Subscribe to
   // its cached message so reactions stay live before the first reply is sent.
@@ -67,8 +72,8 @@ export const DraftThreadDetail = ({
 
   // Text and files sent together each relate to the root: the first one starts
   // the thread, the next ones reply in it (Matrix threads are keyed by root).
-  const send = (content: string, attachment?: ChatAttachment) =>
-    startThread(message, content, {
+  const send = (composed: ChatComposedMessage, attachment?: ChatAttachment) =>
+    startThread(message, composed, {
       rootAuthor: author,
       attachment,
       onCreated: (threadId) => {
@@ -153,11 +158,12 @@ export const DraftThreadDetail = ({
             disabled={!isSupported || !canSend}
             isSubmitting={isStarting}
             focusSignal={isOpen ? composerFocusSignal : undefined}
-            onSubmit={(content) => send(content)}
-            onSendAttachment={(attachment) => send("", attachment)}
+            onSubmit={(composed) => send(composed)}
+            onSendAttachment={(attachment) => send({ content: "" }, attachment)}
             onUploadAttachment={isSupported ? uploadAttachment : undefined}
             dropTargetRef={detailRef}
             onSubmitted={openCreatedThread}
+            mentions={mentionSource}
           />
         </div>
       </div>

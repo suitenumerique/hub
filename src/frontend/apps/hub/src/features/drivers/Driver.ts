@@ -8,6 +8,7 @@ import {
 import {
   AccountId,
   ChatAttachment,
+  ChatComposedMessage,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -77,10 +78,9 @@ export type MarkChatThreadReadParams = {
   threadId: string;
 };
 
-export type SendChatMessageParams = {
+/** The message, whose `content` is the caption of `attachment` when one is sent. */
+export type SendChatMessageParams = ChatComposedMessage & {
   chatId: string;
-  /** Message text, or the caption of `attachment` (usually empty). */
-  content: string;
   /** Posts a file previously stored through `uploadChatAttachment`. */
   attachment?: ChatAttachment;
 };
@@ -131,10 +131,9 @@ export class ChatAttachmentTooLargeError extends Error {
   }
 }
 
-export type EditChatMessageParams = {
+export type EditChatMessageParams = ChatComposedMessage & {
   chatId: string;
   messageId: string;
-  content: string;
   /** Present when the edited message belongs to a Matrix thread. */
   threadId?: string;
 };
@@ -162,19 +161,17 @@ export type SendChatTypingParams = {
 
 export type ChatTypingListener = (users: ChatTypingUser[]) => void;
 
-export type SendChatThreadReplyParams = {
+/** The reply, whose `content` is the caption of `attachment` when one is sent. */
+export type SendChatThreadReplyParams = ChatComposedMessage & {
   chatId: string;
   threadId: string;
-  /** Reply text, or the caption of `attachment` (usually empty). */
-  content: string;
   attachment?: ChatAttachment;
 };
 
-export type StartChatThreadParams = {
+/** The first reply, whose `content` is the caption of `attachment` when one is sent. */
+export type StartChatThreadParams = ChatComposedMessage & {
   chatId: string;
   rootMessageId: string;
-  /** First reply text, or the caption of `attachment` (usually empty). */
-  content: string;
   attachment?: ChatAttachment;
 };
 

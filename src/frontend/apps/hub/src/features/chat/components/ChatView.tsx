@@ -13,7 +13,9 @@ import type {
   AccountId,
   Chat,
   ChatAttachment,
+  ChatComposedMessage,
   ChatRef,
+  ChatUser,
 } from "@/features/drivers/types";
 
 import {
@@ -38,6 +40,7 @@ import { useUploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useCanSendToChat, useChatSecurity } from "../hooks/useChatSecurity";
 import { useChatTyping } from "../hooks/useChatTyping";
 import { useEditChatMessage } from "../hooks/useEditChatMessage";
+import type { ComposerMentionSource } from "../hooks/useMentionCandidates";
 import { useChatMessagesLoaded } from "../hooks/useChatMessages";
 import { useIgnoreStrayFileDrops } from "../hooks/useIgnoreStrayFileDrops";
 import { useChatThreads } from "../hooks/useChatThreads";
@@ -85,12 +88,14 @@ type ChatViewProps = {
   canComposeDraft?: boolean;
   /** Account of that draft, so files can be uploaded before it exists. */
   draftAccountId?: AccountId;
+  /** People chosen for that draft, the only ones `@` can mention in it. */
+  draftParticipants?: readonly ChatUser[];
   /**
    * Resolves or creates that conversation, then sends the draft text or one
    * of its files.
    */
   onSubmitDraft?: (
-    content: string,
+    message: ChatComposedMessage,
     attachment?: ChatAttachment,
   ) => Promise<unknown>;
 };
@@ -109,9 +114,22 @@ export const ChatView = ({
   composerFocusSignal,
   canComposeDraft = false,
   draftAccountId,
+  draftParticipants,
   onSubmitDraft,
 }: ChatViewProps) => {
   const { t } = useTranslation();
+  const mentionSource = useMemo<ComposerMentionSource | undefined>(() => {
+    if (chatRef) {
+      return { accountId: chatRef.accountId, chatRef };
+    }
+    return draftAccountId && draftParticipants?.length
+      ? {
+          accountId: draftAccountId,
+          chatRef: null,
+          participants: draftParticipants,
+        }
+      : undefined;
+  }, [chatRef, draftAccountId, draftParticipants]);
   const { chat } = useChat(chatRef);
   const canSendToChat = useCanSendToChat(chatRef);
   const composerAccountId = useComposerAccountId();
@@ -174,9 +192,9 @@ export const ChatView = ({
   // The same composer submits either a new event or an in-place edit. Notify
   // `onSent` only for new messages so editing never changes navigation state.
   const handleSubmit = useCallback(
-    async (content: string) => {
+    async (composed: ChatComposedMessage) => {
       if (editingMessage) {
-        const message = await editMessage(editingMessage.id, content);
+        const message = await editMessage(editingMessage.id, composed);
         setEditingMessage(null);
         return message;
       }
@@ -184,9 +202,9 @@ export const ChatView = ({
         if (!onSubmitDraft) {
           throw new Error("Draft composition is not available.");
         }
-        return onSubmitDraft(content);
+        return onSubmitDraft(composed);
       }
-      const message = await sendMessage(content);
+      const message = await sendMessage(composed);
       onSent?.(chatRef);
       return message;
     },
@@ -199,7 +217,7 @@ export const ChatView = ({
         if (!onSubmitDraft) {
           throw new Error("Draft composition is not available.");
         }
-        return onSubmitDraft("", attachment);
+        return onSubmitDraft({ content: "" }, attachment);
       }
       const message = await sendAttachment(attachment);
       onSent?.(chatRef);
@@ -401,6 +419,7 @@ export const ChatView = ({
                           canUploadAttachments ? uploadAttachment : undefined
                         }
                         dropTargetRef={mainRef}
+                        mentions={mentionSource}
                       />
                     </div>
                   </div>

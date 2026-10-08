@@ -1,6 +1,8 @@
 import { find } from "linkifyjs";
 import { createElement, Fragment, type ReactNode } from "react";
 
+import { parseUserPermalink } from "./mentionPermalinks";
+
 /**
  * Turns the untrusted HTML of a formatted message (Matrix
  * `org.matrix.custom.html`) into React nodes. The HTML is parsed into an inert
@@ -119,19 +121,6 @@ const parseUrl = (href: string): URL | null => {
   }
 };
 
-/** The user a `https://matrix.to/#/@user:server` permalink (a mention) points to. */
-const mentionedUserId = (url: URL): string | null => {
-  if (url.host !== "matrix.to") {
-    return null;
-  }
-  try {
-    const entity = decodeURIComponent(url.hash.replace(/^#\/?/, ""));
-    return entity.startsWith("@") ? entity.split(/[/?]/)[0] : null;
-  } catch {
-    return null;
-  }
-};
-
 /** A link out of the Hub, opened in a new tab without leaking the page. */
 const externalLink = (url: URL, children: ReactNode[]): ReactNode =>
   createElement(
@@ -188,7 +177,7 @@ const renderLink = (
     return createElement(Fragment, null, ...children);
   }
   state.hasMarkup = true;
-  const userId = mentionedUserId(url);
+  const userId = parseUserPermalink(url.href);
   if (userId) {
     return createElement(
       "span",
@@ -252,11 +241,18 @@ const renderNode = (
 export const renderPlainContent = (text: string): ReactNode =>
   createElement(Fragment, null, ...linkifyText(text));
 
-/**
- * React nodes for a formatted message, or `null` when it carries no markup
- * worth rendering (the plain text then renders instead).
- */
-export const renderFormattedContent = (html: string): ReactNode | null => {
+export type FormattedContent = {
+  nodes: ReactNode;
+  /** False for text only, which keeps the bubble's own line breaks. */
+  hasMarkup: boolean;
+  /** No text at all: the plain body is the better rendering. */
+  isEmpty: boolean;
+};
+
+/** React nodes for a formatted message, or `null` without a DOM. */
+export const renderFormattedContent = (
+  html: string,
+): FormattedContent | null => {
   // The static export prerenders without a DOM; messages only load client-side.
   if (typeof DOMParser === "undefined") {
     return null;
@@ -264,5 +260,9 @@ export const renderFormattedContent = (html: string): ReactNode | null => {
   const { body } = new DOMParser().parseFromString(html, "text/html");
   const state: RenderState = { hasMarkup: false };
   const nodes = renderChildren(body, 0, true, state);
-  return state.hasMarkup ? createElement(Fragment, null, ...nodes) : null;
+  return {
+    nodes: createElement(Fragment, null, ...nodes),
+    hasMarkup: state.hasMarkup,
+    isEmpty: !body.textContent?.trim(),
+  };
 };

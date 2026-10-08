@@ -106,6 +106,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
       composerFocusSignal={composerFocusSignal}
       canComposeDraft={canComposeDraft}
       draftAccountId={isNew ? (accountId ?? undefined) : undefined}
+      draftParticipants={isNew ? selectedUsers : undefined}
       onSubmitDraft={canComposeDraft ? submitDraft : undefined}
       renderHeader={isNew ? renderNewChatHeader : undefined}
       renderEmpty={isNew ? renderNewChatEmpty : undefined}

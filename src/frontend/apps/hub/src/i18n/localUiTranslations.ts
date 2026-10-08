@@ -174,6 +174,7 @@ export const localUiTranslations: Record<string, Record<string, string>> = {
     "Set up encryption to send messages.":
       "Configurez le chiffrement pour envoyer des messages.",
     "Open encryption settings": "Configurer le chiffrement",
+    "Mention suggestions": "Suggestions de mentions",
   },
   de: {
     "Account menu": "Kontomenü",
@@ -188,5 +189,6 @@ export const localUiTranslations: Record<string, Record<string, string>> = {
     "Set up encryption to send messages.":
       "Richten Sie die Verschlüsselung ein, um Nachrichten zu senden.",
     "Open encryption settings": "Verschlüsselung einrichten",
+    "Mention suggestions": "Erwähnungsvorschläge",
   },
 };

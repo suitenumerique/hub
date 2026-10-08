@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 
 import type {
   ChatAttachment,
+  ChatComposedMessage,
   ChatMessageAuthor,
   ChatRef,
 } from "@/features/drivers/types";
@@ -52,6 +53,10 @@ export const ThreadDetail = ({
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
   const canSend = useCanSendToChat(chatRef);
+  const mentionSource = useMemo(
+    () => ({ accountId: chatRef.accountId, chatRef }),
+    [chatRef],
+  );
   const { thread, isInitialLoading, refetch } = useChatThread(
     chatRef,
     threadId,
@@ -82,18 +87,18 @@ export const ThreadDetail = ({
   useEffect(() => setEditingMessage(null), [threadId]);
 
   const handleSubmit = useCallback(
-    async (content: string) => {
+    async (composed: ChatComposedMessage) => {
       if (editingMessage) {
-        const message = await editMessage(editingMessage.id, content);
+        const message = await editMessage(editingMessage.id, composed);
         setEditingMessage(null);
         return message;
       }
-      return sendReply(content);
+      return sendReply(composed);
     },
     [editMessage, editingMessage, sendReply],
   );
   const handleSendAttachment = useCallback(
-    (attachment: ChatAttachment) => sendReply("", attachment),
+    (attachment: ChatAttachment) => sendReply({ content: "" }, attachment),
     [sendReply],
   );
   const uploadAttachment = useUploadChatAttachment(chatRef);
@@ -295,6 +300,7 @@ export const ThreadDetail = ({
             onSendAttachment={handleSendAttachment}
             onUploadAttachment={isSupported ? uploadAttachment : undefined}
             dropTargetRef={detailRef}
+            mentions={mentionSource}
           />
         </div>
       </div>

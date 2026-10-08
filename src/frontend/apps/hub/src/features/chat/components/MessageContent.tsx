@@ -11,8 +11,9 @@ type MessageContentProps = {
 };
 
 /**
- * The text of a message: its formatting when it has some, its plain text
- * otherwise (newlines kept by the bubble), with clickable URLs either way.
+ * The text of a message: its formatted body when it has one, as Element shows
+ * it, else its plain text (newlines kept by the bubble), with clickable URLs
+ * either way.
  */
 export const MessageContent = ({
   content,
@@ -22,12 +23,18 @@ export const MessageContent = ({
     () => (htmlContent ? renderFormattedContent(htmlContent) : null),
     [htmlContent],
   );
+  const usesFormatted = formatted !== null && !formatted.isEmpty;
   const plain = useMemo(
-    () => (formatted ? null : renderPlainContent(content)),
-    [content, formatted],
+    () => (usesFormatted ? null : renderPlainContent(content)),
+    [content, usesFormatted],
   );
-  if (!formatted) {
+  if (!usesFormatted) {
     return plain;
   }
-  return <div className="hub__message-content">{formatted}</div>;
+  // Text-only formatted bodies (`\*x\*` sent as `*x*`) keep the line breaks.
+  return formatted.hasMarkup ? (
+    <div className="hub__message-content">{formatted.nodes}</div>
+  ) : (
+    formatted.nodes
+  );
 };
