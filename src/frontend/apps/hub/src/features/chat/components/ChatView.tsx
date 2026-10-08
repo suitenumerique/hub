@@ -38,6 +38,7 @@ import { useUploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useCanSendToChat, useChatSecurity } from "../hooks/useChatSecurity";
 import { useChatTyping } from "../hooks/useChatTyping";
 import { useEditChatMessage } from "../hooks/useEditChatMessage";
+import { useChatMessagesLoaded } from "../hooks/useChatMessages";
 import { useIgnoreStrayFileDrops } from "../hooks/useIgnoreStrayFileDrops";
 import { useChatThreads } from "../hooks/useChatThreads";
 import { useSendChatMessage } from "../hooks/useSendChatMessage";
@@ -140,7 +141,11 @@ export const ChatView = ({
   const mainRef = useRef<HTMLDivElement>(null);
   useIgnoreStrayFileDrops();
   const { editMessage, isEditing } = useEditChatMessage(chatRef);
-  const { users: typingUsers, onTypingActivity } = useChatTyping(chatRef);
+  // Typing loads the room members: let the first messages show before it.
+  const messagesLoaded = useChatMessagesLoaded(chatRef);
+  const { users: typingUsers, onTypingActivity } = useChatTyping(chatRef, {
+    watchIncoming: messagesLoaded,
+  });
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
   const [unreadMessagesBanner, setUnreadMessagesBanner] =
@@ -344,11 +349,6 @@ export const ChatView = ({
               <div className="hub__chat-view__content">
                 {renderConversation()}
               </div>
-              {chat?.encryption === "plaintext" && (
-                <p className="hub__room-security" role="status">
-                  {t("This conversation is not encrypted.")}
-                </p>
-              )}
               {/* An invitation suppresses the composer until it is accepted. */}
               {!isInvitation && (
                 <div className="hub__chat-view__composer">
@@ -361,7 +361,10 @@ export const ChatView = ({
                     )}
                     <div className="hub__chat-composer-overlay-anchor">
                       <ComposerFloatingArea key={chatKey ?? "draft"}>
-                        <TypingIndicator users={typingUsers} />
+                        <TypingIndicator
+                          accountId={chatRef?.accountId ?? null}
+                          users={typingUsers}
+                        />
                         <div className="hub__chat-composer-floating-banners">
                           {chatRef && (
                             <ConversationUnreadBanner chatRef={chatRef} />
@@ -436,7 +439,10 @@ export const ChatView = ({
 };
 
 const ConversationUnreadBanner = ({ chatRef }: { chatRef: ChatRef }) => {
-  const { unreadThreads } = useChatThreads(chatRef);
+  // Loading every thread fetches their roots and replies: after the messages.
+  const { unreadThreads } = useChatThreads(chatRef, {
+    enabled: useChatMessagesLoaded(chatRef),
+  });
 
   if (unreadThreads.length === 0) {
     return null;

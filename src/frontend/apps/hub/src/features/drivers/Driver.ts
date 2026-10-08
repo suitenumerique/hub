@@ -344,7 +344,10 @@ export abstract class Driver {
   abstract getChatMessages(
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;
-  /** Exact main-timeline boundary/count and the first unread event identity. */
+  /**
+   * Main-timeline read marker, homeserver unread count and, when the marker
+   * is in memory, the first unread message. Never loads history.
+   */
   abstract getMainTimelineUnread(
     chatId: string,
   ): Promise<ChatMainTimelineUnread>;

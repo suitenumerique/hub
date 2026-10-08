@@ -10,7 +10,6 @@ import type {
   ChatReaction,
   ChatThreadSummary,
 } from "@/features/drivers/types";
-import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { useChatPanel } from "../ChatPanelContext";
 import { useChatMessageEdit } from "../ChatMessageEditContext";
@@ -23,7 +22,9 @@ import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
 import { useToggleReaction } from "../hooks/useToggleReaction";
 import { notify } from "@/features/ui/components/toast";
 
+import { ChatUserAvatar } from "./ChatUserAvatar";
 import { MessageAttachment } from "./MessageAttachment";
+import { MessageContent } from "./MessageContent";
 import { MessageHoverToolbar } from "./MessageHoverToolbar";
 import { MessageReactions } from "./MessageReactions";
 import { ThreadButton } from "./ThreadButton";
@@ -33,6 +34,7 @@ type ChatBubbleReceivedProps = {
   chatRef: ChatRef;
   messageId: string;
   content: string;
+  htmlContent?: string;
   attachment?: ChatAttachment;
   author: ChatMessageAuthor;
   timestamp: string;
@@ -56,6 +58,7 @@ type ChatBubbleSentProps = {
   chatRef: ChatRef;
   messageId: string;
   content: string;
+  htmlContent?: string;
   attachment?: ChatAttachment;
   timestamp: string;
   reactions: ChatReaction[];
@@ -147,6 +150,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       id: messageId,
       authorId: rootAuthorId,
       content: props.content,
+      htmlContent: props.htmlContent,
       attachment,
       timestamp: props.timestamp,
       reactions,
@@ -162,6 +166,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       props.canDelete,
       props.canEdit,
       props.content,
+      props.htmlContent,
       props.isDeleted,
       props.isEdited,
       props.timestamp,
@@ -207,6 +212,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         id: messageId,
         authorId: rootAuthorId,
         content: props.content,
+        htmlContent: props.htmlContent,
         attachment,
         timestamp: props.timestamp,
         reactions,
@@ -220,6 +226,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     openDraftThread,
     openThread,
     props.content,
+    props.htmlContent,
     props.timestamp,
     reactions,
     rootAuthor,
@@ -243,11 +250,19 @@ export const ChatBubble = (props: ChatBubbleProps) => {
             threadId={threadId}
           />
           {props.content && (
-            <span className="hub__chat-bubble__caption">{props.content}</span>
+            <div className="hub__chat-bubble__caption">
+              <MessageContent
+                content={props.content}
+                htmlContent={props.htmlContent}
+              />
+            </div>
           )}
         </>
       ) : (
-        props.content
+        <MessageContent
+          content={props.content}
+          htmlContent={props.htmlContent}
+        />
       )}
       {props.isEdited && (
         <span className="hub__chat-bubble__edited">{t("edited")}</span>
@@ -319,9 +334,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       )}
       <div className="hub__chat-bubble__row">
         {showAvatar ? (
-          <Avatar label={author.name} color={author.color} decorative size="sm">
-            {author.initials}
-          </Avatar>
+          <ChatUserAvatar accountId={chatRef.accountId} user={author} />
         ) : (
           <span
             className="hub__chat-bubble__avatar-spacer"

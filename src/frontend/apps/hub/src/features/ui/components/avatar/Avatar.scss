@@ -37,6 +37,16 @@ $avatar-colors:
   }
 
   // Icons take 15/24 of the avatar, as the group icon in the design.
+  &--xs {
+    width: 16px;
+    height: 16px;
+    font-size: 7px;
+
+    .material-icons {
+      font-size: 10px;
+    }
+  }
+
   &--sm {
     width: 24px;
     height: 24px;

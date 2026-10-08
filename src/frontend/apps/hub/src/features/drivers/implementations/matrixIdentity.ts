@@ -10,6 +10,10 @@ import { hashAvatarColor } from "@/features/ui/components/avatar/palette";
 
 import { ChatUser } from "../types";
 
+/** A Matrix content URI, the only avatar reference the driver resolves. */
+export const mxcUrl = (value: unknown): string | undefined =>
+  typeof value === "string" && value.startsWith("mxc://") ? value : undefined;
+
 /** Same initials as the `Avatar` component, so a person looks identical. */
 export const initialsFor = (name: string): string =>
   deriveInitials(name) || "?";
@@ -19,7 +23,11 @@ const localpartOf = (userId: string): string =>
   userId.replace(/^@/, "").split(":")[0];
 
 /** One homeserver user-directory result, narrowed to the fields the UI needs. */
-type MatrixDirectoryUser = { user_id: string; display_name?: string };
+type MatrixDirectoryUser = {
+  user_id: string;
+  display_name?: string;
+  avatar_url?: string;
+};
 
 /**
  * A directory search result mapped to the New Chat people shape. The Matrix id
@@ -40,5 +48,6 @@ export const matrixDirectoryUserToChatUser = (
     color: hashAvatarColor(user.user_id),
     email: user.user_id,
     subtitle: user.user_id,
+    avatarUrl: mxcUrl(user.avatar_url),
   };
 };

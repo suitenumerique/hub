@@ -4,13 +4,14 @@ import {
 } from "@gouvfr-lasuite/ui-components/icons";
 import { useTranslation } from "react-i18next";
 
-import type { ChatThread } from "@/features/drivers/types";
-import { Avatar } from "@/features/ui/components/avatar/Avatar";
+import type { AccountId, ChatThread } from "@/features/drivers/types";
 
 import { formatChatTime } from "../../formatTimestamp";
 import { isOptimisticThreadId } from "../../hooks/chatCompositionCache";
+import { ChatUserAvatar } from "../ChatUserAvatar";
 
 type ThreadListItemProps = {
+  accountId: AccountId;
   thread: ChatThread;
   onOpen: () => void;
 };
@@ -20,7 +21,11 @@ type ThreadListItemProps = {
  * the same markup — the `data-unread` flag drives the bold author, the brand
  * reply count and the leading dot through CSS.
  */
-export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
+export const ThreadListItem = ({
+  accountId,
+  thread,
+  onOpen,
+}: ThreadListItemProps) => {
   const { t } = useTranslation();
   const isUnread = thread.unreadCount > 0;
   const isPending = isOptimisticThreadId(thread.id);
@@ -43,14 +48,7 @@ export const ThreadListItem = ({ thread, onOpen }: ThreadListItemProps) => {
         aria-busy={isPending || undefined}
       >
         <span className="hub__chat-thread-item__indicator" aria-hidden="true" />
-        <Avatar
-          label={thread.author.name}
-          color={thread.author.color}
-          decorative
-          size="sm"
-        >
-          {thread.author.initials}
-        </Avatar>
+        <ChatUserAvatar accountId={accountId} user={thread.author} />
         <span className="hub__chat-thread-item__body">
           <span className="hub__chat-thread-item__head">
             <span className="hub__chat-thread-item__author">

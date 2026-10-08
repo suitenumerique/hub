@@ -36,7 +36,7 @@ import {
   ChatThreadDetail,
   ChatUnread,
 } from "../types";
-import { initialsFor } from "./matrixIdentity";
+import { initialsFor, mxcUrl } from "./matrixIdentity";
 import { parseMatrixAttachment } from "./matrixMedia";
 import i18n from "@/i18n/initI18n";
 import { DecryptionFailureCode } from "matrix-js-sdk/lib/crypto-api";
@@ -330,12 +330,14 @@ export const authorForSender = (
   userId: string,
   selfUserId: string | undefined,
 ): ChatMessageAuthor => {
-  const name = room.getMember(userId)?.name ?? userId;
+  const member = room.getMember(userId);
+  const name = member?.name ?? userId;
   return {
     id: toAuthorId(userId, selfUserId),
     name,
     initials: initialsFor(name),
     color: hashAvatarColor(userId),
+    avatarUrl: mxcUrl(member?.getMxcAvatarUrl()),
   };
 };
 
@@ -488,6 +490,14 @@ export const fetchReactionSnapshot = async (
   );
 };
 
+/** Whether Matrix reports or caches reactions to check with the homeserver. */
+export const needsReactionSnapshot = (
+  event: MatrixEvent,
+  message: ChatMessage,
+): boolean =>
+  message.reactions.length > 0 ||
+  Boolean(event.getServerAggregatedRelation(RelationType.Annotation));
+
 /** Reconciles a mapped message only when Matrix reports or caches reactions. */
 export const reconcileMessageReactions = async (
   mx: MatrixClient,
@@ -496,10 +506,7 @@ export const reconcileMessageReactions = async (
   message: ChatMessage,
   selfUserId: string | undefined,
 ): Promise<ChatMessage> => {
-  const hasServerAggregate = Boolean(
-    event.getServerAggregatedRelation(RelationType.Annotation),
-  );
-  if (!hasServerAggregate && message.reactions.length === 0) {
+  if (!needsReactionSnapshot(event, message)) {
     return message;
   }
   const snapshot = await fetchReactionSnapshot(
@@ -582,13 +589,27 @@ const reactionEventToChatEvent = (
   );
 };
 
+type FormattedContent = { format?: unknown; formatted_body?: unknown };
+
+/** The HTML body of a message content, when it declares the Matrix format. */
+const formattedBodyOf = (
+  content: FormattedContent | undefined,
+): string | undefined =>
+  content?.format === "org.matrix.custom.html" &&
+  typeof content.formatted_body === "string" &&
+  content.formatted_body
+    ? content.formatted_body
+    : undefined;
+
 export const matrixEventToChatMessage = (
   event: MatrixEvent,
   room: Room,
   selfUserId: string | undefined,
 ): ChatMessage => {
   const isDeleted = event.isRedacted();
-  const content = event.getContent<{ body?: string; msgtype?: string }>();
+  const content = event.getContent<
+    { body?: string; msgtype?: string } & FormattedContent
+  >();
   const body = content.body;
   // Keep the encrypted event's id and position while its key is missing. A
   // later decryption event can replace this placeholder without adding a row.
@@ -625,6 +646,11 @@ export const matrixEventToChatMessage = (
       name: typeof body === "string" ? body : content.msgtype,
     });
   }
+  // On a file, the formatted body is the formatted caption.
+  const htmlContent =
+    !isDeleted && availability === "clear" && (!media || media.caption)
+      ? formattedBodyOf(content)
+      : undefined;
   const eventId = event.getId() ?? "";
   const canEdit = Boolean(
     !isDeleted &&
@@ -642,6 +668,7 @@ export const matrixEventToChatMessage = (
     availability,
     authorId: toAuthorId(event.getSender(), selfUserId),
     content: !isDeleted ? visibleContent : "",
+    ...(htmlContent ? { htmlContent } : {}),
     ...(media ? { attachment: media.attachment } : {}),
     timestamp: new Date(event.getTs()).toISOString(),
     reactions: isDeleted
@@ -765,12 +792,18 @@ export const buildAuthors = (
     ),
   ];
   return senderIds.map((id) => {
-    const name = room.getMember(id)?.name ?? id;
+    // Like Element's `mxEvent.sender`, an event carries its sender's profile
+    // even before the room's members are loaded.
+    const member =
+      room.getMember(id) ??
+      events.findLast((event) => event.getSender() === id)?.sender;
+    const name = member?.name ?? id;
     return {
       id,
       name,
       initials: initialsFor(name),
       color: hashAvatarColor(id),
+      avatarUrl: mxcUrl(member?.getMxcAvatarUrl()),
     };
   });
 };
@@ -859,7 +892,7 @@ export const timelineEventToChatEvent = (
     // ts here would make the bubble's time jump live, then revert on refetch.
     const original = room.findEventById(relation.event_id);
     const newContent = event.getContent<{
-      "m.new_content"?: { body?: string; msgtype?: string };
+      "m.new_content"?: { body?: string; msgtype?: string } & FormattedContent;
     }>()["m.new_content"];
     const newBody = newContent?.body;
     // Matrix servers accept relation events from any joined member. The SDK's
@@ -883,6 +916,10 @@ export const timelineEventToChatEvent = (
     const threadId = original.isThreadRoot
       ? original.getId()
       : original.threadRootId;
+    // A file edit only changes its caption; the attachment stays.
+    const editedContent = originalMessage.attachment
+      ? (parseMatrixAttachment(newContent ?? {})?.caption ?? "")
+      : newBody;
     return [
       {
         type: "message:updated",
@@ -892,10 +929,9 @@ export const timelineEventToChatEvent = (
           ...originalMessage,
           id: relation.event_id,
           authorId: toAuthorId(original.getSender(), selfUserId),
-          // A file edit only changes its caption; the attachment stays.
-          content: originalMessage.attachment
-            ? (parseMatrixAttachment(newContent ?? {})?.caption ?? "")
-            : newBody,
+          content: editedContent,
+          // Set even when absent: the original's formatting must not survive.
+          htmlContent: editedContent ? formattedBodyOf(newContent) : undefined,
           timestamp: new Date(original.getTs()).toISOString(),
           reactions: aggregateReactions(room, relation.event_id, selfUserId),
           isDeleted: false,

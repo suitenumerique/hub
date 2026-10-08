@@ -15,6 +15,7 @@ import {
 import i18n from "@/i18n/initI18n";
 
 import { ChatInvitation, LocalChat } from "../types";
+import { mxcUrl } from "./matrixIdentity";
 import { roomSecurity } from "@/features/matrix/roomSecurity";
 
 export const MATRIX_FAVOURITE_TAG = "m.favourite";
@@ -94,10 +95,6 @@ const pendingCounterpartId = (
   const userId = room.guessDMUserId();
   return userId && userId !== currentUserId ? userId : undefined;
 };
-
-/** A Matrix content URI, the only avatar reference the driver resolves. */
-const mxcUrl = (value: unknown): string | undefined =>
-  typeof value === "string" && value.startsWith("mxc://") ? value : undefined;
 
 /**
  * Profile from the user's latest `m.room.member` event in the loaded timeline.

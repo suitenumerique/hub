@@ -4,7 +4,9 @@ import { ListBox, ListBoxItem } from "react-aria-components";
 import { useTranslation } from "react-i18next";
 
 import type { ChatUser } from "@/features/drivers/types";
-import { Avatar } from "@/features/ui/components/avatar/Avatar";
+
+import { useComposerAccountId } from "../hooks/useChatAccounts";
+import { ChatUserAvatar } from "./ChatUserAvatar";
 
 type UserSearchListBoxProps = {
   isLoading: boolean;
@@ -12,6 +14,8 @@ type UserSearchListBoxProps = {
 
 export const UserSearchListBox = ({ isLoading }: UserSearchListBoxProps) => {
   const { t } = useTranslation();
+  // The search runs on the composer's account: its results are that account's.
+  const accountId = useComposerAccountId();
 
   return (
     <>
@@ -34,9 +38,7 @@ export const UserSearchListBox = ({ isLoading }: UserSearchListBoxProps) => {
               )
             }
           >
-            <Avatar label={user.name} color={user.color} size="sm" decorative>
-              {user.initials}
-            </Avatar>
+            <ChatUserAvatar accountId={accountId} user={user} />
             <span className="hub__new-chat-dropdown__user-body">
               <span className="hub__new-chat-dropdown__user-name">
                 {user.name}

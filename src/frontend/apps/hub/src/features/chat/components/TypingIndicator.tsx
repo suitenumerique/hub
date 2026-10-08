@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ChatTypingUser } from "@/features/drivers/types";
+import type { AccountId, ChatTypingUser } from "@/features/drivers/types";
+import { hashAvatarColor } from "@/features/ui/components/avatar/palette";
+
+import { ChatUserAvatar } from "./ChatUserAvatar";
 
 type TypingIndicatorProps = {
+  accountId: AccountId | null;
   users: ChatTypingUser[];
 };
 
 const LEAVE_ANIMATION_MS = 220;
+// As Element's typing tile: up to three avatars, else two and "+N".
+const AVATAR_LIMIT = 3;
 
-export const TypingIndicator = ({ users }: TypingIndicatorProps) => {
+export const TypingIndicator = ({ accountId, users }: TypingIndicatorProps) => {
   const { t } = useTranslation();
   const [displayedUsers, setDisplayedUsers] = useState(users);
   const leaveTimerRef = useRef<number | null>(null);
@@ -57,6 +63,12 @@ export const TypingIndicator = ({ users }: TypingIndicatorProps) => {
     return names.length > 3 ? t("Several people are typing a message…") : "";
   }, [displayedUsers, t]);
 
+  const avatarUsers =
+    displayedUsers.length > AVATAR_LIMIT
+      ? displayedUsers.slice(0, AVATAR_LIMIT - 1)
+      : displayedUsers;
+  const othersCount = displayedUsers.length - avatarUsers.length;
+
   return (
     <div
       className="hub__typing-indicator"
@@ -65,6 +77,24 @@ export const TypingIndicator = ({ users }: TypingIndicatorProps) => {
       aria-live="polite"
       aria-atomic="true"
     >
+      {avatarUsers.length > 0 && (
+        <span className="hub__typing-indicator__avatars" aria-hidden="true">
+          {avatarUsers.map((user) => (
+            <ChatUserAvatar
+              key={user.id}
+              accountId={accountId}
+              // The same colour as this person's message bubbles.
+              user={{ ...user, color: hashAvatarColor(user.id) }}
+              size="xs"
+            />
+          ))}
+          {othersCount > 0 && (
+            <span className="hub__typing-indicator__others">
+              +{othersCount}
+            </span>
+          )}
+        </span>
+      )}
       <span className="hub__typing-indicator__dots" aria-hidden="true">
         <span />
         <span />

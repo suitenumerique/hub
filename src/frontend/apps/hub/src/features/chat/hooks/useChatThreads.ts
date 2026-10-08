@@ -22,10 +22,14 @@ const EMPTY: ChatThread[] = [];
  * `chatId`, so the threads stay scoped to the active conversation; the threads
  * panel and the unread banner share this single cache entry.
  */
-export const useChatThreads = (ref: ChatRef): UseChatThreadsResult => {
+export const useChatThreads = (
+  ref: ChatRef,
+  { enabled = true }: { enabled?: boolean } = {},
+): UseChatThreadsResult => {
   const query = useQuery({
     queryKey: chatKeys.threads(ref),
     queryFn: () => getRegistry().get(ref.accountId).getChatThreads(ref.chatId),
+    enabled,
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });

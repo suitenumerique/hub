@@ -467,7 +467,8 @@ export const ChatVirtualList = ({
 
   const handleNavigateToUnread = useCallback(async () => {
     const eventId = unread.firstUnreadId;
-    if (!eventId || navigationRef.current) {
+    const markerId = unread.readUpToId;
+    if ((!eventId && !markerId) || navigationRef.current) {
       return;
     }
     const navigation = Symbol();
@@ -480,6 +481,15 @@ export const ChatVirtualList = ({
     shouldStickToBottomRef.current = false;
     setIsNavigating(true);
     try {
+      if (!eventId) {
+        // Like Element's jump to the read marker: open the window around it.
+        // The separator anchors to the next message once it is loaded. A
+        // marker the timeline cannot show, such as a thread reply, does nothing.
+        if (markerId) {
+          await openAround(markerId).catch(() => {});
+        }
+        return;
+      }
       if (!messagesRef.current.some((message) => message.id === eventId)) {
         await openAround(eventId);
       }
@@ -494,7 +504,13 @@ export const ChatVirtualList = ({
         setIsNavigating(false);
       }
     }
-  }, [anchorSeparatorTo, openAround, scrollToEvent, unread.firstUnreadId]);
+  }, [
+    anchorSeparatorTo,
+    openAround,
+    scrollToEvent,
+    unread.firstUnreadId,
+    unread.readUpToId,
+  ]);
 
   const navigateToUnread = useCallback(() => {
     void handleNavigateToUnread();
@@ -513,7 +529,8 @@ export const ChatVirtualList = ({
       shouldShowUnreadBanner
         ? {
             count: unread.unreadCount,
-            canNavigate: unread.firstUnreadId !== null,
+            canNavigate:
+              unread.firstUnreadId !== null || unread.readUpToId !== null,
             isResolving: unread.isResolving || isNavigating,
             onNavigate: navigateToUnread,
             onMarkAllRead: unread.markAllRead,
@@ -526,6 +543,7 @@ export const ChatVirtualList = ({
     navigateToUnread,
     onUnreadBannerChange,
     unread.firstUnreadId,
+    unread.readUpToId,
     unread.isResolving,
     unread.markAllRead,
     unread.unreadCount,
@@ -754,6 +772,7 @@ const Row = memo(function Row({
           chatRef={chatRef}
           messageId={message.id}
           content={message.content}
+          htmlContent={message.htmlContent}
           attachment={message.attachment}
           timestamp={message.timestamp}
           reactions={message.reactions}
@@ -783,6 +802,7 @@ const Row = memo(function Row({
         chatRef={chatRef}
         messageId={message.id}
         content={message.content}
+        htmlContent={message.htmlContent}
         attachment={message.attachment}
         author={author}
         timestamp={message.timestamp}

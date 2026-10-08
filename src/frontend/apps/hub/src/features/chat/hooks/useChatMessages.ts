@@ -3,7 +3,14 @@ import {
   useInfiniteQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
@@ -16,6 +23,9 @@ import type {
 import { chatKeys } from "../chatKeys";
 
 export const CHAT_PAGE_SIZE = 100;
+// Like Element, open with the latest messages only: they often come from
+// memory without a request, and older pages load while scrolling up.
+const INITIAL_CHAT_PAGE_SIZE = 30;
 const VIRTUOSO_INDEX_ANCHOR = 1_000_000;
 
 type MessagePageParam = {
@@ -96,13 +106,18 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     queryKey,
     enabled: !isOpeningLive,
     queryFn: ({ pageParam }) =>
-      getRegistry().get(ref.accountId).getChatMessages({
-        chatId: ref.chatId,
-        cursor: pageParam.cursor,
-        direction: pageParam.direction,
-        anchorId: pageParam.anchorId,
-        limit: CHAT_PAGE_SIZE,
-      }),
+      getRegistry()
+        .get(ref.accountId)
+        .getChatMessages({
+          chatId: ref.chatId,
+          cursor: pageParam.cursor,
+          direction: pageParam.direction,
+          anchorId: pageParam.anchorId,
+          limit:
+            pageParam.cursor === null && !pageParam.anchorId
+              ? INITIAL_CHAT_PAGE_SIZE
+              : CHAT_PAGE_SIZE,
+        }),
     initialPageParam: {
       cursor: null,
       direction: "older",
@@ -249,4 +264,26 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     fetchNewer,
     openAround,
   };
+};
+
+/**
+ * Whether the conversation's first page of messages has loaded. Work the
+ * timeline does not need, such as the thread list or typing members, waits
+ * for it so that the messages show first.
+ */
+export const useChatMessagesLoaded = (ref: ChatRef | null): boolean => {
+  const queryClient = useQueryClient();
+  const queryKey = useMemo(
+    () => (ref ? chatKeys.messages(ref) : null),
+    [ref?.accountId, ref?.chatId],
+  );
+  const subscribe = useCallback(
+    (onChange: () => void) => queryClient.getQueryCache().subscribe(onChange),
+    [queryClient],
+  );
+  const isLoaded = () => {
+    const state = queryKey ? queryClient.getQueryState(queryKey) : undefined;
+    return state !== undefined && state.status !== "pending";
+  };
+  return useSyncExternalStore(subscribe, isLoaded, isLoaded);
 };

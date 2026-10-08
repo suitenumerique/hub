@@ -38,6 +38,7 @@ const rollbackOptimisticEdit = (
     ? {
         ...current,
         content: previous.content,
+        htmlContent: previous.htmlContent,
         isEdited: previous.isEdited,
       }
     : current;
@@ -105,6 +106,8 @@ export const useEditChatMessage = (
       const patchMessage = (message: ChatMessage): ChatMessage => ({
         ...markOptimisticMessageMutation(message, marker),
         content,
+        // Edits are sent as plain text, without the original's formatting.
+        htmlContent: undefined,
         isEdited: true,
       });
       if (messagesKey) {

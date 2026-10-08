@@ -13,21 +13,22 @@ import { useObjectUrl } from "./useChatAttachmentUrl";
 const AVATAR_SIZE = 96;
 
 /**
- * Object URL of a conversation's avatar, loaded through its driver: Matrix
- * media needs an `Authorization` header, so a plain `<img src>` cannot point
- * at the homeserver. Undefined while loading, without avatar, or on failure.
+ * Object URL of a conversation's or a person's avatar, loaded through the
+ * account's driver: Matrix media needs an `Authorization` header, so a plain
+ * `<img src>` cannot point at the homeserver. Undefined while loading, without
+ * avatar or account, or on failure.
  */
 export const useChatAvatarUrl = (
-  accountId: AccountId,
+  accountId: AccountId | null,
   avatarUrl: string | undefined,
 ): string | undefined => {
   const { data } = useQuery({
-    queryKey: chatKeys.avatar(accountId, avatarUrl ?? ""),
+    queryKey: chatKeys.avatar(accountId ?? "", avatarUrl ?? ""),
     queryFn: ({ signal }) =>
       getRegistry()
-        .get(accountId)
+        .get(accountId!)
         .getChatAvatar({ avatarUrl: avatarUrl!, size: AVATAR_SIZE, signal }),
-    enabled: Boolean(avatarUrl),
+    enabled: Boolean(accountId && avatarUrl),
     // One request per image: a new avatar has a new URL, hence a new key.
     staleTime: Infinity,
     gcTime: 30 * 60_000,
@@ -35,5 +36,5 @@ export const useChatAvatarUrl = (
     retry: false,
     meta: { noGlobalError: true },
   });
-  return useObjectUrl(avatarUrl ? data : undefined);
+  return useObjectUrl(accountId && avatarUrl ? data : undefined);
 };

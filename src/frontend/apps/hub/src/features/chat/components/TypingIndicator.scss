@@ -24,6 +24,22 @@
     transform: translateY(0);
   }
 
+  // Avatars on the 16px text line, overlapping slightly as in Element.
+  &__avatars {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+
+    .hub__avatar + .hub__avatar {
+      margin-inline-start: -4px;
+    }
+  }
+
+  &__others {
+    margin-inline-start: 4px;
+    font-weight: 700;
+  }
+
   &__dots {
     display: inline-flex;
     align-items: center;

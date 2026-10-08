@@ -75,6 +75,7 @@ export const ThreadList = ({
                 />
               )}
               <ThreadListItem
+                accountId={chatRef.accountId}
                 thread={thread}
                 onOpen={() => onOpenThread(thread.id)}
               />

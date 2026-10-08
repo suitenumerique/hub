@@ -168,8 +168,9 @@ export const localUiTranslations: Record<string, Record<string, string>> = {
     "Encryption enabled": "Chiffrement activé",
     "Messages in this conversation are end-to-end encrypted.":
       "Les messages de cette conversation sont chiffrés de bout en bout.",
-    "This conversation is not encrypted.":
-      "Cette conversation n’est pas chiffrée.",
+    "Encryption not enabled": "Chiffrement non activé",
+    "Messages in this conversation are not end-to-end encrypted.":
+      "Les messages de cette conversation ne sont pas chiffrés de bout en bout.",
     "Set up encryption to send messages.":
       "Configurez le chiffrement pour envoyer des messages.",
     "Open encryption settings": "Configurer le chiffrement",
@@ -181,8 +182,9 @@ export const localUiTranslations: Record<string, Record<string, string>> = {
     "Encryption enabled": "Verschlüsselung aktiviert",
     "Messages in this conversation are end-to-end encrypted.":
       "Nachrichten in dieser Unterhaltung sind Ende-zu-Ende-verschlüsselt.",
-    "This conversation is not encrypted.":
-      "Diese Unterhaltung ist nicht verschlüsselt.",
+    "Encryption not enabled": "Verschlüsselung nicht aktiviert",
+    "Messages in this conversation are not end-to-end encrypted.":
+      "Nachrichten in dieser Unterhaltung sind nicht Ende-zu-Ende-verschlüsselt.",
     "Set up encryption to send messages.":
       "Richten Sie die Verschlüsselung ein, um Nachrichten zu senden.",
     "Open encryption settings": "Verschlüsselung einrichten",

@@ -164,6 +164,8 @@ export type ChatMessageAuthor = {
   name: string;
   initials: string;
   color: AvatarColor;
+  /** Profile picture, loaded through the driver's `getChatAvatar`. */
+  avatarUrl?: string;
 };
 
 export type ChatUser = ChatMessageAuthor & {
@@ -251,6 +253,12 @@ export type ChatMessage = {
   authorId: string;
   /** Text of the message, or the caption of an attachment (often empty). */
   content: string;
+  /**
+   * Formatted version of `content`: untrusted HTML in the Matrix
+   * `org.matrix.custom.html` subset. Render it only through `MessageContent`;
+   * `content` stays the plain text for previews, copy and editing.
+   */
+  htmlContent?: string;
   /** Present when the message carries a file instead of plain text. */
   attachment?: ChatAttachment;
   /** ISO 8601 string. Use `formatChatTime` from @/features/chat/formatTimestamp for display. */
@@ -272,6 +280,8 @@ export type ChatMessage = {
 export type ChatTypingUser = {
   id: string;
   name: string;
+  /** Profile picture, loaded through the driver's `getChatAvatar`. */
+  avatarUrl?: string;
 };
 
 export type ChatMessagesPage = {
@@ -291,9 +301,9 @@ export type ChatMainTimelineUnread = {
   hasUnread: boolean;
   /** Last persisted or locally-confirmed event before the unread boundary. */
   readUpToId: string | null;
-  /** First eligible remote message after the boundary. */
+  /** First eligible remote message after the boundary, when it is loaded. */
   firstUnreadId: string | null;
-  /** Exact global count, or null when Matrix cannot prove it. */
+  /** Homeserver count, or null when the unread messages do not notify. */
   unreadCount: number | null;
   /** Last main-timeline message at the genuine live end. */
   liveEndId: string | null;

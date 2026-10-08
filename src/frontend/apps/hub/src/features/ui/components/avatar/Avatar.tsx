@@ -4,7 +4,7 @@ import { ReactNode, useState } from "react";
 import { deriveInitials } from "./initials";
 import { AvatarColor, hashAvatarColor } from "./palette";
 
-export type AvatarSize = "sm" | "md" | "lg";
+export type AvatarSize = "xs" | "sm" | "md" | "lg";
 
 export type AvatarProps = {
   label: string;

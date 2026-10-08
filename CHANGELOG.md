@@ -32,6 +32,19 @@ and this project adheres to
   and the chat connection start.
 - ⚡️(frontend) Start the chat faster: load the encryption module and the
   session checks in parallel instead of one after the other.
+- ⚡️(frontend) Open large conversations faster: take the unread count from the
+  homeserver and find the first unread message from the read marker, as Element
+  does, instead of loading history. History loaded in the background no longer
+  refreshes the conversation list, threads and unread state.
+- ⚡️(frontend) Show a conversation with its latest 30 messages, often from
+  memory, and load older ones while scrolling up. Show reactions at once and
+  check them in the background, group refreshes after decryption, and load
+  threads and typing members once the messages are shown.
+- ✨(frontend) Show people's profile pictures in message bubbles, the thread
+  list, people search and the typing indicator.
+- ✨(frontend) Show formatted messages as Element does: bold, lists, code,
+  quotes, links and mentions, from the HTML body, with an allowlist of tags.
+  Make the full URLs typed in messages clickable.
 
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.

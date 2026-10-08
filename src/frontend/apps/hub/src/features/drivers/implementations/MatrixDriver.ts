@@ -10,6 +10,7 @@ import {
   type MatrixEvent,
   MatrixEventEvent,
   MsgType,
+  NotificationCountType,
   Preset,
   ReceiptType,
   RelationType,
@@ -135,6 +136,7 @@ import {
   isMessageEvent,
   isOwnEcho,
   matrixEventToChatMessage,
+  needsReactionSnapshot,
   observeThreadReply,
   ownReactionEvents,
   reactionUpdateEventsForTarget,
@@ -150,7 +152,7 @@ import {
   threadToChatThreadDetail,
   timelineEventToChatEvent,
 } from "./matrixEventMapping";
-import { matrixDirectoryUserToChatUser } from "./matrixIdentity";
+import { matrixDirectoryUserToChatUser, mxcUrl } from "./matrixIdentity";
 import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
 import {
   createEncryptedThumbnail,
@@ -182,6 +184,16 @@ import {
 } from "./matrixRoomMapping";
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
+/**
+ * Fewest events asked per pagination round trip. Threads, reactions and edits
+ * leave few displayable messages per event: small requests cost round trips.
+ */
+const MIN_PAGINATION_EVENTS = 100;
+/**
+ * Events decrypt one task at a time: their unread, thread and list refreshes
+ * are grouped over this delay instead of following each message.
+ */
+const DECRYPTION_REFRESH_DELAY_MS = 50;
 const MAX_TIMELINE_PAGINATION_STEPS = 200;
 const TIMELINE_WINDOW_LIMIT = Number.MAX_SAFE_INTEGER;
 const MATRIX_TYPING_TIMEOUT_MS = 30_000;
@@ -411,11 +423,6 @@ export class MatrixDriver extends Driver {
    * moving the UI boundary backwards after the user has read farther.
    */
   private confirmedMainReadBoundaries = new Map<string, string>();
-  /**
-   * Once an exact state has been resolved, failed refreshes retain the previous
-   * query data. A generic fallback must still be allowed to recover later.
-   */
-  private exactMainTimelineUnreadRooms = new Set<string>();
   /**
    * Storage namespace for the Hub/Matrix login context currently being
    * connected. `matrix-local` may be used by several seeded users in the same
@@ -927,7 +934,12 @@ export class MatrixDriver extends Driver {
         return;
       }
       const before = this.timelineWindowSignature(window, direction);
-      await window.paginate(direction, limit, true, 20);
+      await window.paginate(
+        direction,
+        Math.max(limit, MIN_PAGINATION_EVENTS),
+        true,
+        20,
+      );
       const after = this.timelineWindowSignature(window, direction);
       if (before === after) {
         return;
@@ -953,22 +965,10 @@ export class MatrixDriver extends Driver {
     await Promise.all(
       pageEvents.map((event) => mx.decryptEventIfNeeded(event)),
     );
-    const reconciled = await Promise.all(
-      pageEvents.map((event) =>
-        reconcileMessageReactions(
-          mx,
-          room,
-          event,
-          matrixEventToChatMessage(event, room, selfUserId),
-          selfUserId,
-        ),
-      ),
+    const messages = pageEvents.map((event) =>
+      matrixEventToChatMessage(event, room, selfUserId),
     );
-    // A missing key can still arrive while reactions load: map content last.
-    const messages = pageEvents.map((event, index) => ({
-      ...matrixEventToChatMessage(event, room, selfUserId),
-      reactions: reconciled[index].reactions,
-    }));
+    this.checkPageReactions(mx, room, pageEvents, messages, selfUserId);
     return {
       messages,
       authors: buildAuthors(room, pageEvents, selfUserId),
@@ -976,6 +976,51 @@ export class MatrixDriver extends Driver {
       newerCursor,
       isAtLiveEnd,
     };
+  }
+
+  /**
+   * Pages show the SDK's reactions at once, as Element does, then check them
+   * with the homeserver: the IndexedDB relation container may still hold an
+   * older local echo, and reactions outside the loaded events are missing.
+   * The checks start after this task, once the page is in the cache.
+   */
+  private checkPageReactions(
+    mx: MatrixClient,
+    room: Room,
+    events: MatrixEvent[],
+    messages: ChatMessage[],
+    selfUserId: string | undefined,
+  ): void {
+    const targetIds = messages
+      .filter((message, index) => needsReactionSnapshot(events[index], message))
+      .map((message) => message.id);
+    if (targetIds.length === 0) {
+      return;
+    }
+    const generation = this.clientGeneration;
+    window.setTimeout(() => {
+      for (const targetId of targetIds) {
+        void fetchReactionSnapshot(mx, room.roomId, targetId, selfUserId)
+          .then((snapshot) => {
+            if (
+              this.mx !== mx ||
+              generation !== this.clientGeneration ||
+              this.disposed
+            ) {
+              return;
+            }
+            for (const event of reactionUpdateEventsForTarget(
+              room,
+              targetId,
+              snapshot.reactions,
+            )) {
+              this.emit(event);
+            }
+          })
+          // The SDK's reactions stay shown when the check fails.
+          .catch(() => {});
+      }
+    }, 0);
   }
 
   /**
@@ -1134,100 +1179,24 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * Resolves every event after a persistent boundary through the live end.
-   * Without a boundary, first load all accessible history: the initial sync
-   * window alone cannot tell us which message is the first unread one.
-   */
-  private async unreadAfterBoundary(
-    mx: MatrixClient,
-    room: Room,
-    boundaryId: string | null,
-    selfUserId: string,
-  ): Promise<ChatMainTimelineUnread | null> {
-    const { window, dispose } = this.scopedTimelineWindow(mx, room);
-    try {
-      try {
-        await window.load(boundaryId ?? undefined, 1);
-        if (boundaryId === null) {
-          await this.extendTimelineWindow(
-            window,
-            EventTimeline.BACKWARDS,
-            DEFAULT_CHAT_PAGE_SIZE,
-            () => false,
-          );
-          if (window.canPaginate(EventTimeline.BACKWARDS)) {
-            return null;
-          }
-        }
-        await this.extendTimelineWindow(
-          window,
-          EventTimeline.FORWARDS,
-          DEFAULT_CHAT_PAGE_SIZE,
-          () => false,
-        );
-      } catch {
-        return null;
-      }
-
-      const events = window.getEvents();
-      const boundaryIndex = events.findIndex(
-        (event) => event.getId() === boundaryId,
-      );
-      if (
-        (boundaryId !== null && boundaryIndex < 0) ||
-        window.canPaginate(EventTimeline.FORWARDS)
-      ) {
-        return null;
-      }
-
-      const seen = new Set<string>();
-      const unreadEvents = events.slice(boundaryIndex + 1).filter((event) => {
-        const eventId = event.getId();
-        if (
-          !eventId ||
-          seen.has(eventId) ||
-          !this.isEligibleMainTimelineUnread(event, selfUserId)
-        ) {
-          return false;
-        }
-        seen.add(eventId);
-        return true;
-      });
-      const liveEvents = events.filter((event) => isMainTimelineMessage(event));
-      return {
-        hasUnread: unreadEvents.length > 0,
-        readUpToId: boundaryId,
-        firstUnreadId: unreadEvents[0]?.getId() ?? null,
-        unreadCount: unreadEvents.length,
-        liveEndId: liveEvents[liveEvents.length - 1]?.getId() ?? null,
-      };
-    } finally {
-      dispose();
-    }
-  }
-
-  /**
-   * Returns the furthest authoritative main-timeline boundary. Matrix may
-   * expose both `m.fully_read` and public/private receipts; scanning each
-   * candidate to the same live end lets us choose the monotonic furthest one
-   * without trusting a potentially delayed account-data echo.
+   * Main-timeline unread state from memory only, as Element shows it. The
+   * count is the homeserver's notification count. The first unread message is
+   * known only when a read marker is already in the live timeline; otherwise
+   * `readUpToId` is the marker that navigation loads the conversation around.
    */
   async getMainTimelineUnread(chatId: string): Promise<ChatMainTimelineUnread> {
     const { mx, room } = this.requireRoom("getMainTimelineUnread", chatId);
     const selfUserId = mx.getUserId();
-    const liveTimelineEvents = room
-      .getLiveTimeline()
-      .getEvents()
-      .filter(isMainTimelineMessage);
-    const cachedLiveEndId =
-      liveTimelineEvents[liveTimelineEvents.length - 1]?.getId() ?? null;
+    const liveEvents = room.getLiveTimeline().getEvents();
+    const liveEndId =
+      liveEvents.filter(isMainTimelineMessage).at(-1)?.getId() ?? null;
     if (!selfUserId) {
       return {
         hasUnread: false,
         readUpToId: null,
         firstUnreadId: null,
         unreadCount: null,
-        liveEndId: cachedLiveEndId,
+        liveEndId,
       };
     }
 
@@ -1235,8 +1204,7 @@ export class MatrixDriver extends Driver {
       .getAccountData(EventType.FullyRead)
       ?.getContent<{ event_id?: unknown }>();
     // getEventReadUpTo discards receipts whose event is not loaded. Keep their
-    // real IDs so contextual loading can resolve them, rather than treating
-    // an older receipt as if the user had never read this conversation.
+    // real IDs so navigation can still load the conversation around them.
     const receiptIds = [ReceiptType.Read, ReceiptType.ReadPrivate]
       .map((type) => room.getReadReceiptForUserId(selfUserId, true, type))
       .filter(
@@ -1246,61 +1214,47 @@ export class MatrixDriver extends Driver {
             receipt.data.thread_id === MAIN_ROOM_TIMELINE),
       )
       .map((receipt) => receipt?.eventId);
-    const candidates = [
+    // Like Element: `m.fully_read` first, then the receipts. A write from this
+    // session stays authoritative until /sync echoes it back.
+    const markers = [
       this.confirmedMainReadBoundaries.get(chatId),
       typeof fullyReadContent?.event_id === "string"
         ? fullyReadContent.event_id
         : undefined,
       ...receiptIds,
     ].filter((eventId): eventId is string => Boolean(eventId));
-    const uniqueCandidates = [...new Set(candidates)];
-    // An absent marker is a first-read case. An existing but inaccessible
-    // marker must not fall back to counting the entire room as unread.
-    const boundaries = uniqueCandidates.length > 0 ? uniqueCandidates : [null];
-    const scans = (
-      await Promise.all(
-        boundaries.map((eventId) =>
-          this.unreadAfterBoundary(mx, room, eventId, selfUserId),
-        ),
-      )
-    ).filter((result): result is ChatMainTimelineUnread => result !== null);
-    // Every successful scan ends at the same live boundary, so the candidate
-    // leaving the fewest eligible events unread is the furthest one.
-    const furthest = scans.sort(
-      (left, right) =>
-        (left.unreadCount ?? Number.MAX_SAFE_INTEGER) -
-        (right.unreadCount ?? Number.MAX_SAFE_INTEGER),
-    )[0];
+    const markerIndex = Math.max(
+      -1,
+      ...markers.map((eventId) =>
+        liveEvents.findIndex((event) => event.getId() === eventId),
+      ),
+    );
 
-    if (furthest) {
-      this.exactMainTimelineUnreadRooms.add(chatId);
-      return furthest;
+    let readUpToId: string | null;
+    let firstUnreadId: string | null;
+    let hasUnread: boolean;
+    if (markerIndex >= 0) {
+      readUpToId = liveEvents[markerIndex].getId() ?? null;
+      firstUnreadId =
+        liveEvents
+          .slice(markerIndex + 1)
+          .find((event) => this.isEligibleMainTimelineUnread(event, selfUserId))
+          ?.getId() ?? null;
+      hasUnread = firstUnreadId !== null;
+    } else {
+      readUpToId = markers[0] ?? null;
+      firstUnreadId = null;
+      hasUnread = computeRoomUnread(room, selfUserId);
     }
-
-    const hasUnread = computeRoomUnread(room, selfUserId);
-    if (this.exactMainTimelineUnreadRooms.has(chatId)) {
-      if (!hasUnread) {
-        return {
-          hasUnread: false,
-          readUpToId:
-            this.confirmedMainReadBoundaries.get(chatId) ?? cachedLiveEndId,
-          firstUnreadId: null,
-          unreadCount: 0,
-          liveEndId: cachedLiveEndId,
-        };
-      }
-      throw new Error(
-        `MatrixDriver.getMainTimelineUnread: exact boundary for room "${chatId}" is temporarily unavailable.`,
+    let unreadCount: number | null = 0;
+    if (hasUnread) {
+      const notificationCount = room.getRoomUnreadNotificationCount(
+        NotificationCountType.Total,
       );
+      // Unread messages of a muted conversation do not notify: no number.
+      unreadCount = notificationCount > 0 ? notificationCount : null;
     }
-
-    return {
-      hasUnread,
-      readUpToId: null,
-      firstUnreadId: null,
-      unreadCount: null,
-      liveEndId: cachedLiveEndId,
-    };
+    return { hasUnread, readUpToId, firstUnreadId, unreadCount, liveEndId };
   }
 
   /** Resolves a connected client for Matrix-only operations. */
@@ -1974,6 +1928,8 @@ export class MatrixDriver extends Driver {
     return {
       ...matrixEventToChatMessage(event, room, selfUserId),
       content,
+      // The edit is plain text: the original's formatting must not survive.
+      htmlContent: undefined,
       isEdited: true,
     };
   }
@@ -2683,7 +2639,10 @@ export class MatrixDriver extends Driver {
         }
         return;
       }
-      if (toStartOfTimeline) {
+      // Only events reaching the live end are news, as in Element. History
+      // loaded around a read marker or a search result lands in another
+      // timeline and must not refresh the list, unread state or reactions.
+      if (toStartOfTimeline || data.timeline !== room.getLiveTimeline()) {
         return;
       }
       if (event.getType() === EventType.Reaction) {
@@ -3081,11 +3040,6 @@ export class MatrixDriver extends Driver {
         const eventId = event.getId();
         const room = roomId ? mx.getRoom(roomId) : null;
         if (!room || !eventId) return;
-        let pending = decryptedRooms.get(room.roomId);
-        if (!pending) {
-          pending = { room, threadsChanged: false, chatChanged: false };
-          decryptedRooms.set(room.roomId, pending);
-        }
         // Patch only existing rows: restoring old keys is never a delivery.
         emitCurrent({
           type: "message:reconciled",
@@ -3095,27 +3049,42 @@ export class MatrixDriver extends Driver {
             ? matrixEventToChatMessage(event, room, selfUserId)
             : null,
         });
+        // History decrypted outside the live timeline, around a read marker
+        // or a search result, changes no unread state, thread or list preview.
+        // Refreshing them for it fed a load-and-decrypt loop in large rooms.
+        const isThreadEvent = event.isThreadRoot || Boolean(event.threadRootId);
+        const pending =
+          isThreadEvent ||
+          room.getTimelineForEvent(eventId) === room.getLiveTimeline()
+            ? (decryptedRooms.get(room.roomId) ?? {
+                room,
+                threadsChanged: false,
+                chatChanged: false,
+              })
+            : null;
+        if (pending) decryptedRooms.set(room.roomId, pending);
         if (!event.isDecryptionFailure()) {
           for (const update of timelineEventToChatEvent(
             event,
             room,
             selfUserId,
           )) {
-            if (update.type === "threads:changed")
-              pending.threadsChanged = true;
-            else if (update.type === "chat:changed") pending.chatChanged = true;
-            else if (update.type !== "message:new") emitCurrent(update);
+            if (update.type === "threads:changed") {
+              if (pending) pending.threadsChanged = true;
+            } else if (update.type === "chat:changed") {
+              if (pending) pending.chatChanged = true;
+            } else if (update.type !== "message:new") emitCurrent(update);
           }
         }
         // A send mutation already published this session's reply. Decryption
         // can precede its insertion in the SDK thread timeline; refetching now
         // would replace that confirmed reply with an incomplete projection.
-        if (!isOwnThreadEcho(event)) {
+        if (pending && isThreadEvent && !isOwnThreadEcho(event)) {
           pending.threadsChanged = true;
         }
-        if (!decryptionFlushQueued) {
+        if (pending && !decryptionFlushQueued) {
           decryptionFlushQueued = true;
-          queueMicrotask(flushDecryptedRooms);
+          window.setTimeout(flushDecryptedRooms, DECRYPTION_REFRESH_DELAY_MS);
         }
       });
     };
@@ -3261,7 +3230,6 @@ export class MatrixDriver extends Driver {
     this.mediaUploadLimit = null;
     this.encryptionPreparedAt.clear();
     this.confirmedMainReadBoundaries.clear();
-    this.exactMainTimelineUnreadRooms.clear();
   }
 
   destroy(): void {
@@ -3315,7 +3283,11 @@ export class MatrixDriver extends Driver {
     return room
       .getJoinedMembers()
       .filter((member) => member.typing && member.userId !== selfUserId)
-      .map((member) => ({ id: member.userId, name: member.name }))
+      .map((member) => ({
+        id: member.userId,
+        name: member.name,
+        avatarUrl: mxcUrl(member.getMxcAvatarUrl()),
+      }))
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
