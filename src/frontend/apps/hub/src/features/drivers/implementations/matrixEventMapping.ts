@@ -858,8 +858,8 @@ export const isOwnEcho = (event: MatrixEvent): boolean =>
  * A plain message becomes `message:new`, an edit becomes `message:updated`, and
  * a thread reply refreshes only the thread slices and its root summary.
  * Reactions become targeted cache patches; other non-text activity stays coarse
- * (`chat:changed`). This session's own message echo returns `[]` because the
- * optimistic→replace flow already rendered it.
+ * (`chat:changed`). This session's own message or redaction echo returns `[]`
+ * because the optimistic flow already rendered it.
  */
 export const timelineEventToChatEvent = (
   event: MatrixEvent,
@@ -868,9 +868,12 @@ export const timelineEventToChatEvent = (
 ): ChatEvent[] => {
   // Pending/failed local messages do not satisfy isMessageEvent. Suppress their
   // echoes before the coarse fallback, which would otherwise refetch the chat.
+  // A redaction's local echo enters the timeline before the SDK redacts its
+  // target, so that refetch would briefly bring a removed reaction back.
   if (
     (event.getType() === EventType.RoomMessage ||
-      event.getType() === EventType.RoomMessageEncrypted) &&
+      event.getType() === EventType.RoomMessageEncrypted ||
+      event.getType() === EventType.RoomRedaction) &&
     isOwnEcho(event)
   ) {
     return [];

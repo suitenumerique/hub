@@ -2798,6 +2798,11 @@ export class MatrixDriver extends Driver {
         });
         return;
       }
+      // The optimistic mutation owns this session's reaction removal, as
+      // `onTimeline` does for additions: a snapshot here could race a re-add.
+      if (target?.getType() === EventType.Reaction && isOwnEcho(redaction)) {
+        return;
+      }
       if (
         target?.getType() === EventType.Reaction &&
         pending?.relationTargetId

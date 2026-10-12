@@ -20,7 +20,9 @@ type ChatMessagesData = InfiniteData<ChatMessagesPage>;
 
 type ToggleVariables = { messageId: string; emoji: string };
 
-type ToggleContext = { queryKey: QueryKey; previous: unknown };
+type CacheSnapshot = { queryKey: QueryKey; previous: unknown };
+
+type ToggleContext = { snapshots: CacheSnapshot[] };
 
 /**
  * Applies the reaction toggle to every loaded page, producing fresh
@@ -74,8 +76,8 @@ export type UseToggleReactionResult = {
  * Toggles a reaction through the driver with an optimistic cache update. When
  * `threadId` is set the update targets the `["chat-thread", chatId, threadId]`
  * cache (a thread bubble); otherwise the `["chat-messages", chatId]` cache (a
- * conversation bubble). A failed call rolls the cache back to its pre-toggle
- * snapshot.
+ * conversation bubble). A thread root shows in both, so both are updated. A
+ * failed call rolls the caches back to their pre-toggle snapshots.
  */
 export const useToggleReaction = (
   ref: ChatRef,
@@ -101,30 +103,50 @@ export const useToggleReaction = (
         : driver.toggleChatReaction({ chatId: ref.chatId, messageId, emoji });
     },
     onMutate: async ({ messageId, emoji }) => {
-      const queryKey: QueryKey = threadId
-        ? chatKeys.thread(ref, threadId)
-        : chatKeys.messages(ref);
-      // Stop any in-flight refetch from overwriting the optimistic write.
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData(queryKey);
-      if (previous) {
-        queryClient.setQueryData(
-          queryKey,
-          threadId
-            ? applyThreadToggle(previous as ChatThreadDetail, messageId, emoji)
-            : applyToggle(previous as ChatMessagesData, messageId, emoji),
-        );
+      // Main bubbles update the conversation, plus the thread detail they root
+      // when it is loaded. Thread bubbles update their detail, plus the
+      // conversation when the bubble is the root.
+      const targets: Array<{
+        queryKey: QueryKey;
+        apply: (previous: unknown) => unknown;
+      }> = [];
+      if (!threadId || messageId === threadId) {
+        targets.push({
+          queryKey: chatKeys.messages(ref),
+          apply: (previous) =>
+            applyToggle(previous as ChatMessagesData, messageId, emoji),
+        });
       }
-      return { queryKey, previous };
+      targets.push({
+        queryKey: chatKeys.thread(ref, threadId ?? messageId),
+        apply: (previous) =>
+          applyThreadToggle(previous as ChatThreadDetail, messageId, emoji),
+      });
+
+      const snapshots: CacheSnapshot[] = [];
+      for (const { queryKey, apply } of targets) {
+        // Stop any in-flight refetch from overwriting the optimistic write.
+        await queryClient.cancelQueries({ queryKey });
+        const previous = queryClient.getQueryData(queryKey);
+        if (previous) {
+          queryClient.setQueryData(queryKey, apply(previous));
+          snapshots.push({ queryKey, previous });
+        }
+      }
+      return { snapshots };
     },
     onError: (_error, _variables, context) => {
-      if (context) {
-        queryClient.setQueryData(context.queryKey, context.previous);
-      }
+      context?.snapshots.forEach(({ queryKey, previous }) => {
+        queryClient.setQueryData(queryKey, previous);
+      });
     },
     // A toggle failure is handled by the rollback above rather than the global
     // error surface.
     meta: { noGlobalError: true },
+    // The driver picks add or remove from the homeserver state, so a quick
+    // second click must wait for the first write. Optimistic updates stay
+    // immediate: `onMutate` runs before the scope queue.
+    scope: { id: `reaction-toggle:${ref.accountId}:${ref.chatId}` },
   });
 
   const toggle = useCallback(
