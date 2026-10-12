@@ -37,7 +37,11 @@ import {
 import { useChat } from "../hooks/useChat";
 import { useComposerAccountId } from "../hooks/useChatAccounts";
 import { useUploadChatAttachment } from "../hooks/useChatAttachmentActions";
-import { useCanSendToChat, useChatSecurity } from "../hooks/useChatSecurity";
+import {
+  securitySendState,
+  useChatSecurity,
+  useChatSendState,
+} from "../hooks/useChatSecurity";
 import { useChatTyping } from "../hooks/useChatTyping";
 import { useEditChatMessage } from "../hooks/useEditChatMessage";
 import type { ComposerMentionSource } from "../hooks/useMentionCandidates";
@@ -131,13 +135,14 @@ export const ChatView = ({
       : undefined;
   }, [chatRef, draftAccountId, draftParticipants]);
   const { chat } = useChat(chatRef);
-  const canSendToChat = useCanSendToChat(chatRef);
+  const chatSendState = useChatSendState(chatRef);
   const composerAccountId = useComposerAccountId();
   const securityAccountId = chatRef?.accountId ?? composerAccountId;
   const { security: draftSecurity } = useChatSecurity(composerAccountId);
-  const securityBlocked = chatRef
-    ? !canSendToChat
-    : draftSecurity.supported && !draftSecurity.canSendEncrypted;
+  const sendState = chatRef ? chatSendState : securitySendState(draftSecurity);
+  const securityBlocked = sendState === "blocked";
+  // Typing stays possible while security resolves; only sending waits.
+  const securityChecking = sendState === "checking";
   // A pending incoming invitation replaces the timeline/composer/tools surfaces
   // with the invitation detail view until it is accepted.
   const invitationChat = isInvitationChat(chat) ? chat : null;
@@ -412,7 +417,9 @@ export const ChatView = ({
                         onCancelEdit={() => setEditingMessage(null)}
                         onTypingActivity={onTypingActivity}
                         onSubmit={
-                          chatRef || canComposeDraft ? handleSubmit : undefined
+                          (chatRef || canComposeDraft) && !securityChecking
+                            ? handleSubmit
+                            : undefined
                         }
                         onSendAttachment={handleSendAttachment}
                         onUploadAttachment={

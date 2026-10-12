@@ -27,7 +27,7 @@
   }
 
   // Mirrors the bubble row layout: spans the full width with a 24px gutter,
-  // while its inner child is capped at 750px and centered — so the composer's
+  // while its inner child is capped at 1150px and centered — so the composer's
   // visible edges line up with `.hub__chat-conversation__row-inner` above it.
   &__composer {
     flex: 0 0 auto;
@@ -40,7 +40,7 @@
 
     > * {
       width: 100%;
-      max-width: 750px;
+      max-width: 1150px;
     }
   }
 
