@@ -92,7 +92,7 @@ Most Tchap conversations are encrypted. The Hub is a new device on your account.
 ## 6. Prod (after preprod)
 
 Only with your own authorised account and the Tchap team's agreement. Set
-`NEXT_PUBLIC_MATRIX_ENVIRONMENT=tchap-prod`, run `make run-tchap`, then run
+`FRONTEND_CHAT_ENVIRONMENT=tchap-prod`, run `make run-tchap`, then run
 only:
 
 - 1.1 to 1.5 (sign-in, reload). If the Tchap page shows "Pare-feu applicatif",

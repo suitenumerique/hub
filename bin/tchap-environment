@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Prints the chat environment of the Tchap mode (`make run-tchap`) and asks for
+# confirmation before connecting the Hub to the real Tchap production.
+set -euo pipefail
+
+ENV_FILE="${1:-src/frontend/apps/hub/.env.tchap.local}"
+
+environment="$(
+  sed -n 's/^FRONTEND_CHAT_ENVIRONMENT=["]*\([a-z-]*\)["]*[[:space:]]*$/\1/p' \
+    "$ENV_FILE" | tail -n 1
+)"
+
+case "$environment" in
+  local | tchap-preprod) ;;
+  tchap-prod)
+    printf 'Tchap mode will connect the Hub to the real Tchap PRODUCTION. Continue? [y/N] '
+    read -r answer || answer=""
+    if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
+      echo "Aborted." >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "$ENV_FILE: set FRONTEND_CHAT_ENVIRONMENT to tchap-preprod, tchap-prod or local." >&2
+    exit 1
+    ;;
+esac
+
+echo "Tchap mode: $environment"

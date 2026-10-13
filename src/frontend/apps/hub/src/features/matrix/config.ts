@@ -49,7 +49,10 @@ export const MATRIX_LOCAL_SETTINGS = {
   maxUploadSize: 20 * 1024 * 1024,
 } satisfies MatrixDriverSettings;
 
-const TCHAP_CLIENT_NAME = "LaSuite Hub";
+// Name of the OAuth client the Hub registers on Tchap. Development builds say
+// so, to keep them apart from the real Hub in Tchap's lists of clients.
+const TCHAP_CLIENT_NAME =
+  process.env.NODE_ENV === "development" ? "LaSuite Hub (dev)" : "LaSuite Hub";
 
 export const TCHAP_PREPROD_SETTINGS = {
   discovery: "tchap-email",

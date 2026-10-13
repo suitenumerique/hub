@@ -205,6 +205,7 @@ To run the chat against Tchap preprod or prod instead, served at
 $ make tchap-env    # once: your Tchap environment and email
 $ make run-tchap
 $ make tchap-trust  # once per machine: trust the local certificate authority
+$ make run          # back to dev mode on localhost:9800
 ```
 
 Then open <http://localhost:9807>, click **Sign in** then SSO, and log in with

@@ -56,26 +56,23 @@ const isMatrixEnvironment = (value: string): value is MatrixEnvironment =>
   Object.hasOwn(MATRIX_ENVIRONMENTS, value);
 
 /**
- * Build-time Matrix environment. Next inlines `NEXT_PUBLIC_*` variables in the
- * static export, so the variable must be read with this literal name.
- */
-const readMatrixEnvironment = (): MatrixEnvironment => {
-  const value = process.env.NEXT_PUBLIC_MATRIX_ENVIRONMENT?.trim() || "local";
-  if (!isMatrixEnvironment(value)) {
-    throw new Error(`Unknown Matrix environment "${value}".`);
-  }
-  return value;
-};
-
-/**
- * Runtime manifest. It intentionally remains an array: the registry, routes,
- * and caches stay ready for several explicitly configured Matrix accounts.
- * Each environment has its own account id, so its sessions, caches and crypto
+ * Chat accounts of the environment set by the backend configuration
+ * (`FRONTEND_CHAT_ENVIRONMENT`), so one build serves every environment. `null`
+ * when it is missing or unknown: the chat never falls back to another one.
+ *
+ * The manifest intentionally remains an array: the registry, routes, and
+ * caches stay ready for several explicitly configured Matrix accounts. Each
+ * environment has its own account id, so its sessions, caches and crypto
  * stores never mix with another environment's.
  */
-export const MATRIX_ACCOUNTS: ChatAccountConfig[] = [
-  MATRIX_ENVIRONMENTS[readMatrixEnvironment()],
-];
+export const chatAccountsFor = (
+  environment: string | undefined,
+): ChatAccountConfig[] | null => {
+  const value = environment?.trim();
+  return value && isMatrixEnvironment(value)
+    ? [MATRIX_ENVIRONMENTS[value]]
+    : null;
+};
 
 export const createDriver = (
   accountId: AccountId,

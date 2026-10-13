@@ -23,8 +23,12 @@ export const searchMode = (
   return count <= participantLimit ? "participants" : "name-only";
 };
 
+// Accents split off by the NFD decomposition.
+const COMBINING_MARKS = /[̀-ͯ]/g;
+
+/** Text as the search compares it: case and accents do not count. */
 export const normalizeSearch = (value: string): string =>
-  value.normalize("NFC").trim().toLowerCase();
+  value.normalize("NFD").replace(COMBINING_MARKS, "").trim().toLowerCase();
 
 export const emptySearchRoom = (id: string): SearchRoom => ({
   id,

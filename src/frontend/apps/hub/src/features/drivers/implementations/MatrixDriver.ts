@@ -262,8 +262,6 @@ class MatrixSignInError extends Error {
 
 const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   userId: user.mxId,
-  accessToken: user.accessToken,
-  refreshToken: user.refreshToken,
 });
 
 const toChatMember = (

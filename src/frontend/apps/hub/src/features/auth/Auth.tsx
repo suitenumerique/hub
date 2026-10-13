@@ -23,11 +23,7 @@ export const logout = async () => {
   registry.destroyAll();
   // Unavailable local storage must not prevent logout from Hub itself.
   await Promise.allSettled(cleanup);
-  const url = new URL("logout/", baseApiUrl());
-  // Come back to this origin: in development the same backend also serves the
-  // Tchap HTTPS origin, beside localhost:9800.
-  url.searchParams.set("returnTo", `${window.location.origin}/`);
-  window.location.replace(url.href);
+  window.location.replace(new URL("logout/", baseApiUrl()).href);
   posthog.reset();
 };
 
@@ -129,9 +125,15 @@ export const Auth = ({ children }: PropsWithChildren) => {
     return <AppLoader />;
   }
 
-  if (chatStatus === "blocked" || chatStatus === "error") {
+  const chatUnconfigured = Boolean(user) && chatAccounts.isUnconfigured;
+  if (chatUnconfigured || chatStatus === "blocked" || chatStatus === "error") {
     let message: string;
-    switch (reason) {
+    switch (chatUnconfigured ? "unconfigured" : reason) {
+      case "unconfigured":
+        message = t(
+          "The chat is not configured on this Hub. Contact your administrator.",
+        );
+        break;
       case "another-tab":
         message = t(
           "Another Hub tab is using this session. Close that tab, then try again here. You can keep Element open.",

@@ -8,11 +8,13 @@ and this project adheres to
 
 ### Added
 
-- ✨(frontend) Connect the chat to Tchap preprod or prod, selected with
-  `NEXT_PUBLIC_MATRIX_ENVIRONMENT`. Find the homeserver from the email, register
-  the OAuth client on its authentication service and explain sign-in failures.
+- ✨(frontend) Connect the chat to Tchap preprod or prod, selected at runtime
+  with the backend setting `FRONTEND_CHAT_ENVIRONMENT`. Find the homeserver
+  from the email, register the OAuth client on its authentication service and
+  explain sign-in failures.
 - 🔧(docker) Serve the Hub at `https://hub.localhost:9814` for Tchap sign-in in
   development, with `make run-tchap` and a local certificate authority.
+- 🔒️(docker) Publish development ports on `127.0.0.1` only.
 - 🐛(frontend) Keep direct conversation names when the homeserver leaves a
   member out of the room state, and never show a Matrix id as a name.
 - ✨(frontend) Show conversation avatars: the room's own picture, or the other
@@ -21,6 +23,8 @@ and this project adheres to
   full-size pictures under the ring, icon size and background sheen.
 - 💄(frontend) List direct conversations first in search results, then named
   conversations, then conversations named after their members.
+- ✨(frontend) Ignore accents in the conversation search: "general" finds
+  "Général".
 - ⚡️(frontend) Empty the composer as soon as a message is sent and put it back
   if sending fails. Share encryption keys while typing and skip waiting for
   the typing notice, so encrypted messages leave faster.

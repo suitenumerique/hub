@@ -54,6 +54,8 @@ LOGOUT_REDIRECT_URL=https://${HUB_HOST}
 OIDC_REDIRECT_ALLOWED_HOSTS=["https://${HUB_HOST}"]
 
 # Frontend
+# Chat backend: tchap-prod, tchap-preprod or local (development Matrix stack).
+FRONTEND_CHAT_ENVIRONMENT=tchap-prod
 #FRONTEND_THEME=mytheme 
 #FRONTEND_CSS_URL=https://storage.yourdomain.tld/themes/custom.css
 #FRONTEND_FOOTER_FEATURE_ENABLED=true

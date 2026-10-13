@@ -25,6 +25,10 @@ DJANGO_EMAIL_URL_APP="http://localhost:9800"
 # Backend url
 HUB_BASE_URL="http://localhost:9801"
 
+# Chat: the local Matrix stack (`make run-matrix`). `make run-tchap` overrides
+# it with the environment set in src/frontend/apps/hub/.env.tchap.local.
+FRONTEND_CHAT_ENVIRONMENT=local
+
 # Media
 STORAGES_STATICFILES_BACKEND=django.contrib.staticfiles.storage.StaticFilesStorage
 AWS_S3_ENDPOINT_URL=http://rustfs:9000
@@ -49,9 +53,6 @@ LOGIN_REDIRECT_URL_FAILURE=http://localhost:9800
 LOGOUT_REDIRECT_URL=http://localhost:9800
 
 OIDC_REDIRECT_ALLOWED_HOSTS="localhost:9803,localhost:9800,hub.localhost:9814"
-# Return to the origin the login started from (localhost:9800 or the Tchap
-# HTTPS origin hub.localhost:9814) instead of LOGIN_REDIRECT_URL.
-OIDC_REDIRECT_FIELD_NAME=returnTo
 OIDC_AUTH_REQUEST_EXTRA_PARAMS={"acr_values": "eidas1"}
 
 # Store OIDC tokens in the session. Needed by search/ endpoint.

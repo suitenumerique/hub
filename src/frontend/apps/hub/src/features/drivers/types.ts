@@ -150,6 +150,8 @@ export type ApiConfig = {
   POSTHOG_KEY?: string;
   POSTHOG_HOST?: string;
   FRONTEND_THEME?: string;
+  /** Chat environment: `local`, `tchap-preprod` or `tchap-prod`. */
+  FRONTEND_CHAT_ENVIRONMENT?: string;
   FRONTEND_HIDE_GAUFRE?: boolean;
   FRONTEND_SILENT_LOGIN_ENABLED?: boolean;
   FRONTEND_EXTERNAL_HOME_URL?: string;
@@ -384,10 +386,8 @@ export type ChatThreadMutationResult = {
 };
 
 /**
- * Content of a user from the chat engine
+ * The user connected to a chat account. Credentials stay inside the driver.
  */
 export type ChatLocalUser = {
   userId: string;
-  accessToken: string;
-  refreshToken?: string;
 };

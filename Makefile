@@ -47,8 +47,8 @@ COMPOSE             = DOCKER_USER=$(DOCKER_USER) docker compose
 # Element). Only the *-matrix targets use it, so the normal stack ignores it.
 COMPOSE_MATRIX      = $(COMPOSE) -f compose.yml -f compose.matrix.yml
 MATRIX_SERVICES     = matrix_postgresql synapse mas element
-# Overlay file set for the dev-only HTTPS origin used to sign in to Tchap
-# (https://hub.localhost:9814). Only the *-tchap targets use it.
+# Overlay file set for the dev-only Tchap mode: HTTPS origin used to sign in
+# to Tchap (https://hub.localhost:9814) and backend settings for that origin.
 COMPOSE_TCHAP       = $(COMPOSE) -f compose.yml -f compose.tchap.yml
 TCHAP_SERVICES      = frontend-tchap hub-https
 TCHAP_ENV_FILE      = src/frontend/apps/hub/.env.tchap.local
@@ -280,14 +280,16 @@ tchap-env: ## create the personal Tchap settings file (environment and email)
 	fi
 .PHONY: tchap-env
 
-run-tchap: ## start the backend and the HTTPS origin to sign in to Tchap
-run-tchap: data/caddy
+run-tchap: ## switch to Tchap mode: backend and HTTPS origin connected to Tchap
+run-tchap: data/rustfs data/caddy
 	@test -f $(TCHAP_ENV_FILE) || \
 		{ echo "Missing $(TCHAP_ENV_FILE): run 'make tchap-env' first."; exit 1; }
-	@$(MAKE) run-backend
-	@$(COMPOSE_TCHAP) up -d --force-recreate $(TCHAP_SERVICES)
+	@bin/tchap-environment $(TCHAP_ENV_FILE)
+	@$(MAKE) stop
+	@$(COMPOSE_TCHAP) up --force-recreate -d nginx $(TCHAP_SERVICES)
 	@echo "Open https://hub.localhost:9814 once the frontend has compiled"
 	@echo "(make logs-tchap). First time on this machine: make tchap-trust."
+	@echo "Back to dev mode (localhost:9800): make run or make run-backend."
 .PHONY: run-tchap
 
 logs-tchap: ## display the Tchap frontend logs (follow mode)
@@ -321,8 +323,12 @@ status: ## an alias for "docker compose ps"
 	@$(COMPOSE) ps
 .PHONY: status
 
-stop: ## stop the development server using Docker
-	@$(COMPOSE) stop
+stop: ## stop the development server using Docker (dev and Tchap modes)
+	@$(COMPOSE_TCHAP) stop
+	@# `compose stop` skips one-off containers, such as the localhost:9800 dev
+	@# server of run-frontend-development.
+	@ids="$$(docker ps -q --filter label=com.docker.compose.project=hub \
+		--filter publish=9800)"; [ -z "$$ids" ] || docker stop $$ids > /dev/null
 .PHONY: stop
 
 stop-matrix: ## stop the local Matrix stack without touching the base stack

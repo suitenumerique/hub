@@ -27,9 +27,11 @@ stack and its databases remain managed by the existing Compose overlay.
 
 ## Runtime Manifest
 
-`features/config/Config.ts` builds the active account from
-`NEXT_PUBLIC_MATRIX_ENVIRONMENT` (`local` when unset) and passes its settings to
-`LazyMatrixDriver`. The `local` environment uses fixed settings:
+`features/config/Config.ts` builds the active account from the backend setting
+`FRONTEND_CHAT_ENVIRONMENT`, read from `/api/v1.0/config/` (`local` in
+`env.d/development/common`), and passes its settings to `LazyMatrixDriver`.
+Without a known value, the chat refuses to start. The `local` environment uses
+fixed settings:
 
 - account id: `matrix-local`;
 - homeserver: `http://localhost:9808`;
@@ -75,6 +77,6 @@ no query and exposes no sample file or preview.
 
 The driver obtains delegated-auth metadata from the fixed homeserver and builds
 the authorization URL with the configured MAS client id. Dynamic client
-registration is not supported. OIDC sessions and refresh tokens remain
+registration is used only by the Tchap environments. OIDC sessions and refresh tokens remain
 persisted per account and user, while Matrix sync and crypto keep their
 account-scoped IndexedDB stores.
