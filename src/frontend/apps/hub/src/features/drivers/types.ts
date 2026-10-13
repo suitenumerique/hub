@@ -15,6 +15,12 @@ export type ChatAccountConfig = {
   criticality: "required" | "optional";
   enabled: boolean;
   settings?: Record<string, unknown>;
+  /**
+   * Who the user is on this account. `"hub"` (default): the Hub user, as on a
+   * chat server provisioned from the Hub's identity provider. `"account"`: an
+   * identity of its own (Tchap), shown from the driver's `getChatProfile`.
+   */
+  identity?: "hub" | "account";
 };
 
 export type User = {

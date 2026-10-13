@@ -35,6 +35,8 @@ const MATRIX_ENVIRONMENTS = {
     label: "Tchap (preprod)",
     criticality: "required",
     enabled: true,
+    // Tchap accounts are not provisioned from the Hub's identity provider.
+    identity: "account",
     settings: tchapSettings(TCHAP_PREPROD_SETTINGS),
   },
   "tchap-prod": {
@@ -42,6 +44,8 @@ const MATRIX_ENVIRONMENTS = {
     label: "Tchap",
     criticality: "required",
     enabled: true,
+    // Tchap accounts are not provisioned from the Hub's identity provider.
+    identity: "account",
     settings: tchapSettings(TCHAP_PROD_SETTINGS),
   },
 } satisfies Record<string, ChatAccountConfig>;

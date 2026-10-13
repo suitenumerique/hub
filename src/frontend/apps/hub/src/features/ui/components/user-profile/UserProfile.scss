@@ -16,7 +16,8 @@
   gap: 8px;
   width: 100%;
 
-  > .c__avatar {
+  > .c__avatar,
+  > .hub__avatar {
     flex-shrink: 0;
   }
   > div:last-child {

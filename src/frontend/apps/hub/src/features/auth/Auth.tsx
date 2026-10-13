@@ -23,7 +23,11 @@ export const logout = async () => {
   registry.destroyAll();
   // Unavailable local storage must not prevent logout from Hub itself.
   await Promise.allSettled(cleanup);
-  window.location.replace(new URL("logout/", baseApiUrl()).href);
+  const url = new URL("logout/", baseApiUrl());
+  // Come back to this origin: in development the same backend also serves the
+  // Tchap HTTPS origin, beside localhost:9800.
+  url.searchParams.set("returnTo", `${window.location.origin}/`);
+  window.location.replace(url.href);
   posthog.reset();
 };
 

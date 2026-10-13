@@ -13,9 +13,23 @@ from drf_spectacular.views import (
 )
 from lasuite.oidc_login.urls import urlpatterns as oidc_urls
 
+from core.authentication.views import OIDCLogoutCallbackView, OIDCLogoutView
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path(f"api/{settings.API_VERSION}/", include("core.urls")),
+    # Override django-lasuite's logout routes, matched first, with the same
+    # paths and names.
+    path(
+        f"api/{settings.API_VERSION}/logout/",
+        OIDCLogoutView.as_view(),
+        name="oidc_logout_custom",
+    ),
+    path(
+        f"api/{settings.API_VERSION}/logout-callback/",
+        OIDCLogoutCallbackView.as_view(),
+        name="oidc_logout_callback",
+    ),
     path(f"api/{settings.API_VERSION}/", include(oidc_urls)),
 ]
 

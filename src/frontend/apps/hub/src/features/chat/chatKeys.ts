@@ -43,4 +43,7 @@ export const chatKeys = {
     ["chat-avatar", accountId, avatarUrl] as const,
   connection: (accountId: AccountId, userId: string | null) =>
     ["chat-connection", accountId, userId] as const,
+  /** Own profile of the user connected to this account as `chatUserId`. */
+  profile: (accountId: AccountId, chatUserId: string) =>
+    ["chat-profile", accountId, chatUserId] as const,
 };

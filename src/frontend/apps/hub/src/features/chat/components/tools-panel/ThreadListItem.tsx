@@ -40,7 +40,7 @@ export const ThreadListItem = ({
     : replies;
 
   return (
-    <li className="hub__chat-thread-item" data-unread={isUnread || undefined}>
+    <div className="hub__chat-thread-item" data-unread={isUnread || undefined}>
       <button
         type="button"
         className="hub__chat-thread-item__button"
@@ -78,6 +78,6 @@ export const ThreadListItem = ({
           <ChevronRight />
         </span>
       </button>
-    </li>
+    </div>
   );
 };
