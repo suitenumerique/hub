@@ -141,6 +141,7 @@ import {
   isMainTimelineMessage,
   isMessageEvent,
   isOwnEcho,
+  isUndecryptedEvent,
   matrixEventToChatMessage,
   needsReactionSnapshot,
   observeThreadReply,
@@ -2736,6 +2737,15 @@ export class MatrixDriver extends Driver {
       if (!room || !isMessageEvent(event)) {
         return;
       }
+      const replacement = event.replacingEvent();
+      if (replacement && isUndecryptedEvent(replacement)) {
+        // A refetched message gets a fresh, still-encrypted copy of its edit:
+        // publishing now would replace the displayed text with a placeholder.
+        // Wait for the copy's decryption, which the SDK does not re-emit on
+        // the client when it re-maps an already known message.
+        mx.reEmitter.reEmit(replacement, [MatrixEventEvent.Decrypted]);
+        return;
+      }
       const threadId = event.isThreadRoot ? event.getId() : event.threadRootId;
       emitCurrent({
         type: "message:updated",
@@ -3095,7 +3105,17 @@ export class MatrixDriver extends Driver {
               })
             : null;
         if (pending) decryptedRooms.set(room.roomId, pending);
-        if (!event.isDecryptionFailure()) {
+        const relation = event.getRelation();
+        const replaced =
+          relation?.rel_type === RelationType.Replace && relation.event_id
+            ? room.findEventById(relation.event_id)
+            : undefined;
+        if (replaced?.replacingEvent() === event) {
+          // The edit was attached before its decryption (see onReplaced).
+          // Republish its message, own edits included: it is mapped from the
+          // edit the SDK currently applies, so it cannot bring back old text.
+          onReplaced(replaced);
+        } else if (!event.isDecryptionFailure()) {
           for (const update of timelineEventToChatEvent(
             event,
             room,
