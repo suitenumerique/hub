@@ -1,0 +1,65 @@
+.hub__desktop-app {
+  display: contents;
+}
+
+.hub__small-screen {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .hub__desktop-app {
+    display: none;
+  }
+
+  .hub__small-screen {
+    min-height: 100dvh;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: linear-gradient(
+      180deg,
+      #fff 0%,
+      #fff 56.364%,
+      rgba(238, 241, 244, 0.78) 114.64%
+    );
+    font-family: var(
+      --c--globals--font--families--base,
+      "Marianne",
+      sans-serif
+    );
+    text-align: center;
+
+    &__copy {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    h1 {
+      margin: 0;
+      color: var(
+        --c--contextuals--content--semantic--neutral--primary,
+        #222631
+      );
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 18px;
+    }
+
+    p {
+      width: 228px;
+      max-width: 100%;
+      margin: 0;
+      color: var(
+        --c--contextuals--content--semantic--neutral--secondary,
+        #555e74
+      );
+      font-size: 12px;
+      line-height: 16px;
+    }
+  }
+}

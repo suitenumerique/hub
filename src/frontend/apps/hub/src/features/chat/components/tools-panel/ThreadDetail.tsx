@@ -114,11 +114,17 @@ export const ThreadDetail = ({
     if (!isOpen || !container || !thread) {
       return;
     }
-    const separator = container.querySelector<HTMLElement>(
-      ".hub__thread-detail__unread",
-    );
-    container.scrollTop = separator
-      ? Math.max(0, separator.offsetTop - 12)
+    const firstUnreadId =
+      thread.firstUnreadIndex === null
+        ? null
+        : thread.messages[thread.firstUnreadIndex]?.id;
+    const firstUnread = firstUnreadId
+      ? Array.from(
+          container.querySelectorAll<HTMLElement>("[data-message-id]"),
+        ).find((element) => element.dataset.messageId === firstUnreadId)
+      : null;
+    container.scrollTop = firstUnread
+      ? Math.max(0, firstUnread.offsetTop - 12)
       : container.scrollHeight;
   }, [isOpen, thread?.id]);
 
@@ -228,11 +234,6 @@ export const ThreadDetail = ({
 
             return (
               <Fragment key={message.id}>
-                {index === thread.firstUnreadIndex && (
-                  <div className="hub__thread-detail__unread" role="separator">
-                    <span>{t("Unread")}</span>
-                  </div>
-                )}
                 {isSent ? (
                   <ChatBubble
                     variant="sent"
