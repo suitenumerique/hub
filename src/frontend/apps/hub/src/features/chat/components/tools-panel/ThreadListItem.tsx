@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import type { AccountId, ChatThread } from "@/features/drivers/types";
 
-import { formatChatTime } from "../../formatTimestamp";
+import { formatChatThreadTimestamp } from "../../formatTimestamp";
 import { isOptimisticThreadId } from "../../hooks/chatCompositionCache";
 import { ChatUserAvatar } from "../ChatUserAvatar";
 
@@ -26,7 +26,8 @@ export const ThreadListItem = ({
   thread,
   onOpen,
 }: ThreadListItemProps) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const isUnread = thread.unreadCount > 0;
   const isPending = isOptimisticThreadId(thread.id);
 
@@ -55,7 +56,7 @@ export const ThreadListItem = ({
               {thread.author.name}
             </span>
             <span className="hub__chat-thread-item__time">
-              {formatChatTime(thread.lastReplyAt)}
+              {formatChatThreadTimestamp(thread.lastReplyAt, locale)}
             </span>
           </span>
           <span className="hub__chat-thread-item__preview">
