@@ -1,6 +1,7 @@
 {{- $envVars := include "hub.backend.django.env" (list . .Values.backend) -}}
 {{- $fullName := include "hub.backend.fullname" . -}}
 {{- $component := "backend" -}}
+{{- $subcomponent := "app" -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -11,12 +12,12 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
   labels:
-    {{- include "hub.common.labels" (list . $component) | nindent 4 }}
+    {{- include "hub.common.labels" (list . $component $subcomponent) | nindent 4 }}
 spec:
   replicas: {{ .Values.backend.replicas }}
   selector:
     matchLabels:
-      {{- include "hub.common.selectorLabels" (list . $component) | nindent 6 }}
+      {{- include "hub.common.selectorLabels" (list . $component $subcomponent) | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -24,7 +25,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "hub.common.selectorLabels" (list . $component) | nindent 8 }}
+        {{- include "hub.common.selectorLabels" (list . $component $subcomponent) | nindent 8 }}
     spec:
       {{- if $.Values.image.credentials }}
       imagePullSecrets:
@@ -170,5 +171,5 @@ spec:
   maxUnavailable: 1
   selector:
     matchLabels:
-      {{- include "hub.common.selectorLabels" (list . $component) | nindent 6 }}
+      {{- include "hub.common.selectorLabels" (list . $component $subcomponent) | nindent 6 }}
 {{ end }}

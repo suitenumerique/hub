@@ -1,12 +1,13 @@
 {{- $fullName := include "hub.fullname" . -}}
 {{- $component := "media" -}}
+{{- $subcomponent := "service" -}}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ $fullName }}-media
   namespace: {{ .Release.Namespace | quote }}
   labels:
-    {{- include "hub.common.labels" (list . $component) | nindent 4 }}
+    {{- include "hub.common.labels" (list . $component $subcomponent) | nindent 4 }}
   annotations:
     {{- toYaml $.Values.serviceMedia.annotations | nindent 4 }}
 spec:

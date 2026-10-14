@@ -118,8 +118,10 @@ Requires array with top level scope and component name
 {{- define "hub.common.labels" -}}
 {{- $topLevelScope := index . 0 -}}
 {{- $component := index . 1 -}}
+{{- $subcomponent := index . 2 -}}
 {{- include "hub.labels" $topLevelScope }}
 app.kubernetes.io/component: {{ $component }}
+app.kubernetes.io/subcomponent: {{ $subcomponent }}
 {{- end }}
 
 {{/*
@@ -130,8 +132,10 @@ Requires array with top level scope and component name
 {{- define "hub.common.selectorLabels" -}}
 {{- $topLevelScope := index . 0 -}}
 {{- $component := index . 1 -}}
+{{- $subcomponent := index . 2 -}}
 {{- include "hub.selectorLabels" $topLevelScope }}
 app.kubernetes.io/component: {{ $component }}
+app.kubernetes.io/subcomponent: {{ $subcomponent }}
 {{- end }}
 
 {{- define "hub.probes.abstract" -}}

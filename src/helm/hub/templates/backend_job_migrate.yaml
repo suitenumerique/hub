@@ -1,6 +1,7 @@
 {{- $envVars := include "hub.common.env" (list . .Values.backend) -}}
 {{- $fullName := include "hub.backend.fullname" . -}}
 {{- $component := "backend" -}}
+{{- $subcomponent := "job" -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -12,7 +13,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
-    {{- include "hub.common.labels" (list . $component) | nindent 4 }}
+    {{- include "hub.common.labels" (list . $component $subcomponent) | nindent 4 }}
 spec:
   ttlSecondsAfterFinished: {{ .Values.backend.jobs.ttlSecondsAfterFinished }}
   backoffLimit: {{ .Values.backend.jobs.backoffLimit }}
@@ -23,7 +24,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "hub.common.selectorLabels" (list . $component) | nindent 8 }}
+        {{- include "hub.common.selectorLabels" (list . $component $subcomponent) | nindent 8 }}
     spec:
       {{- if $.Values.image.credentials }}
       imagePullSecrets:

@@ -1,13 +1,14 @@
 {{- $envVars := include "hub.common.env" (list . .Values.frontend) -}}
 {{- $fullName := include "hub.frontend.fullname" . -}}
 {{- $component := "frontend" -}}
+{{- $subcomponent := "app" -}}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ $fullName }}
   namespace: {{ .Release.Namespace | quote }}
   labels:
-    {{- include "hub.common.labels" (list . $component) | nindent 4 }}
+    {{- include "hub.common.labels" (list . $component $subcomponent) | nindent 4 }}
   annotations:
     {{- toYaml $.Values.frontend.service.annotations | nindent 4 }}
 spec:
@@ -18,4 +19,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "hub.common.selectorLabels" (list . $component) | nindent 4 }}
+    {{- include "hub.common.selectorLabels" (list . $component $subcomponent) | nindent 4 }}
