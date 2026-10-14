@@ -406,16 +406,38 @@ crowdin-upload: ## Upload source translations to crowdin
 	@$(COMPOSE_RUN_CROWDIN) upload sources -c crowdin/config.yml
 .PHONY: crowdin-upload
 
+# Recovery tool: rebuilds the Crowdin files from the committed translations.
+# The sources of the same commit must already be uploaded to Crowdin, the
+# empty django.pot only lets the CLI resolve the backend translation files.
+crowdin-upload-translations: ## Upload the committed translations to crowdin
+crowdin-upload-translations: \
+	frontend-i18n-extract
+	@$(FRONT_I18N_YARN) format-rebuild:hub
+	@touch src/backend/locale/django.pot
+	@$(COMPOSE_RUN_CROWDIN) upload translations -c crowdin/config.yml \
+	--source=/frontend/packages/i18n/locales/hub/translations-crowdin.json \
+	--translation=/frontend/packages/i18n/locales/hub-rebuild/%two_letters_code%/translations.json \
+	--dest=/frontend-hub.json \
+	--import-eq-suggestions $(CROWDIN_ARGS)
+	@$(COMPOSE_RUN_CROWDIN) upload translations -c crowdin/config.yml \
+	--source=/backend/locale/django.pot \
+	--translation=/backend/locale/%locale_with_underscore%/LC_MESSAGES/django.po \
+	--dest=/backend-hub.pot \
+	--import-eq-suggestions $(CROWDIN_ARGS)
+.PHONY: crowdin-upload-translations
+
 i18n-compile: ## compile all translations
 i18n-compile: \
 	back-i18n-compile \
 	frontend-i18n-compile
 .PHONY: i18n-compile
 
+# Downloading the Crowdin sources also restores django.pot, so the backend
+# messages must be generated afterwards.
 i18n-generate: ## create the .pot files and extract frontend messages
 i18n-generate: \
-	back-i18n-generate \
-	frontend-i18n-generate
+	frontend-i18n-generate \
+	back-i18n-generate
 .PHONY: i18n-generate
 
 i18n-download-and-compile: ## download all translated messages and compile them to be used by all applications
@@ -508,7 +530,7 @@ frontend-i18n-generate: \
 	frontend-i18n-extract
 .PHONY: frontend-i18n-generate
 
-frontend-i18n-compile: ## Format the crowin json files used deploy to the apps
+frontend-i18n-compile: ## Format the crowdin json files used deploy to the apps
 	@$(FRONT_YARN) i18n:deploy
 .PHONY: frontend-i18n-compile
 

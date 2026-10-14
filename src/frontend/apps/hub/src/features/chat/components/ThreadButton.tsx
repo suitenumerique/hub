@@ -22,10 +22,9 @@ export const ThreadButton = ({ summary, onOpen }: ThreadButtonProps) => {
   const isUnread = summary.unreadCount > 0;
   const isPending = isOptimisticThreadId(summary.id);
 
-  const replies =
-    summary.replyCount <= 1
-      ? t("1 reply")
-      : t("{{count}} replies", { count: summary.replyCount });
+  const replies = t("{{count}} replies", {
+    count: Math.max(summary.replyCount, 1),
+  });
   const label = isUnread
     ? `${replies} • ${t("{{count}} unread", { count: summary.unreadCount })}`
     : replies;

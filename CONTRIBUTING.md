@@ -13,6 +13,8 @@ Please also check out our [dev handbook](https://suitenumerique.gitbook.io/handb
 You can help us with translations on [Crowdin](https://crowdin.com/project/lasuite-hub).
 Your language is not there? Request it on our Crowdin page 😊 or ping us on [Matrix](https://matrix.to/#/!KiquMGHVsvYtlfdwSP:matrix.org?via=matrix.org&via=liiib.re&via=matrix.interhop.org) and let us know if you can help with translations and/or proofreading.
 
+Translations are only edited on Crowdin, never in the code. Before adding or changing a user-facing string, read the [translation rules](docs/translations.md).
+
 ## Creating an Issue
 
 When creating an issue, please provide the following details:

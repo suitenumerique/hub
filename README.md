@@ -244,7 +244,7 @@ While Hub is a public-driven initiative, our license choice is an invitation for
 
 ## Contributing 🙌
 
-You can help us with translations on [Crowdin](https://crowdin.com/project/lasuite-hub).
+You can help us with translations on [Crowdin](https://crowdin.com/project/lasuite-hub). See how translations work in [docs/translations.md](docs/translations.md).
 
 If you intend to make pull requests, see [CONTRIBUTING](https://github.com/suitenumerique/hub/blob/main/CONTRIBUTING.md) for guidelines.
 
