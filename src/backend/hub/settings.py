@@ -582,6 +582,42 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
+    # Visio (Meet)
+    MEET_API_URL = values.Value(None, environ_name="MEET_API_URL", environ_prefix=None)
+    MEET_API_TIMEOUT = values.PositiveIntegerValue(
+        default=10, environ_name="MEET_API_TIMEOUT", environ_prefix=None
+    )
+    MEET_APPLICATION_CLIENT_ID = values.Value(
+        None, environ_name="MEET_APPLICATION_CLIENT_ID", environ_prefix=None
+    )
+    MEET_APPLICATION_CLIENT_SECRET = SecretFileValue(
+        None, environ_name="MEET_APPLICATION_CLIENT_SECRET", environ_prefix=None
+    )
+    MEET_ROOM_ACCESS_LEVEL = values.Value(
+        "trusted", environ_name="MEET_ROOM_ACCESS_LEVEL", environ_prefix=None
+    )
+    MEET_WEBHOOK_SECRET = SecretFileValue(
+        None, environ_name="MEET_WEBHOOK_SECRET", environ_prefix=None
+    )
+    # Accepted gap, in seconds, between the signature of a webhook and its reception
+    MEET_WEBHOOK_TOLERANCE = values.PositiveIntegerValue(
+        default=300, environ_name="MEET_WEBHOOK_TOLERANCE", environ_prefix=None
+    )
+    # Time, in seconds, left to join a call before it is considered as abandoned
+    MEET_CALL_JOIN_GRACE_PERIOD = values.PositiveIntegerValue(
+        default=300, environ_name="MEET_CALL_JOIN_GRACE_PERIOD", environ_prefix=None
+    )
+
+    # Stand-in for Visio, for local development and demos only
+    FAKE_MEET_ENABLED = values.BooleanValue(
+        default=False, environ_name="FAKE_MEET_ENABLED", environ_prefix=None
+    )
+    FAKE_MEET_BASE_URL = values.Value(
+        "http://localhost:9801/fake-meet",
+        environ_name="FAKE_MEET_BASE_URL",
+        environ_prefix=None,
+    )
+
     # Content Security Policy
     # See https://content-security-policy.com/ for more information.
     CONTENT_SECURITY_POLICY = {
@@ -756,6 +792,9 @@ class Production(Base):
     configuration (and derived configurations):
     ALLOWED_HOSTS=["foo.com", "foo.fr"]
     """
+
+    # The stand-in for Visio accepts any credentials: never serve it for real.
+    FAKE_MEET_ENABLED = False
 
     # Security
     # Add allowed host from environment variables.

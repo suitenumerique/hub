@@ -26,6 +26,9 @@ if settings.DEBUG:
         + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     )
 
+if settings.FAKE_MEET_ENABLED:
+    urlpatterns += [path("", include("fake_meet.urls"))]
+
 if settings.LOAD_E2E_URLS:
     urlpatterns += [path("", include("e2e.urls"))]
 

@@ -20,6 +20,7 @@ import { useChatMessages } from "../hooks/useChatMessages";
 import { useMainTimelineUnread } from "../hooks/useMainTimelineUnread";
 import { useUnreadSeparator } from "../hooks/useUnreadSeparator";
 
+import { CallActivity } from "./CallActivity";
 import { ChatBubble } from "./ChatBubble";
 import { ChatEncryptionNotice } from "./ChatEncryptionNotice";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
@@ -712,12 +713,26 @@ const Row = memo(function Row({
   const isSent = message.authorId === "me";
   const isFirstOfGroup =
     !prev ||
+    Boolean(prev.call) ||
     prev.authorId !== message.authorId ||
     !isSameChatDay(prev.timestamp, message.timestamp);
   const isLastOfGroup =
     !next ||
+    Boolean(next.call) ||
     next.authorId !== message.authorId ||
     !isSameChatDay(message.timestamp, next.timestamp);
+
+  if (message.call) {
+    return (
+      <RowShell
+        messageId={message.id}
+        hasUnreadSeparator={hasUnreadSeparator}
+        isUnreadSeparatorVisible={isUnreadSeparatorVisible}
+      >
+        <CallActivity call={message.call} timestamp={message.timestamp} />
+      </RowShell>
+    );
+  }
 
   if (isSent) {
     return (

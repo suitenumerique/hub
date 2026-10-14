@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 
 import type {
   ChatAttachment,
+  ChatCall,
   ChatMessage,
   ChatMessagesPage,
   ChatThread,
@@ -55,6 +56,7 @@ export const createOptimisticMessage = (
   content: string,
   prefix: string,
   attachment?: ChatAttachment,
+  call?: ChatCall,
 ): ChatMessage => {
   optimisticId += 1;
   return {
@@ -62,6 +64,7 @@ export const createOptimisticMessage = (
     authorId: "me",
     content,
     ...(attachment ? { attachment } : {}),
+    ...(call ? { call } : {}),
     timestamp: new Date().toISOString(),
     reactions: [],
   };

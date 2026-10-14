@@ -8,6 +8,7 @@ import {
 import {
   AccountId,
   ChatAttachment,
+  ChatCall,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -83,6 +84,8 @@ export type SendChatMessageParams = {
   content: string;
   /** Posts a file previously stored through `uploadChatAttachment`. */
   attachment?: ChatAttachment;
+  /** Announces a call; `content` is then its plain-text fallback. */
+  call?: ChatCall;
 };
 
 export type UploadChatAttachmentParams = {

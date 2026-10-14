@@ -38,6 +38,12 @@ export const chatKeys = {
     attachment: ChatAttachment,
     variant: "original" | "preview",
   ) => ["chat-attachment", accountId, attachment.source, variant] as const,
+  /** Live status of a call, owned by the Hub API rather than a chat account. */
+  call: (callId: string) => ["call", callId] as const,
+  /** Prefix matching every list of ongoing calls, whatever its conversations. */
+  ongoingCallsAll: () => ["ongoing-calls"] as const,
+  ongoingCalls: (chatIds: readonly string[]) =>
+    ["ongoing-calls", chatIds] as const,
   connection: (accountId: AccountId, userId: string | null) =>
     ["chat-connection", accountId, userId] as const,
 };

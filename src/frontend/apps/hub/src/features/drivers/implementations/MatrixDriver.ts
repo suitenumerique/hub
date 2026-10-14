@@ -134,6 +134,7 @@ import {
   reconcileMessageReactions,
   rememberThreadReplyCount,
   roomUnread,
+  matrixCallContent,
   sendResponseToChatMessage,
   sortedThreadReplyEvents,
   threadReplyCount,
@@ -1693,8 +1694,18 @@ export class MatrixDriver extends Driver {
     chatId,
     content,
     attachment,
+    call,
   }: SendChatMessageParams): Promise<ChatMessage> {
     const { mx, room } = this.requireRoom("sendChatMessage", chatId);
+    if (call) {
+      const { event_id: eventId } = await this.sendContent(mx, room, () =>
+        mx.sendMessage(
+          chatId,
+          matrixCallContent(call, content) as RoomMessageEventContent,
+        ),
+      );
+      return sendResponseToChatMessage(eventId, content, undefined, call);
+    }
     const eventId = await this.sendRoomMessage(
       mx,
       room,

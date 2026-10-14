@@ -8,6 +8,7 @@ and this project adheres to
 
 ### Added
 
+- ✨(project) Start a Visio call from a conversation and show its status #38
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.
   Organize encryption settings into device and backup sections with contextual

@@ -26,6 +26,7 @@ pytestmark = pytest.mark.django_db
     FRONTEND_JS_URL="http://testjs/",
     FRONTEND_THEME="test-theme",
     MEDIA_BASE_URL="http://testserver/",
+    MEET_API_URL=None,
     POSTHOG_KEY={"id": "132456", "host": "https://eu.i.posthog-test.com"},
     SENTRY_DSN="https://sentry.test/123",
     THEME_CUSTOMIZATION_FILE_PATH="",
@@ -58,6 +59,7 @@ def test_api_config(is_authenticated):
         ],
         "LANGUAGE_CODE": "en-us",
         "MEDIA_BASE_URL": "http://testserver/",
+        "MEET_ENABLED": False,
         "POSTHOG_KEY": {"id": "132456", "host": "https://eu.i.posthog-test.com"},
         "SENTRY_DSN": "https://sentry.test/123",
         "theme_customization": {},
@@ -195,3 +197,12 @@ def test_api_config_throttling(settings):
             "Rate limit exceeded for scope config", "warning"
         )
     settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["config"] = current_rate
+
+
+@override_settings(MEET_API_URL="https://visio.test/external-api/v1.0")
+def test_api_config_meet_enabled():
+    """Calls should be advertised once the Visio API is configured."""
+    response = APIClient().get("/api/v1.0/config/")
+
+    assert response.status_code == HTTP_200_OK
+    assert response.json()["MEET_ENABLED"] is True

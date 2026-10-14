@@ -379,6 +379,30 @@ describe("MatrixDriver.sendChatMessage", () => {
     });
   });
 
+  it("announces a call in a text message other clients can read", async () => {
+    const room = makeRoom();
+    const sendMessage = vi.fn(async () => ({ event_id: SENT_EVENT_ID }));
+    const mx = {
+      getRoom: (id: string) => (id === ROOM_ID ? room : null),
+      sendMessage,
+    } as unknown as MatrixClient;
+    const call = { id: "call-1", url: "https://visio.test/abc-defg-hij" };
+
+    const message = await driverWithClient(mx).sendChatMessage({
+      chatId: ROOM_ID,
+      content: "Meeting started: https://visio.test/abc-defg-hij",
+      call,
+    });
+
+    expect(sendMessage).toHaveBeenCalledWith(ROOM_ID, {
+      msgtype: "m.text",
+      body: "Meeting started: https://visio.test/abc-defg-hij",
+      "fr.gouv.numerique.hub.call": call,
+    });
+    // A call is not a text the author could rewrite.
+    expect(message).toMatchObject({ id: SENT_EVENT_ID, call, canEdit: false });
+  });
+
   it("throws when the client is not connected", async () => {
     await expect(
       driverWithClient(null).sendChatMessage({

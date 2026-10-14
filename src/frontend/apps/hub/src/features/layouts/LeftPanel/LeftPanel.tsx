@@ -1,13 +1,14 @@
 import { Button } from "@gouvfr-lasuite/ui-components";
 import {
   ArrowDropDown,
+  Meet,
   Plus,
   QuestionMark,
 } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { ReactNode, useId, useState } from "react";
+import { ReactNode, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
@@ -16,6 +17,7 @@ import {
   useChatUnread,
 } from "@/features/chat/hooks/useChatUnread";
 import { useChats } from "@/features/chat/hooks/useChats";
+import { useOngoingCalls } from "@/features/chat/hooks/useOngoingCalls";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatUnread } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
@@ -39,6 +41,11 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const { t } = useTranslation();
   const chats = useChats();
   const unreadLookup = useChatUnread();
+  const chatIds = useMemo(
+    () => [...chats.favourites, ...chats.all].map((chat) => chat.id),
+    [chats.favourites, chats.all],
+  );
+  const chatsWithOngoingCall = useOngoingCalls(chatIds);
   const entries = useDriverEntries();
   const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
     ? "⌘K"
@@ -97,6 +104,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
             accountLabels={accountLabels}
             showAccountLabels={showAccountLabels}
             unreadLookup={unreadLookup}
+            chatsWithOngoingCall={chatsWithOngoingCall}
           />
         ) : null}
         <ChatSection
@@ -105,6 +113,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
           accountLabels={accountLabels}
           showAccountLabels={showAccountLabels}
           unreadLookup={unreadLookup}
+          chatsWithOngoingCall={chatsWithOngoingCall}
         />
       </div>
 
@@ -163,6 +172,7 @@ type ChatSectionProps = {
   accountLabels: Map<string, string>;
   showAccountLabels: boolean;
   unreadLookup: ChatUnreadLookup;
+  chatsWithOngoingCall: ReadonlySet<string>;
 };
 
 const ChatSection = ({
@@ -171,6 +181,7 @@ const ChatSection = ({
   accountLabels,
   showAccountLabels,
   unreadLookup,
+  chatsWithOngoingCall,
 }: ChatSectionProps) => {
   const [isOpen, setIsOpen] = useState(true);
   const reactId = useId();
@@ -206,6 +217,7 @@ const ChatSection = ({
                 accountLabel={accountLabels.get(chat.accountId)}
                 showAccountLabel={showAccountLabels}
                 unread={unreadLookup(chat.ref)}
+                hasOngoingCall={chatsWithOngoingCall.has(chat.id)}
               />
             </li>
           ))}
@@ -220,11 +232,13 @@ const ChatRow = ({
   accountLabel,
   showAccountLabel,
   unread,
+  hasOngoingCall,
 }: {
   chat: Chat;
   accountLabel?: string;
   showAccountLabel: boolean;
   unread: ChatUnread;
+  hasOngoingCall: boolean;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -288,6 +302,14 @@ const ChatRow = ({
           <span className="hub__left-panel__chat__account">{accountLabel}</span>
         )}
       </span>
+      {hasOngoingCall && (
+        <span className="hub__left-panel__chat__call" data-testid="chat-call">
+          <Meet aria-hidden="true" />
+          <span className="hub__visually-hidden">
+            {t("Meeting in progress")}
+          </span>
+        </span>
+      )}
       {unread.unread && (
         <span className="hub__visually-hidden">{t("Unread message")}</span>
       )}

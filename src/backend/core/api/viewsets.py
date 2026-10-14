@@ -12,12 +12,14 @@ from django.http import Http404
 from django.utils.text import slugify
 
 import rest_framework as drf
+from drf_spectacular.utils import extend_schema
 from lasuite.tools.email import get_domain_from_email
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 
 from core import models
 from core.api.filters import remove_accents
+from core.services.meet import MeetError, MeetWebhookSignatureError, verify_webhook
 
 from . import permissions, serializers
 from .filters import UserSearchFilter
@@ -243,6 +245,127 @@ class UserViewSet(
         )
 
 
+class CallViewSet(
+    drf.mixins.RetrieveModelMixin, drf.mixins.ListModelMixin, viewsets.GenericViewSet
+):
+    """
+    Calls held in the Visio room of a conversation.
+
+    The Hub does not know who belongs to a conversation, which lives on its chat
+    service: holding the identifier of a conversation is what gives access to
+    its calls.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = models.Call.objects.select_related("room")
+    serializer_class = serializers.CallSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        """Limit listed calls to the ones of the requested conversations."""
+        models.Call.objects.close_stale()
+        queryset = super().get_queryset()
+
+        if self.action != "list":
+            return queryset
+
+        query = serializers.CallListQuerySerializer(
+            data={
+                "chat_service_id": self.request.query_params.getlist("chat_service_id"),
+                **(
+                    {"status": self.request.query_params["status"]}
+                    if "status" in self.request.query_params
+                    else {}
+                ),
+            }
+        )
+        query.is_valid(raise_exception=True)
+
+        queryset = queryset.filter(
+            room__chat_service_id__in=query.validated_data["chat_service_id"]
+        )
+        if status := query.validated_data.get("status"):
+            queryset = queryset.filter(
+                ended_at__isnull=status == models.CallStatus.ONGOING
+            )
+        return queryset
+
+    @extend_schema(
+        request=serializers.CallCreateSerializer,
+        responses={200: serializers.CallSerializer, 201: serializers.CallSerializer},
+    )
+    def create(self, request):
+        """
+        POST /api/v1.0/calls/
+            Start a call in a conversation, or return the one already ongoing.
+
+            The response is a 201 when the call was opened by this request and
+            a 200 when the conversation already had an ongoing call to join.
+        """
+        if not settings.MEET_API_URL:
+            raise drf.exceptions.NotFound()
+
+        serializer = serializers.CallCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            call, created = models.Call.objects.start(
+                serializer.validated_data["chat_service_id"], request.user
+            )
+        except MeetError:
+            return drf.response.Response(
+                {"detail": "Visio is unavailable."},
+                status=drf.status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return drf.response.Response(
+            self.get_serializer(call).data,
+            status=drf.status.HTTP_201_CREATED if created else drf.status.HTTP_200_OK,
+        )
+
+
+class MeetWebhookView(drf.views.APIView):
+    """Receive the events Visio sends about the calls held in its rooms."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    @extend_schema(request=serializers.MeetWebhookSerializer, responses={204: None})
+    def post(self, request):
+        """
+        POST /api/v1.0/webhooks/meet/
+            Record that a call started or ended in a Visio room.
+
+            Events of an unknown type or about an unknown room are acknowledged
+            and ignored, so Visio can add new ones without breaking the Hub.
+        """
+        try:
+            verify_webhook(request.headers, request.body)
+        except MeetWebhookSignatureError as err:
+            logger.warning("Rejected Visio webhook: %s", err)
+            return drf.response.Response(
+                {"detail": "Invalid signature."},
+                status=drf.status.HTTP_401_UNAUTHORIZED,
+            )
+
+        serializer = serializers.MeetWebhookSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        event = serializer.validated_data
+        room_id = event["data"]["room"]["id"]
+        call = event["data"]["call"]
+
+        if event["type"] == "call.started":
+            models.Call.objects.handle_started(
+                room_id, call["id"], call.get("started_at") or event["timestamp"]
+            )
+        elif event["type"] == "call.ended":
+            models.Call.objects.handle_ended(
+                room_id, call["id"], call.get("ended_at") or event["timestamp"]
+            )
+
+        return drf.response.Response(status=drf.status.HTTP_204_NO_CONTENT)
+
+
 class ConfigView(drf.views.APIView):
     """API ViewSet for sharing some public settings."""
 
@@ -274,6 +397,7 @@ class ConfigView(drf.views.APIView):
             if hasattr(settings, setting):
                 dict_settings[setting] = getattr(settings, setting)
 
+        dict_settings["MEET_ENABLED"] = bool(settings.MEET_API_URL)
         dict_settings["theme_customization"] = self._load_theme_customization()
 
         return drf.response.Response(dict_settings)

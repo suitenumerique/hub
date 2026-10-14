@@ -293,6 +293,29 @@
       }
     }
 
+    &__call {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      color: var(
+        --c--contextuals--content--semantic--success--secondary,
+        #18753c
+      );
+      background: var(
+        --c--contextuals--background--semantic--success--tertiary,
+        #b8fec9
+      );
+
+      svg {
+        width: 14px;
+        height: 14px;
+      }
+    }
+
     &__account {
       font-size: 11px;
       font-weight: 500;

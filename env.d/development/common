@@ -58,3 +58,11 @@ OIDC_AUTH_REQUEST_EXTRA_PARAMS={"acr_values": "eidas1"}
 # Must be a valid Fernet key (32 url-safe base64-encoded bytes)
 # To create one, use the bin/fernetkey command.
 # OIDC_STORE_REFRESH_TOKEN_KEY="your-32-byte-encryption-key=="
+
+# Visio: the local stack talks to a stand-in served by the backend itself
+FAKE_MEET_ENABLED=True
+MEET_API_URL=http://localhost:8000/fake-meet/external-api/v1.0
+MEET_APPLICATION_CLIENT_ID=hub
+MEET_APPLICATION_CLIENT_SECRET=ThisIsAnExampleKeyForDevPurposeOnly
+MEET_WEBHOOK_SECRET=ThisIsAnExampleKeyForDevPurposeOnly
+CONTENT_SECURITY_POLICY_EXCLUDE_URL_PREFIXES=/admin,/fake-meet

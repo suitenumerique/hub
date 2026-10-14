@@ -23,7 +23,9 @@ import { useTranslation } from "react-i18next";
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
 import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
+import { useStartCall } from "@/features/chat/hooks/useStartCall";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
+import { useApiConfig } from "@/features/config/useApiConfig";
 import type { Chat } from "@/features/drivers/types";
 import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
@@ -54,6 +56,8 @@ export const ChatHeader = ({
   showTools = true,
 }: ChatHeaderProps) => {
   const { t } = useTranslation();
+  const { data: config } = useApiConfig();
+  const { startCall, isStarting } = useStartCall(chat?.ref ?? null);
 
   return (
     <header className="hub__chat-header" aria-label={t("Chat header")}>
@@ -80,16 +84,25 @@ export const ChatHeader = ({
       <div className="hub__chat-header__actions">
         {showTools && (
           <div className="hub__chat-header__selector">
-            <Button
-              type="button"
-              variant="tertiary"
-              color="neutral"
-              size="small"
-              className="hub__chat-header__icon-button"
-              aria-label={t("Start a meeting")}
-              icon={<Meet />}
-            />
-            <span className="hub__chat-header__separator" aria-hidden="true" />
+            {config?.MEET_ENABLED && (
+              <>
+                <Button
+                  type="button"
+                  variant="tertiary"
+                  color="neutral"
+                  size="small"
+                  className="hub__chat-header__icon-button"
+                  aria-label={t("Start a meeting")}
+                  disabled={!chat || isStarting}
+                  onClick={startCall}
+                  icon={<Meet />}
+                />
+                <span
+                  className="hub__chat-header__separator"
+                  aria-hidden="true"
+                />
+              </>
+            )}
             <Button
               type="button"
               variant="tertiary"

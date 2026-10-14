@@ -91,3 +91,21 @@ class UserAdmin(auth_admin.UserAdmin):
         "updated_at",
     )
     search_fields = ("id", "sub", "admin_email", "email", "full_name")
+
+
+class CallInline(admin.TabularInline):
+    """Inline admin class for the calls of a Visio room"""
+
+    model = models.Call
+    extra = 0
+    readonly_fields = ("id", "started_by", "meet_call_id")
+
+
+@admin.register(models.MeetRoom)
+class MeetRoomAdmin(admin.ModelAdmin):
+    """Admin class for the MeetRoom model"""
+
+    inlines = (CallInline,)
+    list_display = ("chat_service_id", "meet_room_id", "url", "created_at")
+    readonly_fields = ("id", "created_by", "created_at", "updated_at")
+    search_fields = ("chat_service_id", "meet_room_id")

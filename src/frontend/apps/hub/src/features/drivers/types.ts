@@ -143,6 +143,7 @@ export type ApiConfig = {
   FRONTEND_EXTERNAL_HOME_URL?: string;
   FRONTEND_CSS_URL?: string;
   FRONTEND_JS_URL?: string;
+  MEET_ENABLED?: boolean;
   theme_customization?: ThemeCustomization;
 };
 
@@ -234,6 +235,25 @@ export type ChatAttachment = {
   source: ChatAttachmentSource;
 };
 
+/**
+ * Reference to a call started from a conversation. The message only announces
+ * the call: its live status belongs to the Hub API (see `Call`).
+ */
+export type ChatCall = {
+  id: string;
+  url: string;
+};
+
+/** A call held in the Visio room of a conversation, as the Hub API returns it. */
+export type Call = {
+  id: string;
+  chat_service_id: string;
+  url: string;
+  status: "ongoing" | "ended";
+  started_at: string;
+  ended_at: string | null;
+};
+
 export type ChatMessage = {
   availability?:
     | "clear"
@@ -247,6 +267,8 @@ export type ChatMessage = {
   content: string;
   /** Present when the message carries a file instead of plain text. */
   attachment?: ChatAttachment;
+  /** Present when the message announces a call instead of plain text. */
+  call?: ChatCall;
   /** ISO 8601 string. Use `formatChatTime` from @/features/chat/formatTimestamp for display. */
   timestamp: string;
   /** Aggregated reactions, in stable insertion order. Empty when none. */

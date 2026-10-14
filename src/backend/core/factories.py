@@ -27,3 +27,25 @@ class UserFactory(factory.django.DjangoModelFactory):
     short_name = factory.Faker("first_name")
     language = factory.fuzzy.FuzzyChoice([lang[0] for lang in settings.LANGUAGES])
     password = make_password("password")
+
+
+class MeetRoomFactory(factory.django.DjangoModelFactory):
+    """A factory to create the Visio room of a conversation."""
+
+    class Meta:
+        model = models.MeetRoom
+
+    chat_service_id = factory.Sequence(lambda n: f"!room{n!s}:matrix.test")
+    meet_room_id = factory.Faker("uuid4")
+    url = factory.Sequence(lambda n: f"https://visio.test/room-{n!s}")
+    created_by = factory.SubFactory(UserFactory)
+
+
+class CallFactory(factory.django.DjangoModelFactory):
+    """A factory to create calls."""
+
+    class Meta:
+        model = models.Call
+
+    room = factory.SubFactory(MeetRoomFactory)
+    started_by = factory.SubFactory(UserFactory)
