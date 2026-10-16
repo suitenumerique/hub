@@ -274,7 +274,6 @@ class Base(Configuration):
     INSTALLED_APPS = [
         # hub
         "core",
-        "matrix_bridge",
         "demo",
         "e2e",
         "drf_spectacular",

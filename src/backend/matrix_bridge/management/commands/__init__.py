@@ -1,1 +1,0 @@
-"""Matrix bridge management commands."""

@@ -1,1 +1,0 @@
-"""Matrix-backed Hub groups."""
