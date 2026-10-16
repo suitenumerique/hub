@@ -11,6 +11,9 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from lasuite.drf.models.choices import (
+    RoleChoices,
+)
 from timezone_field import TimeZoneField
 
 from core.validators import sub_validator
@@ -166,3 +169,54 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
 
     def __str__(self):
         return self.email or self.admin_email or str(self.id)
+
+
+class GroupVisibilityChoices(models.TextChoices):
+    """Define the possible visibility levels for a group."""
+
+    PRIVATE = "private", _("Private")  # Only members can see the group
+    PUBLIC = "public", _("Public")  # Anyone can see the group
+
+
+class Group(BaseModel):
+    """A group of users"""
+
+    name = models.CharField(max_length=255)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_by",
+    )
+    visibility = models.CharField(
+        max_length=32,
+        choices=GroupVisibilityChoices.choices,
+        default=GroupVisibilityChoices.PRIVATE,
+    )
+    emoji = models.CharField(max_length=16, default="🌲")
+
+    def __str__(self):
+        return self.name
+
+
+class GroupAccess(BaseModel):
+    """Access control for a group"""
+
+    group = models.ForeignKey(
+        Group, on_delete=models.CASCADE, related_name="group_accesses"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="group_accesses",
+    )
+    role = models.CharField(
+        max_length=20, choices=RoleChoices.choices, default=RoleChoices.READER
+    )
+
+    class Meta:
+        unique_together = ("group", "user")
+
+    def __str__(self):
+        return f"{self.user.pk} - {self.role} access to {self.group.pk}"
