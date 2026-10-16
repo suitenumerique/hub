@@ -17,17 +17,6 @@ export const MATRIX_LOCAL_ACCOUNT: ChatAccountConfig = {
   settings: MATRIX_LOCAL_SETTINGS,
 };
 
-/**
- * Tchap development login hint. Local Keycloak users have no Tchap account, so
- * discovery and sign-in use this email instead of the Hub one.
- */
-const tchapSettings = (
-  settings: Record<string, unknown>,
-): Record<string, unknown> => {
-  const loginHint = process.env.NEXT_PUBLIC_MATRIX_LOGIN_HINT?.trim();
-  return loginHint ? { ...settings, loginHint } : settings;
-};
-
 const MATRIX_ENVIRONMENTS = {
   local: MATRIX_LOCAL_ACCOUNT,
   "tchap-preprod": {
@@ -37,7 +26,7 @@ const MATRIX_ENVIRONMENTS = {
     enabled: true,
     // Tchap accounts are not provisioned from the Hub's identity provider.
     identity: "account",
-    settings: tchapSettings(TCHAP_PREPROD_SETTINGS),
+    settings: TCHAP_PREPROD_SETTINGS,
   },
   "tchap-prod": {
     accountId: "tchap-prod",
@@ -46,7 +35,7 @@ const MATRIX_ENVIRONMENTS = {
     enabled: true,
     // Tchap accounts are not provisioned from the Hub's identity provider.
     identity: "account",
-    settings: tchapSettings(TCHAP_PROD_SETTINGS),
+    settings: TCHAP_PROD_SETTINGS,
   },
 } satisfies Record<string, ChatAccountConfig>;
 

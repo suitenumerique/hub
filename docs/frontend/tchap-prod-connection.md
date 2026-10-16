@@ -30,8 +30,9 @@ For how the connection works in general, see
   They are two separate identities. The Tchap sign-in happens only once per
   browser profile; the session is then kept.
 - **How Tchap finds your server.** Tchap prod has 17 servers
-  (`agent.<ministry>.tchap.gouv.fr`). The Hub finds yours from your email, then
-  sends you to its sign-in page with the email pre-filled.
+  (`agent.<ministry>.tchap.gouv.fr`). The Hub asks for your email, finds your
+  server from it, then sends you to its sign-in page with the email
+  pre-filled.
 
 ## Prerequisites
 
@@ -53,11 +54,7 @@ For how the connection works in general, see
 
    ```sh
    FRONTEND_CHAT_ENVIRONMENT=tchap-prod
-   NEXT_PUBLIC_MATRIX_LOGIN_HINT=firstname.lastname@ministry.gouv.fr
    ```
-
-   The email is the one of your Tchap account. It is needed because local
-   Keycloak users have no Tchap account. Never commit it.
 
 2. **If your machine predates the Tchap mode**, re-import the Keycloak
    configuration. This deletes any local Keycloak users you created by hand:
@@ -99,8 +96,10 @@ For how the connection works in general, see
 
 6. **Sign in to the Hub** with a local Keycloak user: `hub` / `hub`.
 
-7. **Sign in to Tchap.** The Hub redirects you to your Tchap server's sign-in
-   page, with your email pre-filled. Choose ProConnect or your password, then
+7. **Sign in to Tchap.** On the "Sign in to LaSuite" page, type the email of
+   your Tchap account: local Keycloak users have no Tchap account. The Hub
+   redirects you to your Tchap server's sign-in page, with your email
+   pre-filled. Choose ProConnect or your password, then
    accept the consent screen for the "LaSuite Hub (dev)" application.
 
 8. **Verify this device.** Back on the Hub, the chat is connected to your
@@ -127,6 +126,6 @@ For how the connection works in general, see
 | Back on `localhost:9800` after sign-in or logout         | The backend is back in dev mode. Run `make run-tchap` again.                                                                                           |
 | `make run-tchap` prints "Aborted."                       | You did not answer `y` to the prod confirmation.                                                                                                       |
 | "The chat is not configured on this Hub"                 | `FRONTEND_CHAT_ENVIRONMENT` is missing or misspelled in `.env.tchap.local`.                                                                            |
-| "Adresse mail … associée au serveur …"                   | The email typed on the Tchap page is not the one in `.env.tchap.local`.                                                                                |
+| "Adresse mail … associée au serveur …"                   | The email typed on the Tchap page is not the one typed on the Hub's "Sign in to LaSuite" page.                                                         |
 | "The chat server found for your email is not allowed…"   | Your Tchap server is not in the Hub's list, for example a new server. Add it to `src/frontend/apps/hub/src/features/matrix/config.ts`.                 |
 | "Your chat account has expired"                          | Renew your account with the link sent to you by email, then try again.                                                                                 |

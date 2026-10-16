@@ -21,11 +21,14 @@ Tchap prod, see [Connect to Tchap prod locally](tchap-prod-connection.md).
   Every server of an environment gives the same answer, so they are asked in
   random order, and an unavailable server is skipped after 5 seconds. Only the
   environment's servers are accepted (`features/matrix/config.ts`).
-- **Sign-in.** Each Tchap homeserver has its own Matrix Authentication Service
+- **Sign-in.** Like Tchap web, the Hub first asks for the Tchap email on its
+  "Sign in to LaSuite" page, to find the homeserver. Unknown email domains
+  lead to the external server, so the Hub asks the user to confirm it first.
+  Each Tchap homeserver has its own Matrix Authentication Service
   (`https://auth.<server>/`), with ProConnect as a button on its login page.
-  The Hub registers its OAuth client on that service at each login, like Tchap
-  web, then redirects to it with the email pre-filled. Development builds
-  register it as "LaSuite Hub (dev)", to keep them apart from the real Hub.
+  The Hub registers its OAuth client on that service at each login, then
+  redirects to it with the email pre-filled. Development builds register it as
+  "LaSuite Hub (dev)", to keep them apart from the real Hub.
 - **HTTPS origin.** Tchap's firewall and authentication service reject
   `localhost` addresses. In development, the Hub is therefore served at
   `https://hub.localhost:9814` by a Caddy proxy. Chrome, Edge and Firefox send
@@ -59,21 +62,18 @@ encrypted history.
 
 ## First time on a machine
 
-1. **Create your personal settings file**, then set your Tchap email in it:
+1. **Create your personal settings file**, then choose the environment in it:
 
    ```sh
    make tchap-env
    ```
 
-   It creates `src/frontend/apps/hub/.env.tchap.local` (git-ignored):
+   It creates `src/frontend/apps/hub/.env.tchap.local` (git-ignored), read by
+   the backend:
 
    ```sh
    FRONTEND_CHAT_ENVIRONMENT=tchap-preprod
-   NEXT_PUBLIC_MATRIX_LOGIN_HINT=firstname.lastname@example.gouv.fr
    ```
-
-   The backend reads the environment, the frontend the email. The email is
-   needed because local Keycloak users have no Tchap account.
 
 2. **Switch to Tchap mode.** This stops the running stack (including the
    `localhost:9800` frontend), restarts the backend with the HTTPS origin as
@@ -117,8 +117,9 @@ encrypted history.
    remove it from your system when you no longer test Tchap.
 
 4. **Open <https://hub.localhost:9814>** once the frontend has compiled
-   (`make logs-tchap`). Sign in to the Hub with a local Keycloak user, then sign
-   in to Tchap with your own account (ProConnect or password).
+   (`make logs-tchap`). Sign in to the Hub with a local Keycloak user, type the
+   email of your Tchap account on the "Sign in to LaSuite" page, then sign in
+   to Tchap with your own account (ProConnect or password).
 
 ## Every day
 
@@ -131,7 +132,7 @@ make run         # back to dev mode on localhost:9800 (or make run-backend)
 ```
 
 To switch environment, edit `.env.tchap.local` and run `make run-tchap` again:
-the backend and the frontend read it when they start.
+the backend reads it when it starts.
 
 `FRONTEND_CHAT_ENVIRONMENT=local` also works on the HTTPS origin, with the
 local Matrix stack (`make run-matrix`).
@@ -148,8 +149,11 @@ local Matrix stack (`make run-matrix`).
 - **"Pare-feu applicatif" page (403)**: Tchap's firewall rejected the request.
   Check that you opened `https://hub.localhost:9814`, not `localhost:9800`.
 - **"Adresse mail … associée au serveur …"**: the email you typed on the Tchap
-  page belongs to another homeserver. Use the email set in
-  `.env.tchap.local`.
+  page belongs to another homeserver. Use the email typed on the Hub's
+  "Sign in to LaSuite" page.
+- **"The chat servers cannot be reached"** on the "Sign in to LaSuite" page: no
+  homeserver of the environment answered the email lookup. Check your network,
+  then try again.
 - **"Signing in to the chat did not succeed"**: the Tchap page returned an
   error (for example a cancelled sign-in). The server's explanation is shown
   under the message; "Try again" starts a new sign-in.

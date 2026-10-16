@@ -184,8 +184,41 @@ export type ChatConnectionStatus =
   | "idle"
   | "connecting"
   | "connected"
+  /** The user's server is found from their email: ask it, then `signIn`. */
+  | "sign-in-required"
   | "blocked"
   | "error";
+
+/**
+ * Raised by `signIn` when the sign-in cannot start, so the sign-in page can
+ * explain it and let the user correct the email:
+ * - `invalid-email`: the server rejected the address;
+ * - `unknown-server`: the address belongs to a server outside this environment;
+ * - `unavailable`: no server answered.
+ */
+export class ChatSignInError extends Error {
+  constructor(
+    readonly reason: "invalid-email" | "unknown-server" | "unavailable",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ChatSignInError";
+  }
+}
+
+/**
+ * Next step of `signIn`: continue at the server's sign-in page, or first ask
+ * the user to confirm an external server (`confirm-external`), where unknown
+ * and mistyped email domains also lead.
+ */
+export type ChatSignInResult =
+  | { status: "redirect"; url: string }
+  | { status: "confirm-external" };
+
+export type ChatSignInOptions = {
+  /** The user confirmed signing in to the external server. */
+  externalConfirmed?: boolean;
+};
 
 export type ChatConnectionState = {
   status: ChatConnectionStatus;
@@ -582,6 +615,22 @@ export abstract class Driver {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async connect(user: User | null | undefined): Promise<ChatConnectionState> {
     return { status: "connected", chatUser: null };
+  }
+
+  /**
+   * Starts the sign-in of a connection waiting for the user's email
+   * (`sign-in-required`). Resolves with its next step; throws
+   * `ChatSignInError` when the email does not lead to a usable server.
+   */
+  async signIn(
+    _user: User,
+    _email: string,
+    _options?: ChatSignInOptions,
+  ): Promise<ChatSignInResult> {
+    void _user;
+    void _email;
+    void _options;
+    throw new Error("Signing in with an email is not available.");
   }
 
   /**

@@ -1,0 +1,105 @@
+.hub__chat-sign-in {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  // Optical centre: the content sits above the middle of the screen.
+  padding: 0 40px 124px;
+  background:
+    linear-gradient(
+      37.17deg,
+      transparent 66.393%,
+      color-mix(
+          in srgb,
+          var(--c--contextuals--background--semantic--error--tertiary, #ffedeb)
+            60%,
+          transparent
+        )
+        111.18%
+    ),
+    linear-gradient(
+      171.36deg,
+      transparent 46.925%,
+      color-mix(
+          in srgb,
+          var(--c--contextuals--background--palette--brand--tertiary, #c8d3ff)
+            60%,
+          transparent
+        )
+        126.35%
+    ),
+    linear-gradient(-34.6deg, rgb(255 255 255 / 0%) 37.294%, #edf0ff 135.42%),
+    var(--c--contextuals--background--surface--primary, #fff);
+  font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+
+  &__toolbar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    height: 56px;
+    padding: 16px;
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    width: 100%;
+    max-width: 420px;
+  }
+
+  // The drawing's drop shadow overflows the 160px logo box.
+  &__logo {
+    position: relative;
+    flex: 0 0 auto;
+    width: 160px;
+    height: 160px;
+
+    img {
+      position: absolute;
+      top: -31px;
+      left: -35px;
+      display: block;
+      max-width: none;
+    }
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 40px;
+    text-align: center;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    width: 100%;
+    // Room of the field's hidden label, as in the design.
+    padding-top: 38px;
+
+    // The helper text lines up with the field, as in the design.
+    .c__field__footer {
+      padding-inline: 0;
+    }
+  }
+
+  &__menu {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px;
+  }
+}

@@ -14,6 +14,7 @@ import { getRegistry } from "../drivers/DriverRegistry";
 import { AppLoader } from "../layouts/components/AppLoader/AppLoader";
 import { ChatLocalUser } from "../drivers/types";
 import { authUrl } from "./authUrl";
+import { ChatSignIn } from "./components/ChatSignIn/ChatSignIn";
 import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
 
 export const logout = async () => {
@@ -59,6 +60,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     redirectTo,
     reason,
     detail,
+    accountId: chatAccountId,
   } = useChatConnections(user);
 
   const init = async () => {
@@ -123,6 +125,10 @@ export const Auth = ({ children }: PropsWithChildren) => {
     chatStatus === "connecting"
   ) {
     return <AppLoader />;
+  }
+
+  if (chatStatus === "sign-in-required" && user && chatAccountId) {
+    return <ChatSignIn user={user} accountId={chatAccountId} />;
   }
 
   const chatUnconfigured = Boolean(user) && chatAccounts.isUnconfigured;
@@ -191,6 +197,8 @@ export const Auth = ({ children }: PropsWithChildren) => {
                 .then((state) => {
                   if (state.redirectTo)
                     window.location.assign(state.redirectTo);
+                  // A Tchap account asks for the email on the sign-in page.
+                  else window.location.reload();
                 })
                 .finally(() => setReplacingDevice(false))
                 .catch(() => setReplacementFailed(true));

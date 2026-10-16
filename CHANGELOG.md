@@ -9,9 +9,10 @@ and this project adheres to
 ### Added
 
 - ✨(frontend) Connect the chat to Tchap preprod or prod, selected at runtime
-  with the backend setting `FRONTEND_CHAT_ENVIRONMENT`. Find the homeserver
-  from the email, register the OAuth client on its authentication service and
-  explain sign-in failures.
+  with the backend setting `FRONTEND_CHAT_ENVIRONMENT`. Ask for the email on a
+  sign-in page to find the homeserver, confirm the external server, register
+  the OAuth client on its authentication service and explain sign-in
+  failures.
 - 🔧(docker) Serve the Hub at `https://hub.localhost:9814` for Tchap sign-in in
   development, with `make run-tchap` and a local certificate authority.
 - 🔒️(docker) Publish development ports on `127.0.0.1` only.

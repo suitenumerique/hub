@@ -79,6 +79,7 @@ import {
   type OidcClient,
 } from "@/features/matrix/utils/auth";
 import {
+  type DiscoveredHomeserver,
   discoverTchapHomeserver,
   serverNameOfUserId,
   TchapDiscoveryError,
@@ -88,6 +89,9 @@ import {
   ChatConnectionState,
   ChatEvent,
   ChatEventListener,
+  ChatSignInError,
+  ChatSignInOptions,
+  ChatSignInResult,
   ChatTypingListener,
   ChatUserFilters,
   DeleteChatMessageParams,
@@ -259,6 +263,16 @@ class MatrixSignInError extends Error {
     super(detail ?? reason);
   }
 }
+
+/** What the sign-in page says when the Tchap email lookup fails. */
+const SIGN_IN_FAILURES = {
+  rejected: "invalid-email",
+  "unknown-homeserver": "unknown-server",
+  unavailable: "unavailable",
+} as const satisfies Record<
+  TchapDiscoveryError["reason"],
+  ChatSignInError["reason"]
+>;
 
 const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   userId: user.mxId,
@@ -451,17 +465,6 @@ export class MatrixDriver extends Driver {
   ) {
     super(accountId);
     this.settings = parseMatrixDriverSettings(settings);
-  }
-
-  /**
-   * Resolves the OIDC `login_hint` from account config, then the authenticated
-   * Hub user's email.
-   */
-  private resolveLoginHint(user: User | null | undefined): string {
-    if (this.settings.loginHint) {
-      return this.settings.loginHint;
-    }
-    return user?.email ?? "";
   }
 
   async getChats(): Promise<LocalChatSections> {
@@ -2278,8 +2281,7 @@ export class MatrixDriver extends Driver {
         if (!user?.email) {
           return { status: "idle", chatUser: null };
         }
-        const redirectTo = await this.startOidcFlow(user);
-        return { status: "connecting", chatUser: null, redirectTo };
+        return this.beginSignIn(user.email);
       }
     }
 
@@ -2323,8 +2325,7 @@ export class MatrixDriver extends Driver {
       return { status: "idle", chatUser: null };
     }
 
-    const redirectTo = await this.startOidcFlow(user);
-    return { status: "connecting", chatUser: null, redirectTo };
+    return this.beginSignIn(user.email);
   }
 
   override async replaceLostDeviceSession(
@@ -2337,17 +2338,72 @@ export class MatrixDriver extends Driver {
     // clearStoredSession keeps its crypto database available for recovery.
     await this.clearStoredSession();
     this.lostDeviceSession = false;
-    return {
-      status: "connecting",
-      chatUser: null,
-      redirectTo: await this.startOidcFlow(user),
-    };
+    return this.beginSignIn(user.email);
   }
 
-  private async startOidcFlow(user: User | null | undefined): Promise<string> {
-    const loginHint = this.resolveLoginHint(user);
-    const { baseUrl, client } = await this.resolveSignInTarget(loginHint);
+  /**
+   * Signs in to the fixed homeserver with the Hub email. A Tchap account waits
+   * instead for the email the user types on the sign-in page (`signIn`).
+   */
+  private async beginSignIn(hubEmail: string): Promise<ChatConnectionState> {
+    if (this.settings.discovery === "tchap-email") {
+      return { status: "sign-in-required", chatUser: null };
+    }
+    const redirectTo = await this.startOidcFlow(
+      this.settings.baseUrl,
+      { clientId: this.settings.oidcClientId },
+      hubEmail,
+    );
+    return { status: "connecting", chatUser: null, redirectTo };
+  }
+
+  /**
+   * Finds the Tchap homeserver of the email typed by the user, then signs in
+   * on its authentication service, which registers the OAuth client and shows
+   * the email pre-filled. As in Tchap web, the external server is confirmed
+   * first: mistyped email domains also lead there.
+   */
+  override async signIn(
+    user: User,
+    email: string,
+    { externalConfirmed = false }: ChatSignInOptions = {},
+  ): Promise<ChatSignInResult> {
+    this.setStorageOwner(user);
     this.assertOwner();
+    if (this.settings.discovery !== "tchap-email") {
+      throw new Error("This account signs in with the Hub email.");
+    }
+    let homeserver: DiscoveredHomeserver;
+    try {
+      homeserver = await discoverTchapHomeserver(
+        this.accountId,
+        email,
+        this.settings.homeservers,
+      );
+    } catch (error) {
+      if (!(error instanceof TchapDiscoveryError)) throw error;
+      throw new ChatSignInError(SIGN_IN_FAILURES[error.reason], error.message);
+    }
+    this.assertOwner();
+    if (
+      homeserver.serverName === this.settings.externalHomeserver &&
+      !externalConfirmed
+    ) {
+      return { status: "confirm-external" };
+    }
+    const url = await this.startOidcFlow(
+      homeserver.baseUrl,
+      { clientName: this.settings.clientName },
+      email,
+    );
+    return { status: "redirect", url };
+  }
+
+  private async startOidcFlow(
+    baseUrl: string,
+    client: OidcClient,
+    loginHint: string,
+  ): Promise<string> {
     const authUrl = await getOIDCAuthUrl(baseUrl, loginHint, client);
     this.assertOwner();
     const state = new URL(authUrl).searchParams.get("state");
@@ -2355,42 +2411,6 @@ export class MatrixDriver extends Driver {
       sessionStorage.setItem(this.key(STORAGE.oidcState), state);
     }
     return authUrl;
-  }
-
-  /**
-   * Homeserver and OAuth client to sign in with. A Tchap account finds the
-   * homeserver from the login email and registers its client dynamically.
-   */
-  private async resolveSignInTarget(
-    loginHint: string,
-  ): Promise<{ baseUrl: string; client: OidcClient }> {
-    if (this.settings.discovery === "fixed") {
-      return {
-        baseUrl: this.settings.baseUrl,
-        client: { clientId: this.settings.oidcClientId },
-      };
-    }
-    try {
-      const { baseUrl } = await discoverTchapHomeserver(
-        this.accountId,
-        loginHint,
-        this.settings.homeservers,
-      );
-      return { baseUrl, client: { clientName: this.settings.clientName } };
-    } catch (error) {
-      // Unreachable servers stay a retryable connection error.
-      if (
-        error instanceof TchapDiscoveryError &&
-        error.reason !== "unavailable"
-      )
-        throw new MatrixSignInError(
-          error.reason === "unknown-homeserver"
-            ? "unknown-server"
-            : "sign-in-failed",
-          error.message,
-        );
-      throw error;
-    }
   }
 
   /** Server name of a homeserver this account may use, `null` otherwise. */
@@ -3510,7 +3530,7 @@ export class MatrixDriver extends Driver {
   }
 
   private setStorageOwner(user: User | null | undefined): void {
-    const owner = matrixStorageOwner(this.settings, user);
+    const owner = matrixStorageOwner(user);
     if (this.ownership.held && owner !== this.storageOwner) {
       throw new Error("An account change requires a new Matrix driver.");
     }

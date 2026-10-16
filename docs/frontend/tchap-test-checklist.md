@@ -29,7 +29,7 @@ response body from `/oauth2/token` must not be shared.
 
 | # | Steps | Expected |
 | --- | --- | --- |
-| 1.1 | Open the Hub, sign in with a local Keycloak user. | A request `GET matrix.<i\|a\|e>.tchap.gouv.fr/_matrix/identity/api/v1/info?...` returns `{"hs": "i.tchap.gouv.fr"}` (your server). |
+| 1.1 | Open the Hub, sign in with a local Keycloak user, then type your Tchap email on the "Sign in to LaSuite" page. | A request `GET matrix.<i\|a\|e>.tchap.gouv.fr/_matrix/identity/api/v1/info?...` returns `{"hs": "i.tchap.gouv.fr"}` (your server). |
 | 1.2 | Same login. | `POST https://auth.i.tchap.gouv.fr/oauth2/registration` returns **201** with a `client_id`. |
 | 1.3 | Same login. | Redirect to `auth.i.tchap.gouv.fr/login` with your email pre-filled. Sign in with ProConnect or your password, then accept the consent page. |
 | 1.4 | Back on the Hub. | The URL returns to `https://hub.localhost:9814/` (the `code` disappears), then your conversations appear. `GET .../whoami` returns `@…:i.tchap.gouv.fr`. |
@@ -43,7 +43,9 @@ response body from `/oauth2/token` must not be shared.
 | --- | --- | --- |
 | 1.8 | In a private window, start the sign-in and cancel on the Tchap page (or refuse consent). | The Hub shows "Signing in to the chat did not succeed" with Tchap's explanation, and does **not** loop back to Tchap. "Try again" starts a new sign-in. |
 | 1.9 | Private window. DevTools > Network > right-click > **Block request domain** on two of `matrix.i`, `matrix.a`, `matrix.e`. Sign in. | Blocked lookups appear in red, the third server answers, sign-in continues. Unblock afterwards. |
-| 1.10 | Private window, block all three domains. | After a few retries: "Chat connection interrupted" (servers unavailable). No sign-in page. |
+| 1.10 | Private window, block all three domains. Type your email on the "Sign in to LaSuite" page. | After a few seconds, the page says "The chat servers cannot be reached" under the field. No Tchap sign-in page. Unblock, then "Sign in" continues. |
+| 1.11 | On the "Sign in to LaSuite" page, type an address without `@`. | "Enter a valid email address." under the field; no lookup request. |
+| 1.12 | Type an address of an unknown domain (for example a typo in `gouv.fr`). | The lookup returns the external server (`e` in preprod, `agent.externe` in prod) and "Are you an external guest?" opens. "Cancel" returns to the field with no `/oauth2/registration` request; "Continue" goes to that server's sign-in page. |
 
 ## 2. Encryption
 

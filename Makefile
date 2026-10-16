@@ -271,12 +271,12 @@ run-matrix: \
 	@$(COMPOSE_MATRIX) up -d --wait --wait-timeout 180 $(MATRIX_SERVICES)
 .PHONY: run-matrix
 
-tchap-env: ## create the personal Tchap settings file (environment and email)
+tchap-env: ## create the personal Tchap settings file (chat environment)
 	@if [ -f $(TCHAP_ENV_FILE) ]; then \
 		echo "$(TCHAP_ENV_FILE) already exists."; \
 	else \
 		cp src/frontend/apps/hub/.env.tchap.example $(TCHAP_ENV_FILE); \
-		echo "Created $(TCHAP_ENV_FILE): set your Tchap email in it."; \
+		echo "Created $(TCHAP_ENV_FILE): choose the chat environment in it."; \
 	fi
 .PHONY: tchap-env
 

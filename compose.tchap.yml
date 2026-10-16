@@ -31,10 +31,6 @@ services:
       # Separate build directory: unlike the :9800 build, this one calls the
       # API on its own origin.
       NEXT_DIST_DIR: .next-tchap
-    env_file:
-      # Personal settings (environment, Tchap email), see `make tchap-env`.
-      - path: src/frontend/apps/hub/.env.tchap.local
-        required: false
     volumes:
       - ".:/app"
 
