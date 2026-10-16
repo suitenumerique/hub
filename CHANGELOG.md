@@ -105,6 +105,10 @@ and this project adheres to
 
 ### Changed
 
+- ⚡️(frontend) Open the chat from the local sync cache, before the first
+  network sync, as Element does. Load the user, the Matrix driver and its
+  crypto in parallel, keep the sync cache in a worker, and stop clearing it
+  when a conversation was left from another client.
 - 💄(frontend) Refine chat attachments after QA.
   Show the attach button as an icon, with tooltips on attach and send.
   Keep queued files on one scrolling row and cap them at 20 per message.

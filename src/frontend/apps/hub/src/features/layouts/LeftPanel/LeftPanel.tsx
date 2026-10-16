@@ -3,7 +3,7 @@ import { Plus, QuestionMark } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { ReactNode, useId, useState } from "react";
+import { ReactNode, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
@@ -31,11 +31,20 @@ type ActionItem =
       onClick: () => void;
     };
 
+const CHAT_LIST_MARK = "hub:chat-list";
+
 export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const { t } = useTranslation();
   const chats = useChats();
   const unreadLookup = useChatUnread();
   const entries = useDriverEntries();
+  const hasChats = chats.all.length > 0;
+
+  useEffect(() => {
+    // Startup measurement: when the first conversation list reaches the screen.
+    if (hasChats && !performance.getEntriesByName(CHAT_LIST_MARK).length)
+      performance.mark(CHAT_LIST_MARK);
+  }, [hasChats]);
   const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
     ? "⌘K"
     : "Ctrl K";

@@ -2524,9 +2524,12 @@ export class MatrixDriver extends Driver {
       syncStoreDbName: this.key(SYNC_STORE_DB_NAME),
       cryptoStoreDbName: this.cryptoStoreDbName(user),
       tokenRefreshFunction: this.buildTokenRefreshFunction(user),
-      onSyncStoreReady: async (client) => {
+      onSyncStoreReady: async (client, joinedRoomIds) => {
         assertActive();
         this.mx = client;
+        // The first conversation list reuses the startup `/joined_rooms`. A
+        // membership change from the sync clears it for the next read.
+        if (joinedRoomIds) this.joinedRoomIds = new Set(joinedRoomIds);
         this.security = new MatrixSecurity(
           client,
           this.settings,
@@ -2546,22 +2549,33 @@ export class MatrixDriver extends Driver {
     }
     this.mx = mx;
     localStorage.removeItem(this.key("matrixRedactedThreads"));
-    await this.startClientOrFailOnLogout(mx);
+    // Like Element, the chat opens at the first `Prepared`, which a warm start
+    // emits from the IndexedDB cache before any network `/sync`. The bridge
+    // attaches inside that event, so it observes the first network sync.
+    await this.startClientOrFailOnLogout(mx, () => {
+      if (this.mx === mx && generation === this.clientGeneration)
+        this.attachSyncBridge(mx, generation);
+    });
     if (generation !== this.clientGeneration) return;
     void this.security?.refresh();
     void mx
       .setDeviceDetails(user.deviceId!, { display_name: "Hub · navigateur" })
       .catch(() => {});
-    await this.refreshJoinedRoomIds(mx);
+    if (this.joinedRoomIds)
+      this.conversationSearch?.setJoinedRooms(this.joinedRoomIds);
     assertActive();
+  }
 
-    // Bridge Matrix `/sync` onto the generic event stream, once, for the
-    // client's lifetime. The handlers fan out to whatever subscribers exist at
-    // the time (an empty set is a harmless no-op). Live timeline events become
-    // fine-grained `message:new` / `message:updated` (see
-    // {@link timelineEventToChatEvent}); reactions are reconciled against the
-    // server before their targeted patch; list membership changes and
-    // reconnects stay coarse (`chats:changed`, per-room `chat:changed`).
+  /**
+   * Bridges Matrix `/sync` onto the generic event stream, once, for the
+   * client's lifetime. The handlers fan out to whatever subscribers exist at
+   * the time (an empty set is a harmless no-op). Live timeline events become
+   * fine-grained `message:new` / `message:updated` (see
+   * {@link timelineEventToChatEvent}); reactions are reconciled against the
+   * server before their targeted patch; list membership changes and
+   * reconnects stay coarse (`chats:changed`, per-room `chat:changed`).
+   */
+  private attachSyncBridge(mx: MatrixClient, generation: number): void {
     this.detachSync();
     const emitCurrent = (event: ChatEvent) => {
       if (
@@ -3221,7 +3235,10 @@ export class MatrixDriver extends Driver {
     };
   }
 
-  private async startClientOrFailOnLogout(mx: MatrixClient): Promise<void> {
+  private async startClientOrFailOnLogout(
+    mx: MatrixClient,
+    onPrepared: () => void,
+  ): Promise<void> {
     let cleanup = () => {};
     const loggedOut = new Promise<never>((_, reject) => {
       const onLoggedOut = (error: MatrixError) => {
@@ -3233,7 +3250,10 @@ export class MatrixDriver extends Driver {
     });
 
     try {
-      await Promise.race([startClient(mx, this.clientAbort.signal), loggedOut]);
+      await Promise.race([
+        startClient(mx, this.clientAbort.signal, onPrepared),
+        loggedOut,
+      ]);
     } finally {
       cleanup();
     }
