@@ -231,6 +231,7 @@ class Base(Configuration):
     INSTALLED_APPS = [
         # hub
         "core",
+        "messaging_backends.matrix",
         "demo",
         "e2e",
         "drf_spectacular",
@@ -340,6 +341,7 @@ class Base(Configuration):
     CORS_ALLOW_ALL_ORIGINS = values.BooleanValue(False)
     CORS_ALLOWED_ORIGINS = values.ListValue([])
     CORS_ALLOWED_ORIGIN_REGEXES = values.ListValue([])
+    CORS_ALLOW_HEADERS = (*default_headers, "idempotency-key")
 
     # Sentry
     SENTRY_DSN = values.Value(None, environ_name="SENTRY_DSN", environ_prefix=None)
@@ -757,8 +759,6 @@ class Test(Base):
     # Static files are not used in the test environment
     # Tests are raising warnings because the /data/static directory does not exist
     STATIC_ROOT = None
-
-    CELERY_TASK_ALWAYS_EAGER = values.BooleanValue(True)
 
     def __init__(self):
         # pylint: disable=invalid-name

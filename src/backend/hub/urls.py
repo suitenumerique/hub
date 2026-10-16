@@ -17,6 +17,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path(f"api/{settings.API_VERSION}/", include("core.urls")),
     path(f"api/{settings.API_VERSION}/", include(oidc_urls)),
+    path(f"api/{settings.API_VERSION}/", include("messaging_backends.matrix.urls")),
 ]
 
 if settings.DEBUG:
