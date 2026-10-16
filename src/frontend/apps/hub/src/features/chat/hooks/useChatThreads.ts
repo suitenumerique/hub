@@ -18,9 +18,9 @@ export type UseChatThreadsResult = {
 const EMPTY: ChatThread[] = [];
 
 /**
- * Loads the threads of a conversation through the driver. The query is keyed by
- * `chatId`, so the threads stay scoped to the active conversation; the threads
- * panel and the unread banner share this single cache entry.
+ * Loads every thread of a conversation through the driver, for the threads
+ * panel. The query is keyed by `chatId`, so the threads stay scoped to the
+ * active conversation; the unread banner reads {@link useChatUnreadThreads}.
  */
 export const useChatThreads = (
   ref: ChatRef,

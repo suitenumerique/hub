@@ -229,6 +229,10 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.getChatThreads(chatId));
   }
 
+  async getChatUnreadThreads(chatId: string): Promise<ChatThread[]> {
+    return this.withTarget((driver) => driver.getChatUnreadThreads(chatId));
+  }
+
   async getChatThread(params: GetChatThreadParams): Promise<ChatThreadDetail> {
     return this.withTarget((driver) => driver.getChatThread(params));
   }

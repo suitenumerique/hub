@@ -197,10 +197,12 @@ import {
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 /**
- * Fewest events asked per pagination round trip. Threads, reactions and edits
- * leave few displayable messages per event: small requests cost round trips.
+ * Events asked per backfill round trip, Element's `PAGINATE_SIZE`: an older
+ * page shows as soon as one request brings a message, and the list asks for
+ * the next one while its viewport is not full. Contextual and newer pages ask
+ * at least their message limit.
  */
-const MIN_PAGINATION_EVENTS = 100;
+const MIN_PAGINATION_EVENTS = 50;
 /**
  * Events decrypt one task at a time: their unread, thread and list refreshes
  * are grouped over this delay instead of following each message.
@@ -238,6 +240,10 @@ type StoredOidc = {
 };
 const SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const CRYPTO_STORE_DB_NAME = "crypto-store";
+
+/** Rooms the chat can list: like Element's room list, never a space. */
+const chatRooms = (mx: MatrixClient): Room[] =>
+  mx.getVisibleRooms().filter((room) => !room.isSpaceRoom());
 
 const isMatrixSessionInvalidError = (error: unknown): boolean => {
   if (!(error instanceof MatrixError)) {
@@ -481,8 +487,7 @@ export class MatrixDriver extends Driver {
     // membership instead.
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     const currentUserId = mx.getUserId() ?? undefined;
-    const localChats = mx
-      .getVisibleRooms()
+    const localChats = chatRooms(mx)
       .filter(
         (room) =>
           joinedRoomIds.has(room.roomId) ||
@@ -509,8 +514,7 @@ export class MatrixDriver extends Driver {
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     const selfUserId = mx.getUserId() ?? undefined;
     return Object.fromEntries(
-      mx
-        .getVisibleRooms()
+      chatRooms(mx)
         .filter((room) => joinedRoomIds.has(room.roomId))
         .map((room) => [room.roomId, roomUnread(room, selfUserId)]),
     );
@@ -652,8 +656,7 @@ export class MatrixDriver extends Driver {
     // locally, and must not resolve as an existing conversation (its getChat
     // would then throw "not joined" and block creating a fresh one).
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
-    const match = mx
-      .getVisibleRooms()
+    const match = chatRooms(mx)
       .filter((room) => joinedRoomIds.has(room.roomId))
       .find(
         (room) =>
@@ -796,7 +799,7 @@ export class MatrixDriver extends Driver {
     participantId: string,
   ): LocalChat | null {
     const selfUserId = mx.getUserId() ?? undefined;
-    for (const room of mx.getVisibleRooms()) {
+    for (const room of chatRooms(mx)) {
       if (room.getMyMembership() !== KnownMembership.Invite) {
         continue;
       }
@@ -953,14 +956,78 @@ export class MatrixDriver extends Driver {
   ): string {
     const events = window.getEvents();
     const index = window.getTimelineIndex(direction);
+    // Only this direction's end: the other one may be extending concurrently.
+    const edge =
+      direction === EventTimeline.BACKWARDS
+        ? events[0]
+        : events[events.length - 1];
     return [
-      events.length,
-      events[0]?.getId() ?? "",
-      events[events.length - 1]?.getId() ?? "",
+      edge?.getId() ?? "",
       index?.index ?? "",
       index?.timeline.getPaginationToken(direction) ?? "",
       index?.timeline.getNeighbouringTimeline(direction) ? "linked" : "",
     ].join(":");
+  }
+
+  /**
+   * The displayable main-timeline message nearest to an event: the event
+   * itself, else the first message after it, else the last one before it. A
+   * read marker can sit on an event the timeline does not show (a reaction,
+   * an edit, a state change); Element then draws it on the nearest tile.
+   */
+  private async nearestMainTimelineMessageId(
+    window: TimelineWindow,
+    eventId: string,
+    eventsPerRequest: number,
+  ): Promise<string> {
+    // `undefined` while not found yet, `null` when the event is not loaded.
+    const find = (
+      direction: typeof EventTimeline.BACKWARDS | typeof EventTimeline.FORWARDS,
+    ): MatrixEvent | null | undefined => {
+      const events = window.getEvents();
+      const index = events.findIndex((event) => event.getId() === eventId);
+      if (index < 0) {
+        return null;
+      }
+      if (isMainTimelineMessage(events[index])) {
+        return events[index];
+      }
+      return direction === EventTimeline.FORWARDS
+        ? events.slice(index + 1).find(isMainTimelineMessage)
+        : events.slice(0, index).findLast(isMainTimelineMessage);
+    };
+    for (const direction of [
+      EventTimeline.FORWARDS,
+      EventTimeline.BACKWARDS,
+    ] as const) {
+      await this.extendTimelineWindow(
+        window,
+        direction,
+        eventsPerRequest,
+        () => find(direction) !== undefined,
+      );
+      const messageId = find(direction)?.getId();
+      if (messageId) {
+        return messageId;
+      }
+    }
+    return eventId;
+  }
+
+  /**
+   * Extends an SDK window over the events already in memory, without any
+   * request, until the caller has enough displayable messages.
+   */
+  private extendTimelineWindowInMemory(
+    window: TimelineWindow,
+    direction: typeof EventTimeline.BACKWARDS | typeof EventTimeline.FORWARDS,
+    hasEnough: () => boolean,
+  ): void {
+    while (!hasEnough()) {
+      if (!window.extend(direction, MIN_PAGINATION_EVENTS)) {
+        return;
+      }
+    }
   }
 
   /**
@@ -970,7 +1037,7 @@ export class MatrixDriver extends Driver {
   private async extendTimelineWindow(
     window: TimelineWindow,
     direction: typeof EventTimeline.BACKWARDS | typeof EventTimeline.FORWARDS,
-    limit: number,
+    eventsPerRequest: number,
     hasEnough: () => boolean,
   ): Promise<void> {
     for (let step = 0; step < MAX_TIMELINE_PAGINATION_STEPS; step += 1) {
@@ -978,12 +1045,7 @@ export class MatrixDriver extends Driver {
         return;
       }
       const before = this.timelineWindowSignature(window, direction);
-      await window.paginate(
-        direction,
-        Math.max(limit, MIN_PAGINATION_EVENTS),
-        true,
-        20,
-      );
+      await window.paginate(direction, eventsPerRequest, true, 20);
       const after = this.timelineWindowSignature(window, direction);
       if (before === after) {
         return;
@@ -1000,18 +1062,34 @@ export class MatrixDriver extends Driver {
     nextCursor: string | null,
     newerCursor: string | null,
     isAtLiveEnd: boolean,
+    decryption: "await" | "background" = "await",
   ): Promise<ChatMessagesPage> {
     const mx = this.requireClient("mapMainTimelinePage");
     const selfUserId = mx.getUserId() ?? undefined;
-    // Paginated events decrypt in the background. Mapped before that ends,
-    // they would stay placeholders: their decryption patch can arrive before
-    // the page is in the cache, where it finds no row to update.
-    await Promise.all(
-      pageEvents.map((event) => mx.decryptEventIfNeeded(event)),
+    // Paginated events decrypt in the background. Fetched history waits for
+    // them, so a thread reply never shows before its decryption removes it.
+    // Events from memory show at once, like Element's tiles: those still
+    // decrypting keep a placeholder that is patched afterwards.
+    const decryptions = pageEvents.map((event) =>
+      mx.decryptEventIfNeeded(event),
     );
+    if (decryption === "await") {
+      await Promise.all(decryptions);
+    } else {
+      decryptions.forEach((pending) => void pending.catch(() => {}));
+    }
     const messages = pageEvents.map((event) =>
       matrixEventToChatMessage(event, room, selfUserId),
     );
+    if (decryption === "background") {
+      this.reconcilePendingDecryptions(
+        mx,
+        room,
+        pageEvents,
+        messages,
+        selfUserId,
+      );
+    }
     this.checkPageReactions(mx, room, pageEvents, messages, selfUserId);
     return {
       messages,
@@ -1068,6 +1146,54 @@ export class MatrixDriver extends Driver {
   }
 
   /**
+   * A page mapped before its events finished decrypting enters the cache only
+   * after this task, so the decryption bridge may have found no row to patch.
+   * Patch those rows again once the page is cached and their decryption ends.
+   */
+  private reconcilePendingDecryptions(
+    mx: MatrixClient,
+    room: Room,
+    events: MatrixEvent[],
+    messages: ChatMessage[],
+    selfUserId: string | undefined,
+  ): void {
+    const pendingEvents = events.filter(
+      (_event, index) => messages[index].availability === "encrypted-pending",
+    );
+    if (pendingEvents.length === 0) {
+      return;
+    }
+    const generation = this.clientGeneration;
+    window.setTimeout(() => {
+      for (const event of pendingEvents) {
+        // An edit decrypting after its original changes the original's row.
+        const decryptions = [event, event.replacingEvent()].map((candidate) =>
+          candidate?.getDecryptionPromise(),
+        );
+        void Promise.allSettled(decryptions).then(() => {
+          const eventId = event.getId();
+          if (
+            !eventId ||
+            this.mx !== mx ||
+            generation !== this.clientGeneration ||
+            this.disposed
+          ) {
+            return;
+          }
+          this.emit({
+            type: "message:reconciled",
+            chatId: room.roomId,
+            messageId: eventId,
+            message: isMainTimelineMessage(event)
+              ? matrixEventToChatMessage(event, room, selfUserId)
+              : null,
+          });
+        });
+      }
+    }, 0);
+  }
+
+  /**
    * Reads the live page, a context around a stable event id, or the adjacent
    * page in either direction. SDK `TimelineWindow` owns context loading and
    * reconnecting split timelines; cursors remain Matrix event identities.
@@ -1092,10 +1218,18 @@ export class MatrixDriver extends Driver {
         `MatrixDriver.getChatMessages: room "${chatId}" not found.`,
       );
     }
-    const targetId = anchorId ?? cursor ?? undefined;
+    const eventsPerRequest = Math.max(limit, MIN_PAGINATION_EVENTS);
     const { window, dispose } = this.scopedTimelineWindow(mx, room);
     try {
-      await window.load(targetId, anchorId ? limit : 1);
+      await window.load(anchorId ?? cursor ?? undefined, anchorId ? limit : 1);
+      const anchorMessageId = anchorId
+        ? await this.nearestMainTimelineMessageId(
+            window,
+            anchorId,
+            eventsPerRequest,
+          )
+        : undefined;
+      const targetId = anchorMessageId ?? cursor ?? undefined;
 
       const targetIndex = () =>
         targetId
@@ -1110,31 +1244,36 @@ export class MatrixDriver extends Driver {
         );
       }
 
-      if (anchorId) {
+      if (anchorMessageId) {
         // Bias the contextual page towards newer messages: the target stays
         // visible with enough history above it while reading can continue below.
         const olderTarget = Math.floor(limit / 3);
         const newerTarget = limit - olderTarget - 1;
-        await this.extendTimelineWindow(
-          window,
-          EventTimeline.BACKWARDS,
-          limit,
-          () => targetIndex() >= olderTarget,
-        );
-        await this.extendTimelineWindow(
-          window,
-          EventTimeline.FORWARDS,
-          limit,
-          () => {
-            const index = targetIndex();
-            return (
-              index >= 0 &&
-              this.mainTimelineEvents(window).length - index - 1 >= newerTarget
-            );
-          },
-        );
+        // The page shows complete, without messages appearing around the
+        // target afterwards: both directions load at once to shorten the wait.
+        await Promise.all([
+          this.extendTimelineWindow(
+            window,
+            EventTimeline.BACKWARDS,
+            eventsPerRequest,
+            () => targetIndex() >= olderTarget,
+          ),
+          this.extendTimelineWindow(
+            window,
+            EventTimeline.FORWARDS,
+            eventsPerRequest,
+            () => {
+              const index = targetIndex();
+              return (
+                index >= 0 &&
+                this.mainTimelineEvents(window).length - index - 1 >=
+                  newerTarget
+              );
+            },
+          ),
+        ]);
         const events = this.mainTimelineEvents(window);
-        const index = events.findIndex((event) => event.getId() === anchorId);
+        const index = targetIndex();
         const startIndex = Math.max(
           0,
           Math.min(index - Math.floor(limit / 3), events.length - limit),
@@ -1145,7 +1284,7 @@ export class MatrixDriver extends Driver {
         const hasNewer =
           startIndex + pageEvents.length < events.length ||
           window.canPaginate(EventTimeline.FORWARDS);
-        return this.mapMainTimelinePage(
+        const page = await this.mapMainTimelinePage(
           room,
           pageEvents,
           hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
@@ -1154,18 +1293,28 @@ export class MatrixDriver extends Driver {
             : null,
           !hasNewer,
         );
+        return { ...page, anchorId: anchorMessageId };
       }
 
       if (cursor && direction === "newer") {
-        await this.extendTimelineWindow(
+        const newerCount = () =>
+          this.mainTimelineEvents(window).length - targetIndex() - 1;
+        // Like older pages: known messages at once, else one request. They
+        // are added below what the user reads, so nothing moves on screen.
+        this.extendTimelineWindowInMemory(
           window,
           EventTimeline.FORWARDS,
-          limit,
-          () => {
-            const events = this.mainTimelineEvents(window);
-            return events.length - targetIndex() - 1 >= limit;
-          },
+          () => newerCount() >= limit,
         );
+        const isFromMemory = newerCount() > 0;
+        if (!isFromMemory) {
+          await this.extendTimelineWindow(
+            window,
+            EventTimeline.FORWARDS,
+            eventsPerRequest,
+            () => newerCount() > 0,
+          );
+        }
         const events = this.mainTimelineEvents(window);
         const startIndex = targetIndex() + 1;
         const available = events.slice(startIndex);
@@ -1181,20 +1330,34 @@ export class MatrixDriver extends Driver {
             ? (pageEvents[pageEvents.length - 1]?.getId() ?? null)
             : null,
           !hasNewer,
+          isFromMemory ? "background" : "await",
         );
       }
 
-      await this.extendTimelineWindow(
+      // Messages older than the cursor, or every message on the live page.
+      const olderCount = () =>
+        cursor ? targetIndex() : this.mainTimelineEvents(window).length;
+      // Like Element (TimelineWindow.load, then fill requests of
+      // PAGINATE_SIZE), known messages show at once, however few: the list
+      // asks for the next page while its viewport is not full. Only a page
+      // with nothing older in memory waits for the homeserver, which is asked
+      // one small request at a time until a message arrives.
+      this.extendTimelineWindowInMemory(
         window,
         EventTimeline.BACKWARDS,
-        limit,
-        () => {
-          const events = this.mainTimelineEvents(window);
-          return cursor ? targetIndex() >= limit : events.length >= limit;
-        },
+        () => olderCount() >= limit,
       );
+      const isFromMemory = olderCount() > 0;
+      if (!isFromMemory) {
+        await this.extendTimelineWindow(
+          window,
+          EventTimeline.BACKWARDS,
+          MIN_PAGINATION_EVENTS,
+          () => olderCount() > 0,
+        );
+      }
       const events = this.mainTimelineEvents(window);
-      const endIndex = cursor ? targetIndex() : events.length;
+      const endIndex = olderCount();
       const startIndex = Math.max(0, endIndex - limit);
       const pageEvents = events.slice(startIndex, endIndex);
       const hasOlder =
@@ -1205,6 +1368,7 @@ export class MatrixDriver extends Driver {
         hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
         null,
         !cursor,
+        isFromMemory ? "background" : "await",
       );
     } finally {
       dispose();
@@ -1602,6 +1766,37 @@ export class MatrixDriver extends Driver {
     // Idempotent in the SDK and required even when one thread arrived via sync:
     // otherwise `getThreads()` can be a partial list.
     await this.loadAllRoomThreads(mx, room);
+    return this.mapRoomThreads(mx, room);
+  }
+
+  /**
+   * Unread threads from memory, as Element's room thread indicator reads
+   * them: the threads the client knows and the homeserver's per-thread
+   * notification counts. Like Element's thread panel, the full list loads
+   * only when the threads panel opens, unless the homeserver counts unread
+   * replies in a thread that is not in memory yet.
+   */
+  async getChatUnreadThreads(chatId: string): Promise<ChatThread[]> {
+    const { mx, room } = this.requireRoom("getChatUnreadThreads", chatId);
+    const threadNotifications =
+      room.getUnreadNotificationCount() - room.getRoomUnreadNotificationCount();
+    const knownThreadNotifications = room
+      .getThreads()
+      .reduce(
+        (count, thread) =>
+          count + room.getThreadUnreadNotificationCount(thread.id),
+        0,
+      );
+    if (threadNotifications > knownThreadNotifications) {
+      await this.loadAllRoomThreads(mx, room);
+    }
+    return this.mapRoomThreads(mx, room).filter(
+      (thread) => thread.unreadCount > 0,
+    );
+  }
+
+  /** The room threads in memory, ordered by their latest reply. */
+  private mapRoomThreads(mx: MatrixClient, room: Room): ChatThread[] {
     const selfUserId = mx.getUserId() ?? undefined;
     return room
       .getThreads()

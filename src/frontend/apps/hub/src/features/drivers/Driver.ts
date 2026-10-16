@@ -391,6 +391,11 @@ export abstract class Driver {
   ): Promise<ChatMessage>;
   /** Threads opened from messages of the given conversation. */
   abstract getChatThreads(chatId: string): Promise<ChatThread[]>;
+  /**
+   * Threads with unread replies, read from what the client already knows
+   * where possible: unlike {@link getChatThreads}, it may skip the full list.
+   */
+  abstract getChatUnreadThreads(chatId: string): Promise<ChatThread[]>;
   /** Full content (root message + replies) of a single thread. */
   abstract getChatThread(
     params: GetChatThreadParams,

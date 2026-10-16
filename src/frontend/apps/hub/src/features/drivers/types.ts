@@ -317,6 +317,11 @@ export type ChatMessagesPage = {
   newerCursor?: string | null;
   /** True only when this page reaches the genuine live end of the room. */
   isAtLiveEnd?: boolean;
+  /**
+   * Message a contextual page is built around. It differs from the requested
+   * anchor when that event is not shown, such as a reaction or an edit.
+   */
+  anchorId?: string;
 };
 
 /** Persistent read boundary for one room's Matrix main timeline. */

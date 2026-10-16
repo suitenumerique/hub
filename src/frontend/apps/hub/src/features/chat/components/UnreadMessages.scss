@@ -46,8 +46,10 @@
       opacity: 0.72;
     }
 
+    // Busy is not unavailable: the loading label stays fully readable.
     &[aria-busy="true"] {
       cursor: progress;
+      opacity: 1;
     }
   }
 

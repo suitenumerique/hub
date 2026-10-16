@@ -78,6 +78,10 @@ const OLDER_PREFETCH_ROWS = 50;
 const VISIBILITY_SETTLE_MS = 150;
 // After measuring, require focused visibility before marking a message read.
 const READ_DWELL_MS = 250;
+// A jump resolved from memory ends before this delay: no spinner flashes.
+const NAVIGATION_LOADER_DELAY_MS = 200;
+// Frames the backfill check waits for Virtuoso to render the first rows.
+const FILL_CHECK_MAX_FRAMES = 10;
 // A message qualifies as visible only when 60% of its rendered height is shown.
 const MESSAGE_VISIBILITY_RATIO = 0.6;
 
@@ -145,6 +149,8 @@ export const ChatVirtualList = ({
   const [unreadViewportState, setUnreadViewportState] =
     useState<UnreadViewportState>("unknown");
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isNavigationLoaderVisible, setIsNavigationLoaderVisible] =
+    useState(false);
 
   messagesRef.current = messages;
   isAtLiveEndRef.current = isAtLiveEnd;
@@ -484,9 +490,19 @@ export const ChatVirtualList = ({
       if (!eventId) {
         // Like Element's jump to the read marker: open the window around it.
         // The separator anchors to the next message once it is loaded. A
-        // marker the timeline cannot show, such as a thread reply, does nothing.
-        if (markerId) {
-          await openAround(markerId).catch(() => {});
+        // marker on an event the timeline does not show, such as a reaction,
+        // opens on the next message, which carries the separator instead. A
+        // thread reply cannot be positioned and does nothing.
+        const anchorId = markerId
+          ? await openAround(markerId).catch(() => null)
+          : null;
+        if (
+          anchorId &&
+          anchorId !== markerId &&
+          navigationRef.current === navigation
+        ) {
+          anchorSeparatorTo(anchorId);
+          scrollToEvent(anchorId);
         }
         return;
       }
@@ -516,6 +532,22 @@ export const ChatVirtualList = ({
     void handleNavigateToUnread();
   }, [handleNavigateToUnread]);
 
+  // The jump waits for its whole window instead of filling it in view. Only a
+  // jump that waits for the homeserver shows the banner spinner.
+  useEffect(() => {
+    if (!isNavigating) {
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setIsNavigationLoaderVisible(true),
+      NAVIGATION_LOADER_DELAY_MS,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      setIsNavigationLoaderVisible(false);
+    };
+  }, [isNavigating]);
+
   // Show known unread messages immediately. The settled viewport check can then
   // hide the shortcut when every unread message is already visible.
   const shouldShowUnreadBanner =
@@ -532,6 +564,7 @@ export const ChatVirtualList = ({
             canNavigate:
               unread.firstUnreadId !== null || unread.readUpToId !== null,
             isResolving: unread.isResolving || isNavigating,
+            isLoading: isNavigationLoaderVisible,
             onNavigate: navigateToUnread,
             onMarkAllRead: unread.markAllRead,
           }
@@ -540,6 +573,7 @@ export const ChatVirtualList = ({
   }, [
     chatKey,
     isNavigating,
+    isNavigationLoaderVisible,
     navigateToUnread,
     onUnreadBannerChange,
     unread.firstUnreadId,
@@ -583,6 +617,48 @@ export const ChatVirtualList = ({
       fetchNewer();
     }
   }, [fetchNewer]);
+
+  // Like Element's ScrollPanel, backfill without waiting for a scroll while
+  // the list holds less than one screen beyond its viewport: the first page
+  // shows the messages already in memory, however few. Only on the latest
+  // messages: a jump opens a complete window, nothing is added around it.
+  useEffect(() => {
+    if (
+      isInitialLoading ||
+      !hasOlder ||
+      isFetchingOlder ||
+      !isAtLiveEnd ||
+      windowAnchorId
+    ) {
+      return;
+    }
+    let raf = 0;
+    let waitedFrames = 0;
+    const checkFill = () => {
+      const scroller = scrollerRef.current;
+      // Before its rows render, Virtuoso's height says nothing about them.
+      if (!scroller?.querySelector("[data-chat-message-id]")) {
+        if (waitedFrames < FILL_CHECK_MAX_FRAMES) {
+          waitedFrames += 1;
+          raf = requestAnimationFrame(checkFill);
+        }
+        return;
+      }
+      if (scroller.scrollHeight < scroller.clientHeight * 2) {
+        fetchOlder();
+      }
+    };
+    raf = requestAnimationFrame(checkFill);
+    return () => cancelAnimationFrame(raf);
+  }, [
+    fetchOlder,
+    hasOlder,
+    isAtLiveEnd,
+    isFetchingOlder,
+    isInitialLoading,
+    messages.length,
+    windowAnchorId,
+  ]);
 
   useLayoutEffect(() => {
     const previous = previousAppendState.current;
@@ -647,6 +723,9 @@ export const ChatVirtualList = ({
               : Math.max(0, messages.length - 1)
           }
           followOutput={isAtLiveEnd ? "auto" : false}
+          // A short conversation sits above the composer, as in Element:
+          // backfilled history then appears above it instead of moving it.
+          alignToBottom
           atTopStateChange={handleAtTopStateChange}
           atBottomStateChange={(atBottom) => {
             if (

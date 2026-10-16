@@ -21,9 +21,11 @@ type ThreadMatcher = (threadId: string) => boolean;
 
 type ReadContext = {
   threadsKey: QueryKey;
+  unreadThreadsKey: QueryKey;
   messagesKey: QueryKey;
   affectedThreadIds: string[];
   previousThreadUnread: Record<string, number>;
+  previousUnreadThreads: ChatThread[];
   previousRootUnread: Record<string, number>;
 };
 
@@ -108,10 +110,11 @@ export type UseChatThreadActionsResult = {
 
 /**
  * Mutations that clear thread unread state through the driver. Each mutation
- * optimistically updates both the `["chat-threads", chatId]` cache (the panel
- * and the unread banner) and the `["chat-messages", chatId]` cache (the thread
- * button on the root bubble). A failed receipt is retried, then only its own
- * zeroed badges are restored so a concurrently received reply is never lost.
+ * optimistically updates the `["chat-threads", chatId]` cache (the panel), its
+ * unread-only child (the unread banner) and the `["chat-messages", chatId]`
+ * cache (the thread button on the root bubble). A failed receipt is retried,
+ * then only its own zeroed badges are restored so a concurrently received
+ * reply is never lost.
  */
 export const useChatThreadActions = (
   ref: ChatRef,
@@ -122,11 +125,16 @@ export const useChatThreadActions = (
     matches: ThreadMatcher,
   ): Promise<ReadContext> => {
     const threadsKey: QueryKey = chatKeys.threads(ref);
+    const unreadThreadsKey: QueryKey = chatKeys.unreadThreads(ref);
     const messagesKey: QueryKey = chatKeys.messages(ref);
-    // Stop any in-flight refetch from overwriting the optimistic write.
+    // Stop any in-flight refetch from overwriting the optimistic write. The
+    // thread list prefix also covers the unread-only list.
     await queryClient.cancelQueries({ queryKey: threadsKey });
     await queryClient.cancelQueries({ queryKey: messagesKey });
     const previousThreads = queryClient.getQueryData<ChatThread[]>(threadsKey);
+    const previousUnreadThreads = (
+      queryClient.getQueryData<ChatThread[]>(unreadThreadsKey) ?? []
+    ).filter((thread) => matches(thread.id));
     const previousMessages =
       queryClient.getQueryData<ChatMessagesData>(messagesKey);
     const previousThreadUnread = Object.fromEntries(
@@ -138,6 +146,7 @@ export const useChatThreadActions = (
     const affectedThreadIds = [
       ...new Set([
         ...Object.keys(previousThreadUnread),
+        ...previousUnreadThreads.map((thread) => thread.id),
         ...Object.keys(previousRootUnread),
       ]),
     ];
@@ -146,14 +155,19 @@ export const useChatThreadActions = (
         matches(thread.id) ? { ...thread, unreadCount: 0 } : thread,
       ),
     );
+    queryClient.setQueryData<ChatThread[]>(unreadThreadsKey, (old) =>
+      old?.filter((thread) => !matches(thread.id)),
+    );
     queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
       old ? clearThreadBadges(old, matches) : old,
     );
     return {
       threadsKey,
+      unreadThreadsKey,
       messagesKey,
       affectedThreadIds,
       previousThreadUnread,
+      previousUnreadThreads,
       previousRootUnread,
     };
   };
@@ -174,6 +188,19 @@ export const useChatThreadActions = (
             }
           : thread,
       ),
+    );
+    queryClient.setQueryData<ChatThread[]>(
+      context.unreadThreadsKey,
+      (current) => {
+        const restored = context.previousUnreadThreads.filter(
+          (previous) => !current?.some((thread) => thread.id === previous.id),
+        );
+        return current && restored.length > 0
+          ? [...current, ...restored].sort((left, right) =>
+              right.lastReplyAt.localeCompare(left.lastReplyAt),
+            )
+          : current;
+      },
     );
     queryClient.setQueryData<ChatMessagesData>(
       context.messagesKey,

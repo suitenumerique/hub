@@ -109,6 +109,13 @@ and this project adheres to
   network sync, as Element does. Load the user, the Matrix driver and its
   crypto in parallel, keep the sync cache in a worker, and stop clearing it
   when a conversation was left from another client.
+- ⚡️(frontend) Open a conversation at once with the messages already in
+  memory, as Element does, then fill the screen with older ones, 50 events per
+  request. Load the full thread list only with the threads panel, and leave
+  spaces out of the conversation list.
+- ⚡️(frontend) Jump to the first unread message faster: load the messages
+  above and below it at once, show a spinner in the banner while waiting, and
+  open on the next message when the read marker is on a hidden event.
 - 💄(frontend) Refine chat attachments after QA.
   Show the attach button as an icon, with tooltips on attach and send.
   Keep queued files on one scrolling row and cap them at 20 per message.
