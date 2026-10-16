@@ -276,6 +276,7 @@ class Base(Configuration):
     INSTALLED_APPS = [
         # hub
         "core",
+        "messaging_backends.matrix",
         "demo",
         "e2e",
         "drf_spectacular",

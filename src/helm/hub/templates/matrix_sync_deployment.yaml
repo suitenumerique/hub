@@ -1,0 +1,139 @@
+{{- if .Values.matrix.sync.enabled }}
+{{- $root := . }}
+{{- range .Values.matrix.sync.workers }}
+{{- $workerHrid := . }}
+{{- $workerName := $workerHrid | lower | replace "_" "-" | replace "." "-" }}
+{{- $envVars := include "hub.common.env" (list $root $root.Values.matrix.sync) }}
+{{- $fullName := printf "%s-matrix-sync-%s" (include "hub.fullname" $root) $workerName }}
+{{- $component := "matrix-sync" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ $root.Release.Namespace | quote }}
+  annotations:
+    {{- with $root.Values.matrix.sync.dpAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "hub.common.labels" (list $root $component) | nindent 4 }}
+    hub.matrix.sync/hrid: {{ $workerHrid | quote }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "hub.common.selectorLabels" (list $root $component) | nindent 6 }}
+      hub.matrix.sync/hrid: {{ $workerHrid | quote }}
+  template:
+    metadata:
+      annotations:
+        {{- with $root.Values.matrix.sync.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "hub.common.selectorLabels" (list $root $component) | nindent 8 }}
+        hub.matrix.sync/hrid: {{ $workerHrid | quote }}
+    spec:
+      {{- if $root.Values.image.credentials }}
+      imagePullSecrets:
+        - name: {{ include "hub.secret.dockerconfigjson.name" (dict "fullname" (include "hub.fullname" $root) "imageCredentials" $root.Values.image.credentials) }}
+      {{- end }}
+      {{- if $root.Values.matrix.sync.serviceAccountName }}
+      serviceAccountName: {{ $root.Values.matrix.sync.serviceAccountName }}
+      {{- end }}
+      containers:
+        - name: {{ $root.Chart.Name }}
+          image: "{{ ($root.Values.matrix.sync.image | default dict).repository | default $root.Values.image.repository }}:{{ ($root.Values.matrix.sync.image | default dict).tag | default $root.Values.image.tag }}"
+          imagePullPolicy: {{ ($root.Values.matrix.sync.image | default dict).pullPolicy | default $root.Values.image.pullPolicy }}
+          args:
+            - "python"
+            - "manage.py"
+            - "matrix_sync"
+            - "--hrid"
+            - {{ $workerHrid | quote }}
+          {{- if $envVars }}
+          env:
+            {{- $envVars | indent 12 }}
+          {{- end }}
+          {{- $envFrom := concat ($root.Values.matrix.sync.envFrom | default list) (($root.Values.matrix.sync.django | default dict).envFrom | default list) }}
+          {{- if $envFrom }}
+          envFrom:
+            {{- toYaml $envFrom | nindent 12 }}
+          {{- end }}
+          {{- with $root.Values.matrix.sync.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $root.Values.matrix.sync.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- range $index, $value := $root.Values.mountFiles }}
+            - name: "files-{{ $index }}"
+              mountPath: {{ $value.path }}
+              subPath: content
+            {{- end }}
+            {{- range $name, $volume := $root.Values.matrix.sync.persistence }}
+            - name: "{{ $name }}"
+              mountPath: "{{ $volume.mountPath }}"
+            {{- end }}
+            {{- range $root.Values.matrix.sync.extraVolumeMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              subPath: {{ .subPath | default "" }}
+              readOnly: {{ .readOnly }}
+            {{- end }}
+      {{- with $root.Values.matrix.sync.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.matrix.sync.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.matrix.sync.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        {{- range $index, $value := $root.Values.mountFiles }}
+        - name: "files-{{ $index }}"
+          configMap:
+            name: "{{ include "hub.fullname" $root }}-files-{{ $index }}"
+        {{- end }}
+        {{- range $name, $volume := $root.Values.matrix.sync.persistence }}
+        - name: "{{ $name }}"
+          {{- if eq $volume.type "emptyDir" }}
+          emptyDir: {}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: "{{ $fullName }}-{{ $name }}"
+          {{- end }}
+        {{- end }}
+        {{- range $root.Values.matrix.sync.extraVolumes }}
+        - name: {{ .name }}
+          {{- if .existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .existingClaim }}
+          {{- else if .secret }}
+          secret:
+            {{ toYaml .secret | nindent 12 }}
+          {{- else if .hostPath }}
+          hostPath:
+            {{ toYaml .hostPath | nindent 12 }}
+          {{- else if .csi }}
+          csi:
+            {{- toYaml .csi | nindent 12 }}
+          {{- else if .configMap }}
+          configMap:
+            {{- toYaml .configMap | nindent 12 }}
+          {{- else if .emptyDir }}
+          emptyDir:
+            {{- toYaml .emptyDir | nindent 12 }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+{{- end }}
+{{- end }}

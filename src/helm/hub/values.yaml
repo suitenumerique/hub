@@ -299,6 +299,78 @@ backend:
     file_content: ""
     mount_path: /app/hub/configuration/theme
 
+## @section matrix
+
+matrix:
+  ## @param matrix.sync.enabled Enable the Matrix /sync worker deployments (one per configured homeserver)
+  sync:
+    enabled: false
+
+    ## @param matrix.sync.workers List of homeserver hrids (from settings.MESSAGING_BACKEND_CONFIG[*].mx_homeserver) to run a /sync worker for
+    workers: []
+
+    ## @extra matrix.sync.image.repository Repository to use to pull hub's backend container image
+    ## @extra matrix.sync.image.tag hub's backend container tag
+    ## @extra matrix.sync.image.pullPolicy hub's backend container image pull policy
+    image: {}
+
+    ## @param matrix.sync.envVars Configure the Matrix /sync worker container environment variables
+    ## @extra matrix.sync.envVars.BY_VALUE Example environment variable by setting value directly
+    ## @extra matrix.sync.envVars.FROM_CONFIGMAP.configMapKeyRef.name Name of a ConfigMap when configuring env vars from a ConfigMap
+    ## @extra matrix.sync.envVars.FROM_SECRET.secretKeyRef.name Name of a Secret when configuring env vars from a Secret
+    ## @skip matrix.sync.envVars
+    envVars:
+      <<: *commonEnvVars
+
+    ## @extra matrix.sync.envFrom List of environment variables taken from Secrets or configMaps for the Matrix /sync worker
+    ## @skip matrix.sync.envFrom
+    envFrom: []
+
+    ## @param matrix.sync.securityContext.allowPrivilegeEscalation Whether to allow privilege escalation for the Matrix /sync worker container
+    ## @param matrix.sync.securityContext.capabilities.drop List of capabilities to drop for the Matrix /sync worker container
+    ## @param matrix.sync.securityContext.runAsNonRoot Whether to run the Matrix /sync worker container as a non-root user
+    ## @param matrix.sync.securityContext.seccompProfile.type Seccomp profile type for the Matrix /sync worker container
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - "ALL"
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+
+    ## @param matrix.sync.podAnnotations Annotations to add to the Matrix /sync worker Pod
+    podAnnotations: {}
+
+    ## @param matrix.sync.dpAnnotations Annotations to add to the Matrix /sync worker Deployment
+    dpAnnotations: {}
+
+    ## @param matrix.sync.resources Resource requirements for the Matrix /sync worker container
+    resources: {}
+
+    ## @param matrix.sync.nodeSelector Node selector for the Matrix /sync worker Pod
+    nodeSelector: {}
+
+    ## @param matrix.sync.tolerations Tolerations for the Matrix /sync worker Pod
+    tolerations: []
+
+    ## @param matrix.sync.affinity Affinity for the Matrix /sync worker Pod
+    affinity: {}
+
+    ## @extra matrix.sync.persistence.volume-name.size Size of the additional volume
+    ## @extra matrix.sync.persistence.volume-name.type Type of the additional volume, persistentVolumeClaim or emptyDir
+    ## @extra matrix.sync.persistence.volume-name.mountPath Path where the volume should be mounted to
+    persistence: {}
+
+    ## @param matrix.sync.extraVolumeMounts Additional volumes to mount on the Matrix /sync worker.
+    extraVolumeMounts: []
+
+    ## @param matrix.sync.extraVolumes Additional volumes to mount on the Matrix /sync worker.
+    extraVolumes: []
+
+    ## @param matrix.sync.serviceAccountName Optional service account name to use for Matrix /sync worker pods
+    serviceAccountName: null
+
 ## @section frontend
 
 frontend:

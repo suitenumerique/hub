@@ -6,8 +6,11 @@ sender_localpart: hub-bot
 rate_limited: false
 namespaces:
   users:
+    # The registed control bot and any API-provisioned bot siblings
+    # (@hub-bot-*). Declaring them here (exclusive) lets the Application
+    # Service register/provision these users over the C-S register endpoint.
     - exclusive: true
-      regex: '^@hub-bot:localhost$'
+      regex: '^@hub-bot(-.*)?:localhost$'
   aliases:
     - exclusive: true
       regex: '^#_hub_control:localhost$'
