@@ -1,0 +1,16 @@
+[
+  {
+    "hrid": "local-matrix-backend",
+    "kind": "matrix",
+    "mx_homeserver": [
+      {
+        "hrid": "matrix-local",
+        "url": "http://synapse:8008",
+        "server_name": "localhost",
+        "access_token": "hub-groups-as-token-dev-only",
+        "as_bot_localpart": "hub-bot",
+        "bot_localpart": "hub-bot-api"
+      }
+    ]
+  }
+]
