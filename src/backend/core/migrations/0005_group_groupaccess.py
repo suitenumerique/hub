@@ -1,0 +1,133 @@
+import uuid
+
+import django.db.models.deletion
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ("core", "0004_alter_user_is_active"),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name="Group",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        help_text="primary key for the record as UUID",
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="id",
+                    ),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True,
+                        help_text="date and time at which a record was created",
+                        verbose_name="created on",
+                    ),
+                ),
+                (
+                    "updated_at",
+                    models.DateTimeField(
+                        auto_now=True,
+                        help_text="date and time at which a record was last updated",
+                        verbose_name="updated on",
+                    ),
+                ),
+                ("name", models.CharField(max_length=255)),
+                (
+                    "visibility",
+                    models.CharField(
+                        choices=[("private", "Private"), ("public", "Public")],
+                        default="private",
+                        max_length=32,
+                    ),
+                ),
+                ("emoji", models.CharField(default="🌲", max_length=16)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_by",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+            ],
+            options={
+                "abstract": False,
+            },
+        ),
+        migrations.CreateModel(
+            name="GroupAccess",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        help_text="primary key for the record as UUID",
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="id",
+                    ),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True,
+                        help_text="date and time at which a record was created",
+                        verbose_name="created on",
+                    ),
+                ),
+                (
+                    "updated_at",
+                    models.DateTimeField(
+                        auto_now=True,
+                        help_text="date and time at which a record was last updated",
+                        verbose_name="updated on",
+                    ),
+                ),
+                (
+                    "role",
+                    models.CharField(
+                        choices=[
+                            ("reader", "Reader"),
+                            ("editor", "Editor"),
+                            ("administrator", "Administrator"),
+                            ("owner", "Owner"),
+                        ],
+                        default="reader",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "group",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="group_accesses",
+                        to="core.group",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="group_accesses",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+            ],
+            options={
+                "unique_together": {("group", "user")},
+            },
+        ),
+    ]
