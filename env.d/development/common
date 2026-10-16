@@ -58,3 +58,6 @@ OIDC_AUTH_REQUEST_EXTRA_PARAMS={"acr_values": "eidas1"}
 # Must be a valid Fernet key (32 url-safe base64-encoded bytes)
 # To create one, use the bin/fernetkey command.
 # OIDC_STORE_REFRESH_TOKEN_KEY="your-32-byte-encryption-key=="
+
+# Matrix related
+MESSAGING_BACKEND_CONFIG_FILE=/app/hub/configuration/messaging_backends/dev.json

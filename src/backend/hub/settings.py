@@ -24,6 +24,8 @@ from lasuite.configuration.values import SecretFileValue
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.logging import ignore_logger
 
+from hub.configuration import MessagingBackendConfigFileValue
+
 # pylint: disable=too-many-lines
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -660,6 +662,13 @@ class Base(Configuration):
 
     # Login URL
     LOGIN_URL = f"/api/{API_VERSION}/login/"
+    
+    # Messaging backends
+    MESSAGING_BACKEND_CONFIG = MessagingBackendConfigFileValue(
+        default=[],
+        environ_name="MESSAGING_BACKEND_CONFIG",
+        environ_prefix=None,
+    )
 
     # pylint: disable=invalid-name
     @property

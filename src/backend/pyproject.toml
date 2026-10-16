@@ -27,9 +27,10 @@ license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "Brotli==1.2.0",
+    "PyJWT==2.12.1",
     "beautifulsoup4==4.14.3",
     "boto3==1.42.17",
-    "Brotli==1.2.0",
     "django-configurations==2.5.1",
     "django-cors-headers==4.9.0",
     "django-countries==8.2.0",
@@ -41,9 +42,10 @@ dependencies = [
     "django-storages[s3]==1.14.6",
     "django-timezone-field>=5.1",
     "django<6.0.0",
+    "djangorestframework-stubs>=3.18.1",
     "djangorestframework==3.16.1",
-    "drf_spectacular==0.29.0",
     "dockerflow==2024.4.2",
+    "drf_spectacular==0.29.0",
     "easy_thumbnails==2.10.1",
     "factory_boy==3.3.3",
     "gunicorn==23.0.0",
@@ -52,7 +54,7 @@ dependencies = [
     "mozilla-django-oidc==5.0.2",
     "nested-multipart-parser==1.6.0",
     "psycopg[binary]==3.3.2",
-    "PyJWT==2.12.1",
+    "pydantic>=2.13.4",
     "python-magic==0.4.27",
     "redis<6.0.0",
     "requests==2.33.1",
