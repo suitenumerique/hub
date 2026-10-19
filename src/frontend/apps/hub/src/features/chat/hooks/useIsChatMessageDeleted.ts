@@ -1,10 +1,5 @@
-import {
-  hashKey,
-  type InfiniteData,
-  type QueryKey,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import type { InfiniteData } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 import type {
   ChatMessagesPage,
@@ -14,22 +9,7 @@ import type {
 
 import { chatKeys } from "../chatKeys";
 
-/** Data a query already holds, kept in sync without ever fetching it. */
-const useCachedQueryData = <T>(queryKey: QueryKey): T | undefined => {
-  const queryClient = useQueryClient();
-  const queryHash = hashKey(queryKey);
-  const subscribe = useCallback(
-    (onChange: () => void) =>
-      queryClient.getQueryCache().subscribe((event) => {
-        if (event.query.queryHash === queryHash) {
-          onChange();
-        }
-      }),
-    [queryClient, queryHash],
-  );
-  const getSnapshot = () => queryClient.getQueryData<T>(queryKey);
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-};
+import { useCachedQueryData } from "./useCachedQueryData";
 
 /**
  * Whether a loaded message was deleted, read from the messages already held

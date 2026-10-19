@@ -1,5 +1,5 @@
-import { type InfiniteData, skipToken, useQuery } from "@tanstack/react-query";
-import { Fragment, useRef } from "react";
+import type { InfiniteData } from "@tanstack/react-query";
+import { Fragment, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -14,6 +14,7 @@ import type {
   OpenThreadOptions,
 } from "../../ChatPanelContext";
 import { chatKeys } from "../../chatKeys";
+import { useCachedQueryData } from "../../hooks/useCachedQueryData";
 import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useStartChatThread } from "../../hooks/useStartChatThread";
 import { useCanSendToChat } from "../../hooks/useChatSecurity";
@@ -47,19 +48,18 @@ export const DraftThreadDetail = ({
   const { startThread, isStarting, isSupported } = useStartChatThread(chatRef);
   // The draft root is a snapshot from when Reply was clicked. Subscribe to
   // its cached message so reactions stay live before the first reply is sent.
-  const { data: cachedMessage } = useQuery({
-    queryKey: chatKeys.messages(chatRef),
-    queryFn: skipToken,
-    select: (data: InfiniteData<ChatMessagesPage>) => {
-      for (const page of data.pages) {
-        const message = page.messages.find(({ id }) => id === root.message.id);
-        if (message) {
-          return message;
-        }
+  const cachedMessages = useCachedQueryData<InfiniteData<ChatMessagesPage>>(
+    chatKeys.messages(chatRef),
+  );
+  const message = useMemo(() => {
+    for (const page of cachedMessages?.pages ?? []) {
+      const cached = page.messages.find(({ id }) => id === root.message.id);
+      if (cached) {
+        return cached;
       }
-    },
-  });
-  const message = cachedMessage ?? root.message;
+    }
+    return root.message;
+  }, [cachedMessages, root.message]);
   const { author } = root;
   const uploadAttachment = useUploadChatAttachment(chatRef);
   const createdThreadIdRef = useRef<string | null>(null);
