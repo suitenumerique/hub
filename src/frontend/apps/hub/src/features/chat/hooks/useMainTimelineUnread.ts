@@ -22,6 +22,35 @@ type Projection = Pick<
 const isEligibleUnreadMessage = (message: ChatMessage): boolean =>
   message.authorId !== "me" && message.isDeleted !== true;
 
+/**
+ * The driver knows the first unread message only when the read marker was in
+ * memory. Otherwise it appears once the marker is loaded, like Element's read
+ * marker line: on scrolling up, or when navigation opens the window around it.
+ */
+const resolveFirstUnreadId = (
+  state:
+    | Pick<Projection, "hasUnread" | "firstUnreadId" | "readUpToId">
+    | null
+    | undefined,
+  messages: ChatMessage[],
+): string | null => {
+  if (!state?.hasUnread) {
+    return null;
+  }
+  if (state.firstUnreadId) {
+    return state.firstUnreadId;
+  }
+  const markerIndex = state.readUpToId
+    ? messages.findIndex((message) => message.id === state.readUpToId)
+    : -1;
+  if (markerIndex < 0) {
+    return null;
+  }
+  return (
+    messages.slice(markerIndex + 1).find(isEligibleUnreadMessage)?.id ?? null
+  );
+};
+
 export type UseMainTimelineUnreadResult = ChatMainTimelineUnread & {
   isLoading: boolean;
   isResolving: boolean;
@@ -163,28 +192,30 @@ export const useMainTimelineUnread = (
 
   const areAllUnreadVisible = useCallback(
     (visibleIds: ReadonlySet<string>, hasNewer: boolean) => {
-      const state = projectionRef.current ?? query.data;
-      if (!state?.hasUnread || !state.firstUnreadId || hasNewer) {
+      const firstUnreadId = resolveFirstUnreadId(
+        projectionRef.current ?? query.data,
+        messages,
+      );
+      if (!firstUnreadId || hasNewer) {
         return false;
       }
       const firstUnreadIndex = messages.findIndex(
-        (message) => message.id === state.firstUnreadId,
+        (message) => message.id === firstUnreadId,
       );
       if (firstUnreadIndex < 0) {
         return false;
       }
 
+      // The homeserver count can include events this timeline does not show:
+      // the loaded messages after the first unread one are the reference.
       const unreadIds = messages
         .slice(firstUnreadIndex)
         .filter(isEligibleUnreadMessage)
         .map((message) => message.id);
-      if (
-        unreadIds.length === 0 ||
-        (state.unreadCount !== null && unreadIds.length < state.unreadCount)
-      ) {
-        return false;
-      }
-      return unreadIds.every((eventId) => visibleIds.has(eventId));
+      return (
+        unreadIds.length > 0 &&
+        unreadIds.every((eventId) => visibleIds.has(eventId))
+      );
     },
     [messages, query.data],
   );
@@ -192,11 +223,12 @@ export const useMainTimelineUnread = (
   const markVisibleMessages = useCallback(
     (visibleIds: ReadonlySet<string>, hasNewer: boolean) => {
       const state = projectionRef.current ?? query.data;
-      if (!state?.hasUnread || !state.firstUnreadId) {
+      const firstUnreadId = resolveFirstUnreadId(state, messages);
+      if (!state || !firstUnreadId) {
         return;
       }
       const firstUnreadIndex = messages.findIndex(
-        (message) => message.id === state.firstUnreadId,
+        (message) => message.id === firstUnreadId,
       );
       if (firstUnreadIndex < 0) {
         return;
@@ -223,14 +255,14 @@ export const useMainTimelineUnread = (
         return;
       }
 
-      const unreadCount =
-        state.unreadCount === null
-          ? null
-          : Math.max(0, state.unreadCount - consumedCount);
-      const hasUnread =
-        unreadCount === null
-          ? nextFirstUnreadId !== null || hasNewer
-          : unreadCount > 0;
+      // The loaded messages decide what is left; the homeserver count only
+      // gives the number, and no number once it no longer matches.
+      const hasUnread = nextFirstUnreadId !== null || hasNewer;
+      let unreadCount: number | null = 0;
+      if (hasUnread) {
+        const remaining = (state.unreadCount ?? 0) - consumedCount;
+        unreadCount = remaining > 0 ? remaining : null;
+      }
       const next: Projection = {
         hasUnread,
         readUpToId: throughId,
@@ -264,7 +296,7 @@ export const useMainTimelineUnread = (
     () => ({
       hasUnread: current?.hasUnread ?? false,
       readUpToId: current?.readUpToId ?? null,
-      firstUnreadId: current?.firstUnreadId ?? null,
+      firstUnreadId: resolveFirstUnreadId(current, messages),
       unreadCount: current?.unreadCount ?? null,
       liveEndId: query.data?.liveEndId ?? null,
       isLoading: query.isPending,
@@ -278,6 +310,7 @@ export const useMainTimelineUnread = (
       current,
       markAllRead,
       markVisibleMessages,
+      messages,
       query.data?.liveEndId,
       query.isFetching,
       query.isPending,

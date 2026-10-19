@@ -32,6 +32,10 @@ and this project adheres to
   and the chat connection start.
 - ⚡️(frontend) Start the chat faster: load the encryption module and the
   session checks in parallel instead of one after the other.
+- ⚡️(frontend) Open large conversations faster: take the unread count from the
+  homeserver and find the first unread message from the read marker, as Element
+  does, instead of loading history. History loaded in the background no longer
+  refreshes the conversation list, threads and unread state.
 - ⚡️(frontend) Show a conversation with its latest 30 messages, often from
   memory, and load older ones while scrolling up. Show reactions at once and
   check them in the background, group refreshes after decryption, and load
@@ -99,6 +103,9 @@ and this project adheres to
   memory, as Element does, then fill the screen with older ones, 50 events per
   request. Load the full thread list only with the threads panel, and leave
   spaces out of the conversation list.
+- ⚡️(frontend) Jump to the first unread message faster: load the messages
+  above and below it at once, show a spinner in the banner while waiting, and
+  open on the next message when the read marker is on a hidden event.
 - 💄(frontend) Refine chat attachments after QA.
   Show the attach button as an icon, with tooltips on attach and send.
   Keep queued files on one scrolling row and cap them at 20 per message.

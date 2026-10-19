@@ -78,6 +78,8 @@ const OLDER_PREFETCH_ROWS = 50;
 const VISIBILITY_SETTLE_MS = 150;
 // After measuring, require focused visibility before marking a message read.
 const READ_DWELL_MS = 250;
+// A jump resolved from memory ends before this delay: no spinner flashes.
+const NAVIGATION_LOADER_DELAY_MS = 200;
 // Frames the backfill check waits for Virtuoso to render the first rows.
 const FILL_CHECK_MAX_FRAMES = 10;
 // A message qualifies as visible only when 60% of its rendered height is shown.
@@ -148,6 +150,8 @@ export const ChatVirtualList = ({
   const [unreadViewportState, setUnreadViewportState] =
     useState<UnreadViewportState>("unknown");
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isNavigationLoaderVisible, setIsNavigationLoaderVisible] =
+    useState(false);
 
   messagesRef.current = messages;
   isAtLiveEndRef.current = isAtLiveEnd;
@@ -470,7 +474,8 @@ export const ChatVirtualList = ({
 
   const handleNavigateToUnread = useCallback(async () => {
     const eventId = unread.firstUnreadId;
-    if (!eventId || navigationRef.current) {
+    const markerId = unread.readUpToId;
+    if ((!eventId && !markerId) || navigationRef.current) {
       return;
     }
     const navigation = Symbol();
@@ -483,6 +488,25 @@ export const ChatVirtualList = ({
     shouldStickToBottomRef.current = false;
     setIsNavigating(true);
     try {
+      if (!eventId) {
+        // Like Element's jump to the read marker: open the window around it.
+        // The separator anchors to the next message once it is loaded. A
+        // marker on an event the timeline does not show, such as a reaction,
+        // opens on the next message, which carries the separator instead. A
+        // thread reply cannot be positioned and does nothing.
+        const anchorId = markerId
+          ? await openAround(markerId).catch(() => null)
+          : null;
+        if (
+          anchorId &&
+          anchorId !== markerId &&
+          navigationRef.current === navigation
+        ) {
+          anchorSeparatorTo(anchorId);
+          scrollToEvent(anchorId);
+        }
+        return;
+      }
       if (!messagesRef.current.some((message) => message.id === eventId)) {
         await openAround(eventId);
       }
@@ -497,11 +521,33 @@ export const ChatVirtualList = ({
         setIsNavigating(false);
       }
     }
-  }, [anchorSeparatorTo, openAround, scrollToEvent, unread.firstUnreadId]);
+  }, [
+    anchorSeparatorTo,
+    openAround,
+    scrollToEvent,
+    unread.firstUnreadId,
+    unread.readUpToId,
+  ]);
 
   const navigateToUnread = useCallback(() => {
     void handleNavigateToUnread();
   }, [handleNavigateToUnread]);
+
+  // The jump waits for its whole window instead of filling it in view. Only a
+  // jump that waits for the homeserver shows the banner spinner.
+  useEffect(() => {
+    if (!isNavigating) {
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setIsNavigationLoaderVisible(true),
+      NAVIGATION_LOADER_DELAY_MS,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      setIsNavigationLoaderVisible(false);
+    };
+  }, [isNavigating]);
 
   // Show known unread messages immediately. The settled viewport check can then
   // hide the shortcut when every unread message is already visible.
@@ -516,8 +562,10 @@ export const ChatVirtualList = ({
       shouldShowUnreadBanner
         ? {
             count: unread.unreadCount,
-            canNavigate: unread.firstUnreadId !== null,
+            canNavigate:
+              unread.firstUnreadId !== null || unread.readUpToId !== null,
             isResolving: unread.isResolving || isNavigating,
+            isLoading: isNavigationLoaderVisible,
             onNavigate: navigateToUnread,
             onMarkAllRead: unread.markAllRead,
           }
@@ -526,9 +574,11 @@ export const ChatVirtualList = ({
   }, [
     chatKey,
     isNavigating,
+    isNavigationLoaderVisible,
     navigateToUnread,
     onUnreadBannerChange,
     unread.firstUnreadId,
+    unread.readUpToId,
     unread.isResolving,
     unread.markAllRead,
     unread.unreadCount,
