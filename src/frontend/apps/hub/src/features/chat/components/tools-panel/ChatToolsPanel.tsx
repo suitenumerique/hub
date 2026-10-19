@@ -45,6 +45,8 @@ export const ChatToolsPanel = ({
       className="hub__chat-tools-panel"
       aria-label={t("Tools panel")}
       aria-hidden={!isOpen}
+      // A closed panel stays mounted: keep its content out of keyboard reach.
+      inert={!isOpen}
     >
       {tool === "files" && (
         <>

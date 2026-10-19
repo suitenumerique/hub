@@ -119,6 +119,8 @@ export const ThreadList = ({
     return (
       <div className="hub__chat-thread-list">
         <Virtuoso
+          // The scroller is focusable: name it for keyboard users.
+          aria-label={t("All threads")}
           data={threads}
           context={{ count: threads.length }}
           computeItemKey={(_index, thread) => thread.id}
