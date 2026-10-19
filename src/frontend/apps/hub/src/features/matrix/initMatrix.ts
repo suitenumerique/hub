@@ -7,7 +7,6 @@ import {
   RoomNameType,
   SyncState,
   type RoomNameState,
-  type SyncStateData,
   type TokenRefreshFunction,
 } from "matrix-js-sdk/lib/matrix";
 
@@ -49,6 +48,7 @@ const DEFAULT_SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const DEFAULT_CRYPTO_STORE_DB_NAME = "crypto-store";
 const stores = new WeakMap<MatrixClient, () => Promise<void>>();
 const startingClients = new WeakMap<MatrixClient, Promise<void>>();
+const handOverSavedSync = new WeakMap<MatrixClient, () => void>();
 const closingClients = new WeakMap<MatrixClient, Promise<void>>();
 
 export class MatrixStorageContinuityError extends Error {}
@@ -175,7 +175,18 @@ const startupClient = async (
   }
   await indexedDBStore.startup();
   assertActive();
-  await discardStaleJoinedRooms(mx, indexedDBStore, assertActive);
+  const savedSync = await indexedDBStore.getSavedSync();
+  assertActive();
+  shareSavedSync(
+    mx,
+    indexedDBStore,
+    await discardStaleJoinedRooms(
+      indexedDBStore,
+      savedSync,
+      joinedRoomsRequest,
+      assertActive,
+    ),
+  );
   assertActive();
   await mx.initRustCrypto({ cryptoDatabasePrefix: cryptoStoreDbName });
   assertActive();
@@ -205,36 +216,81 @@ const startupClient = async (
  * cached thread then tries to fetch its deleted root event and raises an
  * unhandled 403/404.
  *
- * `/joined_rooms` is authoritative for current joined membership. Clear only
- * the sync cache when it contradicts the server, preserving the OIDC session
- * and the separate Rust Crypto store.
+ * `/joined_rooms` is authoritative for current joined membership. When none
+ * of the cached rooms is still joined, the cache belongs to a reset server:
+ * clear it, preserving the OIDC session and the separate Rust Crypto store.
+ * Otherwise the person left some rooms, for instance from another client:
+ * only those rooms stay out of the replay, and the next `/sync` reports the
+ * departures. Clearing the whole cache for them would force a full initial
+ * sync, several seconds and megabytes on Tchap.
  */
 const discardStaleJoinedRooms = async (
-  mx: MatrixClient,
   indexedDBStore: IndexedDBStore,
+  savedSync: SavedSync,
+  joinedRoomsRequest: ReturnType<MatrixClient["getJoinedRooms"]>,
   assertActive: () => void,
-): Promise<void> => {
-  const savedSync = await indexedDBStore.getSavedSync();
-  assertActive();
-  const cachedJoinedRoomIds = Object.keys(savedSync?.roomsData.join ?? {});
+): Promise<SavedSync> => {
+  const cachedJoinedRooms = savedSync?.roomsData.join ?? {};
+  const cachedJoinedRoomIds = Object.keys(cachedJoinedRooms);
   if (cachedJoinedRoomIds.length === 0) {
-    return;
+    return savedSync;
   }
 
-  const { joined_rooms: serverJoinedRooms } = await mx.getJoinedRooms();
+  const { joined_rooms: serverJoinedRooms } = await joinedRoomsRequest;
   assertActive();
   const serverJoinedRoomIds = new Set(serverJoinedRooms);
-  const hasStaleJoinedRoom = cachedJoinedRoomIds.some(
+  const staleRoomIds = cachedJoinedRoomIds.filter(
     (roomId) => !serverJoinedRoomIds.has(roomId),
   );
-  if (!hasStaleJoinedRoom) {
-    return;
+  if (staleRoomIds.length === 0) {
+    return savedSync;
+  }
+  if (staleRoomIds.length < cachedJoinedRoomIds.length) {
+    for (const roomId of staleRoomIds) delete cachedJoinedRooms[roomId];
+    return savedSync;
   }
 
   console.info(
-    "initClient: stale joined rooms found in the sync cache, clearing it",
+    "initClient: no cached joined room is still joined, clearing the sync cache",
   );
   await indexedDBStore.deleteAllData();
+  return null;
+};
+
+type SavedSync = Awaited<ReturnType<IndexedDBStore["getSavedSync"]>>;
+
+/**
+ * `getSavedSync` deep-copies the whole sync accumulator, about 10 MB for a
+ * Tchap account. The cache repair, the search projection and the SDK replay
+ * all read it before the first `/sync`: they share this one copy. Only the
+ * SDK mutates it, and it reads last, from `startClient`.
+ *
+ * A cleared cache shares `null` with no sync token: the in-memory accumulator
+ * outlives `deleteAllData`, and the SDK would otherwise replay it.
+ */
+const shareSavedSync = (
+  mx: MatrixClient,
+  store: IndexedDBStore,
+  savedSync: SavedSync,
+): void => {
+  const readSavedSync = store.getSavedSync;
+  const readSavedSyncToken = store.getSavedSyncToken;
+  let shared = savedSync;
+  let handingOver = false;
+  store.getSavedSyncToken = () => Promise.resolve(shared?.nextBatch ?? null);
+  store.getSavedSync = () => {
+    const data = shared;
+    if (handingOver) {
+      // The SDK replay owns the copy now; later reads see the live store.
+      shared = null;
+      store.getSavedSync = readSavedSync;
+      store.getSavedSyncToken = readSavedSyncToken;
+    }
+    return Promise.resolve(data);
+  };
+  handOverSavedSync.set(mx, () => {
+    handingOver = true;
+  });
 };
 
 /**
@@ -261,25 +317,31 @@ export const initClient = async (
   }
 };
 
-const INITIAL_SYNC_LIMIT = 50;
+// Element's value: only the first sync without a cache uses it.
+const INITIAL_SYNC_LIMIT = 20;
+
+const isPrepared = (state: SyncState | null): boolean =>
+  state === SyncState.Prepared || state === SyncState.Syncing;
 
 /**
- * Resolves once the client's first real `/sync` completed. `PREPARED` may come
- * only from IndexedDB; waiting for `SYNCING` avoids exposing stale cached rooms
- * after a local homeserver reset.
+ * Resolves at the first `PREPARED`, like Element's `firstSyncPromise`
+ * (MatrixChat.tsx). On a warm start the SDK emits it with `fromCache: true`
+ * once the IndexedDB sync cache is replayed, before any network `/sync`, so
+ * the chat renders from the cache. `initClient` has already dropped rooms the
+ * server no longer lists as joined, and the driver re-reads the visible rooms
+ * on the first network `SYNCING`.
+ *
+ * `onPrepared` runs inside that sync event, before the SDK processes anything
+ * else: listeners it adds observe the whole first network `/sync`.
  */
-const waitForInitialSync = (
+const waitForPrepared = (
   mx: MatrixClient,
   signal?: AbortSignal,
+  onPrepared?: () => void,
 ): Promise<void> => {
   signal?.throwIfAborted();
-  const current = mx.getSyncState();
-  const currentData = mx.getSyncStateData();
-  if (
-    current === SyncState.Syncing &&
-    currentData?.fromCache !== true &&
-    currentData?.catchingUp !== true
-  ) {
+  if (isPrepared(mx.getSyncState())) {
+    onPrepared?.();
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
@@ -291,17 +353,10 @@ const waitForInitialSync = (
       cleanup();
       reject(new DOMException("Client stopped", "AbortError"));
     };
-    const onSync = (
-      state: SyncState,
-      _previousState: SyncState | null,
-      data?: SyncStateData,
-    ) => {
-      if (
-        state === SyncState.Syncing &&
-        data?.fromCache !== true &&
-        data?.catchingUp !== true
-      ) {
+    const onSync = (state: SyncState) => {
+      if (isPrepared(state)) {
         cleanup();
+        onPrepared?.();
         resolve();
       } else if (state === SyncState.Error || state === SyncState.Stopped) {
         cleanup();
@@ -316,8 +371,14 @@ const waitForInitialSync = (
 export const startClient = async (
   mx: MatrixClient,
   signal?: AbortSignal,
+  onPrepared?: () => void,
 ): Promise<void> => {
   signal?.throwIfAborted();
+  // Listen before starting: the cache replay can emit PREPARED early.
+  const prepared = waitForPrepared(mx, signal, onPrepared);
+  prepared.catch(() => {});
+  handOverSavedSync.get(mx)?.();
+  handOverSavedSync.delete(mx);
   const starting = mx.startClient({
     initialSyncLimit: INITIAL_SYNC_LIMIT,
     lazyLoadMembers: true,
@@ -328,5 +389,5 @@ export const startClient = async (
   startingClients.set(mx, starting);
   await starting;
   signal?.throwIfAborted();
-  await waitForInitialSync(mx, signal);
+  await prepared;
 };
