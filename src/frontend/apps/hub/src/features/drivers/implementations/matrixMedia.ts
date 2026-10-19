@@ -404,6 +404,23 @@ export const fetchMedia = async (
   return withSafeBlobType(new Blob([plaintext]), mimetype);
 };
 
+/** Square, cropped rendition of an avatar, as Element requests it. */
+export const fetchAvatarThumbnail = async (
+  mx: MatrixClient,
+  url: string,
+  size: number,
+  signal?: AbortSignal,
+): Promise<Blob> => {
+  const thumbnail = await mx.http.authedRequest<Blob>(
+    Method.Get,
+    mediaPath("thumbnail", url),
+    { width: size, height: size, method: "crop", allow_redirect: true },
+    undefined,
+    mediaRequestOptions(signal),
+  );
+  return withSafeBlobType(thumbnail, thumbnail.type);
+};
+
 /** The server's timeline-sized rendition of an unencrypted image. */
 export const fetchServerThumbnail = async (
   mx: MatrixClient,

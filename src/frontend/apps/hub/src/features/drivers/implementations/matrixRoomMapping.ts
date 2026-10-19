@@ -15,6 +15,7 @@ import {
 import i18n from "@/i18n/initI18n";
 
 import { ChatInvitation, LocalChat } from "../types";
+import { mxcUrl } from "./matrixIdentity";
 import { roomSecurity } from "@/features/matrix/roomSecurity";
 
 export const MATRIX_FAVOURITE_TAG = "m.favourite";
@@ -120,8 +121,24 @@ const timelineProfile = (
       typeof displayName === "string" && displayName.trim()
         ? displayName.trim()
         : undefined,
+    avatarUrl: mxcUrl(content?.avatar_url),
   };
 };
+
+/**
+ * Avatar of a conversation, as Element picks it: the room's own avatar, else
+ * the other person's in a direct chat, else none.
+ */
+const roomAvatarUrl = (
+  room: Room,
+  counterpart: RoomMember | undefined,
+  pendingCounterpartId: string | undefined,
+): string | undefined =>
+  mxcUrl(room.getMxcAvatarUrl()) ??
+  mxcUrl(counterpart?.getMxcAvatarUrl()) ??
+  (pendingCounterpartId
+    ? timelineProfile(room, pendingCounterpartId).avatarUrl
+    : undefined);
 
 /** A room id (`!abc:server`) or user ids (`@alice:server…`): never a label. */
 const isTechnicalName = (name: string): boolean =>
@@ -191,6 +208,9 @@ export const matrixJoinedRoomToLocalChat = (
     kind: isDirect ? "direct" : "group",
     participantIds,
     visual: isDirect ? { kind: "initials" } : { kind: "icon", icon: "groups" },
+    avatarUrl: isDirect
+      ? roomAvatarUrl(room, displayedOthers[0], counterpartId)
+      : mxcUrl(room.getMxcAvatarUrl()),
     membership: "join",
   };
 };

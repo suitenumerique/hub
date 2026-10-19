@@ -18,6 +18,10 @@ and this project adheres to
 - 🔒️(docker) Publish development ports on `127.0.0.1` only.
 - 🐛(frontend) Keep direct conversation names when the homeserver leaves a
   member out of the room state, and never show a Matrix id as a name.
+- ✨(frontend) Show conversation avatars: the room's own picture, or the other
+  person's in a direct conversation, in the list, header and search results.
+- ✨(frontend) Show people's profile pictures in message bubbles, the thread
+  list, people search and the typing indicator.
 
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.

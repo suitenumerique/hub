@@ -10,7 +10,6 @@ import type {
   ChatReaction,
   ChatThreadSummary,
 } from "@/features/drivers/types";
-import { Avatar } from "@/features/ui/components/avatar/Avatar";
 
 import { useChatPanel } from "../ChatPanelContext";
 import { useChatMessageEdit } from "../ChatMessageEditContext";
@@ -23,6 +22,7 @@ import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
 import { useToggleReaction } from "../hooks/useToggleReaction";
 import { notify } from "@/features/ui/components/toast";
 
+import { ChatUserAvatar } from "./ChatUserAvatar";
 import { MessageAttachment } from "./MessageAttachment";
 import { MessageHoverToolbar } from "./MessageHoverToolbar";
 import { MessageReactions } from "./MessageReactions";
@@ -319,9 +319,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       )}
       <div className="hub__chat-bubble__row">
         {showAvatar ? (
-          <Avatar label={author.name} color={author.color} decorative size="sm">
-            {author.initials}
-          </Avatar>
+          <ChatUserAvatar accountId={chatRef.accountId} user={author} />
         ) : (
           <span
             className="hub__chat-bubble__avatar-spacer"
