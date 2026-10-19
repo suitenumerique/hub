@@ -19,6 +19,7 @@ import "../styles/globals.scss";
 import { AnalyticsProvider } from "@/features/analytics/AnalyticsProvider";
 import { APIError, errorToString } from "@/features/api/APIError";
 import { Auth, prefetchCurrentUser } from "@/features/auth/Auth";
+import { ChatEmptyIllustration } from "@/features/chat/components/ChatEmptyIllustration";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
 
@@ -75,27 +76,43 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/assets/favicon.png" type="image/png" />
       </Head>
-      <QueryClientProvider client={queryClient}>
-        <CunninghamProvider currentLocale={i18n.language} theme="dsfr-light">
-          <ConfigProvider>
-            <AnalyticsProvider>
-              <Auth>{getLayout(<Component {...pageProps} />)}</Auth>
-            </AnalyticsProvider>
-          </ConfigProvider>
-        </CunninghamProvider>
-        <ToastContainer
-          position="top-center"
-          autoClose={5000}
-          hideProgressBar
-          newestOnTop
-          closeOnClick
-          pauseOnFocusLoss={false}
-          theme="light"
-        />
-        {process.env.NODE_ENV === "development" && (
-          <ReactQueryDevtools initialIsOpen={false} />
-        )}
-      </QueryClientProvider>
+      <div className="hub__desktop-app">
+        <QueryClientProvider client={queryClient}>
+          <CunninghamProvider currentLocale={i18n.language} theme="dsfr-light">
+            <ConfigProvider>
+              <AnalyticsProvider>
+                <Auth>{getLayout(<Component {...pageProps} />)}</Auth>
+              </AnalyticsProvider>
+            </ConfigProvider>
+          </CunninghamProvider>
+          <ToastContainer
+            position="top-center"
+            autoClose={5000}
+            hideProgressBar
+            newestOnTop
+            closeOnClick
+            pauseOnFocusLoss={false}
+            theme="light"
+          />
+          {process.env.NODE_ENV === "development" && (
+            <ReactQueryDevtools initialIsOpen={false} />
+          )}
+        </QueryClientProvider>
+      </div>
+      <section
+        className="hub__small-screen"
+        aria-labelledby="hub-small-screen-title"
+      >
+        <ChatEmptyIllustration variant="small-screen" />
+        <div className="hub__small-screen__copy">
+          <h1 id="hub-small-screen-title">{t("Screen too small")}</h1>
+          <p>
+            {t(
+              "This app isn't available at this size yet. Use a computer or widen your window for now. We're working on support for smaller screens.",
+            )}
+          </p>
+        </div>
+      </section>
     </>
   );
 }
