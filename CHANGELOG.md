@@ -8,6 +8,8 @@ and this project adheres to
 
 ### Added
 
+- 🔒️(docker) Publish development ports on `127.0.0.1` only.
+
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.
   Organize encryption settings into device and backup sections with contextual
