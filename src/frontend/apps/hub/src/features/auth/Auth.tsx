@@ -27,6 +27,26 @@ export const logout = async () => {
   posthog.reset();
 };
 
+const fetchCurrentUser = () =>
+  fetchAPI(`users/me/`, undefined, {
+    redirectOn40x: false,
+  });
+
+let currentUserRequested = false;
+let prefetchedCurrentUser: Promise<Response> | null = null;
+
+/**
+ * Starts the first `users/me` request together with the config request
+ * instead of after it: neither depends on the other. `Auth` reads it once.
+ */
+export const prefetchCurrentUser = () => {
+  if (currentUserRequested) return;
+  currentUserRequested = true;
+  prefetchedCurrentUser = fetchCurrentUser();
+  // `Auth` handles the failure when it reads the response.
+  prefetchedCurrentUser.catch(() => {});
+};
+
 export const login = (returnTo?: string) => {
   const url = authUrl({ returnTo });
   window.location.replace(url.href);
@@ -64,9 +84,10 @@ export const Auth = ({ children }: PropsWithChildren) => {
 
   const init = async () => {
     try {
-      const response = await fetchAPI(`users/me/`, undefined, {
-        redirectOn40x: false,
-      });
+      currentUserRequested = true;
+      const request = prefetchedCurrentUser ?? fetchCurrentUser();
+      prefetchedCurrentUser = null;
+      const response = await request;
       const data = (await response.json()) as User;
       if (user?.id && user.id !== data.id) {
         // Retire the entire old page before connecting a different Hub person:

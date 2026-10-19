@@ -20,6 +20,23 @@ export const matrixStorageKey = (
   return accountId === "default" ? ownedKey : `${ownedKey}:${accountId}`;
 };
 
+/** Whether this browser keeps a Matrix session, for any Hub person. */
+export const hasStoredMatrixSession = (): boolean => {
+  try {
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (
+        key === MATRIX_USER_STORAGE_KEY ||
+        key?.startsWith(`${MATRIX_USER_STORAGE_KEY}:`)
+      )
+        return true;
+    }
+  } catch {
+    // Unavailable storage only disables the preload.
+  }
+  return false;
+};
+
 /** Clears a search cache without loading or connecting a Matrix client. */
 export const clearStoredConversationSearch = async (
   accountId: AccountId,

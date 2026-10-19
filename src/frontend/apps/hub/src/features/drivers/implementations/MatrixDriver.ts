@@ -2486,9 +2486,12 @@ export class MatrixDriver extends Driver {
       syncStoreDbName: this.key(SYNC_STORE_DB_NAME),
       cryptoStoreDbName: this.cryptoStoreDbName(user),
       tokenRefreshFunction: this.buildTokenRefreshFunction(user),
-      onSyncStoreReady: async (client) => {
+      onSyncStoreReady: async (client, joinedRoomIds) => {
         assertActive();
         this.mx = client;
+        // The first conversation list reuses the startup `/joined_rooms`. A
+        // membership change from the sync clears it for the next read.
+        if (joinedRoomIds) this.joinedRoomIds = new Set(joinedRoomIds);
         this.security = new MatrixSecurity(
           client,
           this.settings,
@@ -2514,7 +2517,8 @@ export class MatrixDriver extends Driver {
     void mx
       .setDeviceDetails(user.deviceId!, { display_name: "Hub · navigateur" })
       .catch(() => {});
-    await this.refreshJoinedRoomIds(mx);
+    if (this.joinedRoomIds)
+      this.conversationSearch?.setJoinedRooms(this.joinedRoomIds);
     assertActive();
 
     // Bridge Matrix `/sync` onto the generic event stream, once, for the
