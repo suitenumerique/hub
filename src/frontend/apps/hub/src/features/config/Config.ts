@@ -1,7 +1,11 @@
 import { Driver } from "../drivers/Driver";
 import { LazyMatrixDriver } from "../drivers/implementations/LazyMatrixDriver";
 import type { AccountId, ChatAccountConfig } from "../drivers/types";
-import { MATRIX_LOCAL_SETTINGS } from "../matrix/config";
+import {
+  MATRIX_LOCAL_SETTINGS,
+  TCHAP_PREPROD_SETTINGS,
+  TCHAP_PROD_SETTINGS,
+} from "../matrix/config";
 
 export const MATRIX_LOCAL_ACCOUNT_ID = "matrix-local";
 
@@ -13,13 +17,51 @@ export const MATRIX_LOCAL_ACCOUNT: ChatAccountConfig = {
   settings: MATRIX_LOCAL_SETTINGS,
 };
 
+const MATRIX_ENVIRONMENTS = {
+  local: MATRIX_LOCAL_ACCOUNT,
+  "tchap-preprod": {
+    accountId: "tchap-preprod",
+    label: "Tchap (preprod)",
+    criticality: "required",
+    enabled: true,
+    // Tchap accounts are not provisioned from the Hub's identity provider.
+    identity: "account",
+    settings: TCHAP_PREPROD_SETTINGS,
+  },
+  "tchap-prod": {
+    accountId: "tchap-prod",
+    label: "Tchap",
+    criticality: "required",
+    enabled: true,
+    // Tchap accounts are not provisioned from the Hub's identity provider.
+    identity: "account",
+    settings: TCHAP_PROD_SETTINGS,
+  },
+} satisfies Record<string, ChatAccountConfig>;
+
+type MatrixEnvironment = keyof typeof MATRIX_ENVIRONMENTS;
+
+const isMatrixEnvironment = (value: string): value is MatrixEnvironment =>
+  Object.hasOwn(MATRIX_ENVIRONMENTS, value);
+
 /**
- * Runtime manifest. It intentionally remains an array: the registry, routes,
- * and caches stay ready for several explicitly configured Matrix accounts.
+ * Chat accounts of the environment set by the backend configuration
+ * (`FRONTEND_CHAT_ENVIRONMENT`), so one build serves every environment. `null`
+ * when it is missing or unknown: the chat never falls back to another one.
+ *
+ * The manifest intentionally remains an array: the registry, routes, and
+ * caches stay ready for several explicitly configured Matrix accounts. Each
+ * environment has its own account id, so its sessions, caches and crypto
+ * stores never mix with another environment's.
  */
-export const MATRIX_LOCAL_ACCOUNTS: ChatAccountConfig[] = [
-  MATRIX_LOCAL_ACCOUNT,
-];
+export const chatAccountsFor = (
+  environment: string | undefined,
+): ChatAccountConfig[] | null => {
+  const value = environment?.trim();
+  return value && isMatrixEnvironment(value)
+    ? [MATRIX_ENVIRONMENTS[value]]
+    : null;
+};
 
 export const createDriver = (
   accountId: AccountId,

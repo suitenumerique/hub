@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { MATRIX_LOCAL_ACCOUNTS } from "@/features/config/Config";
+import { chatAccountsFor } from "@/features/config/Config";
+import { useConfig } from "@/features/config/ConfigProvider";
 import {
   getRegistry,
   useDriverEntries,
@@ -9,15 +10,19 @@ import {
 import type { AccountId } from "@/features/drivers/types";
 
 /**
- * Reconciles the single runtime manifest. The manifest remains an array and the
- * registry remains account-scoped so another fixed Matrix server can be added
- * later without changing routes, hooks, or query keys.
+ * Reconciles the runtime manifest of the Matrix environment set by the backend
+ * configuration. The manifest remains an array and the registry remains
+ * account-scoped so another Matrix server can be added later without changing
+ * routes, hooks, or query keys.
  */
 export const useChatAccountsBootstrap = (
   sessionOwner: string | null = null,
 ) => {
   const entries = useDriverEntries();
   const queryClient = useQueryClient();
+  const { config } = useConfig();
+  const environment = config.FRONTEND_CHAT_ENVIRONMENT;
+  const accounts = useMemo(() => chatAccountsFor(environment), [environment]);
 
   useEffect(() => {
     // Message caches are account-scoped; remove the previous Hub user's views
@@ -28,13 +33,19 @@ export const useChatAccountsBootstrap = (
         (query.queryKey[0].startsWith("chat") ||
           query.queryKey[0].startsWith("conversation-search")),
     });
-    getRegistry().reconcile(MATRIX_LOCAL_ACCOUNTS, sessionOwner);
+    if (accounts) {
+      getRegistry().reconcile(accounts, sessionOwner);
+    }
     return () => getRegistry().destroyAll();
-  }, [queryClient, sessionOwner]);
+  }, [accounts, queryClient, sessionOwner]);
 
+  const enabledCount =
+    accounts?.filter((account) => account.enabled).length ?? 0;
   return {
+    /** The backend sets no known chat environment: the chat cannot start. */
+    isUnconfigured: accounts === null,
     isReconciling:
-      entries.length !== MATRIX_LOCAL_ACCOUNTS.length ||
+      entries.length !== enabledCount ||
       entries.some((entry) => entry.sessionOwner !== sessionOwner),
   };
 };

@@ -15,6 +15,12 @@ export type ChatAccountConfig = {
   criticality: "required" | "optional";
   enabled: boolean;
   settings?: Record<string, unknown>;
+  /**
+   * Who the user is on this account. `"hub"` (default): the Hub user, as on a
+   * chat server provisioned from the Hub's identity provider. `"account"`: an
+   * identity of its own (Tchap), shown from the driver's `getChatProfile`.
+   */
+  identity?: "hub" | "account";
 };
 
 export type User = {
@@ -138,6 +144,8 @@ export type ApiConfig = {
   POSTHOG_KEY?: string;
   POSTHOG_HOST?: string;
   FRONTEND_THEME?: string;
+  /** Chat environment: `local`, `tchap-preprod` or `tchap-prod`. */
+  FRONTEND_CHAT_ENVIRONMENT?: string;
   FRONTEND_HIDE_GAUFRE?: boolean;
   FRONTEND_SILENT_LOGIN_ENABLED?: boolean;
   FRONTEND_EXTERNAL_HOME_URL?: string;
@@ -346,10 +354,8 @@ export type ChatThreadMutationResult = {
 };
 
 /**
- * Content of a user from the chat engine
+ * The user connected to a chat account. Credentials stay inside the driver.
  */
 export type ChatLocalUser = {
   userId: string;
-  accessToken: string;
-  refreshToken?: string;
 };
