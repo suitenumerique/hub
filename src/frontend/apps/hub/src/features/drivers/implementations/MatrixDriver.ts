@@ -210,6 +210,8 @@ const DECRYPTION_REFRESH_DELAY_MS = 50;
 const MAX_TIMELINE_PAGINATION_STEPS = 200;
 const TIMELINE_WINDOW_LIMIT = Number.MAX_SAFE_INTEGER;
 const MATRIX_TYPING_TIMEOUT_MS = 30_000;
+// Like Element, share a room's key at most once a minute while the user types.
+const PREPARE_TO_ENCRYPT_INTERVAL_MS = 60_000;
 /** Reaction checks of loaded pages asked to the homeserver at once, at most. */
 const REACTION_CHECK_CONCURRENCY = 4;
 
@@ -465,6 +467,8 @@ export class MatrixDriver extends Driver {
   private sentThreadReplyEventIds = new Set<string>();
   /** Homeserver upload limit in bytes, read once per client. */
   private mediaUploadLimit: Promise<number | null> | null = null;
+  /** When each room's key was last prepared for an upcoming send. */
+  private encryptionPreparedAt = new Map<string, number>();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
   /** Parsed per-account config; source of truth for the fixed server and OIDC. */
@@ -2262,6 +2266,28 @@ export class MatrixDriver extends Driver {
     await mx.sendTyping(chatId, isTyping, MATRIX_TYPING_TIMEOUT_MS);
   }
 
+  /**
+   * Shares the room key with the members' devices while the user types, as
+   * Element does: the first message of a conversation no longer waits for the
+   * member list, device queries and key sharing.
+   */
+  override prepareChatSend(chatId: string): void {
+    const mx = this.mx;
+    const room = mx?.getRoom(chatId);
+    if (
+      !mx ||
+      !room ||
+      roomSecurity(room) !== "encrypted" ||
+      !this.securitySnapshot.canSendEncrypted
+    )
+      return;
+    const now = Date.now();
+    const preparedAt = this.encryptionPreparedAt.get(chatId) ?? 0;
+    if (now - preparedAt < PREPARE_TO_ENCRYPT_INTERVAL_MS) return;
+    this.encryptionPreparedAt.set(chatId, now);
+    mx.getCrypto()?.prepareToEncrypt(room);
+  }
+
   async sendChatThreadReply({
     chatId,
     threadId,
@@ -3549,6 +3575,7 @@ export class MatrixDriver extends Driver {
     this.reactionChecksInFlight.clear();
     this.reactionToggledAt.clear();
     this.mediaUploadLimit = null;
+    this.encryptionPreparedAt.clear();
     this.confirmedMainReadBoundaries.clear();
   }
 

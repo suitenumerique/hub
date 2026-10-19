@@ -496,6 +496,14 @@ export abstract class Driver {
   }
 
   /**
+   * The user started composing in this conversation. A driver may prepare the
+   * next send ahead of time, so sending only posts the message. Best effort.
+   */
+  prepareChatSend(_chatId: string): void {
+    void _chatId;
+  }
+
+  /**
    * Subscribes to the current typers of one conversation. This deliberately
    * stays outside React Query: typing is ephemeral and must never enter an
    * infinite timeline cache or survive a page reload.
