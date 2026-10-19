@@ -16,6 +16,8 @@ and this project adheres to
 - 🔧(docker) Serve the Hub at `https://hub.localhost:9814` for Tchap sign-in in
   development, with `make run-tchap` and a local certificate authority.
 - 🔒️(docker) Publish development ports on `127.0.0.1` only.
+- 🐛(frontend) Keep direct conversation names when the homeserver leaves a
+  member out of the room state, and never show a Matrix id as a name.
 
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.
