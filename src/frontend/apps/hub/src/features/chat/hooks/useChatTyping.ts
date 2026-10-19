@@ -258,6 +258,8 @@ export const useChatTyping = (
     }
     if (!session.active) {
       session.active = true;
+      // A message is coming: let the driver prepare the send meanwhile.
+      session.driver.prepareChatSend(session.chatId);
       sendTyping(session, true);
       session.refreshTimer = window.setInterval(
         () => sendTyping(session, true),

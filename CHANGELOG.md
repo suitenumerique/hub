@@ -24,6 +24,9 @@ and this project adheres to
   conversations, then conversations named after their members.
 - ✨(frontend) Ignore accents in the conversation search: "general" finds
   "Général".
+- ⚡️(frontend) Empty the composer as soon as a message is sent and put it back
+  if sending fails. Share encryption keys while typing and skip waiting for
+  the typing notice, so encrypted messages leave faster.
 - 🐛(frontend) Keep messages still while scrolling up: measure rows before
   they are painted and load older pages before the top is reached.
 - 🐛(frontend) Decrypt older messages before showing them, so they no longer
