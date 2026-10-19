@@ -24,6 +24,10 @@ and this project adheres to
   conversations, then conversations named after their members.
 - ✨(frontend) Ignore accents in the conversation search: "general" finds
   "Général".
+- 🐛(frontend) Keep messages still while scrolling up: measure rows before
+  they are painted and load older pages before the top is reached.
+- 🐛(frontend) Decrypt older messages before showing them, so they no longer
+  stay stuck on "Encrypted message awaiting decryption…".
 - 💄(frontend) Show a Tchap splash screen with a loading bar while the Hub
   and the chat connection start.
 - ⚡️(frontend) Start the chat faster: load the encryption module and the
