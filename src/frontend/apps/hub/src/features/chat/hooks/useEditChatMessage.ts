@@ -38,6 +38,7 @@ const rollbackOptimisticEdit = (
     ? {
         ...current,
         content: previous.content,
+        htmlContent: previous.htmlContent,
         isEdited: previous.isEdited,
       }
     : current;

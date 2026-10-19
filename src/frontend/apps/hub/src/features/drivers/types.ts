@@ -261,6 +261,12 @@ export type ChatMessage = {
   authorId: string;
   /** Text of the message, or the caption of an attachment (often empty). */
   content: string;
+  /**
+   * Formatted version of `content`: untrusted HTML in the Matrix
+   * `org.matrix.custom.html` subset. Render it only through `MessageContent`;
+   * `content` stays the plain text for previews, copy and editing.
+   */
+  htmlContent?: string;
   /** Present when the message carries a file instead of plain text. */
   attachment?: ChatAttachment;
   /** ISO 8601 string. Use `formatChatTime` from @/features/chat/formatTimestamp for display. */
