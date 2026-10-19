@@ -25,6 +25,7 @@
 @use "./../features/chat/components/ChatView.scss";
 @use "./../features/chat/components/NewChatView.scss";
 @use "./../features/chat/components/ChatInvitation.scss";
+@use "./small-screen.scss";
 @use "./../features/chat/components/FluentEmoji.scss";
 @use "./../features/chat/components/MessageHoverToolbar.scss";
 @use "./../features/chat/components/TypingIndicator.scss";
