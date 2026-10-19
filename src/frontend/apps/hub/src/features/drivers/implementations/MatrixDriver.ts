@@ -1788,6 +1788,37 @@ export class MatrixDriver extends Driver {
     // Idempotent in the SDK and required even when one thread arrived via sync:
     // otherwise `getThreads()` can be a partial list.
     await this.loadAllRoomThreads(mx, room);
+    return this.mapRoomThreads(mx, room);
+  }
+
+  /**
+   * Unread threads from memory, as Element's room thread indicator reads
+   * them: the threads the client knows and the homeserver's per-thread
+   * notification counts. Like Element's thread panel, the full list loads
+   * only when the threads panel opens, unless the homeserver counts unread
+   * replies in a thread that is not in memory yet.
+   */
+  async getChatUnreadThreads(chatId: string): Promise<ChatThread[]> {
+    const { mx, room } = this.requireRoom("getChatUnreadThreads", chatId);
+    const threadNotifications =
+      room.getUnreadNotificationCount() - room.getRoomUnreadNotificationCount();
+    const knownThreadNotifications = room
+      .getThreads()
+      .reduce(
+        (count, thread) =>
+          count + room.getThreadUnreadNotificationCount(thread.id),
+        0,
+      );
+    if (threadNotifications > knownThreadNotifications) {
+      await this.loadAllRoomThreads(mx, room);
+    }
+    return this.mapRoomThreads(mx, room).filter(
+      (thread) => thread.unreadCount > 0,
+    );
+  }
+
+  /** The room threads in memory, ordered by their latest reply. */
+  private mapRoomThreads(mx: MatrixClient, room: Room): ChatThread[] {
     const selfUserId = mx.getUserId() ?? undefined;
     return room
       .getThreads()
