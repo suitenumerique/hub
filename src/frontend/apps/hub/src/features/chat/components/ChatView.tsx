@@ -15,6 +15,7 @@ import type {
   ChatAttachment,
   ChatComposedMessage,
   ChatRef,
+  ChatUser,
 } from "@/features/drivers/types";
 
 import {
@@ -39,6 +40,7 @@ import { useUploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useCanSendToChat, useChatSecurity } from "../hooks/useChatSecurity";
 import { useChatTyping } from "../hooks/useChatTyping";
 import { useEditChatMessage } from "../hooks/useEditChatMessage";
+import type { ComposerMentionSource } from "../hooks/useMentionCandidates";
 import { useChatMessagesLoaded } from "../hooks/useChatMessages";
 import { useIgnoreStrayFileDrops } from "../hooks/useIgnoreStrayFileDrops";
 import { useChatUnreadThreads } from "../hooks/useChatUnreadThreads";
@@ -86,6 +88,8 @@ type ChatViewProps = {
   canComposeDraft?: boolean;
   /** Account of that draft, so files can be uploaded before it exists. */
   draftAccountId?: AccountId;
+  /** People chosen for that draft, the only ones `@` can mention in it. */
+  draftParticipants?: readonly ChatUser[];
   /**
    * Resolves or creates that conversation, then sends the draft text or one
    * of its files.
@@ -110,9 +114,22 @@ export const ChatView = ({
   composerFocusSignal,
   canComposeDraft = false,
   draftAccountId,
+  draftParticipants,
   onSubmitDraft,
 }: ChatViewProps) => {
   const { t } = useTranslation();
+  const mentionSource = useMemo<ComposerMentionSource | undefined>(() => {
+    if (chatRef) {
+      return { accountId: chatRef.accountId, chatRef };
+    }
+    return draftAccountId && draftParticipants?.length
+      ? {
+          accountId: draftAccountId,
+          chatRef: null,
+          participants: draftParticipants,
+        }
+      : undefined;
+  }, [chatRef, draftAccountId, draftParticipants]);
   const { chat } = useChat(chatRef);
   const canSendToChat = useCanSendToChat(chatRef);
   const composerAccountId = useComposerAccountId();
@@ -407,6 +424,7 @@ export const ChatView = ({
                           canUploadAttachments ? uploadAttachment : undefined
                         }
                         dropTargetRef={mainRef}
+                        mentions={mentionSource}
                       />
                     </div>
                   </div>

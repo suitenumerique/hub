@@ -18,17 +18,26 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { ChatSecuritySendError } from "@/features/drivers/security";
-import type { ChatAttachment } from "@/features/drivers/types";
+import type {
+  ChatAttachment,
+  ChatComposedMessage,
+} from "@/features/drivers/types";
 import { notify } from "@/features/ui/components/toast";
 
 import { MAX_PENDING_ATTACHMENTS } from "../attachments";
+import { EMPTY_DRAFT, joinDrafts, trimDraft } from "../composer/composerDraft";
+import { mentionsFromFormattedBody } from "../composer/editDraftMentions";
+import { serializeComposerDraft } from "../composer/serializeComposerDraft";
 import type { UploadChatAttachment } from "../hooks/useChatAttachmentActions";
+import { useComposerDraft } from "../hooks/useComposerDraft";
+import { useMentionAutocomplete } from "../hooks/useMentionAutocomplete";
+import type { ComposerMentionSource } from "../hooks/useMentionCandidates";
 import { usePendingAttachments } from "../hooks/usePendingAttachments";
 import { securityFailureMessage } from "../securityMessages";
 
 import { ComposerAttachments } from "./ComposerAttachments";
-
-const TYPING_STOP_WAIT_MS = 400;
+import { ComposerMentionBackdrop } from "./ComposerMentionBackdrop";
+import { MentionAutocomplete } from "./MentionAutocomplete";
 
 type ChatComposerProps = {
   /** Input placeholder. Defaults to the conversation composer wording. */
@@ -53,9 +62,10 @@ type ChatComposerProps = {
   focusSignal?: number;
   /** Message shown in the error toast on send failure. Defaults to a generic one. */
   errorMessage?: string;
-  onSubmit?: (content: string) => Promise<unknown> | unknown;
+  /** Receives the text as typed and its formatted version (markdown, mentions). */
+  onSubmit?: (message: ChatComposedMessage) => Promise<unknown> | unknown;
   /** Message whose current text should be edited by this composer. */
-  editDraft?: { id: string; content: string } | null;
+  editDraft?: { id: string; content: string; htmlContent?: string } | null;
   onCancelEdit?: () => void;
   /** Reports real keyboard input for volatile typing notifications. */
   onTypingActivity?: (hasText: boolean) => Promise<unknown> | unknown;
@@ -81,6 +91,8 @@ type ChatComposerProps = {
    * conversation or thread. Defaults to the composer itself.
    */
   dropTargetRef?: RefObject<HTMLElement | null>;
+  /** People `@` offers to mention; without it, `@` is plain text. */
+  mentions?: ComposerMentionSource;
 };
 
 const hasDraggedFiles = (event: DragEvent) =>
@@ -103,17 +115,30 @@ export const ChatComposer = ({
   onUploadAttachment,
   onSubmitted,
   dropTargetRef,
+  mentions,
 }: ChatComposerProps) => {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [draft, setDraft] = useState("");
+  const {
+    draft,
+    draftRef,
+    setDraft,
+    onChange: onDraftChange,
+    onKeyDown: onDraftKeyDown,
+    onSelect: onDraftSelect,
+    onPointerDown,
+    onPointerUp,
+    insertMention,
+  } = useComposerDraft(inputRef);
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const lastConcreteConversationId = useRef(conversationId);
   const handledFocusSignalRef = useRef<number | undefined>(undefined);
-  const trimmedDraft = useMemo(() => draft.trim(), [draft]);
+  const trimmedDraft = useMemo(() => draft.text.trim(), [draft.text]);
   const {
     items: pendingItems,
     addFiles: queueFiles,
@@ -124,6 +149,13 @@ export const ChatComposer = ({
     hasRefusedFiles,
   } = usePendingAttachments(onUploadAttachment);
   const isBusy = isSubmitting || isSubmittingDraft;
+  const autocomplete = useMentionAutocomplete({
+    source: mentions,
+    inputRef,
+    draftRef,
+    insertMention,
+    disabled: disabled || isSubmitting,
+  });
   // An edit only replaces text: queued files stay aside until it is done.
   const showsAttachments = Boolean(onSendAttachment) && !editDraft;
   const canAttach =
@@ -153,6 +185,14 @@ export const ChatComposer = ({
     input.style.height = "auto";
     if (input.value) {
       input.style.height = `${input.scrollHeight}px`;
+    }
+    // The mention highlights wrap and scroll like the text above them.
+    editorRef.current?.style.setProperty(
+      "--hub-composer-scrollbar-width",
+      `${input.offsetWidth - input.clientWidth}px`,
+    );
+    if (backdropRef.current) {
+      backdropRef.current.scrollTop = input.scrollTop;
     }
   }, []);
 
@@ -193,17 +233,23 @@ export const ChatComposer = ({
       lastConcreteConversationId.current &&
       lastConcreteConversationId.current !== conversationId
     ) {
-      setDraft("");
+      setDraft(EMPTY_DRAFT);
       clearAttachments();
     }
     lastConcreteConversationId.current = conversationId;
-  }, [clearAttachments, conversationId]);
+  }, [clearAttachments, conversationId, setDraft]);
 
   useEffect(() => {
     if (!editDraft) {
       return;
     }
-    setDraft(editDraft.content);
+    setDraft({
+      text: editDraft.content,
+      mentions: mentionsFromFormattedBody(
+        editDraft.content,
+        editDraft.htmlContent,
+      ),
+    });
     const raf = requestAnimationFrame(() => {
       if (document.querySelector('[role="dialog"]')) return;
       inputRef.current?.focus();
@@ -317,10 +363,11 @@ export const ChatComposer = ({
       onSubmit,
       onSubmitted,
       onTypingActivity,
+      draftRef,
       readyAttachments,
       removeAttachment,
+      setDraft,
       t,
-      trimmedDraft,
     ],
   );
 
@@ -406,13 +453,23 @@ export const ChatComposer = ({
   const submitLabel = editDraft ? t("Save changes") : t("Send message");
 
   const cancelEdit = useCallback(() => {
-    setDraft("");
+    setDraft(EMPTY_DRAFT);
     void onTypingActivity?.(false);
     onCancelEdit?.();
-  }, [onCancelEdit, onTypingActivity]);
+  }, [onCancelEdit, onTypingActivity, setDraft]);
 
   return (
     <div className="hub__chat-composer-container" ref={containerRef}>
+      {autocomplete.isOpen && mentions && (
+        <MentionAutocomplete
+          id={autocomplete.listId}
+          accountId={mentions.accountId}
+          items={autocomplete.items}
+          selectedIndex={autocomplete.selectedIndex}
+          optionId={autocomplete.optionId}
+          onConfirm={autocomplete.confirm}
+        />
+      )}
       {editDraft && (
         <div className="hub__chat-composer-edit" role="status">
           <span className="hub__chat-composer-edit__label">
@@ -446,51 +503,87 @@ export const ChatComposer = ({
             }
           />
           <div className="hub__chat-composer__field">
-            <textarea
-              ref={inputRef}
-              rows={1}
-              className="hub__chat-composer__input"
-              placeholder={placeholder ?? t("Your message")}
-              aria-label={inputLabel ?? t("Message")}
-              enterKeyHint="send"
-              value={draft}
-              disabled={disabled}
-              readOnly={isBusy}
-              aria-busy={isBusy || undefined}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                setDraft(value);
-                void onTypingActivity?.(value.trim().length > 0);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape" && editDraft) {
-                  event.preventDefault();
-                  cancelEdit();
-                  return;
-                }
-                if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
-              onPaste={(event) => {
-                // Pasted screenshots arrive as files only; rich text that also
-                // carries an image keeps its normal text paste.
-                const { files, types } = event.clipboardData;
-                if (
-                  canAttach &&
-                  files.length > 0 &&
-                  !types.includes("text/plain")
-                ) {
-                  event.preventDefault();
-                  addFiles(files);
-                }
-              }}
-            />
+            <div className="hub__chat-composer__editor" ref={editorRef}>
+              {draft.mentions.length > 0 && (
+                <ComposerMentionBackdrop ref={backdropRef} draft={draft} />
+              )}
+              <textarea
+                ref={inputRef}
+                rows={1}
+                className="hub__chat-composer__input"
+                placeholder={placeholder ?? t("Your message")}
+                aria-label={inputLabel ?? t("Message")}
+                enterKeyHint="send"
+                value={draft.text}
+                disabled={disabled}
+                readOnly={isSubmitting}
+                aria-busy={isBusy || undefined}
+                {...(mentions
+                  ? {
+                      "aria-autocomplete": "list",
+                      "aria-haspopup": "listbox",
+                      "aria-expanded": autocomplete.isOpen,
+                      "aria-controls": autocomplete.isOpen
+                        ? autocomplete.listId
+                        : undefined,
+                      "aria-activedescendant": autocomplete.activeOptionId,
+                    }
+                  : {})}
+                onChange={(event) => {
+                  const next = onDraftChange(event);
+                  autocomplete.onInput(
+                    (event.nativeEvent as InputEvent).inputType ?? "",
+                    next,
+                    event.currentTarget.selectionEnd,
+                  );
+                  void onTypingActivity?.(next.text.trim().length > 0);
+                }}
+                onSelect={() => {
+                  onDraftSelect();
+                  autocomplete.onSelectionChange();
+                }}
+                onBlur={autocomplete.onBlur}
+                onPointerDown={onPointerDown}
+                onPointerUp={onPointerUp}
+                onScroll={(event) => {
+                  if (backdropRef.current) {
+                    backdropRef.current.scrollTop =
+                      event.currentTarget.scrollTop;
+                  }
+                }}
+                onKeyDown={(event) => {
+                  // An input method composing text owns its keys, Enter included.
+                  if (event.nativeEvent.isComposing || event.keyCode === 229) {
+                    return;
+                  }
+                  if (autocomplete.onKeyDown(event) || onDraftKeyDown(event)) {
+                    return;
+                  }
+                  if (event.key === "Escape" && editDraft) {
+                    event.preventDefault();
+                    cancelEdit();
+                    return;
+                  }
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                onPaste={(event) => {
+                  // Pasted screenshots arrive as files only; rich text that also
+                  // carries an image keeps its normal text paste.
+                  const { files, types } = event.clipboardData;
+                  if (
+                    canAttach &&
+                    files.length > 0 &&
+                    !types.includes("text/plain")
+                  ) {
+                    event.preventDefault();
+                    addFiles(files);
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
         <div className="hub__chat-composer__actions">

@@ -188,8 +188,13 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     }
   }, [attachment, downloadAttachment]);
   const onEdit = useCallback(
-    () => startEditing({ id: messageId, content: props.content }),
-    [messageId, props.content, startEditing],
+    () =>
+      startEditing({
+        id: messageId,
+        content: props.content,
+        htmlContent: props.htmlContent,
+      }),
+    [messageId, props.content, props.htmlContent, startEditing],
   );
   const onDelete = useCallback(
     () => deleteMessage(messageForAction),

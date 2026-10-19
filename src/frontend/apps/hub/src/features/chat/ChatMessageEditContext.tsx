@@ -3,6 +3,8 @@ import { createContext, ReactNode, useContext } from "react";
 export type EditingChatMessage = {
   id: string;
   content: string;
+  /** Formatted body, where the composer finds the message's mentions back. */
+  htmlContent?: string;
 };
 
 type ChatMessageEditContextValue = {

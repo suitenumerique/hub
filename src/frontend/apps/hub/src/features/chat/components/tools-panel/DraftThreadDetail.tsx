@@ -45,6 +45,10 @@ export const DraftThreadDetail = ({
 }: DraftThreadDetailProps) => {
   const { t } = useTranslation();
   const canSend = useCanSendToChat(chatRef);
+  const mentionSource = useMemo(
+    () => ({ accountId: chatRef.accountId, chatRef }),
+    [chatRef],
+  );
   const { startThread, isStarting, isSupported } = useStartChatThread(chatRef);
   // The draft root is a snapshot from when Reply was clicked. Subscribe to
   // its cached message so reactions stay live before the first reply is sent.
@@ -159,6 +163,7 @@ export const DraftThreadDetail = ({
             onUploadAttachment={isSupported ? uploadAttachment : undefined}
             dropTargetRef={detailRef}
             onSubmitted={openCreatedThread}
+            mentions={mentionSource}
           />
         </div>
       </div>

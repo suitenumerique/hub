@@ -308,11 +308,20 @@ const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   userId: user.mxId,
 });
 
-const toChatMember = (member: RoomMember): ChatMember => ({
-  id: member.userId,
-  name: member.name || member.userId,
-  secondaryText: member.userId,
-});
+const toChatMember = (
+  member: RoomMember,
+  currentUserId: string | undefined,
+): ChatMember => {
+  const avatarUrl = mxcUrl(member.getMxcAvatarUrl());
+  return {
+    id: member.userId,
+    name: member.name || member.userId,
+    secondaryText: member.userId,
+    rawName: member.rawDisplayName || member.name || member.userId,
+    ...(avatarUrl ? { avatarUrl } : {}),
+    ...(member.userId === currentUserId ? { isCurrentUser: true } : {}),
+  };
+};
 
 const sortChatMembers = (
   members: ChatMember[],
@@ -577,13 +586,13 @@ export class MatrixDriver extends Driver {
       present: sortChatMembers(
         members
           .filter((member) => member.membership === KnownMembership.Join)
-          .map(toChatMember),
+          .map((member) => toChatMember(member, currentUserId)),
         currentUserId,
       ),
       pendingInvites: sortChatMembers(
         members
           .filter((member) => member.membership === KnownMembership.Invite)
-          .map(toChatMember),
+          .map((member) => toChatMember(member, currentUserId)),
         currentUserId,
       ),
     };

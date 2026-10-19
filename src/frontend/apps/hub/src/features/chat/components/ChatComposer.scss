@@ -1,4 +1,23 @@
+// Text metrics the textarea and its mention highlight layer share, so each
+// highlight lands under its name.
+@mixin composer-text-metrics {
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  padding: var(--c--globals--spacings--4xs, 2px) 0;
+  font: inherit;
+  font-size: 16px;
+  line-height: 22px;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 8;
+}
+
+// Anchors the `@` suggestions floating above the composer.
 .hub__chat-composer-container {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -220,22 +239,51 @@
     pointer-events: none;
   }
 
+  &__editor {
+    position: relative;
+  }
+
+  // Repeats the text invisibly behind the textarea to paint the mentions.
+  &__backdrop {
+    @include composer-text-metrics;
+    position: absolute;
+    inset: 0;
+    right: var(--hub-composer-scrollbar-width, 0px);
+    overflow: hidden;
+    color: transparent;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  &__mention {
+    border-radius: 4px;
+    background: var(
+      --c--contextuals--background--semantic--brand--secondary,
+      #dde3fc
+    );
+    // Room around the name without moving the text.
+    box-shadow:
+      -2px 0 0 0
+        var(--c--contextuals--background--semantic--brand--secondary, #dde3fc),
+      2px 0 0 0
+        var(--c--contextuals--background--semantic--brand--secondary, #dde3fc);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
   &__input {
+    @include composer-text-metrics;
+    position: relative;
+    z-index: 1;
     display: block;
-    box-sizing: border-box;
     width: 100%;
     // Eight 22px text rows plus the 2px vertical padding on each side.
     max-height: 180px;
     appearance: none;
     background: transparent;
-    border: 0;
-    padding: var(--c--globals--spacings--4xs, 2px) 0;
     resize: none;
     overflow-x: hidden;
     overflow-y: auto;
-    font: inherit;
-    font-size: 16px;
-    line-height: 22px;
     color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
 
     &::placeholder {

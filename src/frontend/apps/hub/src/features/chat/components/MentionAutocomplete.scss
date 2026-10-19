@@ -1,0 +1,66 @@
+// `@` suggestions, floating above the composer over the typing indicator and
+// banners (z-index 2) and the hover toolbars (3), below the header (5).
+.hub__mention-autocomplete {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: calc(100% + var(--c--globals--spacings--xxxs, 4px));
+  left: 0;
+  // Five rows, then the list scrolls.
+  max-height: calc(5 * 42px + 2 * var(--c--globals--spacings--xxxs, 4px));
+  margin: 0;
+  padding: var(--c--globals--spacings--xxxs, 4px);
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+  border-radius: var(--c--globals--spacings--xs, 8px);
+  background: var(--c--contextuals--background--surface--secondary, #fff);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+  font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+
+  &__option {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xs, 8px);
+    min-height: 42px;
+    padding: var(--c--globals--spacings--xxxs, 4px)
+      var(--c--globals--spacings--xs, 8px);
+    border-radius: 4px;
+    cursor: pointer;
+
+    &:hover,
+    &--selected {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+  }
+
+  &__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__name,
+  &__id {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__name {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__id {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  }
+}
