@@ -26,7 +26,7 @@ import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
 import { useEditChatMessage } from "../../hooks/useEditChatMessage";
 import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
-import { useCanSendToChat } from "../../hooks/useChatSecurity";
+import { useChatSendState } from "../../hooks/useChatSecurity";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
 import { ChatEncryptionPrompt } from "../ChatEncryptionPrompt";
@@ -52,7 +52,7 @@ export const ThreadDetail = ({
   composerFocusSignal,
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
-  const canSend = useCanSendToChat(chatRef);
+  const sendState = useChatSendState(chatRef);
   const mentionSource = useMemo(
     () => ({ accountId: chatRef.accountId, chatRef }),
     [chatRef],
@@ -277,7 +277,9 @@ export const ThreadDetail = ({
           })}
         </div>
         <div className="hub__thread-detail__composer">
-          {!canSend && <ChatEncryptionPrompt accountId={chatRef.accountId} />}
+          {sendState === "blocked" && (
+            <ChatEncryptionPrompt accountId={chatRef.accountId} />
+          )}
           <ChatComposer
             conversationId={threadId}
             placeholder={
@@ -286,7 +288,7 @@ export const ThreadDetail = ({
                 : t("Replying isn't available on this account yet.")
             }
             inputLabel={t("Answer")}
-            disabled={!isSupported || !canSend}
+            disabled={!isSupported || sendState === "blocked"}
             isSubmitting={isSending || isEditing}
             focusSignal={isOpen ? composerFocusSignal : undefined}
             errorMessage={
@@ -296,7 +298,7 @@ export const ThreadDetail = ({
             }
             editDraft={editingMessage}
             onCancelEdit={() => setEditingMessage(null)}
-            onSubmit={handleSubmit}
+            onSubmit={sendState === "checking" ? undefined : handleSubmit}
             onSendAttachment={handleSendAttachment}
             onUploadAttachment={isSupported ? uploadAttachment : undefined}
             dropTargetRef={detailRef}
