@@ -40,7 +40,7 @@ import { useChatTyping } from "../hooks/useChatTyping";
 import { useEditChatMessage } from "../hooks/useEditChatMessage";
 import { useChatMessagesLoaded } from "../hooks/useChatMessages";
 import { useIgnoreStrayFileDrops } from "../hooks/useIgnoreStrayFileDrops";
-import { useChatThreads } from "../hooks/useChatThreads";
+import { useChatUnreadThreads } from "../hooks/useChatUnreadThreads";
 import { useSendChatMessage } from "../hooks/useSendChatMessage";
 
 import { ChatAttachmentPreview } from "./ChatAttachmentPreview";
@@ -444,7 +444,10 @@ export const ChatView = ({
 };
 
 const ConversationUnreadBanner = ({ chatRef }: { chatRef: ChatRef }) => {
-  const { unreadThreads } = useChatThreads(chatRef);
+  // Read after the messages. The full thread list loads with its panel.
+  const unreadThreads = useChatUnreadThreads(chatRef, {
+    enabled: useChatMessagesLoaded(chatRef),
+  });
 
   if (unreadThreads.length === 0) {
     return null;

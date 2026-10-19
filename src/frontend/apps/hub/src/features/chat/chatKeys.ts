@@ -26,6 +26,9 @@ export const chatKeys = {
     ["chat-main-timeline-unread", ref.accountId, ref.chatId] as const,
   threads: (ref: ChatRef) =>
     ["chat-threads", ref.accountId, ref.chatId] as const,
+  /** Under `threads`, so every thread list invalidation also refreshes it. */
+  unreadThreads: (ref: ChatRef) =>
+    ["chat-threads", ref.accountId, ref.chatId, "unread"] as const,
   thread: (ref: ChatRef, threadId: string) =>
     ["chat-thread", ref.accountId, ref.chatId, threadId] as const,
   threadDetails: (ref: ChatRef) =>
