@@ -1,9 +1,10 @@
 # Local Matrix Chat Runtime
 
-The Hub frontend currently exposes one chat account: `matrix-local`. It connects
-to the local Synapse homeserver at `http://localhost:9808` through the
-pre-registered MAS OAuth client. There is no runtime server selector, remote
-homeserver discovery, or fallback chat data.
+By default, the Hub frontend exposes one chat account: `matrix-local`. It
+connects to the local Synapse homeserver at `http://localhost:9808` through the
+pre-registered MAS OAuth client. There is no runtime server selector or fallback
+chat data. To run the chat against Tchap preprod or prod instead, see
+[Connect the chat to Tchap](tchap-connection.md).
 
 ## Start the Runtime
 
@@ -26,16 +27,22 @@ stack and its databases remain managed by the existing Compose overlay.
 
 ## Runtime Manifest
 
-`features/config/Config.ts` defines the only active account and passes its fixed
-settings to `LazyMatrixDriver`:
+`features/config/Config.ts` builds the active account from the backend setting
+`FRONTEND_CHAT_ENVIRONMENT`, read from `/api/v1.0/config/` (`local` in
+`env.d/development/common`), and passes its settings to `LazyMatrixDriver`.
+Without a known value, the chat refuses to start. The `local` environment uses
+fixed settings:
 
 - account id: `matrix-local`;
 - homeserver: `http://localhost:9808`;
 - server name: `localhost`;
 - OAuth client: the client pre-registered in MAS.
 
-Malformed or incomplete Matrix settings fail explicitly. The frontend never
-selects another driver from a query parameter or environment variable.
+The `tchap-preprod` and `tchap-prod` environments discover the homeserver from
+the user's email instead ([Tchap connection](tchap-connection.md)).
+
+Malformed or incomplete Matrix settings, or an unknown environment, fail
+explicitly. The frontend never selects another driver from a query parameter.
 
 ## Preserved Extension Seams
 
@@ -70,6 +77,6 @@ no query and exposes no sample file or preview.
 
 The driver obtains delegated-auth metadata from the fixed homeserver and builds
 the authorization URL with the configured MAS client id. Dynamic client
-registration is not supported. OIDC sessions and refresh tokens remain
+registration is used only by the Tchap environments. OIDC sessions and refresh tokens remain
 persisted per account and user, while Matrix sync and crypto keep their
 account-scoped IndexedDB stores.
