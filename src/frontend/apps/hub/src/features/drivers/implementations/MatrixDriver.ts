@@ -23,6 +23,7 @@ import {
   type SyncStateData,
   type Thread,
   ThreadEvent,
+  ThreepidMedium,
   TimelineWindow,
 } from "matrix-js-sdk/lib/matrix";
 import { HttpApiEvent } from "matrix-js-sdk/lib/http-api";
@@ -645,6 +646,32 @@ export class MatrixDriver extends Driver {
       )
       .slice(0, PEOPLE_SEARCH_DISPLAY_LIMIT)
       .map(matrixDirectoryUserToChatUser);
+  }
+
+  /**
+   * The signed-in user's Matrix profile, as Tchap's user menu shows it. The
+   * secondary line is the account email when the homeserver lists one, else
+   * the Matrix id.
+   */
+  async getChatProfile(): Promise<ChatUser> {
+    const mx = this.requireClient("getChatProfile");
+    const userId = mx.getSafeUserId();
+    const [profile, threepids] = await Promise.all([
+      mx.getProfileInfo(userId),
+      mx.getThreePids().then(
+        (response) => response.threepids,
+        () => [],
+      ),
+    ]);
+    const user = matrixDirectoryUserToChatUser({
+      user_id: userId,
+      display_name: profile.displayname,
+      avatar_url: profile.avatar_url,
+    });
+    const email = threepids.find(
+      (threepid) => threepid.medium === ThreepidMedium.Email,
+    )?.address;
+    return email ? { ...user, email, subtitle: email } : user;
   }
 
   /**

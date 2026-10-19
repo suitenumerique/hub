@@ -293,6 +293,10 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.downloadChatAttachment(params));
   }
 
+  async getChatProfile(): Promise<ChatUser> {
+    return this.withTarget((driver) => driver.getChatProfile());
+  }
+
   async getChatAvatar(params: GetChatAvatarParams): Promise<Blob> {
     return this.withTarget((driver) => driver.getChatAvatar(params));
   }
