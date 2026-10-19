@@ -23,8 +23,12 @@ export const searchMode = (
   return count <= participantLimit ? "participants" : "name-only";
 };
 
+// Accents split off by the NFD decomposition.
+const COMBINING_MARKS = /[̀-ͯ]/g;
+
+/** Text as the search compares it: case and accents do not count. */
 export const normalizeSearch = (value: string): string =>
-  value.normalize("NFC").trim().toLowerCase();
+  value.normalize("NFD").replace(COMBINING_MARKS, "").trim().toLowerCase();
 
 export const emptySearchRoom = (id: string): SearchRoom => ({
   id,
@@ -61,6 +65,13 @@ export type SearchDocument = {
   chat: LocalChat;
   fields: string[];
   subtitle: string;
+  rank: number;
+};
+
+/** Direct chats first, then named rooms, then rooms named after members. */
+const searchRank = (chat: LocalChat, explicitName: string | undefined) => {
+  if (chat.kind === "direct") return 0;
+  return explicitName ? 1 : 2;
 };
 
 export const searchDocument = (
@@ -80,6 +91,7 @@ export const searchDocument = (
       ...(room.mode === "participants" ? names : []),
     ].map(normalizeSearch),
     subtitle: names.join(", "),
+    rank: searchRank(room.chat, room.explicitName),
   };
 };
 

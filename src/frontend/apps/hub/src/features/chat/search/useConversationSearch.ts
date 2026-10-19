@@ -8,7 +8,12 @@ import { compareChats } from "../chatSorting";
 
 import { normalizeSearch } from "./model";
 
-type Result = { chat: Chat; subtitle: string; accountLabel: string };
+type Result = {
+  chat: Chat;
+  subtitle: string;
+  rank: number;
+  accountLabel: string;
+};
 const PAGE_SIZE = 40;
 
 export const useConversationSearch = () => {
@@ -64,9 +69,10 @@ export const useConversationSearch = () => {
           });
           return {
             total: page.total,
-            results: page.results.map(({ chat, subtitle }) => ({
+            results: page.results.map(({ chat, subtitle, rank }) => ({
               chat: decorateChat(entry.accountId, chat),
               subtitle,
+              rank,
               accountLabel: entry.label,
             })),
           };
@@ -81,7 +87,8 @@ export const useConversationSearch = () => {
         setResults(
           pages
             .flatMap((page) => page.results)
-            .sort((a, b) => compareChats(a.chat, b.chat))
+            // Same groups across accounts: direct, named, then member-named.
+            .sort((a, b) => a.rank - b.rank || compareChats(a.chat, b.chat))
             .slice(0, limit),
         );
         setTotal(pages.reduce((sum, page) => sum + page.total, 0));
