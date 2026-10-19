@@ -1774,11 +1774,18 @@ export class MatrixDriver extends Driver {
     }
   }
 
-  /** Loads every page of the server-side room thread list. */
+  /**
+   * Loads every page of the server-side room thread list, independently of
+   * how much of the main timeline is loaded.
+   */
   private async loadAllRoomThreads(
     mx: MatrixClient,
     room: Room,
   ): Promise<void> {
+    // Must run before the first `fetchRoomThreads()`: without these timeline
+    // sets the SDK skips `/threads` yet still marks the room's threads ready,
+    // leaving `getThreads()` to the roots found in the loaded main timeline.
+    await room.createThreadsTimelineSets();
     await room.fetchRoomThreads();
     const allThreadsTimeline = room.threadsTimelineSets[0]?.getLiveTimeline();
     if (!allThreadsTimeline) {
@@ -1853,8 +1860,13 @@ export class MatrixDriver extends Driver {
     threadId,
   }: GetChatThreadParams): Promise<ChatThreadDetail> {
     const { mx, room } = this.requireRoom("getChatThread", chatId);
-    await this.loadAllRoomThreads(mx, room);
-    const thread = room.getThread(threadId);
+    // The whole thread list (/threads, then a request per thread) is only
+    // worth loading for a thread the SDK does not know yet.
+    let thread = room.getThread(threadId);
+    if (!thread) {
+      await this.loadAllRoomThreads(mx, room);
+      thread = room.getThread(threadId);
+    }
     const selfUserId = mx.getUserId() ?? undefined;
     if (!thread) {
       // The SDK removes a thread when its last reply is redacted. Keep the
@@ -2930,6 +2942,11 @@ export class MatrixDriver extends Driver {
       // Backward-pagination history is served by `getChatMessages`, not the
       // live stream.
       if (!room || removed) {
+        return;
+      }
+      // The Room also re-emits its thread list timelines, which re-add an old
+      // root as "live" whenever its thread gets a reply. They carry no news.
+      if (data.timeline.getTimelineSet().threadListType !== null) {
         return;
       }
       if (
