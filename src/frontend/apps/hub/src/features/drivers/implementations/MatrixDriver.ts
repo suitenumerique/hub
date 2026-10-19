@@ -43,6 +43,7 @@ import {
   MATRIX_LOCAL_SETTINGS,
   type MatrixDriverSettings,
   parseMatrixDriverSettings,
+  tchapHomeserverUrl,
 } from "@/features/matrix/config";
 import {
   closeMatrixClient,
@@ -73,7 +74,15 @@ import {
   getOIDCAuthUrl,
   getOidcRedirectUri,
   getUserIdFromAccessToken,
+  type OidcClient,
 } from "@/features/matrix/utils/auth";
+import {
+  type DiscoveredHomeserver,
+  discoverTchapHomeserver,
+  normalizeTchapEmail,
+  serverNameOfUserId,
+  TchapDiscoveryError,
+} from "@/features/matrix/utils/tchapDiscovery";
 import {
   ChatAttachmentTooLargeError,
   ChatConnectionState,
@@ -211,10 +220,26 @@ const isMatrixSessionInvalidError = (error: unknown): boolean => {
   return error.errcode === "M_UNKNOWN_TOKEN" || error.httpStatus === 401;
 };
 
+/** Tchap answers every request of an expired account with this errcode. */
+const isExpiredAccountError = (error: unknown): boolean =>
+  error instanceof MatrixError &&
+  error.errcode === "ORG_MATRIX_EXPIRED_ACCOUNT";
+
+/**
+ * A sign-in that cannot succeed without a user action. It blocks the
+ * connection instead of redirecting to the authorization server again.
+ */
+class MatrixSignInError extends Error {
+  constructor(
+    readonly reason: "sign-in-failed" | "unknown-server",
+    readonly detail?: string,
+  ) {
+    super(detail ?? reason);
+  }
+}
+
 const toChatUser = (user: MatrixUserInterface): ChatLocalUser => ({
   userId: user.mxId,
-  accessToken: user.accessToken,
-  refreshToken: user.refreshToken,
 });
 
 const toChatMember = (member: RoomMember): ChatMember => ({
@@ -1290,8 +1315,9 @@ export class MatrixDriver extends Driver {
     this.assertOwner();
     if (this.mx !== mx) throw new Error("Matrix client replaced.");
     if (encryption === "encrypted") {
-      // Read current local SDK trust before every send. Server refreshes belong
-      // to setup/reconnect/security events, not the normal message round trip.
+      // Check local SDK trust before every send, from a recent inspection.
+      // Server refreshes belong to setup/reconnect/security events, not the
+      // normal message round trip.
       await this.security?.assertCanSend();
       this.assertOwner();
       if (this.mx !== mx || !this.securitySnapshot.canSendEncrypted) {
@@ -2156,6 +2182,18 @@ export class MatrixDriver extends Driver {
         };
       }
       this.teardownClient();
+      if (error instanceof MatrixSignInError) {
+        return {
+          status: "blocked",
+          chatUser: null,
+          reason: error.reason,
+          detail: error.detail,
+        };
+      }
+      // The stored session stays: the account works again once renewed.
+      if (isExpiredAccountError(error)) {
+        return { status: "blocked", chatUser: null, reason: "account-expired" };
+      }
       throw error;
     }
   }
@@ -2169,7 +2207,7 @@ export class MatrixDriver extends Driver {
     const stored = this.readStoredJson<MatrixUserInterface>(STORAGE.user);
     if (stored) {
       if (
-        stored.homeserverUrl !== this.settings.baseUrl ||
+        this.serverNameFor(stored.homeserverUrl) === null ||
         !stored.mxId ||
         !stored.accessToken
       ) {
@@ -2195,17 +2233,37 @@ export class MatrixDriver extends Driver {
       }
     }
 
-    // 2. Back from the identity provider — finish the OIDC code exchange.
+    // 2. Back from the identity provider — finish the OIDC code exchange, or
+    //    report its refusal. Restarting the login here would loop on a
+    //    cancelled or rejected authorization.
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");
+    const authorizationError = params.get("error");
+    if (authorizationError && state) {
+      if (sessionStorage.getItem(this.key(STORAGE.oidcState)) !== state) {
+        return { status: "idle", chatUser: null };
+      }
+      sessionStorage.removeItem(this.key(STORAGE.oidcState));
+      this.clearCallbackParams();
+      throw new MatrixSignInError(
+        "sign-in-failed",
+        params.get("error_description") ?? authorizationError,
+      );
+    }
     if (code && state) {
       if (sessionStorage.getItem(this.key(STORAGE.oidcState)) !== state) {
         return { status: "idle", chatUser: null };
       }
-      const matrixUser = await this.completeLogin(code, state);
+      let matrixUser: MatrixUserInterface;
+      try {
+        matrixUser = await this.completeLogin(code, state);
+      } finally {
+        // An authorization code is single-use: a retry must not replay it.
+        sessionStorage.removeItem(this.key(STORAGE.oidcState));
+        this.clearCallbackParams();
+      }
       await this.bootstrapClient(matrixUser);
-      this.clearCallbackParams();
       return { status: "connected", chatUser: toChatUser(matrixUser) };
     }
 
@@ -2251,18 +2309,44 @@ export class MatrixDriver extends Driver {
     return authUrl;
   }
 
+  /** Server name of a homeserver this account may use, `null` otherwise. */
+  private serverNameFor(homeserverUrl: string): string | null {
+    if (this.settings.discovery === "fixed") {
+      return homeserverUrl === this.settings.baseUrl
+        ? this.settings.serverName
+        : null;
+    }
+    return (
+      this.settings.homeservers.find(
+        (serverName) => tchapHomeserverUrl(serverName) === homeserverUrl,
+      ) ?? null
+    );
+  }
+
   private async completeLogin(
     code: string,
     state: string,
   ): Promise<MatrixUserInterface> {
     const oidc = await completeOidcLogin({ code, state });
     this.assertOwner();
+    // The homeserver was chosen when the login started and comes back with the
+    // authorization state; it must still belong to this account.
+    const serverName = this.serverNameFor(oidc.homeserverUrl);
+    if (serverName === null) {
+      throw new MatrixSignInError("unknown-server", oidc.homeserverUrl);
+    }
     const { user_id: mxId, device_id: deviceId } =
-      await getUserIdFromAccessToken(oidc.accessToken, this.settings.baseUrl);
+      await getUserIdFromAccessToken(oidc.accessToken, oidc.homeserverUrl);
     this.assertOwner();
+    if (serverNameOfUserId(mxId) !== serverName) {
+      throw new MatrixSignInError(
+        "sign-in-failed",
+        `${mxId} does not belong to ${serverName}.`,
+      );
+    }
 
     const matrixUser: MatrixUserInterface = {
-      homeserverUrl: this.settings.baseUrl,
+      homeserverUrl: oidc.homeserverUrl,
       mxId,
       deviceId,
       accessToken: oidc.accessToken,
@@ -2278,7 +2362,6 @@ export class MatrixDriver extends Driver {
       // used to start authorization, including logins started from deep links.
       redirectUri: getOidcRedirectUri(),
     } satisfies StoredOidc);
-    sessionStorage.removeItem(this.key(STORAGE.oidcState));
     return matrixUser;
   }
 
@@ -3044,8 +3127,14 @@ export class MatrixDriver extends Driver {
 
   private clearCallbackParams(): void {
     const url = new URL(window.location.href);
-    url.searchParams.delete("code");
-    url.searchParams.delete("state");
+    for (const param of [
+      "code",
+      "state",
+      "error",
+      "error_description",
+      "error_uri",
+    ])
+      url.searchParams.delete(param);
     window.history.replaceState({}, "", url.toString());
   }
 

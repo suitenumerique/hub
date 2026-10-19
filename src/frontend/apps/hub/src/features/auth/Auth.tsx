@@ -57,6 +57,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     chatUser,
     redirectTo,
     reason,
+    detail,
   } = useChatConnections(user);
 
   const init = async () => {
@@ -129,7 +130,12 @@ export const Auth = ({ children }: PropsWithChildren) => {
 
   if (chatStatus === "blocked" || chatStatus === "error") {
     let message: string;
-    switch (reason) {
+    switch (chatUnconfigured ? "unconfigured" : reason) {
+      case "unconfigured":
+        message = t(
+          "The chat is not configured on this Hub. Contact your administrator.",
+        );
+        break;
       case "another-tab":
         message = t(
           "Another Hub tab is using this session. Close that tab, then try again here. You can keep Element open.",
@@ -145,6 +151,21 @@ export const Auth = ({ children }: PropsWithChildren) => {
           "This device’s local keys are missing or no longer match its session. Stored data has not been deleted. A new device session is required.",
         );
         break;
+      case "sign-in-failed":
+        message = t(
+          "Signing in to the chat did not succeed. Try again, or contact your administrator if the problem persists.",
+        );
+        break;
+      case "unknown-server":
+        message = t(
+          "The chat server found for your email is not allowed in this environment.",
+        );
+        break;
+      case "account-expired":
+        message = t(
+          "Your chat account has expired. Renew it with the link sent to you by email, then try again.",
+        );
+        break;
       default:
         message = t(
           "The server or storage is unavailable. Your keys are preserved. Try again when the connection is restored.",
@@ -154,6 +175,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
       <main className="hub__connection-error">
         <h1>{t("Chat connection interrupted")}</h1>
         <p role="alert">{message}</p>
+        {detail && <p>{detail}</p>}
         <Button onClick={() => window.location.reload()}>
           {t("Try again")}
         </Button>

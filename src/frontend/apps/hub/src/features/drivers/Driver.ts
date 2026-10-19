@@ -189,7 +189,15 @@ export type ChatConnectionState = {
   /** Optional redirect coordinated by the connection layer. */
   redirectTo?: string;
   error?: unknown;
-  reason?: "another-tab" | "unsupported" | "storage-continuity";
+  reason?:
+    | "another-tab"
+    | "unsupported"
+    | "storage-continuity"
+    | "sign-in-failed"
+    | "unknown-server"
+    | "account-expired";
+  /** Server-provided explanation shown as is, e.g. an OAuth error description. */
+  detail?: string;
 };
 
 /**

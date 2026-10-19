@@ -292,6 +292,10 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.sendChatTyping(params));
   }
 
+  override prepareChatSend(chatId: string): void {
+    this.target?.prepareChatSend(chatId);
+  }
+
   async sendChatThreadReply(
     params: SendChatThreadReplyParams,
   ): Promise<ChatThreadMutationResult> {
