@@ -146,6 +146,7 @@ import {
   isMainTimelineMessage,
   isMessageEvent,
   isOwnEcho,
+  isUndecryptedEvent,
   matrixEventToChatMessage,
   needsReactionSnapshot,
   observeThreadReply,
@@ -3036,6 +3037,15 @@ export class MatrixDriver extends Driver {
       const roomId = event.getRoomId();
       const room = roomId ? mx.getRoom(roomId) : null;
       if (!room || !isMessageEvent(event)) {
+        return;
+      }
+      const replacement = event.replacingEvent();
+      if (replacement && isUndecryptedEvent(replacement)) {
+        // A refetched message gets a fresh, still-encrypted copy of its edit:
+        // publishing now would replace the displayed text with a placeholder.
+        // Wait for the copy's decryption, which the SDK does not re-emit on
+        // the client when it re-maps an already known message.
+        mx.reEmitter.reEmit(replacement, [MatrixEventEvent.Decrypted]);
         return;
       }
       const threadId = event.isThreadRoot ? event.getId() : event.threadRootId;
