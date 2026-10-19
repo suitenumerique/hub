@@ -74,6 +74,8 @@ const DEFAULT_ITEM_HEIGHT = 72;
 const VISIBILITY_SETTLE_MS = 150;
 // After measuring, require focused visibility before marking a message read.
 const READ_DWELL_MS = 250;
+// Frames the backfill check waits for Virtuoso to render the first rows.
+const FILL_CHECK_MAX_FRAMES = 10;
 // A message qualifies as visible only when 60% of its rendered height is shown.
 const MESSAGE_VISIBILITY_RATIO = 0.6;
 
@@ -92,6 +94,7 @@ export const ChatVirtualList = ({
     hasNewer,
     isAtLiveEnd,
     isFetchingOlder,
+    isFetchOlderError,
     isFetchingNewer,
     isInitialLoading,
     firstItemIndex,
@@ -548,6 +551,52 @@ export const ChatVirtualList = ({
     }
   }, [fetchNewer]);
 
+  // Like Element's ScrollPanel, backfill without waiting for a scroll while
+  // the list holds less than one screen beyond its viewport: the first page
+  // shows the messages already in memory, however few. Only on the latest
+  // messages: a jump opens a complete window, nothing is added around it.
+  // After a failed request, only a scroll asks again: requests are not
+  // retried, so retrying here would loop while the server keeps failing.
+  useEffect(() => {
+    if (
+      isInitialLoading ||
+      !hasOlder ||
+      isFetchingOlder ||
+      isFetchOlderError ||
+      !isAtLiveEnd ||
+      windowAnchorId
+    ) {
+      return;
+    }
+    let raf = 0;
+    let waitedFrames = 0;
+    const checkFill = () => {
+      const scroller = scrollerRef.current;
+      // Before its rows render, Virtuoso's height says nothing about them.
+      if (!scroller?.querySelector("[data-chat-message-id]")) {
+        if (waitedFrames < FILL_CHECK_MAX_FRAMES) {
+          waitedFrames += 1;
+          raf = requestAnimationFrame(checkFill);
+        }
+        return;
+      }
+      if (scroller.scrollHeight < scroller.clientHeight * 2) {
+        fetchOlder();
+      }
+    };
+    raf = requestAnimationFrame(checkFill);
+    return () => cancelAnimationFrame(raf);
+  }, [
+    fetchOlder,
+    hasOlder,
+    isAtLiveEnd,
+    isFetchOlderError,
+    isFetchingOlder,
+    isInitialLoading,
+    messages.length,
+    windowAnchorId,
+  ]);
+
   useLayoutEffect(() => {
     const previous = previousAppendState.current;
     const isSameWindow =
@@ -606,6 +655,9 @@ export const ChatVirtualList = ({
               : Math.max(0, messages.length - 1)
           }
           followOutput={isAtLiveEnd ? "auto" : false}
+          // A short conversation sits above the composer, as in Element:
+          // backfilled history then appears above it instead of moving it.
+          alignToBottom
           atTopStateChange={handleAtTopStateChange}
           atBottomStateChange={(atBottom) => {
             if (

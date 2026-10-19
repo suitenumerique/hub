@@ -48,6 +48,8 @@ export type UseChatMessagesResult = {
   hasNewer: boolean;
   isAtLiveEnd: boolean;
   isFetchingOlder: boolean;
+  /** The last request for older messages failed (cleared by the next one). */
+  isFetchOlderError: boolean;
   isFetchingNewer: boolean;
   isInitialLoading: boolean;
   isError: boolean;
@@ -162,17 +164,27 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     return map;
   }, [query.data]);
 
+  // The query result is a new object on every render: depend on its stable
+  // fetch methods and flags so that callers' effects do not rerun each time.
+  const {
+    hasNextPage,
+    hasPreviousPage,
+    isFetching,
+    fetchNextPage,
+    fetchPreviousPage,
+  } = query;
+
   const fetchOlder = useCallback(() => {
-    if (query.hasNextPage && !query.isFetching) {
-      void query.fetchNextPage();
+    if (hasNextPage && !isFetching) {
+      void fetchNextPage();
     }
-  }, [query]);
+  }, [fetchNextPage, hasNextPage, isFetching]);
 
   const fetchNewer = useCallback(() => {
-    if (query.hasPreviousPage && !query.isFetching) {
-      void query.fetchPreviousPage();
+    if (hasPreviousPage && !isFetching) {
+      void fetchPreviousPage();
     }
-  }, [query]);
+  }, [fetchPreviousPage, hasPreviousPage, isFetching]);
 
   const openAround = useCallback(
     async (eventId: string) => {
@@ -251,6 +263,7 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     hasNewer: Boolean(query.hasPreviousPage),
     isAtLiveEnd: query.data?.pages[0]?.isAtLiveEnd === true,
     isFetchingOlder: query.isFetchingNextPage,
+    isFetchOlderError: query.isFetchNextPageError,
     isFetchingNewer: query.isFetchingPreviousPage,
     isInitialLoading: isOpeningLive || query.isPending,
     isError: query.isError,
