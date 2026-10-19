@@ -705,7 +705,14 @@ class Development(Base):
 
     ALLOWED_HOSTS = ["*"]
     CORS_ALLOW_ALL_ORIGINS = True
-    CSRF_TRUSTED_ORIGINS = ["http://localhost:9801", "http://localhost:9800"]
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:9801",
+        "http://localhost:9800",
+        # HTTPS proxy used to sign in to Tchap (`make run-tchap`)
+        "https://hub.localhost:9814",
+    ]
+    # The Tchap HTTPS proxy terminates TLS; OIDC callbacks must stay https.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     DEBUG = True
 
     USE_SWAGGER = True

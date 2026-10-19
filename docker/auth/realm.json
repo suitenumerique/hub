@@ -692,13 +692,15 @@
         "http://localhost:9801/*",
         "http://localhost:3200/*",
         "http://localhost:8088/*",
-        "http://localhost:9800/*"
+        "http://localhost:9800/*",
+        "https://hub.localhost:9814/*"
       ],
       "webOrigins": [
         "http://localhost:3200",
         "http://localhost:8088",
         "http://localhost:8070",
-        "http://localhost:9800"
+        "http://localhost:9800",
+        "https://hub.localhost:9814"
       ],
       "notBefore": 0,
       "bearerOnly": false,

@@ -3,6 +3,7 @@
 
 # Build artifacts
 **/.next
+**/.next-tchap
 **/out
 **/coverage
 **/dist
