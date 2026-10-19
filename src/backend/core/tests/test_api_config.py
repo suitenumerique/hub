@@ -22,6 +22,7 @@ pytestmark = pytest.mark.django_db
 @override_settings(
     API_USERS_SEARCH_QUERY_MIN_LENGTH=6,
     CRISP_WEBSITE_ID="123",
+    FRONTEND_CHAT_ENVIRONMENT="tchap-preprod",
     FRONTEND_CSS_URL="http://testcss/",
     FRONTEND_JS_URL="http://testjs/",
     FRONTEND_THEME="test-theme",
@@ -45,6 +46,7 @@ def test_api_config(is_authenticated):
         "API_USERS_SEARCH_QUERY_MIN_LENGTH": 6,
         "CRISP_WEBSITE_ID": "123",
         "ENVIRONMENT": "test",
+        "FRONTEND_CHAT_ENVIRONMENT": "tchap-preprod",
         "FRONTEND_CSS_URL": "http://testcss/",
         "FRONTEND_HOMEPAGE_FEATURE_ENABLED": True,
         "FRONTEND_JS_URL": "http://testjs/",

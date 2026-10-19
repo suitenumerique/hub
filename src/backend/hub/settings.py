@@ -348,6 +348,12 @@ class Base(Configuration):
     FRONTEND_THEME = values.Value(
         None, environ_name="FRONTEND_THEME", environ_prefix=None
     )
+    # Chat backend the frontend connects to: "local" (development Matrix stack),
+    # "tchap-preprod" or "tchap-prod". No default: the frontend refuses to start
+    # the chat without it.
+    FRONTEND_CHAT_ENVIRONMENT = values.Value(
+        None, environ_name="FRONTEND_CHAT_ENVIRONMENT", environ_prefix=None
+    )
     FRONTEND_HOMEPAGE_FEATURE_ENABLED = values.BooleanValue(
         default=True,
         environ_name="FRONTEND_HOMEPAGE_FEATURE_ENABLED",
@@ -456,6 +462,11 @@ class Base(Configuration):
     )
     OIDC_REDIRECT_ALLOWED_HOSTS = values.ListValue(
         default=[], environ_name="OIDC_REDIRECT_ALLOWED_HOSTS", environ_prefix=None
+    )
+    # Query parameter holding the URL to return to after login, as sent by the
+    # frontend.
+    OIDC_REDIRECT_FIELD_NAME = values.Value(
+        "returnTo", environ_name="OIDC_REDIRECT_FIELD_NAME", environ_prefix=None
     )
     OIDC_STORE_ID_TOKEN = values.BooleanValue(
         default=True, environ_name="OIDC_STORE_ID_TOKEN", environ_prefix=None

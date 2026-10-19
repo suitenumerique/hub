@@ -258,6 +258,7 @@ class ConfigView(drf.views.APIView):
             "API_USERS_SEARCH_QUERY_MIN_LENGTH",
             "CRISP_WEBSITE_ID",
             "ENVIRONMENT",
+            "FRONTEND_CHAT_ENVIRONMENT",
             "FRONTEND_CSS_URL",
             "FRONTEND_HOMEPAGE_FEATURE_ENABLED",
             "FRONTEND_JS_URL",
