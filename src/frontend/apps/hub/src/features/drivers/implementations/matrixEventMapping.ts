@@ -602,6 +602,13 @@ const formattedBodyOf = (
     ? content.formatted_body
     : undefined;
 
+/** Whether an encrypted event is still unreadable (pending or key missing). */
+export const isUndecryptedEvent = (event: MatrixEvent): boolean =>
+  event.isEncrypted() &&
+  (event.isDecryptionFailure() ||
+    event.isBeingDecrypted() ||
+    event.getType() === EventType.RoomMessageEncrypted);
+
 export const matrixEventToChatMessage = (
   event: MatrixEvent,
   room: Room,
@@ -614,11 +621,14 @@ export const matrixEventToChatMessage = (
   const body = content.body;
   // Keep the encrypted event's id and position while its key is missing. A
   // later decryption event can replace this placeholder without adding a row.
-  const unavailable =
-    event.isEncrypted() &&
-    (event.isDecryptionFailure() ||
-      event.isBeingDecrypted() ||
-      event.getType() === EventType.RoomMessageEncrypted);
+  // The SDK also attaches edits before decrypting them (server-bundled edit,
+  // missing key) and `getContent()` stays `{}` meanwhile: the edit's state
+  // then decides, instead of a blank edited bubble.
+  const undecrypted =
+    [event, event.replacingEvent()].find(
+      (candidate) => candidate && isUndecryptedEvent(candidate),
+    ) ?? null;
+  const unavailable = undecrypted !== null;
   const media =
     isDeleted || unavailable ? null : parseMatrixAttachment(content);
   const unsupportedMedia =
@@ -630,13 +640,14 @@ export const matrixEventToChatMessage = (
   let visibleContent = typeof body === "string" ? body : "";
   if (media) {
     visibleContent = media.caption;
-  } else if (unavailable) {
-    if (event.isDecryptionFailure()) {
+  } else if (undecrypted) {
+    if (undecrypted.isDecryptionFailure()) {
       availability =
-        event.decryptionFailureReason === DecryptionFailureCode.UNKNOWN_ERROR
+        undecrypted.decryptionFailureReason ===
+        DecryptionFailureCode.UNKNOWN_ERROR
           ? "encrypted-error"
           : "encrypted-unavailable";
-      visibleContent = encryptedFailureText(event);
+      visibleContent = encryptedFailureText(undecrypted);
     } else {
       availability = "encrypted-pending";
       visibleContent = i18n.t("Encrypted message awaiting decryption…");
@@ -910,6 +921,19 @@ export const timelineEventToChatEvent = (
       original.isRedacted() ||
       original.getSender() !== event.getSender() ||
       typeof newBody !== "string"
+    ) {
+      return [];
+    }
+    // The SDK applies another edit: either a copy still encrypted, whose
+    // decryption republishes the message (MatrixDriver.onReplaced), or a newer
+    // one, such as when history or a key backup decrypts older edits last.
+    // Mapping this one would show stale or placeholder text. Compare ids: the
+    // copy bundled with the original is another object for the same event.
+    const appliedEdit = original.replacingEvent();
+    if (
+      appliedEdit &&
+      appliedEdit.getId() !== event.getId() &&
+      (isUndecryptedEvent(appliedEdit) || appliedEdit.getTs() > event.getTs())
     ) {
       return [];
     }
