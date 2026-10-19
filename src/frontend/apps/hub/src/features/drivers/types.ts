@@ -250,6 +250,16 @@ export type ChatAttachment = {
   source: ChatAttachmentSource;
 };
 
+/** A message as the composer hands it over for sending or editing. */
+export type ChatComposedMessage = {
+  /** Plain body: the text as typed (markdown included), mentions as names. */
+  content: string;
+  /** Same message as HTML in the Matrix `org.matrix.custom.html` subset, when formatted. */
+  htmlContent?: string;
+  /** Users mentioned on purpose, in order and without duplicates. */
+  mentionedUserIds?: string[];
+};
+
 export type ChatMessage = {
   availability?:
     | "clear"

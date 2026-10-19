@@ -13,6 +13,7 @@ import type {
   AccountId,
   Chat,
   ChatAttachment,
+  ChatComposedMessage,
   ChatRef,
 } from "@/features/drivers/types";
 
@@ -90,7 +91,7 @@ type ChatViewProps = {
    * of its files.
    */
   onSubmitDraft?: (
-    content: string,
+    message: ChatComposedMessage,
     attachment?: ChatAttachment,
   ) => Promise<unknown>;
 };
@@ -174,9 +175,9 @@ export const ChatView = ({
   // The same composer submits either a new event or an in-place edit. Notify
   // `onSent` only for new messages so editing never changes navigation state.
   const handleSubmit = useCallback(
-    async (content: string) => {
+    async (composed: ChatComposedMessage) => {
       if (editingMessage) {
-        const message = await editMessage(editingMessage.id, content);
+        const message = await editMessage(editingMessage.id, composed);
         setEditingMessage(null);
         return message;
       }
@@ -184,9 +185,9 @@ export const ChatView = ({
         if (!onSubmitDraft) {
           throw new Error("Draft composition is not available.");
         }
-        return onSubmitDraft(content);
+        return onSubmitDraft(composed);
       }
-      const message = await sendMessage(content);
+      const message = await sendMessage(composed);
       onSent?.(chatRef);
       return message;
     },
@@ -199,7 +200,7 @@ export const ChatView = ({
         if (!onSubmitDraft) {
           throw new Error("Draft composition is not available.");
         }
-        return onSubmitDraft("", attachment);
+        return onSubmitDraft({ content: "" }, attachment);
       }
       const message = await sendAttachment(attachment);
       onSent?.(chatRef);

@@ -8,6 +8,7 @@ import { useCallback } from "react";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
   ChatAttachment,
+  ChatComposedMessage,
   ChatMessage,
   ChatRef,
 } from "@/features/drivers/types";
@@ -25,7 +26,8 @@ import { useChatCompositionSupport } from "./useChatCompositionSupport";
 
 type SendMessageVariables = {
   ref: ChatRef;
-  content: string;
+  /** The text, or the caption of `attachment` (usually empty). */
+  message: ChatComposedMessage;
   /** Posts this uploaded file instead of a text message. */
   attachment?: ChatAttachment;
 };
@@ -37,10 +39,10 @@ type SendMessageContext = {
 };
 
 export type UseSendChatMessageResult = {
-  sendMessage: (content: string) => Promise<ChatMessage>;
+  sendMessage: (message: ChatComposedMessage) => Promise<ChatMessage>;
   sendMessageTo: (
     ref: ChatRef,
-    content: string,
+    message: ChatComposedMessage,
     attachment?: ChatAttachment,
   ) => Promise<ChatMessage>;
   sendAttachment: (attachment: ChatAttachment) => Promise<ChatMessage>;
@@ -60,22 +62,22 @@ export const useSendChatMessage = (
     SendMessageVariables,
     SendMessageContext
   >({
-    mutationFn: ({ ref: targetRef, content, attachment }) => {
+    mutationFn: ({ ref: targetRef, message, attachment }) => {
       const driver = getRegistry().get(targetRef.accountId);
       if (!driver.supportsComposition) {
         throw new Error("Conversation message composition is not available.");
       }
       return driver.sendChatMessage({
+        ...message,
         chatId: targetRef.chatId,
-        content,
         attachment,
       });
     },
-    onMutate: async ({ ref: targetRef, content, attachment }) => {
+    onMutate: async ({ ref: targetRef, message, attachment }) => {
       const messagesKey: QueryKey = chatKeys.messages(targetRef);
       await queryClient.cancelQueries({ queryKey: messagesKey });
       const optimistic = createOptimisticMessage(
-        content,
+        message,
         "optimistic-message",
         attachment,
       );
@@ -138,20 +140,23 @@ export const useSendChatMessage = (
   });
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (message: ChatComposedMessage) => {
       if (!ref) {
         return Promise.reject(
           new Error("Conversation message composition requires a chat."),
         );
       }
-      return mutateAsync({ ref, content });
+      return mutateAsync({ ref, message });
     },
     [mutateAsync, ref],
   );
 
   const sendMessageTo = useCallback(
-    (targetRef: ChatRef, content: string, attachment?: ChatAttachment) =>
-      mutateAsync({ ref: targetRef, content, attachment }),
+    (
+      targetRef: ChatRef,
+      message: ChatComposedMessage,
+      attachment?: ChatAttachment,
+    ) => mutateAsync({ ref: targetRef, message, attachment }),
     [mutateAsync],
   );
 
@@ -162,7 +167,7 @@ export const useSendChatMessage = (
           new Error("Sending an attachment requires a chat."),
         );
       }
-      return mutateAsync({ ref, content: "", attachment });
+      return mutateAsync({ ref, message: { content: "" }, attachment });
     },
     [mutateAsync, ref],
   );

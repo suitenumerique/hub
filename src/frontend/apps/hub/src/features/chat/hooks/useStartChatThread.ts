@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
   ChatAttachment,
+  ChatComposedMessage,
   ChatMessage,
   ChatMessageAuthor,
   ChatRef,
@@ -38,7 +39,7 @@ import { useChatThreadCompositionSupport } from "./useChatThreadCompositionSuppo
 
 type StartThreadVariables = {
   rootMessage: ChatMessage;
-  content: string;
+  message: ChatComposedMessage;
   options?: StartThreadOptions;
 };
 
@@ -63,14 +64,14 @@ export type StartThreadCallbacks = {
 
 export type StartThreadOptions = StartThreadCallbacks & {
   rootAuthor?: ChatMessageAuthor;
-  /** Posts this uploaded file as the first reply; `content` is its caption. */
+  /** Posts this uploaded file as the first reply; the message is its caption. */
   attachment?: ChatAttachment;
 };
 
 export type UseStartChatThreadResult = {
   startThread: (
     rootMessage: ChatMessage,
-    content: string,
+    message: ChatComposedMessage,
     options?: StartThreadOptions,
   ) => Promise<ChatThreadMutationResult>;
   isStarting: boolean;
@@ -92,22 +93,24 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
     StartThreadVariables,
     StartThreadContext
   >({
-    mutationFn: ({ rootMessage, content, options }) => {
+    mutationFn: ({ rootMessage, message, options }) => {
       if (!isSupported) {
         throw new Error("Thread creation is not available.");
       }
-      return getRegistry().get(ref.accountId).startChatThread({
-        chatId: ref.chatId,
-        rootMessageId: rootMessage.id,
-        content,
-        attachment: options?.attachment,
-      });
+      return getRegistry()
+        .get(ref.accountId)
+        .startChatThread({
+          ...message,
+          chatId: ref.chatId,
+          rootMessageId: rootMessage.id,
+          attachment: options?.attachment,
+        });
     },
-    onMutate: async ({ rootMessage, content, options }) => {
+    onMutate: async ({ rootMessage, message, options }) => {
       const messagesKey: QueryKey = chatKeys.messages(ref);
       const threadsKey: QueryKey = chatKeys.threads(ref);
       const reply = createOptimisticMessage(
-        content,
+        message,
         "optimistic-thread-start",
         options?.attachment,
       );
@@ -258,8 +261,11 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
   });
 
   const startThread = useCallback(
-    (rootMessage: ChatMessage, content: string, options?: StartThreadOptions) =>
-      mutateAsync({ rootMessage, content, options }),
+    (
+      rootMessage: ChatMessage,
+      message: ChatComposedMessage,
+      options?: StartThreadOptions,
+    ) => mutateAsync({ rootMessage, message, options }),
     [mutateAsync],
   );
 
