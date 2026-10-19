@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import type {
   ChatAttachment,
+  ChatComposedMessage,
   ChatRef,
   ChatUser,
 } from "@/features/drivers/types";
@@ -195,7 +196,7 @@ export const useNewChatConversation = ({
   ]);
 
   const submitDraft = useCallback(
-    async (content: string, attachment?: ChatAttachment) => {
+    async (message: ChatComposedMessage, attachment?: ChatAttachment) => {
       const target = selectionTarget;
       if (!target) {
         throw new Error("Conversation creation requires participants.");
@@ -204,7 +205,7 @@ export const useNewChatConversation = ({
       if (creationTargetRef.current !== target) {
         throw new Error("The conversation participants changed before send.");
       }
-      await sendMessageTo(ref, content, attachment);
+      await sendMessageTo(ref, message, attachment);
       onSent(ref);
     },
     [onSent, resolveSelectionChat, selectionTarget, sendMessageTo],

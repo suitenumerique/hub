@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import type {
   ChatAttachment,
+  ChatComposedMessage,
   ChatMessagesPage,
   ChatRef,
 } from "@/features/drivers/types";
@@ -67,8 +68,8 @@ export const DraftThreadDetail = ({
 
   // Text and files sent together each relate to the root: the first one starts
   // the thread, the next ones reply in it (Matrix threads are keyed by root).
-  const send = (content: string, attachment?: ChatAttachment) =>
-    startThread(message, content, {
+  const send = (composed: ChatComposedMessage, attachment?: ChatAttachment) =>
+    startThread(message, composed, {
       rootAuthor: author,
       attachment,
       onCreated: (threadId) => {

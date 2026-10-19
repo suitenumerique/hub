@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 
 import type {
   ChatAttachment,
+  ChatComposedMessage,
   ChatMessage,
   ChatMessagesPage,
   ChatThread,
@@ -52,7 +53,7 @@ export const markOptimisticRootThreadSummary = (
   }) as MarkedThreadSummary;
 
 export const createOptimisticMessage = (
-  content: string,
+  { content, htmlContent }: ChatComposedMessage,
   prefix: string,
   attachment?: ChatAttachment,
 ): ChatMessage => {
@@ -61,6 +62,7 @@ export const createOptimisticMessage = (
     id: `${prefix}-${optimisticId}`,
     authorId: "me",
     content,
+    ...(htmlContent ? { htmlContent } : {}),
     ...(attachment ? { attachment } : {}),
     timestamp: new Date().toISOString(),
     reactions: [],

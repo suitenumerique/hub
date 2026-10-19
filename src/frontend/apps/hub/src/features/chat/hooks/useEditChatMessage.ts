@@ -3,6 +3,7 @@ import { useCallback } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
+  ChatComposedMessage,
   ChatMessage,
   ChatRef,
   ChatThreadDetail,
@@ -19,7 +20,7 @@ import {
   replaceThreadMessage,
 } from "./chatCompositionCache";
 
-type EditVariables = { messageId: string; content: string };
+type EditVariables = { messageId: string; message: ChatComposedMessage };
 
 type EditContext = {
   marker: MessageMutationMarker;
@@ -55,22 +56,22 @@ export const useEditChatMessage = (
     EditVariables,
     EditContext
   >({
-    mutationFn: ({ messageId, content }) => {
+    mutationFn: ({ messageId, message }) => {
       if (!ref) {
         throw new Error("Editing a message requires a conversation.");
       }
       return getRegistry()
         .get(ref.accountId)
         .editChatMessage({
+          ...message,
           chatId: ref.chatId,
           messageId,
-          content,
           ...(containingThreadId && messageId !== containingThreadId
             ? { threadId: containingThreadId }
             : {}),
         });
     },
-    onMutate: async ({ messageId, content }) => {
+    onMutate: async ({ messageId, message: edited }) => {
       if (!ref) {
         throw new Error("Editing a message requires a conversation.");
       }
@@ -105,7 +106,9 @@ export const useEditChatMessage = (
 
       const patchMessage = (message: ChatMessage): ChatMessage => ({
         ...markOptimisticMessageMutation(message, marker),
-        content,
+        content: edited.content,
+        // Set even when absent: the original's formatting must not survive.
+        htmlContent: edited.htmlContent,
         isEdited: true,
       });
       if (messagesKey) {
@@ -216,7 +219,8 @@ export const useEditChatMessage = (
   });
 
   const editMessage = useCallback(
-    (messageId: string, content: string) => mutateAsync({ messageId, content }),
+    (messageId: string, message: ChatComposedMessage) =>
+      mutateAsync({ messageId, message }),
     [mutateAsync],
   );
 

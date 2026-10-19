@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
   ChatAttachment,
+  ChatComposedMessage,
   ChatRef,
   ChatThread,
   ChatThreadDetail,
@@ -36,8 +37,8 @@ import {
 import { useChatThreadCompositionSupport } from "./useChatThreadCompositionSupport";
 
 type SendThreadReplyVariables = {
-  content: string;
-  /** Posts this uploaded file; `content` is then its caption. */
+  message: ChatComposedMessage;
+  /** Posts this uploaded file; `message` is then its caption. */
   attachment?: ChatAttachment;
 };
 
@@ -60,7 +61,7 @@ type SendThreadReplyContext = {
 
 export type UseSendChatThreadReplyResult = {
   sendReply: (
-    content: string,
+    message: ChatComposedMessage,
     attachment?: ChatAttachment,
   ) => Promise<ChatThreadMutationResult>;
   isSending: boolean;
@@ -85,18 +86,20 @@ export const useSendChatThreadReply = (
     SendThreadReplyVariables,
     SendThreadReplyContext
   >({
-    mutationFn: ({ content, attachment }) => {
+    mutationFn: ({ message, attachment }) => {
       if (!isSupported) {
         throw new Error("Thread reply composition is not available.");
       }
-      return getRegistry().get(ref.accountId).sendChatThreadReply({
-        chatId: ref.chatId,
-        threadId,
-        content,
-        attachment,
-      });
+      return getRegistry()
+        .get(ref.accountId)
+        .sendChatThreadReply({
+          ...message,
+          chatId: ref.chatId,
+          threadId,
+          attachment,
+        });
     },
-    onMutate: async ({ content, attachment }) => {
+    onMutate: async ({ message, attachment }) => {
       const threadKey: QueryKey = chatKeys.thread(ref, threadId);
       const threadsKey: QueryKey = chatKeys.threads(ref);
       const messagesKey: QueryKey = chatKeys.messages(ref);
@@ -113,7 +116,7 @@ export const useSendChatThreadReply = (
       const previousMessages =
         queryClient.getQueryData<ChatMessagesData>(messagesKey);
       const optimistic = createOptimisticMessage(
-        content,
+        message,
         "optimistic-thread-reply",
         attachment,
       );
@@ -306,8 +309,8 @@ export const useSendChatThreadReply = (
   });
 
   const sendReply = useCallback(
-    (content: string, attachment?: ChatAttachment) =>
-      mutateAsync({ content, attachment }),
+    (message: ChatComposedMessage, attachment?: ChatAttachment) =>
+      mutateAsync({ message, attachment }),
     [mutateAsync],
   );
 
