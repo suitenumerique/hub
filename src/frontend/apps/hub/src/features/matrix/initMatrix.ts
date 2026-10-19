@@ -16,6 +16,7 @@ import i18n from "@/i18n/initI18n";
 import { saveOnMembershipChange } from "./membershipSave";
 import { MatrixUserInterface } from "./types";
 import { ownSyncStore } from "./ownedSyncStore";
+import { preloadRustCrypto } from "./preloadRustCrypto";
 
 type InitClientOptions = {
   /** Recheck ownership and client generation after asynchronous startup steps. */
@@ -27,8 +28,15 @@ type InitClientOptions = {
    * the SDK cannot refresh OIDC tokens and treats the 401 as a hard logout.
    */
   tokenRefreshFunction?: TokenRefreshFunction;
-  /** Optional local projections attach after cache repair, before sync starts. */
-  onSyncStoreReady?: (mx: MatrixClient) => Promise<void>;
+  /**
+   * Optional local projections attach after cache repair, before sync starts.
+   * `joinedRoomIds` is the server's `/joined_rooms` answer fetched during
+   * startup, or null when that request failed.
+   */
+  onSyncStoreReady?: (
+    mx: MatrixClient,
+    joinedRoomIds: string[] | null,
+  ) => Promise<void>;
 };
 
 type MatrixClientStores = {
@@ -118,12 +126,20 @@ const startupClient = async (
   { mx, indexedDBStore, cryptoStoreDbName }: MatrixClientStores,
   user: MatrixUserInterface,
   assertActive: () => void,
-): Promise<MatrixClient> => {
+): Promise<string[] | null> => {
   // Validate (and refresh when possible) the persisted OIDC session before
   // opening either IndexedDB store. A local MAS/Synapse reset invalidates both
   // tokens; letting Rust Crypto discover that first produces several failing
   // key requests before the driver can start a fresh login.
-  const identity = await mx.whoami();
+  // The public keys and joined rooms do not depend on that check and load in
+  // parallel: the SDK shares one token refresh between the requests, and a
+  // failed check still wins (closing the client aborts the others).
+  const identityRequest = mx.whoami();
+  const keysRequest = mx.downloadKeysForUsers([user.mxId]);
+  const joinedRoomsRequest = mx.getJoinedRooms();
+  keysRequest.catch(() => {});
+  joinedRoomsRequest.catch(() => {});
+  const identity = await identityRequest;
   assertActive();
   if (
     !user.deviceId ||
@@ -136,7 +152,7 @@ const startupClient = async (
   }
   // Query public keys before Rust can create/upload any device identity. A
   // published device with a missing local store requires explicit recovery.
-  const keys = await mx.downloadKeysForUsers([user.mxId]);
+  const keys = await keysRequest;
   assertActive();
   const published = keys.device_keys?.[user.mxId]?.[user.deviceId]?.keys;
   if (published) {
@@ -175,7 +191,11 @@ const startupClient = async (
       );
     }
   }
-  return mx;
+  // The driver reuses this answer for its first conversation list.
+  return joinedRoomsRequest.then(
+    ({ joined_rooms: joinedRooms }) => joinedRooms,
+    () => null,
+  );
 };
 
 /**
@@ -226,14 +246,15 @@ export const initClient = async (
   user: MatrixUserInterface,
   options: InitClientOptions = {},
 ): Promise<MatrixClient> => {
+  preloadRustCrypto();
   const client = buildClient(user, options);
   try {
     const assertActive = options.assertActive ?? (() => {});
     assertActive();
-    const mx = await startupClient(client, user, assertActive);
-    await options.onSyncStoreReady?.(mx);
+    const joinedRoomIds = await startupClient(client, user, assertActive);
+    await options.onSyncStoreReady?.(client.mx, joinedRoomIds);
     assertActive();
-    return mx;
+    return client.mx;
   } catch (error) {
     await closeMatrixClient(client.mx);
     throw error;

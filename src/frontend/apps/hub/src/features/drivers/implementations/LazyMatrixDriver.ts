@@ -43,8 +43,11 @@ import type {
   User,
 } from "../types";
 
+import { preloadRustCrypto } from "@/features/matrix/preloadRustCrypto";
+
 import {
   clearStoredConversationSearch,
+  hasStoredMatrixSession,
   MATRIX_USER_STORAGE_KEY,
   matrixStorageKey,
   matrixStorageOwner,
@@ -125,7 +128,12 @@ export class LazyMatrixDriver extends BaseDriver {
     private readonly settings: Record<string, unknown> = {},
   ) {
     super(accountId);
-    this.storageOwner = matrixStorageOwner(settings);
+    // A saved session reconnects as soon as `users/me` answers. Download the
+    // driver and the crypto WebAssembly meanwhile instead of after it.
+    if (typeof window !== "undefined" && hasStoredMatrixSession()) {
+      void import("./MatrixDriver").catch(() => {});
+      preloadRustCrypto();
+    }
   }
 
   private async load(): Promise<Driver> {

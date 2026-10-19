@@ -18,7 +18,7 @@ import "../styles/globals.scss";
 
 import { AnalyticsProvider } from "@/features/analytics/AnalyticsProvider";
 import { APIError, errorToString } from "@/features/api/APIError";
-import { Auth } from "@/features/auth/Auth";
+import { Auth, prefetchCurrentUser } from "@/features/auth/Auth";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
 
@@ -58,6 +58,10 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   useEffect(() => {
     document.documentElement.lang = i18n.language;
   }, [i18n.language]);
+
+  useEffect(() => {
+    prefetchCurrentUser();
+  }, []);
 
   // Persistent layouts: the page declares its layout via `getLayout`, and the
   // layout instance lives here (above `<Component>`) so it survives navigations
