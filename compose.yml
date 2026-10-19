@@ -14,17 +14,17 @@ services:
     volumes:
       - ./data/postgresql.${ENV_OVERRIDE:-local}:/var/lib/postgresql/data
     ports:
-      - "9812:5432"
+      - "127.0.0.1:9812:5432"
 
   redis:
     image: redis:5
     ports:
-      - "9813:6379"
+      - "127.0.0.1:9813:6379"
 
   mailcatcher:
     image: sj26/mailcatcher:latest
     ports:
-      - "9804:1080"
+      - "127.0.0.1:9804:1080"
 
   rustfs:
     user: ${DOCKER_USER:-1000}
@@ -35,8 +35,8 @@ services:
       # Log to stdout without requiring a writable /logs directory.
       - RUSTFS_OBS_LOG_DIRECTORY=
     ports:
-      - '9805:9000'
-      - '9806:9001'
+      - '127.0.0.1:9805:9000'
+      - '127.0.0.1:9806:9001'
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9000/health/ready"]
       interval: 1s
@@ -83,7 +83,7 @@ services:
       - env.d/development/postgresql
       - env.d/development/postgresql.${ENV_OVERRIDE:-local}
     ports:
-      - "9801:8000"
+      - "127.0.0.1:9801:8000"
     networks:
       default: {}
       lasuite:
@@ -118,12 +118,12 @@ services:
       - /home/frontend/node_modules
       - /home/frontend/apps/hub/node_modules
     ports:
-      - "9800:9800"
+      - "127.0.0.1:9800:9800"
 
   nginx:
     image: nginx:1.25
     ports:
-      - "9803:9803"
+      - "127.0.0.1:9803:9803"
     networks:
       default: {}
       lasuite:
@@ -196,7 +196,7 @@ services:
       KC_DB_SCHEMA: public
       PROXY_ADDRESS_FORWARDING: 'true'
     ports:
-      - "9802:8080"
+      - "127.0.0.1:9802:8080"
     depends_on:
       kc_postgresql:
         condition: service_healthy
