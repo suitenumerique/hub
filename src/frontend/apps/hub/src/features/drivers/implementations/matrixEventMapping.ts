@@ -490,6 +490,14 @@ export const fetchReactionSnapshot = async (
   );
 };
 
+/** Whether Matrix reports or caches reactions to check with the homeserver. */
+export const needsReactionSnapshot = (
+  event: MatrixEvent,
+  message: ChatMessage,
+): boolean =>
+  message.reactions.length > 0 ||
+  Boolean(event.getServerAggregatedRelation(RelationType.Annotation));
+
 /** Reconciles a mapped message only when Matrix reports or caches reactions. */
 export const reconcileMessageReactions = async (
   mx: MatrixClient,
@@ -498,10 +506,7 @@ export const reconcileMessageReactions = async (
   message: ChatMessage,
   selfUserId: string | undefined,
 ): Promise<ChatMessage> => {
-  const hasServerAggregate = Boolean(
-    event.getServerAggregatedRelation(RelationType.Annotation),
-  );
-  if (!hasServerAggregate && message.reactions.length === 0) {
+  if (!needsReactionSnapshot(event, message)) {
     return message;
   }
   const snapshot = await fetchReactionSnapshot(

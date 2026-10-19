@@ -28,6 +28,10 @@ and this project adheres to
   and the chat connection start.
 - ⚡️(frontend) Start the chat faster: load the encryption module and the
   session checks in parallel instead of one after the other.
+- ⚡️(frontend) Show a conversation with its latest 30 messages, often from
+  memory, and load older ones while scrolling up. Show reactions at once and
+  check them in the background, group refreshes after decryption, and load
+  threads and typing members once the messages are shown.
 - ✨(frontend) Show people's profile pictures in message bubbles, the thread
   list, people search and the typing indicator.
 

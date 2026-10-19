@@ -140,6 +140,7 @@ import {
   isMessageEvent,
   isOwnEcho,
   matrixEventToChatMessage,
+  needsReactionSnapshot,
   observeThreadReply,
   ownReactionEvents,
   reactionUpdateEventsForTarget,
@@ -187,9 +188,48 @@ import {
 } from "./matrixRoomMapping";
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
+/**
+ * Events asked per backfill round trip, Element's `PAGINATE_SIZE`: an older
+ * page shows as soon as one request brings a message, and the list asks for
+ * the next one while its viewport is not full. Contextual and newer pages ask
+ * at least their message limit.
+ */
+const MIN_PAGINATION_EVENTS = 50;
+/**
+ * Events decrypt one task at a time: their unread, thread and list refreshes
+ * are grouped over this delay instead of following each message.
+ */
+const DECRYPTION_REFRESH_DELAY_MS = 50;
 const MAX_TIMELINE_PAGINATION_STEPS = 200;
 const TIMELINE_WINDOW_LIMIT = Number.MAX_SAFE_INTEGER;
 const MATRIX_TYPING_TIMEOUT_MS = 30_000;
+/** Reaction checks of loaded pages asked to the homeserver at once, at most. */
+const REACTION_CHECK_CONCURRENCY = 4;
+
+/** Runs at most `limit` tasks at once, the others in arrival order. */
+const createTaskLimiter = (limit: number) => {
+  const waiting: (() => void)[] = [];
+  let running = 0;
+  const startNext = () => {
+    if (running >= limit) return;
+    const start = waiting.shift();
+    if (!start) return;
+    running += 1;
+    start();
+  };
+  return <T>(task: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      waiting.push(() => {
+        void task()
+          .then(resolve, reject)
+          .finally(() => {
+            running -= 1;
+            startNext();
+          });
+      });
+      startNext();
+    });
+};
 
 // A generous fetch limit is requested from the user directory and the filtered
 // list sliced to a small display count, so removing self/excluded never starves
@@ -324,6 +364,16 @@ export class MatrixDriver extends Driver {
   private lostDeviceSession = false;
   private clearProjectionOnClose = false;
   private clientAbort = new AbortController();
+  /** Reaction checks of loaded pages: a few at once, one per event. */
+  private readonly limitReactionCheck = createTaskLimiter(
+    REACTION_CHECK_CONCURRENCY,
+  );
+  private readonly reactionChecksInFlight = new Set<string>();
+  /**
+   * When this session last toggled a reaction on each event: a homeserver
+   * answer asked before then must not overwrite the optimistic state.
+   */
+  private readonly reactionToggledAt = new Map<string, number>();
 
   private assertOwner = (): void => {
     if (this.disposed || !this.ownership.held) {
@@ -917,7 +967,7 @@ export class MatrixDriver extends Driver {
   private async extendTimelineWindow(
     window: TimelineWindow,
     direction: typeof EventTimeline.BACKWARDS | typeof EventTimeline.FORWARDS,
-    limit: number,
+    eventsPerRequest: number,
     hasEnough: () => boolean,
   ): Promise<void> {
     for (let step = 0; step < MAX_TIMELINE_PAGINATION_STEPS; step += 1) {
@@ -925,7 +975,7 @@ export class MatrixDriver extends Driver {
         return;
       }
       const before = this.timelineWindowSignature(window, direction);
-      await window.paginate(direction, limit, true, 20);
+      await window.paginate(direction, eventsPerRequest, true, 20);
       const after = this.timelineWindowSignature(window, direction);
       if (before === after) {
         return;
@@ -942,23 +992,35 @@ export class MatrixDriver extends Driver {
     nextCursor: string | null,
     newerCursor: string | null,
     isAtLiveEnd: boolean,
+    decryption: "await" | "background" = "await",
   ): Promise<ChatMessagesPage> {
     const mx = this.requireClient("mapMainTimelinePage");
     const selfUserId = mx.getUserId() ?? undefined;
-    const mappedMessages = pageEvents.map((event) =>
+    // Paginated events decrypt in the background. Fetched history waits for
+    // them, so a thread reply never shows before its decryption removes it.
+    // Events from memory show at once, like Element's tiles: those still
+    // decrypting keep a placeholder that is patched afterwards.
+    const decryptions = pageEvents.map((event) =>
+      mx.decryptEventIfNeeded(event),
+    );
+    if (decryption === "await") {
+      await Promise.all(decryptions);
+    } else {
+      decryptions.forEach((pending) => void pending.catch(() => {}));
+    }
+    const messages = pageEvents.map((event) =>
       matrixEventToChatMessage(event, room, selfUserId),
     );
-    const messages = await Promise.all(
-      mappedMessages.map((message, index) =>
-        reconcileMessageReactions(
-          mx,
-          room,
-          pageEvents[index],
-          message,
-          selfUserId,
-        ),
-      ),
-    );
+    if (decryption === "background") {
+      this.reconcilePendingDecryptions(
+        mx,
+        room,
+        pageEvents,
+        messages,
+        selfUserId,
+      );
+    }
+    this.checkPageReactions(mx, room, pageEvents, messages, selfUserId);
     return {
       messages,
       authors: buildAuthors(room, pageEvents, selfUserId),
@@ -966,6 +1028,116 @@ export class MatrixDriver extends Driver {
       newerCursor,
       isAtLiveEnd,
     };
+  }
+
+  /**
+   * Pages show the SDK's reactions at once, as Element does, then check them
+   * with the homeserver: the IndexedDB relation container may still hold an
+   * older local echo, and reactions outside the loaded events are missing.
+   * The checks start after this task, once the page is in the cache.
+   */
+  private checkPageReactions(
+    mx: MatrixClient,
+    room: Room,
+    events: MatrixEvent[],
+    messages: ChatMessage[],
+    selfUserId: string | undefined,
+  ): void {
+    const targetIds = messages
+      .filter((message, index) => needsReactionSnapshot(events[index], message))
+      .map((message) => message.id);
+    if (targetIds.length === 0) {
+      return;
+    }
+    const generation = this.clientGeneration;
+    const isCurrent = () =>
+      this.mx === mx && generation === this.clientGeneration && !this.disposed;
+    window.setTimeout(() => {
+      for (const targetId of targetIds) {
+        // Backfill and refetches map the same events again: one check each.
+        if (this.reactionChecksInFlight.has(targetId)) {
+          continue;
+        }
+        this.reactionChecksInFlight.add(targetId);
+        void this.limitReactionCheck(async () => {
+          if (!isCurrent()) {
+            return;
+          }
+          const askedAt = performance.now();
+          const snapshot = await fetchReactionSnapshot(
+            mx,
+            room.roomId,
+            targetId,
+            selfUserId,
+          );
+          if (!isCurrent() || this.isReactionToggledSince(targetId, askedAt)) {
+            return;
+          }
+          for (const event of reactionUpdateEventsForTarget(
+            room,
+            targetId,
+            snapshot.reactions,
+          )) {
+            this.emit(event);
+          }
+        })
+          // The SDK's reactions stay shown when the check fails.
+          .catch(() => {})
+          .finally(() => this.reactionChecksInFlight.delete(targetId));
+      }
+    }, 0);
+  }
+
+  private isReactionToggledSince(eventId: string, time: number): boolean {
+    return (this.reactionToggledAt.get(eventId) ?? -Infinity) >= time;
+  }
+
+  /**
+   * A page mapped before its events finished decrypting enters the cache only
+   * after this task, so the decryption bridge may have found no row to patch.
+   * Patch those rows again once the page is cached and their decryption ends.
+   */
+  private reconcilePendingDecryptions(
+    mx: MatrixClient,
+    room: Room,
+    events: MatrixEvent[],
+    messages: ChatMessage[],
+    selfUserId: string | undefined,
+  ): void {
+    const pendingEvents = events.filter(
+      (_event, index) => messages[index].availability === "encrypted-pending",
+    );
+    if (pendingEvents.length === 0) {
+      return;
+    }
+    const generation = this.clientGeneration;
+    window.setTimeout(() => {
+      for (const event of pendingEvents) {
+        // An edit decrypting after its original changes the original's row.
+        const decryptions = [event, event.replacingEvent()].map((candidate) =>
+          candidate?.getDecryptionPromise(),
+        );
+        void Promise.allSettled(decryptions).then(() => {
+          const eventId = event.getId();
+          if (
+            !eventId ||
+            this.mx !== mx ||
+            generation !== this.clientGeneration ||
+            this.disposed
+          ) {
+            return;
+          }
+          this.emit({
+            type: "message:reconciled",
+            chatId: room.roomId,
+            messageId: eventId,
+            message: isMainTimelineMessage(event)
+              ? matrixEventToChatMessage(event, room, selfUserId)
+              : null,
+          });
+        });
+      }
+    }, 0);
   }
 
   /**
@@ -993,7 +1165,7 @@ export class MatrixDriver extends Driver {
         `MatrixDriver.getChatMessages: room "${chatId}" not found.`,
       );
     }
-    const targetId = anchorId ?? cursor ?? undefined;
+    const eventsPerRequest = Math.max(limit, MIN_PAGINATION_EVENTS);
     const { window, dispose } = this.scopedTimelineWindow(mx, room);
     try {
       await window.load(targetId, anchorId ? limit : 1);
@@ -1085,17 +1257,30 @@ export class MatrixDriver extends Driver {
         );
       }
 
-      await this.extendTimelineWindow(
+      // Messages older than the cursor, or every message on the live page.
+      const olderCount = () =>
+        cursor ? targetIndex() : this.mainTimelineEvents(window).length;
+      // Like Element (TimelineWindow.load, then fill requests of
+      // PAGINATE_SIZE), known messages show at once, however few: the list
+      // asks for the next page while its viewport is not full. Only a page
+      // with nothing older in memory waits for the homeserver, which is asked
+      // one small request at a time until a message arrives.
+      this.extendTimelineWindowInMemory(
         window,
         EventTimeline.BACKWARDS,
-        limit,
-        () => {
-          const events = this.mainTimelineEvents(window);
-          return cursor ? targetIndex() >= limit : events.length >= limit;
-        },
+        () => olderCount() >= limit,
       );
+      const isFromMemory = olderCount() > 0;
+      if (!isFromMemory) {
+        await this.extendTimelineWindow(
+          window,
+          EventTimeline.BACKWARDS,
+          MIN_PAGINATION_EVENTS,
+          () => olderCount() > 0,
+        );
+      }
       const events = this.mainTimelineEvents(window);
-      const endIndex = cursor ? targetIndex() : events.length;
+      const endIndex = olderCount();
       const startIndex = Math.max(0, endIndex - limit);
       const pageEvents = events.slice(startIndex, endIndex);
       const hasOlder =
@@ -1106,6 +1291,7 @@ export class MatrixDriver extends Driver {
         hasOlder ? (pageEvents[0]?.getId() ?? null) : null,
         null,
         !cursor,
+        isFromMemory ? "background" : "await",
       );
     } finally {
       dispose();
@@ -1416,6 +1602,28 @@ export class MatrixDriver extends Driver {
 
   /** Adds or removes the current user's annotation on one Matrix message. */
   private async toggleReactionOnMessage(
+    method: "toggleChatReaction" | "toggleChatThreadReaction",
+    chatId: string,
+    messageId: string,
+    emoji: string,
+    threadId?: string,
+  ): Promise<ChatMessage> {
+    this.reactionToggledAt.set(messageId, performance.now());
+    try {
+      return await this.sendReactionToggle(
+        method,
+        chatId,
+        messageId,
+        emoji,
+        threadId,
+      );
+    } finally {
+      // Answers asked while the toggle was in flight may predate it too.
+      this.reactionToggledAt.set(messageId, performance.now());
+    }
+  }
+
+  private async sendReactionToggle(
     method: "toggleChatReaction" | "toggleChatThreadReaction",
     chatId: string,
     messageId: string,
@@ -2702,9 +2910,13 @@ export class MatrixDriver extends Driver {
         }
         const targetId = relation.event_id;
         const threadIdHint = event.threadRootId;
+        const askedAt = performance.now();
         void fetchReactionSnapshot(mx, room.roomId, targetId, selfUserId)
           .then((snapshot) => {
-            if (this.mx !== mx) {
+            if (
+              this.mx !== mx ||
+              this.isReactionToggledSince(targetId, askedAt)
+            ) {
               return;
             }
             for (const chatEvent of reactionUpdateEventsForTarget(
@@ -3081,11 +3293,6 @@ export class MatrixDriver extends Driver {
         const eventId = event.getId();
         const room = roomId ? mx.getRoom(roomId) : null;
         if (!room || !eventId) return;
-        let pending = decryptedRooms.get(room.roomId);
-        if (!pending) {
-          pending = { room, threadsChanged: false, chatChanged: false };
-          decryptedRooms.set(room.roomId, pending);
-        }
         // Patch only existing rows: restoring old keys is never a delivery.
         emitCurrent({
           type: "message:reconciled",
@@ -3095,27 +3302,52 @@ export class MatrixDriver extends Driver {
             ? matrixEventToChatMessage(event, room, selfUserId)
             : null,
         });
-        if (!event.isDecryptionFailure()) {
+        // History decrypted outside the live timeline, around a read marker
+        // or a search result, changes no unread state, thread or list preview.
+        // Refreshing them for it fed a load-and-decrypt loop in large rooms.
+        const isThreadEvent = event.isThreadRoot || Boolean(event.threadRootId);
+        const pending =
+          isThreadEvent ||
+          room.getTimelineForEvent(eventId) === room.getLiveTimeline()
+            ? (decryptedRooms.get(room.roomId) ?? {
+                room,
+                threadsChanged: false,
+                chatChanged: false,
+              })
+            : null;
+        if (pending) decryptedRooms.set(room.roomId, pending);
+        const relation = event.getRelation();
+        const replaced =
+          relation?.rel_type === RelationType.Replace && relation.event_id
+            ? room.findEventById(relation.event_id)
+            : undefined;
+        if (replaced?.replacingEvent() === event) {
+          // The edit was attached before its decryption (see onReplaced).
+          // Republish its message, own edits included: it is mapped from the
+          // edit the SDK currently applies, so it cannot bring back old text.
+          onReplaced(replaced);
+        } else if (!event.isDecryptionFailure()) {
           for (const update of timelineEventToChatEvent(
             event,
             room,
             selfUserId,
           )) {
-            if (update.type === "threads:changed")
-              pending.threadsChanged = true;
-            else if (update.type === "chat:changed") pending.chatChanged = true;
-            else if (update.type !== "message:new") emitCurrent(update);
+            if (update.type === "threads:changed") {
+              if (pending) pending.threadsChanged = true;
+            } else if (update.type === "chat:changed") {
+              if (pending) pending.chatChanged = true;
+            } else if (update.type !== "message:new") emitCurrent(update);
           }
         }
         // A send mutation already published this session's reply. Decryption
         // can precede its insertion in the SDK thread timeline; refetching now
         // would replace that confirmed reply with an incomplete projection.
-        if (!isOwnThreadEcho(event)) {
+        if (pending && isThreadEvent && !isOwnThreadEcho(event)) {
           pending.threadsChanged = true;
         }
-        if (!decryptionFlushQueued) {
+        if (pending && !decryptionFlushQueued) {
           decryptionFlushQueued = true;
-          queueMicrotask(flushDecryptedRooms);
+          window.setTimeout(flushDecryptedRooms, DECRYPTION_REFRESH_DELAY_MS);
         }
       });
     };
@@ -3264,6 +3496,8 @@ export class MatrixDriver extends Driver {
     this.mx = null;
     this.joinedRoomIds = null;
     this.sentThreadReplyEventIds.clear();
+    this.reactionChecksInFlight.clear();
+    this.reactionToggledAt.clear();
     this.mediaUploadLimit = null;
     this.confirmedMainReadBoundaries.clear();
     this.exactMainTimelineUnreadRooms.clear();
