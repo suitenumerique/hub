@@ -58,7 +58,12 @@ export type UseChatMessagesResult = {
   windowAnchorId: string | null;
   fetchOlder: () => void;
   fetchNewer: () => void;
-  openAround: (eventId: string) => Promise<void>;
+  /**
+   * Opens the window around an event. Resolves with the message it is built
+   * around, which differs when the event is not shown, or `null` when a later
+   * request replaced it.
+   */
+  openAround: (eventId: string) => Promise<string | null>;
 };
 
 export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
@@ -192,7 +197,7 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
       contextRequestRef.current = request;
       await queryClient.cancelQueries({ queryKey, exact: true });
       if (contextRequestRef.current !== request) {
-        return;
+        return null;
       }
       const page = await getRegistry().get(ref.accountId).getChatMessages({
         chatId: ref.chatId,
@@ -201,20 +206,22 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
         limit: CHAT_PAGE_SIZE,
       });
       if (contextRequestRef.current !== request) {
-        return;
+        return null;
       }
       contextRequestRef.current = null;
+      const anchorId = page.anchorId ?? eventId;
       queryClient.setQueryData<
         InfiniteData<ChatMessagesPage, MessagePageParam>
       >(queryKey, {
         pages: [page],
-        pageParams: [{ cursor: null, direction: "older", anchorId: eventId }],
+        pageParams: [{ cursor: null, direction: "older", anchorId }],
       });
       setWindowAnchor({
         chatKey: `${ref.accountId}:${ref.chatId}`,
-        eventId,
+        eventId: anchorId,
       });
       setWindowVersion((version) => version + 1);
+      return anchorId;
     },
     [queryClient, queryKey, ref.accountId, ref.chatId],
   );

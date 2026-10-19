@@ -295,6 +295,11 @@ export type ChatMessagesPage = {
   newerCursor?: string | null;
   /** True only when this page reaches the genuine live end of the room. */
   isAtLiveEnd?: boolean;
+  /**
+   * Message a contextual page is built around. It differs from the requested
+   * anchor when that event is not shown, such as a reaction or an edit.
+   */
+  anchorId?: string;
 };
 
 /** Persistent read boundary for one room's Matrix main timeline. */
@@ -303,9 +308,9 @@ export type ChatMainTimelineUnread = {
   hasUnread: boolean;
   /** Last persisted or locally-confirmed event before the unread boundary. */
   readUpToId: string | null;
-  /** First eligible remote message after the boundary. */
+  /** First eligible remote message after the boundary, when it is loaded. */
   firstUnreadId: string | null;
-  /** Exact global count, or null when Matrix cannot prove it. */
+  /** Homeserver count, or null when the unread messages do not notify. */
   unreadCount: number | null;
   /** Last main-timeline message at the genuine live end. */
   liveEndId: string | null;

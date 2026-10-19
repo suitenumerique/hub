@@ -1,4 +1,8 @@
-import { ArrowUp, CircleCheck } from "@gouvfr-lasuite/ui-components/icons";
+import {
+  ArrowUp,
+  CircleCheck,
+  Loader,
+} from "@gouvfr-lasuite/ui-components/icons";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +12,8 @@ export type UnreadMessagesBannerProps = {
   count: number | null;
   canNavigate: boolean;
   isResolving: boolean;
+  /** A jump to the first unread message waits for the homeserver. */
+  isLoading: boolean;
   onNavigate: () => void;
   onMarkAllRead: () => void;
 };
@@ -27,14 +33,20 @@ export const UnreadMessagesBanner = ({
   count,
   canNavigate,
   isResolving,
+  isLoading,
   onNavigate,
   onMarkAllRead,
 }: UnreadMessagesBannerProps) => {
   const { t } = useTranslation();
-  const label =
+  let label =
     count === null
       ? t("Unread messages")
       : t("{{count}} unread messages", { count });
+  if (isLoading) {
+    label = t("Loading unread messages…");
+  } else if (isResolving && !canNavigate) {
+    label = t("Looking for the first unread message…");
+  }
 
   return (
     <div className="hub__unread-messages-banner" data-testid="unread-banner">
@@ -47,11 +59,9 @@ export const UnreadMessagesBanner = ({
         onKeyDown={(event) => activateWithKeyboard(event, onNavigate)}
       >
         <span className="hub__unread-messages-banner__icon" aria-hidden="true">
-          <ArrowUp />
+          {isLoading ? <Loader className="hub__spinning-icon" /> : <ArrowUp />}
         </span>
-        {isResolving && !canNavigate
-          ? t("Looking for the first unread message…")
-          : label}
+        {label}
       </button>
       <button
         type="button"
