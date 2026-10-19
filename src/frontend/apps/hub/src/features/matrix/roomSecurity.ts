@@ -2,6 +2,7 @@ import {
   ClientEvent,
   EventType,
   type MatrixClient,
+  MatrixError,
   type Room,
 } from "matrix-js-sdk/lib/matrix";
 
@@ -36,6 +37,24 @@ export const prepareRoomSecurity = async (
   return result;
 };
 
+/**
+ * Reads the one state event that sets the policy: the full room state weighs
+ * megabytes in large rooms. Only `M_NOT_FOUND` proves the room is plaintext.
+ */
+const fetchEncryptionState = async (
+  mx: MatrixClient,
+  roomId: string,
+): Promise<Record<string, unknown> | undefined> => {
+  try {
+    return await mx.getStateEvent(roomId, EventType.RoomEncryption, "");
+  } catch (error) {
+    if (error instanceof MatrixError && error.errcode === "M_NOT_FOUND") {
+      return undefined;
+    }
+    throw error;
+  }
+};
+
 const prepareKnownRoom = async (
   mx: MatrixClient,
   room: Room,
@@ -47,16 +66,12 @@ const prepareKnownRoom = async (
   let encryption = room.currentState
     .getStateEvents(EventType.RoomEncryption, "")
     ?.getContent();
-  // Fetch full state only while unknown. Afterwards /sync updates the Room;
+  // Ask the server only while unknown. Afterwards /sync updates the Room;
   // re-check Rust on every send so a plaintext room can still become encrypted.
   if (roomSecurity(room) === "unknown") {
-    const state = await mx.roomState(room.roomId);
+    encryption = await fetchEncryptionState(mx, room.roomId);
     assertCurrent();
     signal.throwIfAborted();
-    encryption = state.find(
-      (event) =>
-        event.type === EventType.RoomEncryption && event.state_key === "",
-    )?.content;
   }
   assertCurrent();
   signal.throwIfAborted();

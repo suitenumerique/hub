@@ -17,7 +17,7 @@ import { chatKeys } from "../../chatKeys";
 import { useCachedQueryData } from "../../hooks/useCachedQueryData";
 import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useStartChatThread } from "../../hooks/useStartChatThread";
-import { useCanSendToChat } from "../../hooks/useChatSecurity";
+import { useChatSendState } from "../../hooks/useChatSecurity";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
 import { ChatEncryptionPrompt } from "../ChatEncryptionPrompt";
@@ -44,7 +44,7 @@ export const DraftThreadDetail = ({
   onCreated,
 }: DraftThreadDetailProps) => {
   const { t } = useTranslation();
-  const canSend = useCanSendToChat(chatRef);
+  const sendState = useChatSendState(chatRef);
   const mentionSource = useMemo(
     () => ({ accountId: chatRef.accountId, chatRef }),
     [chatRef],
@@ -146,7 +146,9 @@ export const DraftThreadDetail = ({
           </Fragment>
         </div>
         <div className="hub__thread-detail__composer">
-          {!canSend && <ChatEncryptionPrompt accountId={chatRef.accountId} />}
+          {sendState === "blocked" && (
+            <ChatEncryptionPrompt accountId={chatRef.accountId} />
+          )}
           <ChatComposer
             conversationId={root.message.id}
             placeholder={
@@ -155,11 +157,15 @@ export const DraftThreadDetail = ({
                 : t("Replying isn't available on this account yet.")
             }
             inputLabel={t("Answer")}
-            disabled={!isSupported || !canSend}
+            disabled={!isSupported || sendState === "blocked"}
             isSubmitting={isStarting}
             focusSignal={isOpen ? composerFocusSignal : undefined}
-            onSubmit={(content) => send(content)}
-            onSendAttachment={(attachment) => send("", attachment)}
+            onSubmit={
+              sendState === "checking"
+                ? undefined
+                : (composed) => send(composed)
+            }
+            onSendAttachment={(attachment) => send({ content: "" }, attachment)}
             onUploadAttachment={isSupported ? uploadAttachment : undefined}
             dropTargetRef={detailRef}
             onSubmitted={openCreatedThread}
