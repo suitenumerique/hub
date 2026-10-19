@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
@@ -16,13 +16,16 @@ export type UseChatMembersResult = {
   refetch: () => void;
 };
 
+/** Members of `ref`, or none without a conversation yet. */
 export const useChatMembers = (
-  ref: ChatRef,
+  ref: ChatRef | null,
   enabled: boolean,
 ): UseChatMembersResult => {
   const query = useQuery({
-    queryKey: chatKeys.members(ref),
-    queryFn: () => getRegistry().get(ref.accountId).getChatMembers(ref.chatId),
+    queryKey: ref ? chatKeys.members(ref) : ["chat-members", "none"],
+    queryFn: ref
+      ? () => getRegistry().get(ref.accountId).getChatMembers(ref.chatId)
+      : skipToken,
     enabled,
     staleTime: Infinity,
     meta: { noGlobalError: true },

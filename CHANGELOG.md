@@ -45,6 +45,8 @@ and this project adheres to
 - ✨(frontend) Show formatted messages as Element does: bold, lists, code,
   quotes, links and mentions, from the HTML body, with an allowlist of tags.
   Make the full URLs typed in messages clickable.
+- ✨(frontend) Mention people with @ in the composer, with suggestions from the
+  conversation members, and send markdown as formatted text, as Element does.
 
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.

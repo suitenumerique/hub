@@ -189,8 +189,14 @@ export type ChatUser = ChatMessageAuthor & {
  */
 export type ChatMember = {
   id: string;
+  /** Display name, followed by the id when another member shares it. */
   name: string;
   secondaryText: string;
+  /** Display name alone: the text a mention of this member shows. */
+  rawName?: string;
+  /** Profile picture, loaded through the driver's `getChatAvatar`. */
+  avatarUrl?: string;
+  isCurrentUser?: boolean;
 };
 
 /** Read-only membership snapshot used by the conversation members modal. */
