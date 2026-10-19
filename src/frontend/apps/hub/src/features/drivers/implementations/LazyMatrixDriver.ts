@@ -5,6 +5,8 @@ import {
   Driver as BaseDriver,
   type ChatConnectionState,
   type ChatEventListener,
+  type ChatSignInOptions,
+  type ChatSignInResult,
   type ChatTypingListener,
   type ChatUserFilters,
   type DeleteChatMessageParams,
@@ -115,7 +117,7 @@ export class LazyMatrixDriver extends BaseDriver {
     unsubscribe: () => void;
   }>();
   private disposed = false;
-  private storageOwner: string | null;
+  private storageOwner: string | null = null;
 
   constructor(
     accountId: AccountId = "default",
@@ -310,12 +312,20 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async connect(user: User | null | undefined): Promise<ChatConnectionState> {
     // Logout must know the namespace even if the module import is still pending.
-    this.storageOwner = matrixStorageOwner(this.settings, user);
+    this.storageOwner = matrixStorageOwner(user);
     return this.withTarget((driver) => driver.connect(user));
   }
 
   override replaceLostDeviceSession(user: User): Promise<ChatConnectionState> {
     return this.withTarget((driver) => driver.replaceLostDeviceSession(user));
+  }
+
+  override signIn(
+    user: User,
+    email: string,
+    options?: ChatSignInOptions,
+  ): Promise<ChatSignInResult> {
+    return this.withTarget((driver) => driver.signIn(user, email, options));
   }
 
   subscribeToEvents(listener: ChatEventListener): () => void {

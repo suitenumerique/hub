@@ -8,14 +8,8 @@ import type { AccountId, User } from "../types";
 
 export const MATRIX_USER_STORAGE_KEY = "matrixUser";
 
-export const matrixStorageOwner = (
-  settings: Record<string, unknown>,
-  user?: User | null,
-): string | null =>
-  (typeof settings.loginHint === "string" && settings.loginHint
-    ? settings.loginHint
-    : (user?.email ?? "")
-  ).trim() || null;
+export const matrixStorageOwner = (user?: User | null): string | null =>
+  user?.email?.trim() || null;
 
 export const matrixStorageKey = (
   accountId: AccountId,

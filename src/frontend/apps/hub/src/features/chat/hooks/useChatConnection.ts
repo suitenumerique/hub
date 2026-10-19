@@ -4,9 +4,14 @@ import { useEffect } from "react";
 import { chatKeys } from "@/features/chat/chatKeys";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { ChatConnectionState } from "@/features/drivers/Driver";
-import type { User } from "@/features/drivers/types";
+import type { AccountId, User } from "@/features/drivers/types";
 
-const DISCONNECTED: ChatConnectionState = {
+export type ChatConnectionsState = ChatConnectionState & {
+  /** Account to sign in to, when the status is `sign-in-required`. */
+  accountId?: AccountId;
+};
+
+const DISCONNECTED: ChatConnectionsState = {
   status: "idle",
   chatUser: null,
 };
@@ -18,7 +23,7 @@ const DISCONNECTED: ChatConnectionState = {
  */
 export const useChatConnections = (
   user: User | null | undefined,
-): ChatConnectionState => {
+): ChatConnectionsState => {
   const entries = useDriverEntries();
   const userId = user?.id ?? null;
   const queryClient = useQueryClient();
@@ -55,7 +60,7 @@ export const useChatConnections = (
       staleTime: Infinity,
       meta: { noGlobalError: true },
     })),
-    combine: (results): ChatConnectionState => {
+    combine: (results): ChatConnectionsState => {
       if (!user) {
         return DISCONNECTED;
       }
@@ -87,6 +92,17 @@ export const useChatConnections = (
           status: "connecting",
           chatUser: null,
           redirectTo: redirect,
+        };
+      }
+
+      const signIn = requiredResults.find(
+        ({ result }) => result?.data?.status === "sign-in-required",
+      );
+      if (signIn) {
+        return {
+          status: "sign-in-required",
+          chatUser: null,
+          accountId: signIn.entry.accountId,
         };
       }
 
