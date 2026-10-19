@@ -42,6 +42,9 @@ and this project adheres to
   threads and typing members once the messages are shown.
 - ✨(frontend) Show people's profile pictures in message bubbles, the thread
   list, people search and the typing indicator.
+- ✨(frontend) Show formatted messages as Element does: bold, lists, code,
+  quotes, links and mentions, from the HTML body, with an allowlist of tags.
+  Make the full URLs typed in messages clickable.
 
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.

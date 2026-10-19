@@ -90,6 +90,18 @@
     );
   }
 
+  // Brand colours vanish on the brand bubble: links and mentions follow its text.
+  &--sent &__body:not([data-attachment]) {
+    .hub__message-link {
+      color: inherit;
+    }
+
+    .hub__message-mention {
+      color: inherit;
+      background: color-mix(in srgb, currentColor 20%, transparent);
+    }
+  }
+
   &--sent &__body[data-deleted="true"] {
     background: var(
       --c--contextuals--background--semantic--neutral--tertiary,
