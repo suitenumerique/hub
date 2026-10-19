@@ -99,6 +99,12 @@ export type LocalChat = {
   participantIds: string[];
   visual: ChatVisual;
   /**
+   * Image of the conversation: its own avatar, or the other person's in a
+   * direct chat. Opaque to the UI, which loads it with `Driver.getChatAvatar`
+   * and keeps `visual` while it loads or when there is none.
+   */
+  avatarUrl?: string;
+  /**
    * The current user's membership. Optional for backwards compatibility: chats
    * that omit it are treated as joined (see `isInvitationChat`). Matrix-mapped
    * chats always set it.
@@ -166,6 +172,8 @@ export type ChatMessageAuthor = {
   name: string;
   initials: string;
   color: AvatarColor;
+  /** Profile picture, loaded through the driver's `getChatAvatar`. */
+  avatarUrl?: string;
 };
 
 export type ChatUser = ChatMessageAuthor & {
@@ -274,6 +282,8 @@ export type ChatMessage = {
 export type ChatTypingUser = {
   id: string;
   name: string;
+  /** Profile picture, loaded through the driver's `getChatAvatar`. */
+  avatarUrl?: string;
 };
 
 export type ChatMessagesPage = {

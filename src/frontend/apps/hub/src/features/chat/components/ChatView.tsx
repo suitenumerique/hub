@@ -361,7 +361,10 @@ export const ChatView = ({
                     )}
                     <div className="hub__chat-composer-overlay-anchor">
                       <ComposerFloatingArea key={chatKey ?? "draft"}>
-                        <TypingIndicator users={typingUsers} />
+                        <TypingIndicator
+                          accountId={chatRef?.accountId ?? null}
+                          users={typingUsers}
+                        />
                         <div className="hub__chat-composer-floating-banners">
                           {chatRef && (
                             <ConversationUnreadBanner chatRef={chatRef} />

@@ -13,6 +13,7 @@ import {
   type DownloadChatAttachmentParams,
   type Driver,
   type EditChatMessageParams,
+  type GetChatAvatarParams,
   type GetChatMessagesParams,
   type GetChatThreadParams,
   type MarkChatThreadReadParams,
@@ -278,6 +279,10 @@ export class LazyMatrixDriver extends BaseDriver {
     params: DownloadChatAttachmentParams,
   ): Promise<Blob> {
     return this.withTarget((driver) => driver.downloadChatAttachment(params));
+  }
+
+  async getChatAvatar(params: GetChatAvatarParams): Promise<Blob> {
+    return this.withTarget((driver) => driver.getChatAvatar(params));
   }
 
   async editChatMessage(params: EditChatMessageParams): Promise<ChatMessage> {

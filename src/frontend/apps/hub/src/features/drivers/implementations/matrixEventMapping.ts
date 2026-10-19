@@ -36,7 +36,7 @@ import {
   ChatThreadDetail,
   ChatUnread,
 } from "../types";
-import { initialsFor } from "./matrixIdentity";
+import { initialsFor, mxcUrl } from "./matrixIdentity";
 import { parseMatrixAttachment } from "./matrixMedia";
 import i18n from "@/i18n/initI18n";
 import { DecryptionFailureCode } from "matrix-js-sdk/lib/crypto-api";
@@ -330,12 +330,14 @@ export const authorForSender = (
   userId: string,
   selfUserId: string | undefined,
 ): ChatMessageAuthor => {
-  const name = room.getMember(userId)?.name ?? userId;
+  const member = room.getMember(userId);
+  const name = member?.name ?? userId;
   return {
     id: toAuthorId(userId, selfUserId),
     name,
     initials: initialsFor(name),
     color: hashAvatarColor(userId),
+    avatarUrl: mxcUrl(member?.getMxcAvatarUrl()),
   };
 };
 
@@ -765,12 +767,18 @@ export const buildAuthors = (
     ),
   ];
   return senderIds.map((id) => {
-    const name = room.getMember(id)?.name ?? id;
+    // Like Element's `mxEvent.sender`, an event carries its sender's profile
+    // even before the room's members are loaded.
+    const member =
+      room.getMember(id) ??
+      events.findLast((event) => event.getSender() === id)?.sender;
+    const name = member?.name ?? id;
     return {
       id,
       name,
       initials: initialsFor(name),
       color: hashAvatarColor(id),
+      avatarUrl: mxcUrl(member?.getMxcAvatarUrl()),
     };
   });
 };
