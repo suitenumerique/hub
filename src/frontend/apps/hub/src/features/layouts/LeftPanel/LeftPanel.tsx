@@ -1,9 +1,5 @@
 import { Button } from "@gouvfr-lasuite/ui-components";
-import {
-  ArrowDropDown,
-  Plus,
-  QuestionMark,
-} from "@gouvfr-lasuite/ui-components/icons";
+import { Plus, QuestionMark } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -102,6 +98,9 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
         <ChatSection
           title={t("All chats")}
           chats={chats.all}
+          showNewChat={
+            !chats.isLoading && !chats.isError && chats.all.length === 0
+          }
           accountLabels={accountLabels}
           showAccountLabels={showAccountLabels}
           unreadLookup={unreadLookup}
@@ -160,6 +159,7 @@ const ActionRow = ({ action }: { action: ActionItem }) => {
 type ChatSectionProps = {
   title: string;
   chats: Chat[];
+  showNewChat?: boolean;
   accountLabels: Map<string, string>;
   showAccountLabels: boolean;
   unreadLookup: ChatUnreadLookup;
@@ -168,11 +168,14 @@ type ChatSectionProps = {
 const ChatSection = ({
   title,
   chats,
+  showNewChat = false,
   accountLabels,
   showAccountLabels,
   unreadLookup,
 }: ChatSectionProps) => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(true);
+  const router = useRouter();
   const reactId = useId();
   const titleId = `${reactId}-title`;
   const panelId = `${reactId}-panel`;
@@ -189,7 +192,12 @@ const ChatSection = ({
           onClick={() => setIsOpen((open) => !open)}
         >
           <span className="hub__left-panel__section__title">{title}</span>
-          <ArrowDropDown />
+          <span
+            className="hub__left-panel__section__chevron"
+            aria-hidden="true"
+          >
+            <img src="/assets/chat-section-chevron.svg" alt="" />
+          </span>
         </button>
       </h2>
       <div
@@ -199,6 +207,37 @@ const ChatSection = ({
         className="hub__left-panel__section__panel"
       >
         <ul className="hub__left-panel__list" inert={!isOpen}>
+          {showNewChat && (
+            <li>
+              <Link
+                href="/chat/new"
+                aria-current={
+                  router.pathname === "/chat/new" ? "page" : undefined
+                }
+                className={clsx(
+                  "hub__left-panel__chat",
+                  router.pathname === "/chat/new" &&
+                    "hub__left-panel__chat--active",
+                )}
+              >
+                <span
+                  className="hub__left-panel__chat__dot"
+                  aria-hidden="true"
+                />
+                <span className="hub__left-panel__chat__content">
+                  <span
+                    className="hub__left-panel__chat__new-avatar"
+                    aria-hidden="true"
+                  >
+                    <Plus size={16} />
+                  </span>
+                  <span className="hub__left-panel__chat__name hub__left-panel__chat__name--strong">
+                    {t("New chat")}
+                  </span>
+                </span>
+              </Link>
+            </li>
+          )}
           {chats.map((chat) => (
             <li key={`${chat.accountId}:${chat.id}`}>
               <ChatRow

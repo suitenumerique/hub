@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import { useCallback, useRef } from "react";
 
 import { chatHref } from "@/features/chat/chatRefs";
+import { useChats } from "@/features/chat/hooks/useChats";
 import type { ChatRef } from "@/features/drivers/types";
 
 import { useReportActiveChat } from "../ActiveChatContext";
@@ -23,6 +24,9 @@ type ChatSurfaceProps = {
 /** Shared view host for `/chat/new` and an existing conversation route. */
 export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
   const router = useRouter();
+  const chats = useChats();
+  const showWelcome =
+    isNew && !chats.isLoading && !chats.isError && chats.all.length === 0;
   const handleSent = useCallback(
     (ref: ChatRef) => {
       void router.replace(chatHref(ref));
@@ -93,10 +97,10 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     () =>
       selectedUsers.length === 0 ? (
         <div className="hub__new-chat-empty">
-          <NewChatPlaceholder />
+          <NewChatPlaceholder welcome={showWelcome} />
         </div>
       ) : null,
-    [selectedUsers.length],
+    [selectedUsers.length, showWelcome],
   );
 
   return (

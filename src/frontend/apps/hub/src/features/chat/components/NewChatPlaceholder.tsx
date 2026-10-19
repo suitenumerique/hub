@@ -1,21 +1,23 @@
-import { Plus } from "@gouvfr-lasuite/ui-components/icons";
 import { useTranslation } from "react-i18next";
 
-export const NewChatPlaceholder = () => {
+import { ChatEmptyIllustration } from "./ChatEmptyIllustration";
+
+export const NewChatPlaceholder = ({
+  welcome = false,
+}: {
+  welcome?: boolean;
+}) => {
   const { t } = useTranslation();
 
   return (
     <div className="hub__new-chat-placeholder">
-      <div className="hub__new-chat-placeholder__illustration" aria-hidden>
-        <span className="hub__new-chat-placeholder__bubble hub__new-chat-placeholder__bubble--left" />
-        <span className="hub__new-chat-placeholder__bubble hub__new-chat-placeholder__bubble--right" />
-        <span className="hub__new-chat-placeholder__bubble hub__new-chat-placeholder__bubble--bottom" />
-        <span className="hub__new-chat-placeholder__plus">
-          <Plus size={18} />
-        </span>
-      </div>
-      <h1>{t("New chat")}</h1>
-      <p>{t("Add people to get started")}</p>
+      <ChatEmptyIllustration />
+      <h1>{welcome ? t("Welcome to LaSuite Chat") : t("New chat")}</h1>
+      <p>
+        {welcome
+          ? t("Add people using the top bar to start collaborating")
+          : t("Add people to get started")}
+      </p>
     </div>
   );
 };
