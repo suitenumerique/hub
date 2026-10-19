@@ -88,7 +88,15 @@ export type UseChatTypingResult = {
  * short idle period. Departing typers are held briefly so a quick stop/restart
  * never flashes the indicator off and back on.
  */
-export const useChatTyping = (ref: ChatRef | null): UseChatTypingResult => {
+export const useChatTyping = (
+  ref: ChatRef | null,
+  {
+    watchIncoming = true,
+  }: {
+    /** Watching loads the room members: callers can wait for the timeline. */
+    watchIncoming?: boolean;
+  } = {},
+): UseChatTypingResult => {
   const entries = useDriverEntries();
   const accountId = ref?.accountId;
   const chatId = ref?.chatId;
@@ -115,7 +123,7 @@ export const useChatTyping = (ref: ChatRef | null): UseChatTypingResult => {
     visibleUsersRef.current = [];
     setUsers([]);
 
-    if (!chatId || !driver) {
+    if (!chatId || !driver || !watchIncoming) {
       return;
     }
 
@@ -203,7 +211,7 @@ export const useChatTyping = (ref: ChatRef | null): UseChatTypingResult => {
       rawTypingUserIdsRef.current.clear();
       visibleUsersRef.current = [];
     };
-  }, [chatId, driver]);
+  }, [chatId, driver, watchIncoming]);
 
   useEffect(() => {
     const previous = sessionRef.current;

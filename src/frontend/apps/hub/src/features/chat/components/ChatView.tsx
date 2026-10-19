@@ -38,6 +38,7 @@ import { useUploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useCanSendToChat, useChatSecurity } from "../hooks/useChatSecurity";
 import { useChatTyping } from "../hooks/useChatTyping";
 import { useEditChatMessage } from "../hooks/useEditChatMessage";
+import { useChatMessagesLoaded } from "../hooks/useChatMessages";
 import { useIgnoreStrayFileDrops } from "../hooks/useIgnoreStrayFileDrops";
 import { useChatThreads } from "../hooks/useChatThreads";
 import { useSendChatMessage } from "../hooks/useSendChatMessage";
@@ -140,7 +141,11 @@ export const ChatView = ({
   const mainRef = useRef<HTMLDivElement>(null);
   useIgnoreStrayFileDrops();
   const { editMessage, isEditing } = useEditChatMessage(chatRef);
-  const { users: typingUsers, onTypingActivity } = useChatTyping(chatRef);
+  // Typing loads the room members: let the first messages show before it.
+  const messagesLoaded = useChatMessagesLoaded(chatRef);
+  const { users: typingUsers, onTypingActivity } = useChatTyping(chatRef, {
+    watchIncoming: messagesLoaded,
+  });
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
   const [unreadMessagesBanner, setUnreadMessagesBanner] =
