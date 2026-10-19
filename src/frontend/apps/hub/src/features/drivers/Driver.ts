@@ -466,6 +466,13 @@ export abstract class Driver {
     );
   }
 
+  /** The signed-in user's own profile on this account. */
+  async getChatProfile(): Promise<ChatUser> {
+    throw new Error(
+      `${this.constructor.name}.getChatProfile: profiles are not supported by this driver.`,
+    );
+  }
+
   /** Image of a conversation's avatar. Without one, the UI keeps its visual. */
   async getChatAvatar(_params: GetChatAvatarParams): Promise<Blob> {
     void _params;

@@ -8,26 +8,62 @@ import { useTranslation } from "react-i18next";
 
 import { logout, useAuth } from "@/features/auth/Auth";
 import { LoginButton } from "@/features/auth/components/LoginButton";
+import { ChatUserAvatar } from "@/features/chat/components/ChatUserAvatar";
 import { useEncryptionSettings } from "@/features/chat/EncryptionSettingsContext";
+import { useChatAccountProfile } from "@/features/chat/hooks/useChatAccountProfile";
 import { useComposerAccountId } from "@/features/chat/hooks/useChatAccounts";
 import { useChatSecurity } from "@/features/chat/hooks/useChatSecurity";
+import type { AccountId, ChatUser, User } from "@/features/drivers/types";
 
 import { useUserLanguage } from "./LanguagePickerUserMenu";
 
 const TERMS_OF_SERVICE_URL =
   "https://docs.numerique.gouv.fr/docs/8e298e03-c95f-44c7-be4a-ffb618af1854/";
 
+type IdentityAvatarProps = {
+  accountId: AccountId | null;
+  accountProfile: ChatUser | null;
+  user: User;
+  size: "small" | "medium";
+};
+
+/** The account's own picture when it has an identity, else the Hub user's. */
+const IdentityAvatar = ({
+  accountId,
+  accountProfile,
+  user,
+  size,
+}: IdentityAvatarProps) =>
+  accountProfile ? (
+    <ChatUserAvatar
+      accountId={accountId}
+      user={accountProfile}
+      size={size === "small" ? "sm" : "md"}
+    />
+  ) : (
+    <UserAvatar fullName={user.full_name || user.email} size={size} />
+  );
+
 export const UserProfile = () => {
-  const { user } = useAuth();
+  const { user, chatUser } = useAuth();
   const { t } = useTranslation();
   const menu = useDropdownMenu();
   const settings = useEncryptionSettings();
   const accountId = useComposerAccountId();
   const { security } = useChatSecurity(accountId);
   const { languages, onChange } = useUserLanguage();
+  // A Tchap account is its own identity: show its profile once loaded. Local
+  // Matrix accounts come from the Hub's identity provider, so the Hub user is
+  // the same person.
+  const accountProfile = useChatAccountProfile(
+    accountId,
+    chatUser?.userId ?? null,
+  );
   if (!user) {
     return <LoginButton />;
   }
+  const name = accountProfile ? accountProfile.name : user.full_name;
+  const detail = accountProfile ? accountProfile.subtitle : user.email;
   return (
     <DropdownMenu
       isOpen={menu.isOpen}
@@ -35,10 +71,15 @@ export const UserProfile = () => {
       variant="tiny"
       topMessage={
         <div className="hub__user-menu-identity">
-          <UserAvatar fullName={user.full_name || user.email} />
+          <IdentityAvatar
+            accountId={accountId}
+            accountProfile={accountProfile}
+            user={user}
+            size="medium"
+          />
           <div>
-            {user.full_name && <strong>{user.full_name}</strong>}
-            <span>{user.email}</span>
+            {name && <strong>{name}</strong>}
+            <span>{detail}</span>
           </div>
         </div>
       }
@@ -100,7 +141,12 @@ export const UserProfile = () => {
         aria-haspopup="menu"
         aria-label={t("Account menu")}
       >
-        <UserAvatar fullName={user.full_name || user.email} size="small" />
+        <IdentityAvatar
+          accountId={accountId}
+          accountProfile={accountProfile}
+          user={user}
+          size="small"
+        />
       </button>
     </DropdownMenu>
   );
