@@ -24,6 +24,8 @@ and this project adheres to
   conversations, then conversations named after their members.
 - ✨(frontend) Ignore accents in the conversation search: "general" finds
   "Général".
+- 💄(frontend) Show a Tchap splash screen with a loading bar while the Hub
+  and the chat connection start.
 - ⚡️(frontend) Start the chat faster: load the encryption module and the
   session checks in parallel instead of one after the other.
 - ✨(frontend) Show people's profile pictures in message bubbles, the thread
