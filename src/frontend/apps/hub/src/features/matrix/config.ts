@@ -2,8 +2,6 @@ type MatrixSharedSettings = {
   /** Explicit client used to prepare and recover this same Matrix account. */
   externalClientUrl: string;
   externalClientLabel: string;
-  /** Optional OIDC login hint; defaults to the authenticated Hub email. */
-  loginHint?: string;
   /**
    * Largest file, in bytes, users may attach. The homeserver's own limit
    * (`m.upload.size`) still applies when it is lower.
@@ -33,6 +31,11 @@ export type MatrixTchapSettings = MatrixSharedSettings & {
    * only homeservers the account may connect to.
    */
   homeservers: string[];
+  /**
+   * Server of external guests, one of `homeservers`. Unknown email domains also
+   * lead there, so signing in to it is confirmed first.
+   */
+  externalHomeserver: string;
   /** Name shown by the authorization server for the registered client. */
   clientName: string;
 };
@@ -57,6 +60,7 @@ const TCHAP_CLIENT_NAME =
 export const TCHAP_PREPROD_SETTINGS = {
   discovery: "tchap-email",
   homeservers: ["i.tchap.gouv.fr", "a.tchap.gouv.fr", "e.tchap.gouv.fr"],
+  externalHomeserver: "e.tchap.gouv.fr",
   clientName: TCHAP_CLIENT_NAME,
   externalClientUrl: "https://www.beta.tchap.gouv.fr",
   externalClientLabel: "Tchap (preprod)",
@@ -83,6 +87,7 @@ export const TCHAP_PROD_SETTINGS = {
     "agent.social.tchap.gouv.fr",
     "agent.ssi.tchap.gouv.fr",
   ],
+  externalHomeserver: "agent.externe.tchap.gouv.fr",
   clientName: TCHAP_CLIENT_NAME,
   externalClientUrl: "https://www.tchap.gouv.fr",
   externalClientLabel: "Tchap",
