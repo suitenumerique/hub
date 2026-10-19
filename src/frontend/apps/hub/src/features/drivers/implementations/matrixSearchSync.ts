@@ -114,7 +114,8 @@ export const observeMatrixSearchSync = async (
       observer.stale(true);
     }
   };
-  // This read occurs after initClient's cache repair, before startClient.
+  // This read occurs after initClient's cache repair, before startClient: it
+  // shares the copy the SDK replays, which it must not mutate.
   try {
     const saved = await store.getSavedSync();
     completedToken = saved?.nextBatch;
