@@ -13,6 +13,7 @@ import {
 
 import i18n from "@/i18n/initI18n";
 
+import { saveOnMembershipChange } from "./membershipSave";
 import { MatrixUserInterface } from "./types";
 import { ownSyncStore } from "./ownedSyncStore";
 
@@ -108,6 +109,7 @@ const buildClient = (
     verificationMethods: ["m.sas.v1"],
   });
 
+  saveOnMembershipChange(indexedDBStore);
   stores.set(mx, ownSyncStore(indexedDBStore));
   return { mx, indexedDBStore, cryptoStoreDbName };
 };
