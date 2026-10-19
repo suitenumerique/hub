@@ -82,6 +82,60 @@ const localizedRoomNameGenerator = (
     : i18n.t("Empty conversation");
 };
 
+/** A command the SDK's worker backend posts, answered by the same `seq`. */
+type SyncStoreWorkerCommand = { seq?: number };
+
+/**
+ * Like Element (createMatrixClient.ts), the sync store runs its IndexedDB
+ * backend in a worker: loading, accumulating and saving the cache (about
+ * 10 MB on Tchap) no longer blocks the main thread.
+ *
+ * The SDK's worker backend only listens to `onmessage`: if the worker script
+ * fails to load (a stale chunk after a deployment) or the worker dies, its
+ * commands would never settle, leaving startup, sync and logout hanging. A
+ * failed worker answers them with an error instead, so the store degrades to
+ * memory as it does when IndexedDB itself fails.
+ */
+const createSyncStoreWorker = (): Worker => {
+  const worker = new Worker(new URL("./indexeddb.worker.ts", import.meta.url));
+  const pending = new Set<number>();
+  let failed = false;
+  const answerFailure = (seq: number) => {
+    worker.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          command: "cmd_fail",
+          seq,
+          error: { name: "Error", message: "The sync store worker failed." },
+        },
+      }),
+    );
+  };
+  const post = worker.postMessage.bind(worker);
+  worker.postMessage = ((command: SyncStoreWorkerCommand) => {
+    const { seq } = command;
+    if (failed) {
+      if (seq !== undefined) queueMicrotask(() => answerFailure(seq));
+      return;
+    }
+    if (seq !== undefined) pending.add(seq);
+    post(command);
+  }) as Worker["postMessage"];
+  worker.addEventListener("message", (event: MessageEvent) => {
+    const { seq } = (event.data ?? {}) as SyncStoreWorkerCommand;
+    if (seq !== undefined) pending.delete(seq);
+  });
+  const fail = () => {
+    if (failed) return;
+    failed = true;
+    worker.terminate();
+    for (const seq of [...pending]) answerFailure(seq);
+  };
+  worker.addEventListener("error", fail);
+  worker.addEventListener("messageerror", fail);
+  return worker;
+};
+
 const buildClient = (
   user: MatrixUserInterface,
   options: InitClientOptions,
@@ -90,6 +144,8 @@ const buildClient = (
     indexedDB: global.indexedDB,
     localStorage: global.localStorage,
     dbName: options.syncStoreDbName ?? DEFAULT_SYNC_STORE_DB_NAME,
+    workerFactory:
+      typeof Worker === "undefined" ? undefined : createSyncStoreWorker,
   });
   const cryptoStoreDbName =
     options.cryptoStoreDbName ?? DEFAULT_CRYPTO_STORE_DB_NAME;
