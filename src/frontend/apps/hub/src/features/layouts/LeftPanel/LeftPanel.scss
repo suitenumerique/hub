@@ -33,7 +33,8 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    padding: 0 0 8px;
+    // The final rows remain scrollable above the floating, translucent footer.
+    padding: 0 0 76px;
   }
 
   &__logo {
@@ -176,6 +177,12 @@
         #555e74
       );
       transition: transform 200ms ease;
+
+      img {
+        display: block;
+        width: 16px;
+        height: 16px;
+      }
     }
 
     &__panel {
@@ -280,6 +287,18 @@
       gap: 6px;
     }
 
+    &__new-avatar {
+      width: 24px;
+      height: 24px;
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: #8893a9;
+      color: #eef1f4;
+    }
+
     &__text {
       flex: 1 1 0;
       min-width: 0;
@@ -314,24 +333,71 @@
   }
 
   &__footer {
-    flex: 0 0 auto;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 24px 12px 12px;
-    background: linear-gradient(
-      180deg,
-      transparent 0%,
-      color-mix(
-          in srgb,
-          var(--c--contextuals--background--surface--tertiary, #f6f8f9) 80%,
-          transparent
-        )
-        42.43%,
-      var(--c--contextuals--background--surface--tertiary, #f6f8f9) 84.71%
-    );
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    pointer-events: none;
+
+    &::before,
+    &::after {
+      content: "";
+      position: absolute;
+      inset: -36px 0 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    // Fade in the blur above the controls so its top edge is imperceptible.
+    &::before {
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      mask-image: linear-gradient(
+        180deg,
+        transparent 0%,
+        rgb(0 0 0 / 5%) 20%,
+        rgb(0 0 0 / 35%) 46%,
+        #000 78%
+      );
+      -webkit-mask-image: linear-gradient(
+        180deg,
+        transparent 0%,
+        rgb(0 0 0 / 5%) 20%,
+        rgb(0 0 0 / 35%) 46%,
+        #000 78%
+      );
+    }
+
+    &::after {
+      background: linear-gradient(
+        180deg,
+        transparent 0%,
+        color-mix(
+            in srgb,
+            var(--c--contextuals--background--surface--tertiary, #f6f8f9) 12%,
+            transparent
+          )
+          35%,
+        color-mix(
+            in srgb,
+            var(--c--contextuals--background--surface--tertiary, #f6f8f9) 65%,
+            transparent
+          )
+          60%,
+        var(--c--contextuals--background--surface--tertiary, #f6f8f9) 100%
+      );
+    }
+
+    > * {
+      position: relative;
+      z-index: 1;
+      pointer-events: auto;
+    }
   }
 
   &__icon-button {

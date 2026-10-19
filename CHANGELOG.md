@@ -20,6 +20,8 @@ and this project adheres to
   member out of the room state, and never show a Matrix id as a name.
 - ✨(frontend) Show conversation avatars: the room's own picture, or the other
   person's in a direct conversation, in the list, header and search results.
+- 💄(frontend) Align conversation rows and avatars with the design: spacing,
+  full-size pictures under the ring, icon size and background sheen.
 - 💄(frontend) List direct conversations first in search results, then named
   conversations, then conversations named after their members.
 - ✨(frontend) Ignore accents in the conversation search: "general" finds
