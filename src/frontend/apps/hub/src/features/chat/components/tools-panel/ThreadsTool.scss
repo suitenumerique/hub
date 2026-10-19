@@ -1,7 +1,22 @@
 // Threads panel — list view (Figma "List Thread") and detail view.
 
+// Virtualized list: Virtuoso fills this box and owns the scroll.
+.hub__chat-thread-list {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+
+  // Rows carry the panel gutter: Virtuoso's absolute viewport spans the
+  // scroller's full width and would overflow a padded scroller. A flex column
+  // keeps the separator's margins inside the measured row.
+  &__row {
+    display: flex;
+    flex-direction: column;
+    padding: 0 var(--c--globals--spacings--base, 16px);
+  }
+}
+
 .hub__chat-thread-item {
-  list-style: none;
   font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
 
   &__button {

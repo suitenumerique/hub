@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import type { AccountId, ChatThread } from "@/features/drivers/types";
 
-import { formatChatTime } from "../../formatTimestamp";
+import { formatChatThreadTimestamp } from "../../formatTimestamp";
 import { isOptimisticThreadId } from "../../hooks/chatCompositionCache";
 import { ChatUserAvatar } from "../ChatUserAvatar";
 
@@ -40,7 +40,7 @@ export const ThreadListItem = ({
     : replies;
 
   return (
-    <li className="hub__chat-thread-item" data-unread={isUnread || undefined}>
+    <div className="hub__chat-thread-item" data-unread={isUnread || undefined}>
       <button
         type="button"
         className="hub__chat-thread-item__button"
@@ -56,7 +56,7 @@ export const ThreadListItem = ({
               {thread.author.name}
             </span>
             <span className="hub__chat-thread-item__time">
-              {formatChatTime(thread.lastReplyAt)}
+              {formatChatThreadTimestamp(thread.lastReplyAt, locale)}
             </span>
           </span>
           <span className="hub__chat-thread-item__preview">
@@ -78,6 +78,6 @@ export const ThreadListItem = ({
           <ChevronRight />
         </span>
       </button>
-    </li>
+    </div>
   );
 };

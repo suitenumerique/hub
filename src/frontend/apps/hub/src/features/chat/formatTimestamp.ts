@@ -53,6 +53,31 @@ export const isSameChatDay = (
   return getCalendarDay(first, timeZone) === getCalendarDay(second, timeZone);
 };
 
+const getDayDifference = (date: Date, now: Date, timeZone?: string): number =>
+  (getCalendarDay(now, timeZone) - getCalendarDay(date, timeZone)) / DAY_IN_MS;
+
+const formatYesterdayTimestamp = (time: string, locale?: string): string => {
+  const yesterday = new Intl.RelativeTimeFormat(locale, {
+    numeric: "auto",
+  }).format(-1, "day");
+  return `${capitalizeLocalizedLabel(yesterday, locale)} · ${time}`;
+};
+
+const formatFullDateTimestamp = (
+  date: Date,
+  time: string,
+  locale?: string,
+  timeZone?: string,
+): string => {
+  const fullDate = new Intl.DateTimeFormat(locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone,
+  }).format(date);
+  return `${fullDate} · ${time}`;
+};
+
 /**
  * Format the timestamp shown beside the author of a received-message group:
  * time only today, a localized "Yesterday" plus time for the previous day,
@@ -71,20 +96,14 @@ export const formatChatGroupTimestamp = (
   }
 
   const time = formatChatTime(iso, locale, timeZone);
-  const dayDifference =
-    (getCalendarDay(now, timeZone) - getCalendarDay(date, timeZone)) /
-    DAY_IN_MS;
+  const dayDifference = getDayDifference(date, now, timeZone);
 
   if (dayDifference === 0) {
     return time;
   }
 
   if (dayDifference === 1) {
-    const yesterday = new Intl.RelativeTimeFormat(locale, {
-      numeric: "auto",
-    }).format(-1, "day");
-    const localizedYesterday = capitalizeLocalizedLabel(yesterday, locale);
-    return `${localizedYesterday} · ${time}`;
+    return formatYesterdayTimestamp(time, locale);
   }
 
   if (dayDifference >= 2 && dayDifference <= 6) {
@@ -95,11 +114,35 @@ export const formatChatGroupTimestamp = (
     return `${capitalizeLocalizedLabel(weekday, locale)} · ${time}`;
   }
 
-  const fullDate = new Intl.DateTimeFormat(locale, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    timeZone,
-  }).format(date);
-  return `${fullDate} · ${time}`;
+  return formatFullDateTimestamp(date, time, locale, timeZone);
+};
+
+/**
+ * Format the latest-reply timestamp of a threads panel row: time only today,
+ * a localized "Yesterday" plus time for the previous day, and the complete
+ * numeric date plus time for older replies.
+ */
+export const formatChatThreadTimestamp = (
+  iso: string,
+  locale?: string,
+  timeZone?: string,
+  now = new Date(),
+): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+
+  const time = formatChatTime(iso, locale, timeZone);
+  const dayDifference = getDayDifference(date, now, timeZone);
+
+  if (dayDifference === 0) {
+    return time;
+  }
+
+  if (dayDifference === 1) {
+    return formatYesterdayTimestamp(time, locale);
+  }
+
+  return formatFullDateTimestamp(date, time, locale, timeZone);
 };
