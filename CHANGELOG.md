@@ -8,6 +8,8 @@ and this project adheres to
 
 ### Added
 
+- 🔧(docker) Serve the Hub at `https://hub.localhost:9814` for Tchap sign-in in
+  development, with `make run-tchap` and a local certificate authority.
 - 🔒️(docker) Publish development ports on `127.0.0.1` only.
 
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup

@@ -1,0 +1,18 @@
+# DEV ONLY - HTTPS origin used to sign in to Tchap (`make run-tchap`).
+#
+# Tchap's WAF and MAS reject `localhost` redirect URIs, but accept
+# `https://hub.localhost`. Caddy creates its own local certificate authority
+# in data/caddy/ (never committed); import it once with `make tchap-trust`.
+{
+	local_certs
+	skip_install_trust
+	auto_https disable_redirects
+	admin off
+}
+
+https://hub.localhost:9814 {
+	# Same origin for the frontend and the API keeps the Hub session cookie.
+	@backend path /api/* /admin/* /static/*
+	reverse_proxy @backend app-dev:8000
+	reverse_proxy frontend-tchap:9800
+}
