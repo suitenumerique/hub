@@ -259,6 +259,10 @@ type StoredOidc = {
 const SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const CRYPTO_STORE_DB_NAME = "crypto-store";
 
+/** Rooms the chat can list: like Element's room list, never a space. */
+const chatRooms = (mx: MatrixClient): Room[] =>
+  mx.getVisibleRooms().filter((room) => !room.isSpaceRoom());
+
 const isMatrixSessionInvalidError = (error: unknown): boolean => {
   if (!(error instanceof MatrixError)) {
     return false;
@@ -500,8 +504,7 @@ export class MatrixDriver extends Driver {
     // membership instead.
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     const currentUserId = mx.getUserId() ?? undefined;
-    const localChats = mx
-      .getVisibleRooms()
+    const localChats = chatRooms(mx)
       .filter(
         (room) =>
           joinedRoomIds.has(room.roomId) ||
@@ -528,8 +531,7 @@ export class MatrixDriver extends Driver {
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     const selfUserId = mx.getUserId() ?? undefined;
     return Object.fromEntries(
-      mx
-        .getVisibleRooms()
+      chatRooms(mx)
         .filter((room) => joinedRoomIds.has(room.roomId))
         .map((room) => [room.roomId, roomUnread(room, selfUserId)]),
     );
@@ -645,8 +647,7 @@ export class MatrixDriver extends Driver {
     // locally, and must not resolve as an existing conversation (its getChat
     // would then throw "not joined" and block creating a fresh one).
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
-    const match = mx
-      .getVisibleRooms()
+    const match = chatRooms(mx)
       .filter((room) => joinedRoomIds.has(room.roomId))
       .find(
         (room) =>
@@ -789,7 +790,7 @@ export class MatrixDriver extends Driver {
     participantId: string,
   ): LocalChat | null {
     const selfUserId = mx.getUserId() ?? undefined;
-    for (const room of mx.getVisibleRooms()) {
+    for (const room of chatRooms(mx)) {
       if (room.getMyMembership() !== KnownMembership.Invite) {
         continue;
       }
