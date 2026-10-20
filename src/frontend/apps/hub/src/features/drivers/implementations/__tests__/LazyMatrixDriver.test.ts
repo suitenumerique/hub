@@ -12,6 +12,14 @@ vi.mock("../matrixStorage", async (importOriginal) => ({
 const owner = "hub@example.com";
 const sessionLock = "hub-matrix:session:matrixUser:hub@example.com:matrix";
 
+/** `connect(user)` records the owner; set it without loading the SDK. */
+const driverOwnedBy = (storageOwner: string): LazyMatrixDriver => {
+  const driver = new LazyMatrixDriver("matrix");
+  (driver as unknown as { storageOwner: string | null }).storageOwner =
+    storageOwner;
+  return driver;
+};
+
 describe("LazyMatrixDriver.logout", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -30,7 +38,7 @@ describe("LazyMatrixDriver.logout", () => {
     "clears a never-loaded projection only with session ownership: %s",
     async (available) => {
       const request = mockLock(available);
-      const driver = new LazyMatrixDriver("matrix", { loginHint: owner });
+      const driver = driverOwnedBy(owner);
 
       await driver.logout();
 
@@ -52,7 +60,7 @@ describe("LazyMatrixDriver.logout", () => {
 
   it("waits for pending loading and shutdown before cleaning stored data", async () => {
     mockLock(true);
-    const driver = new LazyMatrixDriver("matrix", { loginHint: owner });
+    const driver = driverOwnedBy(owner);
     let finishLoading!: (driver: Driver) => void;
     let finishLogout!: () => void;
     const logout = vi.fn(
@@ -83,7 +91,7 @@ describe("LazyMatrixDriver.logout", () => {
 
   it("still cleans under the session lock when loading fails", async () => {
     mockLock(true);
-    const driver = new LazyMatrixDriver("matrix", { loginHint: owner });
+    const driver = driverOwnedBy(owner);
     (driver as unknown as { targetPromise: Promise<Driver> }).targetPromise =
       Promise.reject(new Error("Module unavailable"));
 

@@ -2,6 +2,7 @@ import {
   createClient,
   EventType,
   KnownMembership,
+  MatrixError,
   MatrixEvent,
   Room,
   type MatrixClient,
@@ -85,6 +86,7 @@ const makeMessageEvent = (opts: {
       ...(opts.newBody ? { "m.new_content": { body: opts.newBody } } : {}),
     }),
     getRelation: () => opts.relation ?? null,
+    replacingEvent: () => null,
     replacingEventId: () => undefined,
     getUnsigned: () =>
       opts.transactionId ? { transaction_id: opts.transactionId } : {},
@@ -99,7 +101,10 @@ const makeRoom = (
   ({
     roomId: ROOM_ID,
     hasEncryptionStateEvent: () => false,
-    getMember: (id: string) => ({ name: id === SELF_ID ? "Me" : id }),
+    getMember: (id: string) => ({
+      name: id === SELF_ID ? "Me" : id,
+      getMxcAvatarUrl: () => null,
+    }),
     currentState: {
       getStateEvents: () => null,
       maySendRedactionForEvent: () => false,
@@ -145,7 +150,9 @@ const driverWithClient = (mx: MatrixClient | null): MatrixDriver => {
   vi.spyOn(internals.ownership, "held", "get").mockReturnValue(true);
   if (mx) {
     // The send/reaction fixtures use plaintext rooms with no encryption state.
-    mx.roomState = vi.fn().mockResolvedValue([]);
+    mx.getStateEvent = vi
+      .fn()
+      .mockRejectedValue(new MatrixError({ errcode: "M_NOT_FOUND" }));
     mx.getCrypto = vi.fn().mockReturnValue({
       isEncryptionEnabledInRoom: vi.fn().mockResolvedValue(false),
     });
@@ -334,17 +341,18 @@ describe("MatrixDriver.sendChatMessage", () => {
     "keeps the server acknowledgement when the client is %s during a send",
     async (state) => {
       const room = makeRoom();
-      const sendTextMessage = vi.fn();
+      const sendMessage = vi.fn();
       const mx = {
         getRoom: () => room,
-        sendTextMessage,
+        getUserId: () => SELF_ID,
+        sendMessage,
       } as unknown as MatrixClient;
       const driver = driverWithClient(mx);
       const internals = driver as unknown as {
         disposed: boolean;
         mx: MatrixClient | null;
       };
-      sendTextMessage.mockImplementation(async () => {
+      sendMessage.mockImplementation(async () => {
         if (state === "disposed") internals.disposed = true;
         else internals.mx = null;
         return { event_id: SENT_EVENT_ID };
@@ -353,16 +361,17 @@ describe("MatrixDriver.sendChatMessage", () => {
       await expect(
         driver.sendChatMessage({ chatId: ROOM_ID, content: "accepted" }),
       ).resolves.toMatchObject({ id: SENT_EVENT_ID, content: "accepted" });
-      expect(sendTextMessage).toHaveBeenCalledTimes(1);
+      expect(sendMessage).toHaveBeenCalledTimes(1);
     },
   );
 
   it("sends the text and returns the message under the real server id", async () => {
     const room = makeRoom();
-    const sendTextMessage = vi.fn(async () => ({ event_id: SENT_EVENT_ID }));
+    const sendMessage = vi.fn(async () => ({ event_id: SENT_EVENT_ID }));
     const mx = {
       getRoom: (id: string) => (id === ROOM_ID ? room : null),
-      sendTextMessage,
+      getUserId: () => SELF_ID,
+      sendMessage,
     } as unknown as MatrixClient;
 
     const message = await driverWithClient(mx).sendChatMessage({
@@ -371,7 +380,11 @@ describe("MatrixDriver.sendChatMessage", () => {
     });
 
     // `null` thread: the message goes to the main timeline.
-    expect(sendTextMessage).toHaveBeenCalledWith(ROOM_ID, null, "bonjour");
+    expect(sendMessage).toHaveBeenCalledWith(
+      ROOM_ID,
+      null,
+      expect.objectContaining({ msgtype: "m.text", body: "bonjour" }),
+    );
     expect(message).toMatchObject({
       id: SENT_EVENT_ID,
       authorId: "me",
@@ -395,11 +408,13 @@ describe("MatrixDriver room metadata", () => {
       roomId: ROOM_ID,
       tags: { [MATRIX_FAVOURITE_TAG]: {} },
       hasEncryptionStateEvent: () => false,
+      getMxcAvatarUrl: () => null,
       getMembers: () => [
         {
           userId: OTHER_ID,
           name: "Alice",
           membership: KnownMembership.Join,
+          getMxcAvatarUrl: () => null,
         },
       ],
       getInvitedAndJoinedMemberCount: () => 2,
@@ -492,21 +507,25 @@ describe("MatrixDriver room metadata", () => {
           userId: OTHER_ID,
           name: "Alice",
           membership: KnownMembership.Join,
+          getMxcAvatarUrl: () => null,
         },
         {
           userId: SELF_ID,
           name: "Me",
           membership: KnownMembership.Join,
+          getMxcAvatarUrl: () => null,
         },
         {
           userId: "@bob:localhost",
           name: "Bob",
           membership: KnownMembership.Invite,
+          getMxcAvatarUrl: () => null,
         },
         {
           userId: "@left:localhost",
           name: "Left",
           membership: KnownMembership.Leave,
+          getMxcAvatarUrl: () => null,
         },
       ],
     } as unknown as Room;

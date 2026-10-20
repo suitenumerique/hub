@@ -112,7 +112,7 @@ jobs:
       - name: Serve frontend (nginx static + prod vhost)
         run: |
           docker run -d --rm --name hub-static -p 9800:3000 \
-            -v "$PWD/src/frontend/apps/hub/out:/usr/share/nginx/html:ro" \
+            -v "$PWD/src/frontend/apps/hub/out:/app:ro" \
             -v "$PWD/src/frontend/apps/hub/conf/default.conf:/etc/nginx/conf.d/default.conf:ro" \
             nginx:1.25
 
