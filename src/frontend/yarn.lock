@@ -1383,10 +1383,10 @@
   resolved "https://registry.yarnpkg.com/@juggle/resize-observer/-/resize-observer-3.4.0.tgz#08d6c5e20cf7e4cc02fd181c4b0c225cd31dbb60"
   integrity sha512-dfLbk+PwWvFzSxwk3n5ySL0hfBog779o8h68wK/7/APo/7cgyWp5jcXockbxdk5kFRkbeXWm4Fbi9FrdN381sA==
 
-"@matrix-org/matrix-sdk-crypto-wasm@^18.2.0":
-  version "18.3.0"
-  resolved "https://registry.yarnpkg.com/@matrix-org/matrix-sdk-crypto-wasm/-/matrix-sdk-crypto-wasm-18.3.0.tgz#a5206792a78a3ebebd901662c65753e0914d204a"
-  integrity sha512-9a4feyt8QLysARu7PHKaRWT+wcCd+IYH074LXp9QK5WqfN4zUXueRhiSSMNT18Bm+8q3sBR/4zxDxOSDR0M8Kg==
+"@matrix-org/matrix-sdk-crypto-wasm@^18.2.0", "@matrix-org/matrix-sdk-crypto-wasm@^18.9.0":
+  version "18.9.0"
+  resolved "https://registry.yarnpkg.com/@matrix-org/matrix-sdk-crypto-wasm/-/matrix-sdk-crypto-wasm-18.9.0.tgz#8e622beb607e0438e32cfe20991650da63313827"
+  integrity sha512-NtLzNDTEfNASBjNCTGZHuk7N0jrQhS6Zx2CM857rCHZYYh/rpbKGQNrJ7azktm4S1P5Jy3WU3nwJTGohGw26qQ==
 
 "@napi-rs/canvas-android-arm64@0.1.100":
   version "0.1.100"
