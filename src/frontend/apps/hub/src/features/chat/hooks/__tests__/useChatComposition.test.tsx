@@ -145,7 +145,7 @@ describe("chat composition hooks", () => {
     });
 
     act(() => {
-      void result.current.sendMessage("Hello");
+      void result.current.sendMessage({ content: "Hello" });
     });
 
     await waitFor(() => {
@@ -199,7 +199,7 @@ describe("chat composition hooks", () => {
 
     let promise: Promise<ChatMessage> | undefined;
     act(() => {
-      promise = result.current.sendMessage("Rollback me");
+      promise = result.current.sendMessage({ content: "Rollback me" });
     });
 
     await waitFor(() => {
@@ -263,7 +263,7 @@ describe("chat composition hooks", () => {
     );
 
     act(() => {
-      void result.current.sendReply("A new reply");
+      void result.current.sendReply({ content: "A new reply" });
     });
 
     await waitFor(() => {
@@ -328,11 +328,15 @@ describe("chat composition hooks", () => {
     const onCreated = vi.fn();
 
     act(() => {
-      void result.current.startThread(root, "First reply", {
-        rootAuthor: aliceAuthor,
-        onOptimisticThread,
-        onCreated,
-      });
+      void result.current.startThread(
+        root,
+        { content: "First reply" },
+        {
+          rootAuthor: aliceAuthor,
+          onOptimisticThread,
+          onCreated,
+        },
+      );
     });
 
     await waitFor(() => {
