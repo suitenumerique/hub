@@ -23,6 +23,7 @@ import {
   replaceMessageInPages,
 } from "./chatCompositionCache";
 import { useChatCompositionSupport } from "./useChatCompositionSupport";
+import { cancelReloads, patchAcrossLoads } from "./useChatEvents";
 
 type SendMessageVariables = {
   ref: ChatRef;
@@ -75,7 +76,7 @@ export const useSendChatMessage = (
     },
     onMutate: async ({ ref: targetRef, message, attachment }) => {
       const messagesKey: QueryKey = chatKeys.messages(targetRef);
-      await queryClient.cancelQueries({ queryKey: messagesKey });
+      await cancelReloads(queryClient, messagesKey);
       const optimistic = createOptimisticMessage(
         message,
         "optimistic-message",
@@ -99,27 +100,34 @@ export const useSendChatMessage = (
       // A reconnect can refetch the room before /sync includes our send and
       // remove its optimistic row. Cancel that stale read, then retain the
       // confirmed event even when there is no optimistic row left to replace.
-      await queryClient.cancelQueries({ queryKey: context.messagesKey });
-      queryClient.setQueryData<ChatMessagesData>(context.messagesKey, (old) => {
-        if (!old) return old;
-        if (
-          old.pages.some((page) =>
-            page.messages.some((row) => row.id === message.id),
-          )
-        ) {
-          return removeMessageFromPages(old, context.optimisticId);
-        }
-        if (
-          old.pages.some((page) =>
-            page.messages.some((row) => row.id === context.optimisticId),
-          )
-        ) {
-          return replaceMessageInPages(old, context.optimisticId, message);
-        }
-        return old.pages[0]?.isAtLiveEnd === false
-          ? old
-          : appendMessageToNewestPage(old, message);
-      });
+      // A first load still running may also have read the room before the
+      // send: the event is added again once it lands.
+      await cancelReloads(queryClient, context.messagesKey);
+      patchAcrossLoads(queryClient, context.messagesKey, () =>
+        queryClient.setQueryData<ChatMessagesData>(
+          context.messagesKey,
+          (old) => {
+            if (!old) return old;
+            if (
+              old.pages.some((page) =>
+                page.messages.some((row) => row.id === message.id),
+              )
+            ) {
+              return removeMessageFromPages(old, context.optimisticId);
+            }
+            if (
+              old.pages.some((page) =>
+                page.messages.some((row) => row.id === context.optimisticId),
+              )
+            ) {
+              return replaceMessageInPages(old, context.optimisticId, message);
+            }
+            return old.pages[0]?.isAtLiveEnd === false
+              ? old
+              : appendMessageToNewestPage(old, message);
+          },
+        ),
+      );
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(context.ref.accountId),
       });

@@ -181,6 +181,42 @@ describe("chat composition hooks", () => {
     });
   });
 
+  it("keeps the first load of a new conversation and adds the message sent meanwhile", async () => {
+    let finishLoad: (page: ChatMessagesPage) => void = () => {};
+    // The load reads the conversation before the send reaches it.
+    void queryClient
+      .fetchInfiniteQuery({
+        queryKey: chatKeys.messages(CHAT_REF),
+        queryFn: () =>
+          new Promise<ChatMessagesPage>((resolve) => {
+            finishLoad = resolve;
+          }),
+        initialPageParam: null,
+      })
+      .catch(() => {});
+    sendChatMessage.mockResolvedValue(
+      message("m-sent", { authorId: "me", content: "Hello" }),
+    );
+
+    const { result } = renderHook(() => useSendChatMessage(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+    await act(() => result.current.sendMessage({ content: "Hello" }));
+    act(() => {
+      finishLoad({ messages: [message("m-1")], authors: [], nextCursor: null });
+    });
+
+    await waitFor(() => {
+      const data = queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(
+        chatKeys.messages(CHAT_REF),
+      );
+      expect(data?.pages[0].messages.map((item) => item.id)).toEqual([
+        "m-1",
+        "m-sent",
+      ]);
+    });
+  });
+
   it("rolls back a failed conversation send", async () => {
     let rejectSend: (error: Error) => void = () => {};
     sendChatMessage.mockReturnValue(
