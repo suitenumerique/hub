@@ -11,6 +11,9 @@ const PORT = process.env.PORT || 9800;
 const baseURL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const webServerPort = new URL(baseURL).port || PORT;
 
+// The chat suites need the local Matrix stack and run on Chromium only.
+const CHAT_SUITES = "**/chat/**";
+
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
@@ -23,7 +26,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   maxFailures: process.env.CI ? 3 : 0,
-  workers: 1,
+  workers: 3,
   reporter: [
     ["html", { outputFolder: "./report" }],
     ["list", { printSteps: true }],
@@ -60,6 +63,7 @@ export default defineConfig({
     },
     {
       name: "webkit",
+      testIgnore: CHAT_SUITES,
       use: {
         ...devices["Desktop Safari"],
         locale: "en-US",
@@ -71,6 +75,7 @@ export default defineConfig({
     },
     {
       name: "firefox",
+      testIgnore: CHAT_SUITES,
       use: {
         ...devices["Desktop Firefox"],
         locale: "en-US",
