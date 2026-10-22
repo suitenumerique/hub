@@ -16,18 +16,20 @@ export const keyCloakSignIn = async (
   fromHome: boolean = true,
 ) => {
   if (fromHome) {
-    await page.getByRole("button", { name: "Sign in" }).first().click();
+    await page.getByRole("button", { name: "Login" }).click();
   }
 
-  await expect(page.getByText("Sign in to your account").first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Sign in to your account" }),
+  ).toBeVisible();
 
   if (await page.getByLabel("Restart login").isVisible()) {
     await page.getByLabel("Restart login").click();
   }
 
-  await page.getByRole("textbox", { name: "username" }).fill(username);
-  await page.getByRole("textbox", { name: "password" }).fill(password);
-  await page.getByRole("button", { name: "Sign in" }).first().click();
+  await page.getByRole("textbox", { name: "Username or email" }).fill(username);
+  await page.getByRole("textbox", { name: "Password" }).fill(password);
+  await page.getByRole("button", { name: "Sign In" }).click();
 };
 
 export const clearDb = async () => {

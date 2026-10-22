@@ -18,7 +18,11 @@ export default [
       "playwright/no-wait-for-timeout": "off",
       "playwright/no-conditional-in-test": "off",
       "playwright/no-skipped-test": "off",
-      "playwright/expect-expect": "error",
+      "playwright/expect-expect": [
+        "error",
+        // Page objects of the chat suites assert in their `expect…` methods.
+        { assertFunctionPatterns: ["^expect[A-Z]"] },
+      ],
       "playwright/no-conditional-expect": "error",
     },
   },
