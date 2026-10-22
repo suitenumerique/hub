@@ -9,4 +9,4 @@ class CoreConfig(AppConfig):
 
     name = "core"
     app_label = "core"
-    verbose_name = _("Hub core application")
+    verbose_name = _("Core application")

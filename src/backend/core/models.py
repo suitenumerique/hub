@@ -150,7 +150,7 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
         default=True,
         help_text=_(
             "Whether this user should be treated as active. "
-            "Unselect this instead of deleting hub."
+            "Unselect this instead of deleting users."
         ),
     )
 
