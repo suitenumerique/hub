@@ -26,8 +26,8 @@ export const LeaveConversationModal = ({
     <Modal
       isOpen={isOpen}
       size={ModalSize.SMALL}
-      title={t("Leave conversation?")}
-      aria-label={t("Leave conversation?")}
+      title={t("Leave chat?")}
+      aria-label={t("Leave chat?")}
       onClose={close}
       closeOnClickOutside={!isPending}
       closeOnEsc={!isPending}
@@ -51,13 +51,13 @@ export const LeaveConversationModal = ({
             disabled={isPending}
             onClick={onConfirm}
           >
-            {isPending ? t("Leaving…") : t("Leave conversation")}
+            {isPending ? t("Leaving…") : t("Leave chat")}
           </Button>
         </>
       }
     >
       {t(
-        "The conversation and its history will be removed from this account. Other participants will keep the conversation and its history.",
+        "The chat and its history will be removed from this account. Other participants will keep the chat and its history.",
       )}
     </Modal>
   );

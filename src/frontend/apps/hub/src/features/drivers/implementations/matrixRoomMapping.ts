@@ -221,9 +221,7 @@ export const matrixJoinedRoomToLocalChat = (
   }
   // Without any display name, a neutral label rather than a Matrix id.
   if (!name || isTechnicalName(name)) {
-    name = isDirect
-      ? i18n.t("Private conversation")
-      : i18n.t("Group conversation");
+    name = isDirect ? i18n.t("Private chat") : i18n.t("Group chat");
   }
 
   return {
