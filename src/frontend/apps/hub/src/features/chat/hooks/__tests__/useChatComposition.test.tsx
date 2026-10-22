@@ -21,6 +21,8 @@ import type {
   ChatThreadMutationResult,
 } from "@/features/drivers/types";
 
+import { clearHeldThreadReplies } from "../../pendingThreadReplies";
+import { useChatThread } from "../useChatThread";
 import { useSendChatMessage } from "../useSendChatMessage";
 import { useSendChatThreadReply } from "../useSendChatThreadReply";
 import { useStartChatThread } from "../useStartChatThread";
@@ -28,6 +30,7 @@ import { useStartChatThread } from "../useStartChatThread";
 const sendChatMessage = vi.fn();
 const sendChatThreadReply = vi.fn();
 const startChatThread = vi.fn();
+const getChatThread = vi.fn();
 
 const driver = {
   supportsComposition: true,
@@ -35,6 +38,7 @@ const driver = {
   sendChatMessage,
   sendChatThreadReply,
   startChatThread,
+  getChatThread,
 };
 
 const registry = {
@@ -121,11 +125,13 @@ describe("chat composition hooks", () => {
     sendChatMessage.mockReset();
     sendChatThreadReply.mockReset();
     startChatThread.mockReset();
+    getChatThread.mockReset();
     registry.get.mockClear();
   });
 
   afterEach(() => {
     queryClient.clear();
+    clearHeldThreadReplies();
   });
 
   it("optimistically appends a conversation message and replaces it on success", async () => {
@@ -321,6 +327,103 @@ describe("chat composition hooks", () => {
         )?.pages[0].messages[0].thread?.replyCount,
       ).toBe(2);
     });
+  });
+
+  it("keeps a reply on screen while its thread reloads during the send", async () => {
+    let resolveSend: (result: ChatThreadMutationResult) => void = () => {};
+    sendChatThreadReply.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSend = resolve;
+      }),
+    );
+    const root = message("m-root");
+    // The driver leaves out events still being sent, then those its sync has
+    // not brought back yet.
+    getChatThread.mockResolvedValue(detail([root, message("old-reply")]));
+
+    const { result } = renderHook(
+      () => ({
+        thread: useChatThread(CHAT_REF, THREAD_ID),
+        send: useSendChatThreadReply(CHAT_REF, THREAD_ID),
+      }),
+      { wrapper: wrapper(queryClient) },
+    );
+    await waitFor(() => expect(result.current.thread.thread).not.toBeNull());
+    const cachedThread = () =>
+      queryClient.getQueryData<ChatThreadDetail>(
+        chatKeys.thread(CHAT_REF, THREAD_ID),
+      )?.messages;
+    const shownContents = () => cachedThread()?.map((item) => item.content);
+    const shownIds = () => cachedThread()?.map((item) => item.id);
+
+    act(() => {
+      void result.current.send.sendReply({ content: "Slow reply" });
+    });
+    await waitFor(() => expect(shownContents()).toContain("Slow reply"));
+
+    // A receipt or another reply reloads the thread while the send runs.
+    await act(() =>
+      queryClient.refetchQueries({
+        queryKey: chatKeys.thread(CHAT_REF, THREAD_ID),
+      }),
+    );
+    expect(shownContents()).toContain("Slow reply");
+
+    const sent = message("reply-real", {
+      authorId: "me",
+      content: "Slow reply",
+    });
+    act(() => {
+      resolveSend({
+        message: sent,
+        thread: thread(),
+        threadDetail: detail([root, message("old-reply"), sent]),
+        rootMessage: root,
+      });
+    });
+    await waitFor(() =>
+      expect(shownIds()).toEqual(["m-root", "old-reply", "reply-real"]),
+    );
+
+    // Reloaded before the sync brings the reply back, it stays once.
+    await act(() =>
+      queryClient.refetchQueries({
+        queryKey: chatKeys.thread(CHAT_REF, THREAD_ID),
+      }),
+    );
+    expect(shownIds()).toEqual(["m-root", "old-reply", "reply-real"]);
+  });
+
+  it("shows a reply sent while its thread first loads", async () => {
+    let finishLoad: (detail: ChatThreadDetail) => void = () => {};
+    getChatThread.mockReturnValue(
+      new Promise((resolve) => {
+        finishLoad = resolve;
+      }),
+    );
+    sendChatThreadReply.mockReturnValue(new Promise(() => {}));
+    const root = message("m-root");
+
+    const { result } = renderHook(
+      () => ({
+        thread: useChatThread(CHAT_REF, THREAD_ID),
+        send: useSendChatThreadReply(CHAT_REF, THREAD_ID),
+      }),
+      { wrapper: wrapper(queryClient) },
+    );
+    act(() => {
+      void result.current.send.sendReply({ content: "Quick reply" });
+    });
+    await waitFor(() => expect(sendChatThreadReply).toHaveBeenCalled());
+    act(() => {
+      finishLoad(detail([root]));
+    });
+
+    await waitFor(() =>
+      expect(
+        result.current.thread.thread?.messages.map((item) => item.content),
+      ).toEqual(["m-root", "Quick reply"]),
+    );
   });
 
   it("starts a thread with optimistic root summary and replaces it on success", async () => {

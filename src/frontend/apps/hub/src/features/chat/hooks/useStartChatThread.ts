@@ -35,6 +35,7 @@ import {
   rollbackOptimisticRootThreadSummary,
   upsertThread,
 } from "./chatCompositionCache";
+import { cancelReloads } from "./useChatEvents";
 import { useChatThreadCompositionSupport } from "./useChatThreadCompositionSupport";
 
 type StartThreadVariables = {
@@ -117,8 +118,8 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       const tempThreadId = `${OPTIMISTIC_THREAD_ID_PREFIX}${reply.id}`;
       const tempThreadKey: QueryKey = chatKeys.thread(ref, tempThreadId);
       await Promise.all([
-        queryClient.cancelQueries({ queryKey: messagesKey }),
-        queryClient.cancelQueries({ queryKey: threadsKey }),
+        cancelReloads(queryClient, messagesKey),
+        cancelReloads(queryClient, threadsKey),
       ]);
 
       const previousMessages =

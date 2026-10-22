@@ -148,6 +148,7 @@ import {
   isMainTimelineMessage,
   isMessageEvent,
   isOwnEcho,
+  isThreadReplyMessage,
   isUndecryptedEvent,
   matrixEventToChatMessage,
   needsReactionSnapshot,
@@ -155,6 +156,7 @@ import {
   ownReactionEvents,
   reactionUpdateEventsForTarget,
   receiptMentionsUser,
+  receiptThreadIds,
   reconcileMessageReactions,
   rememberThreadReplyCount,
   roomUnread,
@@ -3042,7 +3044,28 @@ export class MatrixDriver extends Driver {
       if (event && isOwnEcho(event)) {
         return;
       }
-      emitCurrent({ type: "threads:changed", chatId: thread.room.roomId });
+      const roomId = thread.room.roomId;
+      if (event && isThreadReplyMessage(event)) {
+        // As Element's thread view, add the reply to its thread from memory.
+        emitCurrent({
+          type: "thread:reply",
+          chatId: roomId,
+          threadId: thread.id,
+          message: matrixEventToChatMessage(event, thread.room, selfUserId),
+          authors: buildAuthors(thread.room, [event], selfUserId),
+        });
+        emitCurrent({
+          type: "threads:changed",
+          chatId: roomId,
+          invalidateDetails: false,
+        });
+      } else {
+        emitCurrent({
+          type: "threads:changed",
+          chatId: roomId,
+          threadId: thread.id,
+        });
+      }
       emitThreadRootUpdate(thread);
       emitUnread(thread.room);
     };
@@ -3201,8 +3224,14 @@ export class MatrixDriver extends Driver {
           .catch(() => {
             if (this.mx === mx) {
               emitCurrent({ type: "chat:changed", chatId: room.roomId });
-              if (threadIdHint || room.getThread(targetId)) {
-                emitCurrent({ type: "threads:changed", chatId: room.roomId });
+              const threadId =
+                threadIdHint ?? room.getThread(targetId)?.id ?? undefined;
+              if (threadId) {
+                emitCurrent({
+                  type: "threads:changed",
+                  chatId: room.roomId,
+                  threadId,
+                });
               }
             }
           });
@@ -3255,7 +3284,23 @@ export class MatrixDriver extends Driver {
       }
       emitUnread(room);
       emitMainTimelineUnread(room);
-      emitThreadsRefresh(room);
+      // A receipt only changes read state, as in Element's thread indicators:
+      // the thread lists and root badges of the threads it reads, read from
+      // memory. Open threads keep their messages.
+      const threadIds = receiptThreadIds(event, selfUserId);
+      if (threadIds !== "all" && threadIds.length === 0) {
+        return;
+      }
+      emitCurrent({
+        type: "threads:changed",
+        chatId: room.roomId,
+        invalidateDetails: false,
+      });
+      const threads =
+        threadIds === "all"
+          ? room.getThreads()
+          : threadIds.flatMap((threadId) => room.getThread(threadId) ?? []);
+      threads.forEach((thread) => emitThreadRootUpdate(thread));
     };
     const onReplaced = (event: MatrixEvent) => {
       const roomId = event.getRoomId();
@@ -3339,7 +3384,11 @@ export class MatrixDriver extends Driver {
           }
           emitCurrent({ type: "chat:changed", chatId: room.roomId });
           if (threadId) {
-            emitCurrent({ type: "threads:changed", chatId: room.roomId });
+            emitCurrent({
+              type: "threads:changed",
+              chatId: room.roomId,
+              threadId,
+            });
           }
           emitUnread(room);
           emitMainTimelineUnread(room);
@@ -3376,7 +3425,11 @@ export class MatrixDriver extends Driver {
             if (this.mx === mx) {
               emitCurrent({ type: "chat:changed", chatId: room.roomId });
               if (threadId) {
-                emitCurrent({ type: "threads:changed", chatId: room.roomId });
+                emitCurrent({
+                  type: "threads:changed",
+                  chatId: room.roomId,
+                  threadId,
+                });
               }
             }
           });
@@ -3385,7 +3438,7 @@ export class MatrixDriver extends Driver {
       emitCurrent({ type: "chat:changed", chatId: room.roomId });
       emitMainTimelineUnread(room);
       if (threadId) {
-        emitCurrent({ type: "threads:changed", chatId: room.roomId });
+        emitCurrent({ type: "threads:changed", chatId: room.roomId, threadId });
       }
     };
     const onRedactionCancelled = (_event: MatrixEvent, room: Room) => {
@@ -3589,8 +3642,14 @@ export class MatrixDriver extends Driver {
       for (const { room, threadsChanged, chatChanged } of updates) {
         if (chatChanged)
           emitCurrent({ type: "chat:changed", chatId: room.roomId });
+        // Decrypted thread messages patched their own rows: only the thread
+        // lists change.
         if (threadsChanged)
-          emitCurrent({ type: "threads:changed", chatId: room.roomId });
+          emitCurrent({
+            type: "threads:changed",
+            chatId: room.roomId,
+            invalidateDetails: false,
+          });
         emitUnread(room);
         emitMainTimelineUnread(room);
       }
@@ -3646,6 +3705,15 @@ export class MatrixDriver extends Driver {
           // edit the SDK currently applies, so it cannot bring back old text.
           onReplaced(replaced);
         } else if (!event.isDecryptionFailure()) {
+          if (event.isThreadRoot && isMessageEvent(event)) {
+            // The root is also the first row of its open thread.
+            emitCurrent({
+              type: "message:updated",
+              chatId: room.roomId,
+              threadId: eventId,
+              message: matrixEventToChatMessage(event, room, selfUserId),
+            });
+          }
           for (const update of timelineEventToChatEvent(
             event,
             room,
@@ -3655,6 +3723,11 @@ export class MatrixDriver extends Driver {
               if (pending) pending.threadsChanged = true;
             } else if (update.type === "chat:changed") {
               if (pending) pending.chatChanged = true;
+            } else if (
+              update.type === "thread:reply" &&
+              isOwnThreadEcho(event)
+            ) {
+              // The send mutation owns this session's reply row.
             } else if (update.type !== "message:new") emitCurrent(update);
           }
         }

@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { chatKeys } from "@/features/chat/chatKeys";
 import { isReactionTogglePending } from "@/features/chat/pendingReactionToggles";
 import { keepReactionOrder } from "@/features/chat/reactions";
+import { appendThreadMessage } from "@/features/chat/hooks/chatCompositionCache";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { ChatEvent } from "@/features/drivers/Driver";
 import type {
@@ -326,6 +327,36 @@ const applyChatEvent = (
       return;
     }
 
+    case "thread:reply": {
+      // Like Element's thread view, a reply only touches its own thread, from
+      // memory: a new one is added, a decrypted one replaces its placeholder.
+      const threadKey = chatKeys.thread(ref, event.threadId);
+      patchAcrossLoads(queryClient, threadKey, () =>
+        queryClient.setQueryData<ChatThreadDetail>(threadKey, (detail) => {
+          if (!detail) return detail;
+          if (detail.messages.some((m) => m.id === event.message.id)) {
+            return {
+              ...detail,
+              messages: detail.messages.map((m) =>
+                m.id === event.message.id
+                  ? withCachedReactions(ref, m, event.message)
+                  : m,
+              ),
+            };
+          }
+          const newAuthors = (event.authors ?? []).filter(
+            (author) =>
+              !detail.authors.some((existing) => existing.id === author.id),
+          );
+          return {
+            ...appendThreadMessage(detail, event.message),
+            authors: [...detail.authors, ...newAuthors],
+          };
+        }),
+      );
+      return;
+    }
+
     case "reaction:updated": {
       // This session's toggle in flight owns the chips until the driver
       // answers, which publishes the reactions it ends with.
@@ -381,7 +412,9 @@ const applyChatEvent = (
       });
       if (event.invalidateDetails !== false) {
         void queryClient.invalidateQueries({
-          queryKey: chatKeys.threadDetails(ref),
+          queryKey: event.threadId
+            ? chatKeys.thread(ref, event.threadId)
+            : chatKeys.threadDetails(ref),
         });
       }
       return;

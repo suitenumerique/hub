@@ -12,7 +12,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { MatrixSessionOwnership } from "@/features/matrix/sessionOwnership";
 
-import { timelineEventToChatEvent } from "../matrixEventMapping";
+import {
+  receiptThreadIds,
+  timelineEventToChatEvent,
+} from "../matrixEventMapping";
 import { MatrixDriver } from "../MatrixDriver";
 import {
   matrixJoinedRoomToLocalChat,
@@ -320,10 +323,11 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
     ]);
   });
 
-  it("refreshes threads without appending replies to the main timeline", () => {
+  it("adds a reply to its own thread, never to the main timeline", () => {
     const threadReply = makeMessageEvent({
       sender: OTHER_ID,
       body: "reply",
+      id: "$reply:localhost",
       threadRootId: "$root:localhost",
     });
     const member = makeMessageEvent({
@@ -332,7 +336,17 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
     });
 
     expect(timelineEventToChatEvent(threadReply, makeRoom(), SELF_ID)).toEqual([
-      { type: "threads:changed", chatId: ROOM_ID },
+      expect.objectContaining({
+        type: "thread:reply",
+        chatId: ROOM_ID,
+        threadId: "$root:localhost",
+        message: expect.objectContaining({
+          id: "$reply:localhost",
+          content: "reply",
+        }),
+      }),
+      // Other open threads keep their messages: only the lists refresh.
+      { type: "threads:changed", chatId: ROOM_ID, invalidateDetails: false },
     ]);
     expect(timelineEventToChatEvent(member, makeRoom(), SELF_ID)).toEqual([
       { type: "chat:changed", chatId: ROOM_ID },
@@ -913,5 +927,46 @@ describe("MatrixDriver new conversation readiness", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("receiptThreadIds", () => {
+  const receipt = (receipts: Record<string, Record<string, unknown>>) =>
+    new MatrixEvent({
+      type: EventType.Receipt,
+      room_id: ROOM_ID,
+      content: Object.fromEntries(
+        Object.entries(receipts).map(([eventId, byUser]) => [
+          eventId,
+          { "m.read": byUser },
+        ]),
+      ),
+    });
+
+  it("names the threads this user's threaded receipts read", () => {
+    expect(
+      receiptThreadIds(
+        receipt({
+          $a: { [SELF_ID]: { ts: 1, thread_id: "$thread:localhost" } },
+          $b: { [OTHER_ID]: { ts: 1, thread_id: "$other:localhost" } },
+        }),
+        SELF_ID,
+      ),
+    ).toEqual(["$thread:localhost"]);
+  });
+
+  it("changes no thread for a receipt of the main timeline", () => {
+    expect(
+      receiptThreadIds(
+        receipt({ $a: { [SELF_ID]: { ts: 1, thread_id: "main" } } }),
+        SELF_ID,
+      ),
+    ).toEqual([]);
+  });
+
+  it("may change every thread for an unthreaded receipt", () => {
+    expect(
+      receiptThreadIds(receipt({ $a: { [SELF_ID]: { ts: 1 } } }), SELF_ID),
+    ).toBe("all");
   });
 });

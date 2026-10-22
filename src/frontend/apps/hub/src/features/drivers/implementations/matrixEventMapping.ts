@@ -15,6 +15,7 @@
 import {
   Direction,
   EventType,
+  MAIN_ROOM_TIMELINE,
   type MatrixClient,
   type MatrixEvent,
   NotificationCountType,
@@ -130,10 +131,51 @@ export const receiptMentionsUser = (
   );
 };
 
+/**
+ * Threads whose read state this user's receipts in `event` change: the ones a
+ * threaded receipt names, every thread for an unthreaded receipt, none for a
+ * receipt of the main timeline.
+ */
+export const receiptThreadIds = (
+  event: MatrixEvent,
+  userId: string | undefined,
+): string[] | "all" => {
+  if (!userId) {
+    return [];
+  }
+  const content = event.getContent() as Record<
+    string,
+    Record<string, Record<string, { thread_id?: unknown }>>
+  >;
+  const threadIds = new Set<string>();
+  for (const byType of Object.values(content)) {
+    for (const type of ["m.read", "m.read.private"]) {
+      const receipt = byType?.[type]?.[userId];
+      if (receipt === undefined) {
+        continue;
+      }
+      const threadId = receipt?.thread_id;
+      if (typeof threadId !== "string") {
+        return "all";
+      }
+      if (threadId !== MAIN_ROOM_TIMELINE) {
+        threadIds.add(threadId);
+      }
+    }
+  }
+  return [...threadIds];
+};
+
 const isDirectThreadReply = (event: MatrixEvent, threadId: string): boolean =>
   isMessageEvent(event) &&
   event.getId() !== threadId &&
   event.getRelation()?.rel_type === RelationType.Thread;
+
+/** A thread reply shown as a bubble of its thread (no root, edit or reaction). */
+export const isThreadReplyMessage = (event: MatrixEvent): boolean =>
+  Boolean(event.threadRootId) &&
+  !event.isThreadRoot &&
+  isDirectThreadReply(event, event.threadRootId!);
 
 /** Direct `m.thread` text replies, excluding roots, edits and annotations. */
 const threadReplyEvents = (thread: Thread): MatrixEvent[] =>
@@ -1003,8 +1045,15 @@ export const timelineEventToChatEvent = (
           canDelete: originalMessage.canDelete,
         },
       },
+      // The open thread is already patched: only its list entry changes.
       ...(threadId
-        ? [{ type: "threads:changed" as const, chatId: room.roomId }]
+        ? [
+            {
+              type: "threads:changed" as const,
+              chatId: room.roomId,
+              invalidateDetails: false,
+            },
+          ]
         : []),
     ];
   }
@@ -1014,14 +1063,26 @@ export const timelineEventToChatEvent = (
     return [{ type: "chat:changed", chatId: room.roomId }];
   }
 
-  // A thread reply never becomes a top-level bubble. Refresh the thread slices
-  // and replace the root message so its summary count/unread badge moves live.
+  // A thread reply never becomes a top-level bubble. It updates its own
+  // thread, refreshes the thread list and replaces the root message so its
+  // summary count/unread badge moves live.
   if (event.threadRootId && !event.isThreadRoot) {
     const root =
       room.getThread(event.threadRootId)?.rootEvent ??
       room.findEventById(event.threadRootId);
     return [
-      { type: "threads:changed", chatId: room.roomId },
+      {
+        type: "thread:reply",
+        chatId: room.roomId,
+        threadId: event.threadRootId,
+        message: matrixEventToChatMessage(event, room, selfUserId),
+        authors: buildAuthors(room, [event], selfUserId),
+      },
+      {
+        type: "threads:changed",
+        chatId: room.roomId,
+        invalidateDetails: false,
+      },
       ...(root
         ? [
             {

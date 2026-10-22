@@ -16,6 +16,7 @@ import type {
   ChatMessage,
   ChatMessageAuthor,
   ChatMessagesPage,
+  ChatThreadDetail,
 } from "@/features/drivers/types";
 
 import {
@@ -358,6 +359,90 @@ describe("useChatEvents", () => {
       )?.pages[0].messages ?? [];
     expect(updated.content).toBe("edited");
     expect(updated.reactions).toEqual(optimistic);
+  });
+
+  const seedThread = (threadId: string, messages: ChatMessage[]) =>
+    queryClient.setQueryData<ChatThreadDetail>(
+      chatKeys.thread(CHAT_REF, threadId),
+      {
+        id: threadId,
+        rootMessageId: threadId,
+        messages,
+        authors: [author("a-1")],
+        firstUnreadIndex: null,
+      },
+    );
+  const threadMessageIds = (threadId: string) =>
+    queryClient
+      .getQueryData<ChatThreadDetail>(chatKeys.thread(CHAT_REF, threadId))
+      ?.messages.map((m) => m.id);
+
+  it("adds a new reply to its own thread only", () => {
+    seedThread("t1", [message("t1")]);
+    seedThread("t2", [message("t2")]);
+    mount();
+
+    emit({
+      type: "thread:reply",
+      chatId: "c1",
+      threadId: "t1",
+      message: message("r1"),
+      authors: [author("a-2")],
+    });
+
+    expect(threadMessageIds("t1")).toEqual(["t1", "r1"]);
+    expect(threadMessageIds("t2")).toEqual(["t2"]);
+    expect(
+      queryClient
+        .getQueryData<ChatThreadDetail>(chatKeys.thread(CHAT_REF, "t1"))
+        ?.authors.map((a) => a.id),
+    ).toEqual(["a-1", "a-2"]);
+  });
+
+  it("replaces a reply placeholder once it decrypts", () => {
+    seedThread("t1", [
+      message("t1"),
+      { ...message("r1"), content: "awaiting decryption" },
+    ]);
+    mount();
+
+    emit({
+      type: "thread:reply",
+      chatId: "c1",
+      threadId: "t1",
+      message: { ...message("r1"), content: "decrypted" },
+    });
+
+    const detail = queryClient.getQueryData<ChatThreadDetail>(
+      chatKeys.thread(CHAT_REF, "t1"),
+    );
+    expect(detail?.messages.map((m) => m.content)).toEqual(["t1", "decrypted"]);
+  });
+
+  it("reloads only the thread a change names", () => {
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    mount();
+
+    emit({ type: "threads:changed", chatId: "c1", threadId: "t1" });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatKeys.thread(CHAT_REF, "t1"),
+    });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: chatKeys.threadDetails(CHAT_REF),
+    });
+  });
+
+  it("leaves open threads alone when only the thread lists change", () => {
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    mount();
+
+    emit({ type: "threads:changed", chatId: "c1", invalidateDetails: false });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatKeys.threads(CHAT_REF),
+    });
+    expect(invalidateSpy).toHaveBeenCalledTimes(1);
   });
 
   it.each<[ChatEvent, readonly unknown[]]>([
