@@ -669,3 +669,75 @@ describe("MatrixDriver.toggleChatReaction", () => {
     ]);
   });
 });
+
+describe("MatrixDriver.ensureMessageDecrypted", () => {
+  const messageId = "$encrypted:localhost";
+
+  /** An encrypted message, readable once `decrypted` is set. */
+  const makeEncryptedMessage = (state: { decrypted: boolean }) => {
+    const listeners = new Set<() => void>();
+    const event = {
+      ...makeMessageEvent({ sender: OTHER_ID, id: messageId, body: "hello" }),
+      isEncrypted: () => true,
+      isDecryptionFailure: () => false,
+      isBeingDecrypted: () => !state.decrypted,
+      getType: () => (state.decrypted ? "m.room.message" : "m.room.encrypted"),
+      on: (_name: string, listener: () => void) => listeners.add(listener),
+      off: (_name: string, listener: () => void) => listeners.delete(listener),
+    } as unknown as MatrixEvent;
+    return {
+      event,
+      decrypt: () => listeners.forEach((listener) => listener()),
+    };
+  };
+
+  const setUp = (event: MatrixEvent) => {
+    const room = makeRoom({}, { [messageId]: event });
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      decryptEventIfNeeded: vi.fn().mockResolvedValue(undefined),
+    } as unknown as MatrixClient;
+    const driver = driverWithClient(mx);
+    const events: unknown[] = [];
+    driver.subscribeToEvents((event) => events.push(event));
+    return { driver, mx, events };
+  };
+
+  it("publishes a message the SDK already decrypted", async () => {
+    const { event } = makeEncryptedMessage({ decrypted: true });
+    const { driver, mx, events } = setUp(event);
+
+    driver.ensureMessageDecrypted(ROOM_ID, messageId);
+
+    expect(mx.decryptEventIfNeeded).toHaveBeenCalledWith(event);
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "message:reconciled",
+          messageId,
+          message: expect.objectContaining({ content: "hello" }),
+        }),
+      ),
+    );
+  });
+
+  it("publishes the message once it decrypts later", async () => {
+    const state = { decrypted: false };
+    const { event, decrypt } = makeEncryptedMessage(state);
+    const { driver, events } = setUp(event);
+
+    driver.ensureMessageDecrypted(ROOM_ID, messageId);
+    await Promise.resolve();
+    expect(events).toEqual([]);
+
+    state.decrypted = true;
+    decrypt();
+
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: "message:reconciled", messageId }),
+      ),
+    );
+  });
+});

@@ -19,6 +19,7 @@ import { isOptimisticThreadId } from "../hooks/chatCompositionCache";
 import { useDownloadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
 import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
+import { useEnsureMessageDecrypted } from "../hooks/useEnsureMessageDecrypted";
 import { useToggleReaction } from "../hooks/useToggleReaction";
 import { notify } from "@/features/ui/components/toast";
 
@@ -33,6 +34,8 @@ type ChatBubbleReceivedProps = {
   variant: "received";
   chatRef: ChatRef;
   messageId: string;
+  /** Whether the content is readable, or an encrypted placeholder. */
+  availability?: ChatMessage["availability"];
   content: string;
   htmlContent?: string;
   attachment?: ChatAttachment;
@@ -57,6 +60,8 @@ type ChatBubbleSentProps = {
   variant: "sent";
   chatRef: ChatRef;
   messageId: string;
+  /** Whether the content is readable, or an encrypted placeholder. */
+  availability?: ChatMessage["availability"];
   content: string;
   htmlContent?: string;
   attachment?: ChatAttachment;
@@ -124,6 +129,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? i18n.language;
   const { attachment, chatRef, messageId, reactions, thread, threadId } = props;
+  useEnsureMessageDecrypted(chatRef, messageId, props.availability);
   const { openThread, openDraftThread } = useChatPanel();
   const { startEditing } = useChatMessageEdit();
   const isCompositionSupported = useChatCompositionSupport(chatRef);
