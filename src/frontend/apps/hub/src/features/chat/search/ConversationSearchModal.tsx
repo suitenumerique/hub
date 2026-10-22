@@ -141,7 +141,7 @@ const SearchResultsMessage = ({
   if (failed) return t("Search is unavailable. Please try again.");
   if (loading) return t("Searching…");
   if (partial) {
-    return t("No matches yet. Conversation preparation is incomplete.");
+    return t("No matches yet. Chat preparation is incomplete.");
   }
   return t("No chats found.");
 };
@@ -177,14 +177,10 @@ const SearchStatus = ({
           {status.hasNameOnlyRooms && (
             <> {t("Large chats are searched by name only.")}</>
           )}
-          {status.hasUnknownRooms && (
-            <> {t("Waiting for conversation details.")}</>
-          )}
-          {status.hasFailures && (
-            <> {t("Some conversations could not be prepared.")}</>
-          )}
+          {status.hasUnknownRooms && <> {t("Waiting for chat details.")}</>}
+          {status.hasFailures && <> {t("Some chats could not be prepared.")}</>}
           {status.hasDeferredRooms && (
-            <> {t("Some conversations are awaiting retry.")}</>
+            <> {t("Some chats are awaiting retry.")}</>
           )}
         </p>
       )}

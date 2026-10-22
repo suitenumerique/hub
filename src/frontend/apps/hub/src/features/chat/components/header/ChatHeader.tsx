@@ -64,7 +64,7 @@ export const ChatHeader = ({
           className="hub__chat-header__breadcrumb hub__chat-header__breadcrumb--skeleton"
           role="status"
           aria-busy="true"
-          aria-label={t("Loading conversation…")}
+          aria-label={t("Loading chat…")}
         >
           <span
             className="hub__chat-header__breadcrumb__avatar-skeleton"
@@ -178,7 +178,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       { type: "separator" },
       {
         id: "rename",
-        label: t("Rename conversation"),
+        label: t("Rename chat"),
         icon: <Edit />,
         isDisabled: true,
       },
@@ -190,7 +190,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       },
       {
         id: "leave",
-        label: t("Leave conversation"),
+        label: t("Leave chat"),
         icon: <Leave />,
         variant: "danger",
         isDisabled: !canLeave || isLeaving,
