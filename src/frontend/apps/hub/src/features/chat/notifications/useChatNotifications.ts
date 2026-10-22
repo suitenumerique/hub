@@ -103,11 +103,11 @@ export const useChatNotifications = (
             if (event.type === "message:received") {
               body = preview(event.content);
             } else if (event.inviterName) {
-              body = t("{{name}} invites you to join this conversation.", {
+              body = t("{{name}} invites you to join this chat.", {
                 name: event.inviterName,
               });
             } else {
-              body = t("You have been invited to join this conversation.");
+              body = t("You have been invited to join this chat.");
             }
 
             const notification = new Notification(event.chatName, {

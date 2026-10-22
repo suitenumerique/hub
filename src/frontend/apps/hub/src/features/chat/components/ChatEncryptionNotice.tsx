@@ -16,7 +16,7 @@ export const ChatEncryptionNotice = ({ chatRef }: { chatRef: ChatRef }) => {
         <Lock aria-hidden="true" />
         <div>
           <h2>{t("Encryption enabled")}</h2>
-          <p>{t("Messages in this conversation are end-to-end encrypted.")}</p>
+          <p>{t("Messages in this chat are end-to-end encrypted.")}</p>
         </div>
       </div>
     );
@@ -29,9 +29,7 @@ export const ChatEncryptionNotice = ({ chatRef }: { chatRef: ChatRef }) => {
         <Unlock aria-hidden="true" />
         <div>
           <h2>{t("Encryption not enabled")}</h2>
-          <p>
-            {t("Messages in this conversation are not end-to-end encrypted.")}
-          </p>
+          <p>{t("Messages in this chat are not end-to-end encrypted.")}</p>
         </div>
       </div>
     );

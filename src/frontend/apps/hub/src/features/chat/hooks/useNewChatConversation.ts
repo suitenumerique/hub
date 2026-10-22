@@ -180,9 +180,7 @@ export const useNewChatConversation = ({
         if (creationTargetRef.current !== selectionTarget) {
           return;
         }
-        notify.error(
-          t("The conversation could not be created. Please try again."),
-        );
+        notify.error(t("The chat could not be created. Please try again."));
         focusSearch();
       });
   }, [

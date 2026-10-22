@@ -87,7 +87,7 @@ export const useRemoveChatFromHistory = (
   function showRetryWarning(): void {
     notify.warning(
       t(
-        "You left the conversation, but its history could not be removed from this account.",
+        "You left the chat, but its history could not be removed from this account.",
       ),
       {
         actions: [
@@ -108,7 +108,7 @@ export const useRemoveChatFromHistory = (
           showRetryWarning();
           return;
         }
-        notify.brand(t("Conversation history removed from this account."));
+        notify.brand(t("Chat history removed from this account."));
       })
       .catch(() => {
         showRetryWarning();
@@ -131,7 +131,7 @@ export const useRemoveChatFromHistory = (
       }
     },
     onError: () => {
-      notify.error(t("The conversation could not be left. Please try again."));
+      notify.error(t("The chat could not be left. Please try again."));
     },
     meta: { noGlobalError: true },
   });
