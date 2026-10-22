@@ -1478,13 +1478,18 @@ export class MatrixDriver extends Driver {
       )
       .map((receipt) => receipt?.eventId);
     // Like Element: `m.fully_read` first, then the receipts. A write from this
-    // session stays authoritative until /sync echoes it back.
+    // session stays authoritative until /sync echoes it back. Last, the
+    // receipt the SDK synthesizes for the person's own latest event (their
+    // join, or a message they sent): Element's TimelinePanel starts from it
+    // when nothing was read yet, so a conversation joined but never read still
+    // has a boundary.
     const markers = [
       this.confirmedMainReadBoundaries.get(chatId),
       typeof fullyReadContent?.event_id === "string"
         ? fullyReadContent.event_id
         : undefined,
       ...receiptIds,
+      room.getEventReadUpTo(selfUserId) ?? undefined,
     ].filter((eventId): eventId is string => Boolean(eventId));
     const markerIndex = Math.max(
       -1,

@@ -220,11 +220,55 @@ export const useMainTimelineUnread = (
     [messages, query.data],
   );
 
+  /**
+   * Without a read boundary among the loaded messages, Element
+   * (`TimelinePanel.sendReadReceipts`) reads through the last displayed
+   * message from someone else. It does not when older history away from the
+   * live end is shown: the receipt it has may be newer than what is visible.
+   */
+  const markThroughLastDisplayed = useCallback(
+    (
+      state: Pick<Projection, "readUpToId">,
+      visibleIds: ReadonlySet<string>,
+      hasNewer: boolean,
+    ) => {
+      if (state.readUpToId && hasNewer) {
+        return;
+      }
+      const lastDisplayed = messages.findLast(
+        (message) => message.authorId !== "me" && visibleIds.has(message.id),
+      );
+      if (!lastDisplayed) {
+        return;
+      }
+      const nextFirstUnreadId =
+        messages
+          .slice(messages.indexOf(lastDisplayed) + 1)
+          .find(isEligibleUnreadMessage)?.id ?? null;
+      const hasUnread = nextFirstUnreadId !== null || hasNewer;
+      updateProjection({
+        hasUnread,
+        readUpToId: lastDisplayed.id,
+        firstUnreadId: hasUnread ? nextFirstUnreadId : null,
+        // Unread messages older than the loaded ones may be counted: the
+        // homeserver count no longer matches what is left.
+        unreadCount: hasUnread ? null : 0,
+        throughId: lastDisplayed.id,
+      });
+      queueBoundary(lastDisplayed.id);
+    },
+    [messages, queueBoundary, updateProjection],
+  );
+
   const markVisibleMessages = useCallback(
     (visibleIds: ReadonlySet<string>, hasNewer: boolean) => {
       const state = projectionRef.current ?? query.data;
+      if (!state?.hasUnread) {
+        return;
+      }
       const firstUnreadId = resolveFirstUnreadId(state, messages);
-      if (!state || !firstUnreadId) {
+      if (!firstUnreadId) {
+        markThroughLastDisplayed(state, visibleIds, hasNewer);
         return;
       }
       const firstUnreadIndex = messages.findIndex(
@@ -273,7 +317,13 @@ export const useMainTimelineUnread = (
       updateProjection(next);
       queueBoundary(throughId);
     },
-    [messages, query.data, queueBoundary, updateProjection],
+    [
+      markThroughLastDisplayed,
+      messages,
+      query.data,
+      queueBoundary,
+      updateProjection,
+    ],
   );
 
   const markAllRead = useCallback(() => {
