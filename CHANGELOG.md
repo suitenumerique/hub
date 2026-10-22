@@ -206,3 +206,5 @@ and this project adheres to
   clients encrypt, and keep reaction chips in place when their counts change.
 - 🐛(frontend) Wait for the invitations of a new conversation before its
   first message, so that the people invited can decrypt it.
+- 🐛(frontend) Keep loading a conversation whose first message is sent while
+  it loads, instead of showing its loading state until a reload.

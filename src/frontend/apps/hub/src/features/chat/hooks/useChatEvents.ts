@@ -1,6 +1,7 @@
 import {
   type InfiniteData,
   type QueryClient,
+  type QueryKey,
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -109,6 +110,26 @@ export const patchAcrossLoads = (
     return true;
   };
   patchAfterLoad();
+};
+
+/**
+ * Cancels the reloads of caches already shown, which would drop an optimistic
+ * row. A first load keeps running: cancelled, it would leave its cache with
+ * neither data nor a load.
+ */
+export const cancelReloads = async (
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+): Promise<void> => {
+  await Promise.all(
+    queryClient
+      .getQueryCache()
+      .findAll({ queryKey })
+      .filter((query) => query.state.data !== undefined)
+      .map((query) =>
+        queryClient.cancelQueries({ queryKey: query.queryKey, exact: true }),
+      ),
+  );
 };
 
 /**
