@@ -12,7 +12,7 @@ export const NewChatPlaceholder = ({
   return (
     <div className="hub__new-chat-placeholder">
       <ChatEmptyIllustration />
-      <h1>{welcome ? t("Welcome to LaSuite Chat") : t("New chat")}</h1>
+      <h1>{welcome ? t("Welcome to Tchap") : t("New chat")}</h1>
       <p>
         {welcome
           ? t("Add people using the top bar to start collaborating")
