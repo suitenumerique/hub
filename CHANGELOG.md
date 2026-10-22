@@ -119,6 +119,8 @@ and this project adheres to
   composer no longer re-render for every list change or new message.
 - 🌐(frontend) Say "chat" instead of "conversation", and name Tchap in the
   sign-in errors and the welcome screen.
+- 🌐(frontend) Call the app LaSuite Tchap instead of LaSuite Hub, on the home
+  page, in the tab title, in the errors and in Tchap's session list.
 - ⚡️(frontend) Open the chat from the local sync cache, before the first
   network sync, as Element does. Load the user, the Matrix driver and its
   crypto in parallel, keep the sync cache in a worker, and stop clearing it

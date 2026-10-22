@@ -188,7 +188,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
         break;
       case "another-tab":
         message = t(
-          "Another Hub tab is using this session. Close that tab, then try again here. You can keep Element open.",
+          "LaSuite Tchap is already open in another tab. Close that tab, then try again here. Your other Tchap apps can stay open.",
         );
         break;
       case "unsupported":
@@ -250,7 +250,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
                 .catch(() => setReplacementFailed(true));
             }}
           >
-            {t("Reconnect Hub with a new device")}
+            {t("Reconnect as a new device")}
           </Button>
         )}
         {replacementFailed && (
