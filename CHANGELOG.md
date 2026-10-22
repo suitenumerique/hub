@@ -105,6 +105,8 @@ and this project adheres to
 
 ### Changed
 
+- 🌐(frontend) Say "chat" instead of "conversation", and name Tchap in the
+  sign-in errors and the welcome screen.
 - ⚡️(frontend) Open the chat from the local sync cache, before the first
   network sync, as Element does. Load the user, the Matrix driver and its
   crypto in parallel, keep the sync cache in a worker, and stop clearing it
