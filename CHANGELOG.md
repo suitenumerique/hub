@@ -196,3 +196,5 @@ and this project adheres to
 - 🌐(frontend) Translate the current user's optimistic thread author
 
 [unreleased]: https://github.com/suitenumerique/docs/compare/main
+- 🐛(frontend) Read a conversation never read before through its last
+  displayed message, as Element does, instead of keeping it unread.
