@@ -213,3 +213,5 @@ and this project adheres to
 - 🐛(frontend) Keep a thread reply shown while it is sent. As in Element, a
   read receipt only updates unread counts from memory and a new reply only
   updates its own thread, instead of reloading every open thread.
+- 🐛(frontend) Open a new thread on its root at once, as Element does, so its
+  first reply shows while it is sent, under a root without a reply count.

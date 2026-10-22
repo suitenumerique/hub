@@ -22,6 +22,7 @@ import type {
 } from "@/features/drivers/types";
 
 import { clearHeldThreadReplies } from "../../pendingThreadReplies";
+import { rootOnlyThreadDetail } from "../chatCompositionCache";
 import { useChatThread } from "../useChatThread";
 import { useSendChatMessage } from "../useSendChatMessage";
 import { useSendChatThreadReply } from "../useSendChatThreadReply";
@@ -424,6 +425,69 @@ describe("chat composition hooks", () => {
         result.current.thread.thread?.messages.map((item) => item.content),
       ).toEqual(["m-root", "Quick reply"]),
     );
+  });
+
+  it("starts a thread from its root with an ordinary first reply", async () => {
+    // Opening Reply on a message created its thread in memory, keyed by root.
+    const root = message("m-root");
+    queryClient.setQueryData(chatKeys.messages(CHAT_REF), messagesData([root]));
+    queryClient.setQueryData(
+      chatKeys.thread(CHAT_REF, "m-root"),
+      rootOnlyThreadDetail(root),
+    );
+    let resolveSend: (result: ChatThreadMutationResult) => void = () => {};
+    sendChatThreadReply.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSend = resolve;
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useSendChatThreadReply(CHAT_REF, "m-root"),
+      { wrapper: wrapper(queryClient) },
+    );
+    act(() => {
+      void result.current.sendReply({ content: "First reply" });
+    });
+
+    const threadContents = () =>
+      queryClient
+        .getQueryData<ChatThreadDetail>(chatKeys.thread(CHAT_REF, "m-root"))
+        ?.messages.map((item) => item.content);
+    const rootSummary = () =>
+      queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(
+        chatKeys.messages(CHAT_REF),
+      )?.pages[0].messages[0].thread;
+    // Shown at once in the open thread, and counted under the root.
+    await waitFor(() =>
+      expect(threadContents()).toEqual(["m-root", "First reply"]),
+    );
+    expect(rootSummary()).toMatchObject({ id: "m-root", replyCount: 1 });
+
+    const reply = message("reply-real", {
+      authorId: "me",
+      content: "First reply",
+    });
+    const startedThread = thread({
+      id: "m-root",
+      rootMessageId: "m-root",
+      replyCount: 1,
+    });
+    act(() => {
+      resolveSend({
+        message: reply,
+        thread: startedThread,
+        threadDetail: detail([root, reply]),
+        rootMessage: root,
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData<ChatThread[]>(chatKeys.threads(CHAT_REF)),
+      ).toEqual([expect.objectContaining({ id: "m-root", replyCount: 1 })]),
+    );
+    expect(threadContents()).toEqual(["m-root", "First reply"]);
   });
 
   it("starts a thread with optimistic root summary and replaces it on success", async () => {

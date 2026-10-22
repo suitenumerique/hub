@@ -105,6 +105,7 @@ export class LazyMatrixDriver extends BaseDriver {
   // `sendChatMessage` still routes through `withTarget`, loading the driver on demand.
   override readonly supportsComposition = true;
   override readonly supportsThreadComposition = true;
+  override readonly threadsKeyedByRoot = true;
   override readonly supportsConversationHistoryRemoval = true;
   // Static capability mirroring the real `MatrixDriver`, read synchronously by
   // the New Chat composer before the SDK lazy-loads.

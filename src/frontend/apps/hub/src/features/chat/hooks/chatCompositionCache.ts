@@ -5,6 +5,7 @@ import type {
   ChatAttachment,
   ChatComposedMessage,
   ChatMessage,
+  ChatMessageAuthor,
   ChatMessagesPage,
   ChatThread,
   ChatThreadDetail,
@@ -268,6 +269,21 @@ export const mergeRootThreadSummary = (
         }
       : page,
   ),
+});
+
+/**
+ * A thread with only its root, as a new thread starts: Element creates it in
+ * memory when its view opens, before the first reply.
+ */
+export const rootOnlyThreadDetail = (
+  root: ChatMessage,
+  rootAuthor?: ChatMessageAuthor,
+): ChatThreadDetail => ({
+  id: root.id,
+  rootMessageId: root.id,
+  messages: [{ ...root, thread: undefined }],
+  authors: rootAuthor ? [rootAuthor] : [],
+  firstUnreadIndex: null,
 });
 
 export const appendThreadMessage = (
