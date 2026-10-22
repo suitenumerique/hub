@@ -204,3 +204,5 @@ and this project adheres to
   shown, as Element does, and show it once its key arrives.
 - 🐛(frontend) Keep a reaction shown while it is sent, count reactions other
   clients encrypt, and keep reaction chips in place when their counts change.
+- 🐛(frontend) Wait for the invitations of a new conversation before its
+  first message, so that the people invited can decrypt it.

@@ -810,6 +810,7 @@ export class MatrixDriver extends Driver {
 
     const room = await this.waitForRoom(mx, roomId);
     if (room) {
+      await this.waitForParticipants(mx, room, participantIds);
       await this.prepareRoom(mx, room);
       return matrixRoomToLocalChat(room, selfUserId);
     }
@@ -886,6 +887,53 @@ export class MatrixDriver extends Driver {
         resolve(mx.getRoom(roomId));
       }, timeoutMs);
       mx.on(ClientEvent.Room, onRoom);
+    });
+  }
+
+  /**
+   * Resolves once the room's state lists every participant as joined or
+   * invited (or after `timeoutMs`), as Element's `isRoomReady` before the first
+   * message. The SDK shares the room key with the members it knows: a message
+   * encrypted before the invitations reach this client stays unreadable for
+   * the people invited.
+   */
+  private waitForParticipants(
+    mx: MatrixClient,
+    room: Room,
+    participantIds: string[],
+    timeoutMs = 5000,
+  ): Promise<void> {
+    const ready = () =>
+      participantIds.every((userId) => {
+        const membership = room.getMember(userId)?.membership;
+        return (
+          membership === KnownMembership.Join ||
+          membership === KnownMembership.Invite
+        );
+      });
+    if (ready()) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      const cleanup = () => {
+        mx.off(RoomStateEvent.Members, onMembers);
+        clearTimeout(timer);
+      };
+      const onMembers = (
+        _event: MatrixEvent,
+        _state: unknown,
+        member: RoomMember,
+      ) => {
+        if (member.roomId === room.roomId && ready()) {
+          cleanup();
+          resolve();
+        }
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, timeoutMs);
+      mx.on(RoomStateEvent.Members, onMembers);
     });
   }
 
