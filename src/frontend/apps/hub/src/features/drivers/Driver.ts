@@ -511,6 +511,15 @@ export abstract class Driver {
   }
 
   /**
+   * A message is shown still encrypted. A driver may start its decryption and
+   * publish it again once readable. Best effort.
+   */
+  ensureMessageDecrypted(_chatId: string, _messageId: string): void {
+    void _chatId;
+    void _messageId;
+  }
+
+  /**
    * Subscribes to the current typers of one conversation. This deliberately
    * stays outside React Query: typing is ephemeral and must never enter an
    * infinite timeline cache or survive a page reload.

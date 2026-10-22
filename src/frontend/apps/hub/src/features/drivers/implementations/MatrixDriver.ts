@@ -399,6 +399,8 @@ export class MatrixDriver extends Driver {
    * answer asked before then must not overwrite the optimistic state.
    */
   private readonly reactionToggledAt = new Map<string, number>();
+  /** Events whose decryption a displayed row already listens to. */
+  private readonly decryptionWatches = new WeakSet<MatrixEvent>();
 
   private assertOwner = (): void => {
     if (this.disposed || !this.ownership.held) {
@@ -1109,9 +1111,12 @@ export class MatrixDriver extends Driver {
     // them, so a thread reply never shows before its decryption removes it.
     // Events from memory show at once, like Element's tiles: those still
     // decrypting keep a placeholder that is patched afterwards.
-    const decryptions = pageEvents.map((event) =>
-      mx.decryptEventIfNeeded(event),
-    );
+    // An edit bundled by the server is mapped encrypted: it needs its own
+    // decryption, or the edited message keeps a placeholder.
+    const decryptions = pageEvents
+      .flatMap((event) => [event, event.replacingEvent()])
+      .filter((event): event is MatrixEvent => Boolean(event))
+      .map((event) => mx.decryptEventIfNeeded(event));
     if (decryption === "await") {
       await Promise.all(decryptions);
     } else {
@@ -1247,6 +1252,90 @@ export class MatrixDriver extends Driver {
         });
       }
     }, 0);
+  }
+
+  /**
+   * Like Element's EventTile, a row still shown encrypted starts its event's
+   * decryption and listens on the event itself. It then updates even when the
+   * client-level relay misses the event (the SDK skips it for some events of a
+   * batch) or a load of the page wrote an older copy over the readable one.
+   */
+  override ensureMessageDecrypted(chatId: string, messageId: string): void {
+    const mx = this.mx;
+    const room = mx?.getRoom(chatId);
+    const event = room?.findEventById(messageId);
+    if (!mx || !room || !event) {
+      return;
+    }
+    const generation = this.clientGeneration;
+    const publish = () => {
+      if (
+        this.mx === mx &&
+        generation === this.clientGeneration &&
+        !this.disposed
+      ) {
+        this.emitDecryptedMessage(mx, room, event);
+      }
+    };
+    // An edit decrypting after its original changes the original's row.
+    const candidates = [event, event.replacingEvent()].filter(
+      (candidate): candidate is MatrixEvent =>
+        Boolean(candidate?.isEncrypted()),
+    );
+    for (const candidate of candidates) {
+      if (this.decryptionWatches.has(candidate)) {
+        continue;
+      }
+      this.decryptionWatches.add(candidate);
+      // A failure stays watched: the SDK retries when the key arrives.
+      const onDecrypted = () => {
+        if (!candidate.isDecryptionFailure()) {
+          candidate.off(MatrixEventEvent.Decrypted, onDecrypted);
+        }
+        queueMicrotask(publish);
+      };
+      candidate.on(MatrixEventEvent.Decrypted, onDecrypted);
+    }
+    void Promise.allSettled(
+      candidates.map((candidate) => mx.decryptEventIfNeeded(candidate)),
+    ).then(() => {
+      // Already readable: the row shows an older copy.
+      if (!candidates.some(isUndecryptedEvent)) {
+        publish();
+      }
+    });
+  }
+
+  /** Publishes a message again once decrypted, in the caches showing it. */
+  private emitDecryptedMessage(
+    mx: MatrixClient,
+    room: Room,
+    event: MatrixEvent,
+  ): void {
+    const messageId = event.getId();
+    if (!messageId) {
+      return;
+    }
+    const selfUserId = mx.getUserId() ?? undefined;
+    const threadId = event.isThreadRoot ? messageId : event.threadRootId;
+    if (threadId && isMessageEvent(event)) {
+      // A thread root shows in both caches, a reply in its thread only.
+      this.emit({
+        type: "message:updated",
+        chatId: room.roomId,
+        message: matrixEventToChatMessage(event, room, selfUserId),
+        threadId,
+      });
+      return;
+    }
+    this.emit({
+      type: "message:reconciled",
+      chatId: room.roomId,
+      messageId,
+      message: isMainTimelineMessage(event)
+        ? matrixEventToChatMessage(event, room, selfUserId)
+        : null,
+    });
   }
 
   /**
@@ -2981,6 +3070,11 @@ export class MatrixDriver extends Driver {
       // root as "live" whenever its thread gets a reply. They carry no news.
       if (data.timeline.getTimelineSet().threadListType !== null) {
         return;
+      }
+      // The SDK leaves live events encrypted. Like Element's timeline, start
+      // their decryption for whatever can reach the screen.
+      if (event.isEncrypted() && !toStartOfTimeline) {
+        void mx.decryptEventIfNeeded(event).catch(() => {});
       }
       if (
         data.liveEvent === true &&

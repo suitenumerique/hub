@@ -319,6 +319,10 @@ export class LazyMatrixDriver extends BaseDriver {
     this.target?.prepareChatSend(chatId);
   }
 
+  override ensureMessageDecrypted(chatId: string, messageId: string): void {
+    this.target?.ensureMessageDecrypted(chatId, messageId);
+  }
+
   async sendChatThreadReply(
     params: SendChatThreadReplyParams,
   ): Promise<ChatThreadMutationResult> {

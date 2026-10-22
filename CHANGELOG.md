@@ -200,3 +200,5 @@ and this project adheres to
   displayed message, as Element does, instead of keeping it unread.
 - 🐛(frontend) Show messages received while a conversation loads, in the
   order sync delivers them, and every message after a sync with a gap.
+- 🐛(frontend) Decrypt a message left waiting for decryption as soon as it is
+  shown, as Element does, and show it once its key arrives.
