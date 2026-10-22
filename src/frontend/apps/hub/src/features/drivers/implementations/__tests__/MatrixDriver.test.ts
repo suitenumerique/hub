@@ -432,12 +432,32 @@ describe("MatrixDriver room metadata", () => {
   });
 
   it.each([
-    { joined: 2, invited: 0, kind: "direct", name: "Alice" },
-    { joined: 3, invited: 0, kind: "group", name: "QA group" },
-    { joined: 2, invited: 1, kind: "group", name: "QA group" },
+    { roomName: null, joined: 2, invited: 0, kind: "direct", name: "Alice" },
+    // A group left with one other person keeps its name.
+    {
+      roomName: "QA group",
+      joined: 2,
+      invited: 0,
+      kind: "group",
+      name: "QA group",
+    },
+    {
+      roomName: "QA group",
+      joined: 3,
+      invited: 0,
+      kind: "group",
+      name: "QA group",
+    },
+    {
+      roomName: "QA group",
+      joined: 2,
+      invited: 1,
+      kind: "group",
+      name: "QA group",
+    },
   ])(
-    "maps a room with $joined joined and $invited invited members when only Alice is known",
-    ({ joined, invited, kind, name }) => {
+    "maps a room named $roomName with $joined joined and $invited invited members when only Alice is known",
+    ({ roomName, joined, invited, kind, name }) => {
       const client = createClient({
         baseUrl: "https://matrix.example.org",
         userId: SELF_ID,
@@ -446,12 +466,16 @@ describe("MatrixDriver room metadata", () => {
         lazyLoadMembers: true,
       });
       room.currentState.setStateEvents([
-        new MatrixEvent({
-          room_id: ROOM_ID,
-          type: EventType.RoomName,
-          state_key: "",
-          content: { name: "QA group" },
-        }),
+        ...(roomName
+          ? [
+              new MatrixEvent({
+                room_id: ROOM_ID,
+                type: EventType.RoomName,
+                state_key: "",
+                content: { name: roomName },
+              }),
+            ]
+          : []),
         ...[
           { id: SELF_ID, name: "Me" },
           { id: OTHER_ID, name: "Alice" },
