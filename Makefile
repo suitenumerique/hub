@@ -271,6 +271,14 @@ run-matrix: \
 	@$(COMPOSE_MATRIX) up -d --wait --wait-timeout 180 $(MATRIX_SERVICES)
 .PHONY: run-matrix
 
+run-matrix-e2e: ## Start the local Matrix stack beside the running e2e backend, used by the chat e2e suites
+run-matrix-e2e: \
+	create-env-local-files \
+	data/matrix/synapse \
+	data/matrix/mas
+	@$(COMPOSE_MATRIX) up -d --wait --wait-timeout 180 $(MATRIX_SERVICES)
+.PHONY: run-matrix-e2e
+
 tchap-env: ## create the personal Tchap settings file (chat environment)
 	@if [ -f $(TCHAP_ENV_FILE) ]; then \
 		echo "$(TCHAP_ENV_FILE) already exists."; \
@@ -310,6 +318,7 @@ clear-db-e2e: ## quickly clears the e2e database, used by Playwright between tes
 
 run-tests-e2e: ## run the e2e tests, example: make run-tests-e2e -- --project=chromium --headed
 	@$(MAKE) run-backend-e2e
+	@$(MAKE) run-matrix-e2e
 	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
 	cd src/frontend/apps/e2e && yarn test $${args:-${1}}
 .PHONY: run-tests-e2e
