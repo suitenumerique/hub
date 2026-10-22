@@ -109,6 +109,12 @@ jobs:
       - name: Start Docker services (e2e backend)
         run: make bootstrap-e2e
 
+      # The chat suites (__tests__/chat) run on Chromium only, against the
+      # local Synapse + MAS stack.
+      - name: Start the local Matrix stack
+        if: matrix.browser == 'chromium'
+        run: make run-matrix-e2e
+
       - name: Serve frontend (nginx static + prod vhost)
         run: |
           docker run -d --rm --name hub-static -p 9800:3000 \
