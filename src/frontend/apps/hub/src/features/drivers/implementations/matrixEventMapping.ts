@@ -68,7 +68,10 @@ export const isMessageEvent = (event: MatrixEvent): boolean =>
   event.status === null &&
   (event.getType() === EventType.RoomMessage ||
     event.getType() === EventType.RoomMessageEncrypted) &&
-  event.getRelation()?.rel_type !== RelationType.Replace;
+  // An encrypted edit or reaction keeps its relation in clear: it is never a
+  // bubble, not even while it decrypts.
+  event.getRelation()?.rel_type !== RelationType.Replace &&
+  event.getRelation()?.rel_type !== RelationType.Annotation;
 
 /** A user-visible message on the room's main timeline (not a reply or edit). */
 export const isMainTimelineMessage = (event: MatrixEvent): boolean =>
@@ -411,14 +414,24 @@ const aggregateReactions = (
     selfUserId,
   );
 
-/** Aggregates a concrete set of annotation events by emoji and sender. */
+/**
+ * Aggregates a concrete set of annotation events by emoji and sender. Emojis
+ * come in order of first appearance, whatever the order of `events` (the SDK
+ * keeps arrival order, the homeserver answers newest first), so a count
+ * change never moves a chip.
+ */
 const aggregateReactionEvents = (
   events: MatrixEvent[],
   selfUserId: string | undefined,
 ): ChatReaction[] => {
   const grouped = new Map<
     string,
-    { emoji: string; senders: Set<string>; reactedByMe: boolean }
+    {
+      emoji: string;
+      senders: Set<string>;
+      reactedByMe: boolean;
+      firstAt: number;
+    }
   >();
   for (const event of events) {
     if (event.isRedacted()) {
@@ -430,21 +443,29 @@ const aggregateReactionEvents = (
       continue;
     }
     const key = emojiToCodepoints(emoji);
+    const sentAt = event.getTs();
     const group = grouped.get(key) ?? {
       emoji,
       senders: new Set<string>(),
       reactedByMe: false,
+      firstAt: sentAt,
     };
+    if (sentAt < group.firstAt) {
+      group.emoji = emoji;
+      group.firstAt = sentAt;
+    }
     group.senders.add(sender);
     group.reactedByMe ||= sender === selfUserId;
     grouped.set(key, group);
   }
 
-  return [...grouped.values()].map(({ emoji, senders, reactedByMe }) => ({
-    emoji,
-    count: senders.size,
-    reactedByMe,
-  }));
+  return [...grouped.values()]
+    .sort((a, b) => a.firstAt - b.firstAt)
+    .map(({ emoji, senders, reactedByMe }) => ({
+      emoji,
+      count: senders.size,
+      reactedByMe,
+    }));
 };
 
 export type ReactionSnapshot = {
@@ -456,6 +477,10 @@ export type ReactionSnapshot = {
  * Reads the homeserver's active annotations instead of trusting the SDK's
  * relation container, which can temporarily retain a sent-then-redacted local
  * echo across IndexedDB reloads. Pages are followed so counts stay exact.
+ *
+ * Some clients encrypt their reactions: the request is not filtered on
+ * `m.reaction`, which would leave them out, and encrypted annotations count
+ * once decrypted, as in the SDK's relation container.
  */
 export const fetchReactionSnapshot = async (
   mx: MatrixClient,
@@ -470,14 +495,23 @@ export const fetchReactionSnapshot = async (
       roomId,
       eventId,
       RelationType.Annotation,
-      EventType.Reaction,
+      null,
       {
         dir: Direction.Backward,
         limit: 100,
         ...(from ? { from } : {}),
       },
     );
-    events.push(...result.events);
+    await Promise.all(
+      result.events
+        .filter((event) => event.isEncrypted())
+        .map((event) => mx.decryptEventIfNeeded(event).catch(() => {})),
+    );
+    events.push(
+      ...result.events.filter(
+        (event) => event.getType() === EventType.Reaction,
+      ),
+    );
     if (!result.nextBatch) {
       return {
         events,

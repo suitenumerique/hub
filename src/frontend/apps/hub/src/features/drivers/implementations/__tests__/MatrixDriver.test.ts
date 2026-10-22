@@ -39,6 +39,8 @@ type SeedReaction = {
   key: string;
   sender: string;
   id?: string;
+  /** Send time; reactions are listed by first appearance. */
+  ts?: number;
 };
 
 const makeReactionEvent = (
@@ -47,9 +49,11 @@ const makeReactionEvent = (
 ): MatrixEvent =>
   ({
     getType: () => "m.reaction",
+    isEncrypted: () => false,
     isRedacted: () => false,
     getId: () => reaction.id ?? `$reaction-${reaction.sender}`,
     getSender: () => reaction.sender,
+    getTs: () => reaction.ts ?? 1_700_000_000_000,
     getRelation: () => ({
       rel_type: "m.annotation",
       event_id: targetId,
@@ -667,6 +671,87 @@ describe("MatrixDriver.toggleChatReaction", () => {
     expect(updated.reactions).toEqual([
       { emoji: "👍", count: 1, reactedByMe: true },
     ]);
+  });
+});
+
+describe("Matrix reactions", () => {
+  it("lists reactions by first appearance, whatever the arrival order", () => {
+    const targetId = "$target:localhost";
+    const room = makeRoom({
+      [targetId]: [
+        { key: "✅", sender: OTHER_ID, ts: 2_000 },
+        { key: "👍", sender: SELF_ID, ts: 1_000 },
+        { key: "✅", sender: SELF_ID, ts: 3_000 },
+      ],
+    });
+    const reaction = makeMessageEvent({
+      sender: OTHER_ID,
+      type: "m.reaction",
+      relation: { rel_type: "m.annotation", event_id: targetId, key: "✅" },
+    });
+
+    expect(timelineEventToChatEvent(reaction, room, SELF_ID)).toEqual([
+      {
+        type: "reaction:updated",
+        chatId: ROOM_ID,
+        messageId: targetId,
+        reactions: [
+          { emoji: "👍", count: 1, reactedByMe: true },
+          { emoji: "✅", count: 2, reactedByMe: true },
+        ],
+      },
+    ]);
+  });
+
+  it("finds and removes the user's own encrypted reaction", async () => {
+    const messageId = "$message:localhost";
+    const reactionId = "$encrypted-reaction:localhost";
+    const message = makeMessageEvent({ sender: OTHER_ID, id: messageId });
+    const room = makeRoom({}, { [messageId]: message });
+    // Sent encrypted by another client, decrypted by the snapshot.
+    const encryptedReaction = {
+      ...makeReactionEvent(messageId, {
+        key: "👍",
+        sender: SELF_ID,
+        id: reactionId,
+      }),
+      isEncrypted: () => true,
+    } as unknown as MatrixEvent;
+    const undecryptable = {
+      ...makeReactionEvent(messageId, { key: "👍", sender: OTHER_ID }),
+      isEncrypted: () => true,
+      getType: () => "m.room.encrypted",
+    } as unknown as MatrixEvent;
+    const relations = vi.fn(async () => ({
+      events: [encryptedReaction, undecryptable],
+    }));
+    const decryptEventIfNeeded = vi.fn().mockResolvedValue(undefined);
+    const redactEvent = vi.fn(async () => ({ event_id: "$redaction" }));
+    const mx = {
+      getRoom: () => room,
+      getUserId: () => SELF_ID,
+      decryptEventIfNeeded,
+      relations,
+      redactEvent,
+    } as unknown as MatrixClient;
+
+    const updated = await driverWithClient(mx).toggleChatReaction({
+      chatId: ROOM_ID,
+      messageId,
+      emoji: "👍",
+    });
+
+    // Not filtered on m.reaction: encrypted annotations would be left out.
+    expect(relations).toHaveBeenCalledWith(
+      ROOM_ID,
+      messageId,
+      "m.annotation",
+      null,
+      expect.anything(),
+    );
+    expect(decryptEventIfNeeded).toHaveBeenCalledWith(encryptedReaction);
+    expect(redactEvent).toHaveBeenCalledWith(ROOM_ID, reactionId);
+    expect(updated.reactions).toEqual([]);
   });
 });
 

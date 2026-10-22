@@ -202,3 +202,5 @@ and this project adheres to
   order sync delivers them, and every message after a sync with a gap.
 - 🐛(frontend) Decrypt a message left waiting for decryption as soon as it is
   shown, as Element does, and show it once its key arrives.
+- 🐛(frontend) Keep a reaction shown while it is sent, count reactions other
+  clients encrypt, and keep reaction chips in place when their counts change.

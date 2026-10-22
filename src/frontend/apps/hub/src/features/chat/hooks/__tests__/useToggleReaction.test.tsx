@@ -16,6 +16,7 @@ import type {
   ChatThreadDetail,
 } from "@/features/drivers/types";
 
+import { isReactionTogglePending } from "../../pendingReactionToggles";
 import { useToggleReaction } from "../useToggleReaction";
 
 const toggleChatReaction = vi.fn();
@@ -82,7 +83,9 @@ describe("useToggleReaction", () => {
     ].messages[messageIndex].reactions;
 
   it("optimistically adds a reaction in the page that holds the message", async () => {
-    toggleChatReaction.mockResolvedValue(makeMessage("m-2"));
+    toggleChatReaction.mockResolvedValue(
+      makeMessage("m-2", [{ emoji: "👍", count: 1, reactedByMe: true }]),
+    );
     queryClient.setQueryData(
       QUERY_KEY,
       makeData([[makeMessage("m-1")], [makeMessage("m-2")]]),
@@ -153,6 +156,112 @@ describe("useToggleReaction", () => {
   });
 });
 
+describe("useToggleReaction outcome", () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    toggleChatReaction.mockReset();
+    registry.get.mockClear();
+  });
+
+  afterEach(() => {
+    queryClient.clear();
+  });
+
+  const renderToggle = () => {
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    Wrapper.displayName = "TestQueryClientProvider";
+    return renderHook(() => useToggleReaction(CHAT_REF), { wrapper: Wrapper });
+  };
+
+  const reactionsOf = (messageId: string) =>
+    queryClient
+      .getQueryData<InfiniteData<ChatMessagesPage>>(QUERY_KEY)
+      ?.pages.flatMap((page) => page.messages)
+      .find((message) => message.id === messageId)?.reactions;
+
+  it("applies the reactions the driver ends with, in the shown order", async () => {
+    queryClient.setQueryData(
+      QUERY_KEY,
+      makeData([
+        [
+          makeMessage("m-1", [
+            { emoji: "👍", count: 1, reactedByMe: false },
+            { emoji: "✅", count: 1, reactedByMe: false },
+          ]),
+        ],
+      ]),
+    );
+    // The driver lists them by first appearance, which may differ from the
+    // chips shown, and someone else's reaction arrived meanwhile.
+    toggleChatReaction.mockResolvedValue(
+      makeMessage("m-1", [
+        { emoji: "✅", count: 2, reactedByMe: true },
+        { emoji: "👍", count: 1, reactedByMe: false },
+        { emoji: "🎉", count: 1, reactedByMe: false },
+      ]),
+    );
+
+    const { result } = renderToggle();
+    act(() => {
+      result.current.toggle("m-1", "✅");
+    });
+
+    await waitFor(() => {
+      expect(reactionsOf("m-1")).toEqual([
+        { emoji: "👍", count: 1, reactedByMe: false },
+        { emoji: "✅", count: 2, reactedByMe: true },
+        { emoji: "🎉", count: 1, reactedByMe: false },
+      ]);
+    });
+  });
+
+  it("puts back only this message's reactions when the call fails", async () => {
+    let rejectToggle: (error: Error) => void = () => {};
+    toggleChatReaction.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectToggle = reject;
+      }),
+    );
+    queryClient.setQueryData(
+      QUERY_KEY,
+      makeData([[makeMessage("m-1"), makeMessage("m-2")]]),
+    );
+
+    const { result } = renderToggle();
+    act(() => {
+      result.current.toggle("m-1", "👍");
+    });
+    await waitFor(() => expect(reactionsOf("m-1")).toHaveLength(1));
+    expect(isReactionTogglePending(CHAT_REF, "m-1")).toBe(true);
+
+    // Meanwhile, someone reacts to another message.
+    const optimistic = reactionsOf("m-1") ?? [];
+    const elsewhere = [{ emoji: "🎉", count: 1, reactedByMe: false }];
+    queryClient.setQueryData(
+      QUERY_KEY,
+      makeData([
+        [makeMessage("m-1", optimistic), makeMessage("m-2", elsewhere)],
+      ]),
+    );
+    act(() => {
+      rejectToggle(new Error("network down"));
+    });
+
+    await waitFor(() => expect(reactionsOf("m-1")).toEqual([]));
+    expect(reactionsOf("m-2")).toEqual(elsewhere);
+    expect(isReactionTogglePending(CHAT_REF, "m-1")).toBe(false);
+  });
+});
+
 describe("useToggleReaction (thread mode)", () => {
   let queryClient: QueryClient;
 
@@ -199,7 +308,9 @@ describe("useToggleReaction (thread mode)", () => {
       ?.messages.find((message) => message.id === messageId)?.reactions;
 
   it("optimistically toggles a reaction in the thread detail cache", async () => {
-    toggleChatThreadReaction.mockResolvedValue(makeMessage("t-1-r1"));
+    toggleChatThreadReaction.mockResolvedValue(
+      makeMessage("t-1-r1", [{ emoji: "🎉", count: 1, reactedByMe: true }]),
+    );
     queryClient.setQueryData(
       THREAD_KEY,
       makeDetail([makeMessage("m-1"), makeMessage("t-1-r1")]),

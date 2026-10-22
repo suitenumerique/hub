@@ -1830,7 +1830,8 @@ export class MatrixDriver extends Driver {
           key: emoji,
         },
       };
-      await this.guardSend(mx, room);
+      // The SDK never encrypts reactions, so unlike messages they do not wait
+      // for this device to be ready to encrypt; Element does not either.
       await (threadId
         ? mx.sendEvent(chatId, threadId, EventType.Reaction, content)
         : mx.sendEvent(chatId, EventType.Reaction, content));
