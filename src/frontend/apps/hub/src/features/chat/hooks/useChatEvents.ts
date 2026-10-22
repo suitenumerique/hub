@@ -6,11 +6,14 @@ import {
 import { useEffect } from "react";
 
 import { chatKeys } from "@/features/chat/chatKeys";
+import { isReactionTogglePending } from "@/features/chat/pendingReactionToggles";
+import { keepReactionOrder } from "@/features/chat/reactions";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { ChatEvent } from "@/features/drivers/Driver";
 import type {
   AccountId,
   ChatRef,
+  ChatMessage,
   ChatMessagesPage,
   ChatThreadDetail,
   ChatUnread,
@@ -66,6 +69,21 @@ const appendMessage = (
     ],
   };
 };
+
+/**
+ * A fresh copy of a cached message. Its reaction chips keep their order, and
+ * stay as they are while this session's toggle on them is in flight.
+ */
+const withCachedReactions = (
+  ref: ChatRef,
+  cached: ChatMessage,
+  next: ChatMessage,
+): ChatMessage => ({
+  ...next,
+  reactions: isReactionTogglePending(ref, next.id)
+    ? cached.reactions
+    : keepReactionOrder(cached.reactions, next.reactions),
+});
 
 /**
  * Applies a patch to a cache now and, when a load of that cache is in flight,
@@ -199,7 +217,9 @@ const applyChatEvent = (
           if (!data) return data;
           const reconciled = event.message;
           return reconciled
-            ? replaceMessage(data, event.messageId, () => reconciled)
+            ? replaceMessage(data, event.messageId, (cached) =>
+                withCachedReactions(ref, cached, reconciled),
+              )
             : {
                 ...data,
                 pages: data.pages.map((page) => ({
@@ -259,7 +279,9 @@ const applyChatEvent = (
       patchAcrossLoads(queryClient, messagesKey, () =>
         queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) =>
           data && (!event.threadId || event.message.id === event.threadId)
-            ? replaceMessage(data, event.message.id, () => event.message)
+            ? replaceMessage(data, event.message.id, (cached) =>
+                withCachedReactions(ref, cached, event.message),
+              )
             : data,
         ),
       );
@@ -271,7 +293,9 @@ const applyChatEvent = (
               ? {
                   ...detail,
                   messages: detail.messages.map((message) =>
-                    message.id === event.message.id ? event.message : message,
+                    message.id === event.message.id
+                      ? withCachedReactions(ref, message, event.message)
+                      : message,
                   ),
                 }
               : detail,
@@ -282,6 +306,11 @@ const applyChatEvent = (
     }
 
     case "reaction:updated": {
+      // This session's toggle in flight owns the chips until the driver
+      // answers, which publishes the reactions it ends with.
+      if (isReactionTogglePending(ref, event.messageId)) {
+        return;
+      }
       if (event.threadId) {
         const threadKey = chatKeys.thread(ref, event.threadId);
         patchAcrossLoads(queryClient, threadKey, () =>
@@ -291,7 +320,13 @@ const applyChatEvent = (
                   ...detail,
                   messages: detail.messages.map((m) =>
                     m.id === event.messageId
-                      ? { ...m, reactions: event.reactions }
+                      ? {
+                          ...m,
+                          reactions: keepReactionOrder(
+                            m.reactions,
+                            event.reactions,
+                          ),
+                        }
                       : m,
                   ),
                 }
@@ -306,7 +341,7 @@ const applyChatEvent = (
           data
             ? replaceMessage(data, event.messageId, (m) => ({
                 ...m,
-                reactions: event.reactions,
+                reactions: keepReactionOrder(m.reactions, event.reactions),
               }))
             : data,
         ),

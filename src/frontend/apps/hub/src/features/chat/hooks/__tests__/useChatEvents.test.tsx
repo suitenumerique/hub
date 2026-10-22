@@ -18,6 +18,10 @@ import type {
   ChatMessagesPage,
 } from "@/features/drivers/types";
 
+import {
+  beginReactionToggle,
+  endReactionToggle,
+} from "../../pendingReactionToggles";
 import { replayRecentLiveMessages, useChatEvents } from "../useChatEvents";
 
 let capturedListener: ChatEventListener | null = null;
@@ -283,6 +287,77 @@ describe("useChatEvents", () => {
     replayRecentLiveMessages(queryClient, ref);
 
     expect(messageIds(ref)).toEqual(["m1", "m2"]);
+  });
+
+  it("keeps the reaction order on reaction:updated", () => {
+    seedMessages(
+      queryClient,
+      CHAT_REF,
+      [
+        {
+          ...message("m1"),
+          reactions: [
+            { emoji: "👍", count: 1, reactedByMe: false },
+            { emoji: "✅", count: 1, reactedByMe: false },
+          ],
+        },
+      ],
+      [],
+    );
+    mount();
+
+    emit({
+      type: "reaction:updated",
+      chatId: "c1",
+      messageId: "m1",
+      reactions: [
+        { emoji: "✅", count: 2, reactedByMe: false },
+        { emoji: "👍", count: 1, reactedByMe: false },
+      ],
+    });
+
+    const data = queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(
+      chatKeys.messages(CHAT_REF),
+    );
+    expect(data?.pages[0].messages[0].reactions.map((r) => r.emoji)).toEqual([
+      "👍",
+      "✅",
+    ]);
+  });
+
+  it("leaves the reactions of a toggle in flight to the toggle", () => {
+    const optimistic = [{ emoji: "👍", count: 1, reactedByMe: true }];
+    seedMessages(
+      queryClient,
+      CHAT_REF,
+      [{ ...message("m1"), reactions: optimistic }],
+      [],
+    );
+    mount();
+    beginReactionToggle(CHAT_REF, "m1");
+    try {
+      // Both were read before the toggle reached the homeserver.
+      emit({
+        type: "reaction:updated",
+        chatId: "c1",
+        messageId: "m1",
+        reactions: [],
+      });
+      emit({
+        type: "message:updated",
+        chatId: "c1",
+        message: { ...message("m1"), content: "edited", reactions: [] },
+      });
+    } finally {
+      endReactionToggle(CHAT_REF, "m1");
+    }
+
+    const [updated] =
+      queryClient.getQueryData<InfiniteData<ChatMessagesPage>>(
+        chatKeys.messages(CHAT_REF),
+      )?.pages[0].messages ?? [];
+    expect(updated.content).toBe("edited");
+    expect(updated.reactions).toEqual(optimistic);
   });
 
   it.each<[ChatEvent, readonly unknown[]]>([

@@ -1,5 +1,6 @@
 import {
   type InfiniteData,
+  replaceEqualDeep,
   useInfiniteQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -21,6 +22,7 @@ import type {
 } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { keepReactionOrder } from "../reactions";
 import { replayRecentLiveMessages } from "./useChatEvents";
 
 export const CHAT_PAGE_SIZE = 100;
@@ -65,6 +67,38 @@ export type UseChatMessagesResult = {
    * request replaced it.
    */
   openAround: (eventId: string) => Promise<string | null>;
+};
+
+/**
+ * Data written to the cache keeps the order of the reaction chips already
+ * shown, a reloaded page included, so a count change never moves a chip.
+ */
+const keepShownReactionOrder = (
+  shown: InfiniteData<ChatMessagesPage> | undefined,
+  next: InfiniteData<ChatMessagesPage>,
+): InfiniteData<ChatMessagesPage> => {
+  if (!shown?.pages || !next?.pages) {
+    return next;
+  }
+  const shownById = new Map<string, ChatMessage>();
+  shown.pages.forEach((page) =>
+    page.messages.forEach((message) => shownById.set(message.id, message)),
+  );
+  return {
+    ...next,
+    pages: next.pages.map((page) => ({
+      ...page,
+      messages: page.messages.map((message) => {
+        const cached = shownById.get(message.id);
+        return cached
+          ? {
+              ...message,
+              reactions: keepReactionOrder(cached.reactions, message.reactions),
+            }
+          : message;
+      }),
+    })),
+  };
 };
 
 export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
@@ -139,6 +173,14 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
         ? { cursor: firstPage.newerCursor, direction: "newer" }
         : undefined,
     staleTime: Infinity,
+    structuralSharing: (shown, next) =>
+      replaceEqualDeep(
+        shown,
+        keepShownReactionOrder(
+          shown as InfiniteData<ChatMessagesPage> | undefined,
+          next as InfiniteData<ChatMessagesPage>,
+        ),
+      ),
     meta: { noGlobalError: true },
   });
 

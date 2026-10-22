@@ -49,3 +49,31 @@ export const toggleReaction = (
     i === index ? { ...reaction, count, reactedByMe: false } : reaction,
   );
 };
+
+/**
+ * `next` without moving the chips `previous` already shows: they keep their
+ * order between them, so a count change never moves one. Emojis appearing
+ * take their place from `next`, which lists them by first appearance: a new
+ * reaction comes last, an older one decrypted late comes back to its place.
+ */
+export const keepReactionOrder = (
+  previous: ChatReaction[],
+  next: ChatReaction[],
+): ChatReaction[] => {
+  if (previous.length === 0) {
+    return next;
+  }
+  const nextByKey = new Map(
+    next.map((reaction) => [emojiToCodepoints(reaction.emoji), reaction]),
+  );
+  const shown = previous
+    .map((reaction) => emojiToCodepoints(reaction.emoji))
+    .filter((key) => nextByKey.has(key));
+  const shownKeys = new Set(shown);
+  let slot = 0;
+  return next.map((reaction) =>
+    shownKeys.has(emojiToCodepoints(reaction.emoji))
+      ? nextByKey.get(shown[slot++])!
+      : reaction,
+  );
+};
