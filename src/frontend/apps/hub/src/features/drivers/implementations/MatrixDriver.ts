@@ -1,6 +1,7 @@
 import {
   ClientEvent,
   EventTimeline,
+  type EventTimelineSet,
   EventType,
   type IRoomTimelineData,
   KnownMembership,
@@ -3069,10 +3070,41 @@ export class MatrixDriver extends Driver {
         room,
         selfUserId,
       )) {
+        // As in Element, only what sync delivers is a new message: a warm
+        // start replaying its cache and a forward pagination reaching the live
+        // end add events the page reads already.
+        if (chatEvent.type === "message:new" && data.liveEvent !== true) {
+          continue;
+        }
         emitCurrent(chatEvent);
       }
       emitUnread(room);
       emitMainTimelineUnread(room);
+    };
+    // A limited sync starts a new live timeline after a gap (a frozen tab, a
+    // slow homeserver): the cached page ends before the gap and live messages
+    // would land after it. Reload the room once that sync is processed, as
+    // Element's TimelinePanel reloads its window on a reset.
+    const resetRoomIds = new Set<string>();
+    const onTimelineReset = (
+      room: Room | undefined,
+      timelineSet: EventTimelineSet,
+    ) => {
+      if (room && timelineSet === room.getUnfilteredTimelineSet()) {
+        resetRoomIds.add(room.roomId);
+      }
+    };
+    const reloadResetRooms = () => {
+      for (const roomId of resetRoomIds) {
+        const room = mx.getRoom(roomId);
+        emitCurrent({ type: "chat:changed", chatId: roomId });
+        if (room) {
+          emitUnread(room);
+          emitMainTimelineUnread(room);
+          emitThreadsRefresh(room);
+        }
+      }
+      resetRoomIds.clear();
     };
     const onReceipt = (event: MatrixEvent, room: Room | undefined) => {
       if (!room || !receiptMentionsUser(event, selfUserId)) {
@@ -3341,6 +3373,9 @@ export class MatrixDriver extends Driver {
       prevState: SyncState | null,
       data?: SyncStateData,
     ) => {
+      if (state === SyncState.Syncing || state === SyncState.Prepared) {
+        reloadResetRooms();
+      }
       if (
         state !== SyncState.Syncing ||
         prevState === SyncState.Syncing ||
@@ -3372,6 +3407,7 @@ export class MatrixDriver extends Driver {
     };
     mx.getRooms().forEach(attachThreadListeners);
     mx.on(RoomEvent.Timeline, onTimeline);
+    mx.on(RoomEvent.TimelineReset, onTimelineReset);
     mx.on(RoomEvent.Receipt, onReceipt);
     mx.on(RoomEvent.Redaction, onRedaction);
     mx.on(RoomEvent.RedactionCancelled, onRedactionCancelled);
@@ -3505,6 +3541,7 @@ export class MatrixDriver extends Driver {
       mx.off(MatrixEventEvent.Decrypted, onDecrypted);
       detachIncomingEvents();
       mx.off(RoomEvent.Timeline, onTimeline);
+      mx.off(RoomEvent.TimelineReset, onTimelineReset);
       mx.off(RoomEvent.Receipt, onReceipt);
       mx.off(RoomEvent.Redaction, onRedaction);
       mx.off(RoomEvent.RedactionCancelled, onRedactionCancelled);
@@ -3524,6 +3561,7 @@ export class MatrixDriver extends Driver {
       pendingLiveThreadReplies.clear();
       pendingTypingRoomIds.clear();
       decryptedRooms.clear();
+      resetRoomIds.clear();
     };
   }
 

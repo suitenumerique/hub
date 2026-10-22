@@ -4,7 +4,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { renderHook } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,7 +18,7 @@ import type {
   ChatMessagesPage,
 } from "@/features/drivers/types";
 
-import { useChatEvents } from "../useChatEvents";
+import { replayRecentLiveMessages, useChatEvents } from "../useChatEvents";
 
 let capturedListener: ChatEventListener | null = null;
 const unsubscribe = vi.fn();
@@ -182,6 +182,107 @@ describe("useChatEvents", () => {
       "c1",
     ]);
     expect(data?.pages[0].messages[0].reactions[0].emoji).toBe("👍");
+  });
+
+  const messageIds = (ref: ChatRef = CHAT_REF) =>
+    queryClient
+      .getQueryData<InfiniteData<ChatMessagesPage>>(chatKeys.messages(ref))
+      ?.pages.flatMap((page) => page.messages.map((m) => m.id));
+
+  it("appends a live message whose timestamp is older than the page", () => {
+    seedMessages(queryClient, CHAT_REF, [message("m1")], []);
+    mount();
+
+    // A lagging homeserver can deliver it with an older send time.
+    emit({
+      type: "message:new",
+      chatId: "c1",
+      message: { ...message("m2"), timestamp: "2026-05-12T09:00:00.000Z" },
+    });
+
+    expect(messageIds()).toEqual(["m1", "m2"]);
+  });
+
+  it("does not append a message already in an older page", () => {
+    queryClient.setQueryData<InfiniteData<ChatMessagesPage>>(
+      chatKeys.messages(CHAT_REF),
+      {
+        pages: [
+          { messages: [message("m2")], authors: [], nextCursor: "m2" },
+          { messages: [message("m1")], authors: [], nextCursor: null },
+        ],
+        pageParams: [null, "m2"],
+      },
+    );
+    mount();
+
+    emit({ type: "message:new", chatId: "c1", message: message("m1") });
+
+    expect(messageIds()).toEqual(["m2", "m1"]);
+  });
+
+  it("keeps a message received while the first page loads", async () => {
+    let resolvePage: (page: ChatMessagesPage) => void = () => {};
+    const loading = queryClient.fetchInfiniteQuery({
+      queryKey: chatKeys.messages(CHAT_REF),
+      queryFn: () =>
+        new Promise<ChatMessagesPage>((resolve) => {
+          resolvePage = resolve;
+        }),
+      initialPageParam: null,
+    });
+    mount();
+
+    emit({ type: "message:new", chatId: "c1", message: message("m2") });
+    // The page was read before the message arrived.
+    resolvePage({ messages: [message("m1")], authors: [], nextCursor: null });
+    await act(() => loading);
+
+    await waitFor(() => expect(messageIds()).toEqual(["m1", "m2"]));
+  });
+
+  it("keeps a message received while the conversation reloads", async () => {
+    const queryKey = chatKeys.messages(CHAT_REF);
+    const firstPage = (): ChatMessagesPage => ({
+      messages: [message("m1")],
+      authors: [],
+      nextCursor: null,
+    });
+    await queryClient.fetchInfiniteQuery({
+      queryKey,
+      queryFn: async () => firstPage(),
+      initialPageParam: null,
+    });
+    let resolvePage: (page: ChatMessagesPage) => void = () => {};
+    const reloading = queryClient.fetchInfiniteQuery({
+      queryKey,
+      queryFn: () =>
+        new Promise<ChatMessagesPage>((resolve) => {
+          resolvePage = resolve;
+        }),
+      initialPageParam: null,
+      staleTime: 0,
+    });
+    mount();
+
+    emit({ type: "message:new", chatId: "c1", message: message("m2") });
+    expect(messageIds()).toEqual(["m1", "m2"]);
+    resolvePage(firstPage());
+    await act(() => reloading);
+
+    await waitFor(() => expect(messageIds()).toEqual(["m1", "m2"]));
+  });
+
+  it("appends recent live messages missing from a reloaded window", () => {
+    const ref: ChatRef = { accountId: "account-a", chatId: "c-replay" };
+    mount();
+    emit({ type: "message:new", chatId: "c-replay", message: message("m2") });
+
+    // A window loaded around an unread message, read before m2 arrived.
+    seedMessages(queryClient, ref, [message("m1")], []);
+    replayRecentLiveMessages(queryClient, ref);
+
+    expect(messageIds(ref)).toEqual(["m1", "m2"]);
   });
 
   it.each<[ChatEvent, readonly unknown[]]>([

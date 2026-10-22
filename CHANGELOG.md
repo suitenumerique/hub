@@ -198,3 +198,5 @@ and this project adheres to
 [unreleased]: https://github.com/suitenumerique/docs/compare/main
 - 🐛(frontend) Read a conversation never read before through its last
   displayed message, as Element does, instead of keeping it unread.
+- 🐛(frontend) Show messages received while a conversation loads, in the
+  order sync delivers them, and every message after a sync with a gap.

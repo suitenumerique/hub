@@ -23,14 +23,20 @@ type ScopedChatEvent = {
   event: ChatEvent;
 };
 
+type MessageNewEvent = Extract<ChatEvent, { type: "message:new" }>;
+
 /**
  * Appends a freshly-received message to the newest page of the infinite-query
  * cache (page 0 holds the latest range; messages within a page are ASC). A
  * no-op when the cache is cold or the message is already present.
+ *
+ * Messages come in the order sync delivers them, as Element shows them and as
+ * a reload reads them: a timestamp from a lagging homeserver may be older than
+ * the messages already shown, and must neither drop nor move the message.
  */
 const appendMessage = (
   data: ChatMessagesData,
-  event: Extract<ChatEvent, { type: "message:new" }>,
+  event: MessageNewEvent,
 ): ChatMessagesData => {
   const [newest, ...rest] = data.pages;
   // A contextual cache intentionally ends before the live timeline. Appending
@@ -38,7 +44,9 @@ const appendMessage = (
   if (
     !newest ||
     newest.isAtLiveEnd === false ||
-    newest.messages.some((m) => m.id === event.message.id)
+    data.pages.some((page) =>
+      page.messages.some((m) => m.id === event.message.id),
+    )
   ) {
     return data;
   }
@@ -50,26 +58,94 @@ const appendMessage = (
         ),
       ]
     : newest.authors;
-  const firstTimestamp = newest.messages[0]?.timestamp;
-  // A warm Matrix start may replay events which predate the latest page while
-  // the network sync catches up from IndexedDB. They belong to backward
-  // pagination and must not be appended after the live end.
-  if (firstTimestamp && event.message.timestamp < firstTimestamp) {
-    return data;
-  }
-  const insertionIndex = newest.messages.findIndex(
-    (message) => message.timestamp > event.message.timestamp,
-  );
-  const messages = [...newest.messages];
-  if (insertionIndex < 0) {
-    messages.push(event.message);
-  } else {
-    messages.splice(insertionIndex, 0, event.message);
-  }
   return {
     ...data,
-    pages: [{ ...newest, authors, messages }, ...rest],
+    pages: [
+      { ...newest, authors, messages: [...newest.messages, event.message] },
+      ...rest,
+    ],
   };
+};
+
+/**
+ * Applies a patch to a cache now and, when a load of that cache is in flight,
+ * once more after it lands: the load read the data before this patch and
+ * replaces the cache with it. Element avoids this by re-reading its timeline
+ * window for every event. Patches are idempotent, so applying twice is safe.
+ */
+export const patchAcrossLoads = (
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+  patch: () => void,
+): void => {
+  patch();
+  const patchAfterLoad = () => {
+    const query = queryClient.getQueryCache().find({ queryKey, exact: true });
+    if (query?.state.fetchStatus !== "fetching") {
+      return false;
+    }
+    const again = () => {
+      if (!patchAfterLoad()) patch();
+    };
+    void query.promise?.then(again, again);
+    return true;
+  };
+  patchAfterLoad();
+};
+
+/**
+ * Live messages of the last minute, per conversation. A window loaded outside
+ * React Query (around an unread message, see `useChatMessages`) replaces the
+ * cache wholesale: it re-applies them so that none read too early is lost.
+ */
+const RECENT_LIVE_MESSAGES_MS = 60_000;
+const recentLiveMessages = new Map<
+  string,
+  Array<{ event: MessageNewEvent; receivedAt: number }>
+>();
+
+const chatKeyOf = (ref: ChatRef): string =>
+  `${ref.accountId}\u0000${ref.chatId}`;
+
+const recentLiveMessagesOf = (ref: ChatRef) => {
+  const now = Date.now();
+  const recent = (recentLiveMessages.get(chatKeyOf(ref)) ?? []).filter(
+    ({ receivedAt }) => now - receivedAt < RECENT_LIVE_MESSAGES_MS,
+  );
+  recentLiveMessages.set(chatKeyOf(ref), recent);
+  return recent;
+};
+
+const rememberLiveMessage = (ref: ChatRef, event: MessageNewEvent): void => {
+  recentLiveMessagesOf(ref).push({ event, receivedAt: Date.now() });
+};
+
+const forgetLiveMessage = (ref: ChatRef, messageId: string): void => {
+  recentLiveMessages.set(
+    chatKeyOf(ref),
+    recentLiveMessagesOf(ref).filter(
+      ({ event }) => event.message.id !== messageId,
+    ),
+  );
+};
+
+/** Appends again the recent live messages missing from a reloaded window. */
+export const replayRecentLiveMessages = (
+  queryClient: QueryClient,
+  ref: ChatRef,
+): void => {
+  const recent = recentLiveMessagesOf(ref);
+  if (recent.length === 0) {
+    return;
+  }
+  queryClient.setQueryData<ChatMessagesData>(chatKeys.messages(ref), (data) =>
+    data
+      ? recent.reduce(
+          (current, { event }) => appendMessage(current, event),
+          data,
+        )
+      : data,
+  );
 };
 
 /** Replaces a message across every loaded page with a fresh object (so the
@@ -113,15 +189,17 @@ const applyChatEvent = (
         };
 
   switch (event.type) {
-    case "message:reconciled":
+    case "message:reconciled": {
       // Decryption updates an existing placeholder, not a new delivery. A null
       // message removes it when the clear event turns out to be a reply or edit.
-      queryClient.setQueryData<ChatMessagesData>(
-        chatKeys.messages(ref),
-        (data) => {
+      if (!event.message) forgetLiveMessage(ref, event.messageId);
+      const messagesKey = chatKeys.messages(ref);
+      patchAcrossLoads(queryClient, messagesKey, () =>
+        queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) => {
           if (!data) return data;
-          return event.message
-            ? replaceMessage(data, event.messageId, () => event.message!)
+          const reconciled = event.message;
+          return reconciled
+            ? replaceMessage(data, event.messageId, () => reconciled)
             : {
                 ...data,
                 pages: data.pages.map((page) => ({
@@ -131,14 +209,20 @@ const applyChatEvent = (
                   ),
                 })),
               };
-        },
+        }),
       );
       // The driver batches list refreshes separately from these per-event patches.
       return;
-    case "message:new":
-      queryClient.setQueryData<ChatMessagesData>(
-        chatKeys.messages(ref),
-        (data) => (data ? appendMessage(data, event) : data),
+    }
+    case "message:new": {
+      rememberLiveMessage(ref, event);
+      const messagesKey = chatKeys.messages(ref);
+      // A load in flight (the first page included, which has no data yet to
+      // append to) may have read the timeline before this message.
+      patchAcrossLoads(queryClient, messagesKey, () =>
+        queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) =>
+          data ? appendMessage(data, event) : data,
+        ),
       );
       // Touches list ordering / last activity. Read state has its own slice.
       void queryClient.invalidateQueries({
@@ -146,6 +230,7 @@ const applyChatEvent = (
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
       return;
+    }
 
     case "unread:changed":
       queryClient.setQueryData<Record<string, ChatUnread>>(
@@ -169,18 +254,19 @@ const applyChatEvent = (
       });
       return;
 
-    case "message:updated":
-      queryClient.setQueryData<ChatMessagesData>(
-        chatKeys.messages(ref),
-        (data) =>
+    case "message:updated": {
+      const messagesKey = chatKeys.messages(ref);
+      patchAcrossLoads(queryClient, messagesKey, () =>
+        queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) =>
           data && (!event.threadId || event.message.id === event.threadId)
             ? replaceMessage(data, event.message.id, () => event.message)
             : data,
+        ),
       );
       if (event.threadId) {
-        queryClient.setQueryData<ChatThreadDetail>(
-          chatKeys.thread(ref, event.threadId),
-          (detail) =>
+        const threadKey = chatKeys.thread(ref, event.threadId);
+        patchAcrossLoads(queryClient, threadKey, () =>
+          queryClient.setQueryData<ChatThreadDetail>(threadKey, (detail) =>
             detail
               ? {
                   ...detail,
@@ -189,15 +275,17 @@ const applyChatEvent = (
                   ),
                 }
               : detail,
+          ),
         );
       }
       return;
+    }
 
-    case "reaction:updated":
+    case "reaction:updated": {
       if (event.threadId) {
-        queryClient.setQueryData<ChatThreadDetail>(
-          chatKeys.thread(ref, event.threadId),
-          (detail) =>
+        const threadKey = chatKeys.thread(ref, event.threadId);
+        patchAcrossLoads(queryClient, threadKey, () =>
+          queryClient.setQueryData<ChatThreadDetail>(threadKey, (detail) =>
             detail
               ? {
                   ...detail,
@@ -208,20 +296,23 @@ const applyChatEvent = (
                   ),
                 }
               : detail,
+          ),
         );
         return;
       }
-      queryClient.setQueryData<ChatMessagesData>(
-        chatKeys.messages(ref),
-        (data) =>
+      const messagesKey = chatKeys.messages(ref);
+      patchAcrossLoads(queryClient, messagesKey, () =>
+        queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) =>
           data
             ? replaceMessage(data, event.messageId, (m) => ({
                 ...m,
                 reactions: event.reactions,
               }))
             : data,
+        ),
       );
       return;
+    }
 
     case "chat:changed":
       void queryClient.invalidateQueries({ queryKey: chatKeys.messages(ref) });

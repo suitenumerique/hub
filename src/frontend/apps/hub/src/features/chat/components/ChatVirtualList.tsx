@@ -625,6 +625,10 @@ export const ChatVirtualList = ({
   // messages: a jump opens a complete window, nothing is added around it.
   // After a failed request, only a scroll asks again: requests are not
   // retried, so retrying here would loop while the server keeps failing.
+  // Checked again whenever the list height changes, as Element does: a
+  // reloaded window can first measure its previous rows, then shrink below
+  // the viewport, where no scroll can ask for more.
+  const fillIfShortRef = useRef<() => void>(() => {});
   useEffect(() => {
     if (
       isInitialLoading ||
@@ -638,22 +642,35 @@ export const ChatVirtualList = ({
     }
     let raf = 0;
     let waitedFrames = 0;
-    const checkFill = () => {
+    // Before its rows render, Virtuoso's height says nothing about them.
+    const hasRows = () =>
+      Boolean(scrollerRef.current?.querySelector("[data-chat-message-id]"));
+    const fillIfShort = () => {
       const scroller = scrollerRef.current;
-      // Before its rows render, Virtuoso's height says nothing about them.
-      if (!scroller?.querySelector("[data-chat-message-id]")) {
+      if (
+        scroller &&
+        hasRows() &&
+        scroller.scrollHeight < scroller.clientHeight * 2
+      ) {
+        fetchOlder();
+      }
+    };
+    const checkFill = () => {
+      if (!hasRows()) {
         if (waitedFrames < FILL_CHECK_MAX_FRAMES) {
           waitedFrames += 1;
           raf = requestAnimationFrame(checkFill);
         }
         return;
       }
-      if (scroller.scrollHeight < scroller.clientHeight * 2) {
-        fetchOlder();
-      }
+      fillIfShort();
     };
+    fillIfShortRef.current = fillIfShort;
     raf = requestAnimationFrame(checkFill);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      fillIfShortRef.current = () => {};
+    };
   }, [
     fetchOlder,
     hasOlder,
@@ -753,6 +770,7 @@ export const ChatVirtualList = ({
             if (shouldStickToBottomRef.current && isAtLiveEndRef.current) {
               scrollToBottom();
             }
+            fillIfShortRef.current();
             scheduleVisibilityMeasurement();
           }}
           endReached={hasNewer ? handleEndReached : undefined}
