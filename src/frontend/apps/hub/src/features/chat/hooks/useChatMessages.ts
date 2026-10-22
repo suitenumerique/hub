@@ -21,6 +21,7 @@ import type {
 } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
+import { replayRecentLiveMessages } from "./useChatEvents";
 
 export const CHAT_PAGE_SIZE = 100;
 // Like Element, open with at most the latest 30 messages already in memory,
@@ -216,6 +217,8 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
         pages: [page],
         pageParams: [{ cursor: null, direction: "older", anchorId }],
       });
+      // Live messages received while the window loaded may be missing from it.
+      replayRecentLiveMessages(queryClient, ref);
       setWindowAnchor({
         chatKey: `${ref.accountId}:${ref.chatId}`,
         eventId: anchorId,
