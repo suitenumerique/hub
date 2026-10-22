@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -15,6 +16,7 @@ import type {
   ChatAttachment,
   ChatComposedMessage,
   ChatRef,
+  ChatThreadDetail,
   ChatUser,
 } from "@/features/drivers/types";
 
@@ -23,6 +25,7 @@ import {
   type ChatAttachmentPreviewContextValue,
   type PreviewedAttachment,
 } from "../ChatAttachmentPreviewContext";
+import { chatKeys } from "../chatKeys";
 import { isInvitationChat } from "../chatMembership";
 import {
   ChatMessageEditProvider,
@@ -34,6 +37,10 @@ import {
   type ChatPanelContextValue,
   type OpenThreadOptions,
 } from "../ChatPanelContext";
+import {
+  type ChatMessagesData,
+  rootOnlyThreadDetail,
+} from "../hooks/chatCompositionCache";
 import { useChat } from "../hooks/useChat";
 import { useComposerAccountId } from "../hooks/useChatAccounts";
 import { useUploadChatAttachment } from "../hooks/useChatAttachmentActions";
@@ -47,6 +54,7 @@ import { useEditChatMessage } from "../hooks/useEditChatMessage";
 import type { ComposerMentionSource } from "../hooks/useMentionCandidates";
 import { useChatMessagesLoaded } from "../hooks/useChatMessages";
 import { useIgnoreStrayFileDrops } from "../hooks/useIgnoreStrayFileDrops";
+import { useChatThreadsKeyedByRoot } from "../hooks/useChatThreadCompositionSupport";
 import { useChatUnreadThreads } from "../hooks/useChatUnreadThreads";
 import { useSendChatMessage } from "../hooks/useSendChatMessage";
 
@@ -250,6 +258,8 @@ export const ChatView = ({
   const [threadComposerFocusSignal, setThreadComposerFocusSignal] = useState(0);
   const [draftThreadRoot, setDraftThreadRoot] =
     useState<DraftThreadRoot | null>(null);
+  const queryClient = useQueryClient();
+  const threadsKeyedByRoot = useChatThreadsKeyedByRoot(chatRef);
   useEffect(() => {
     if (activeTool !== null) {
       setDisplayedTool(activeTool);
@@ -298,12 +308,33 @@ export const ChatView = ({
     setDraftThreadRoot(null);
   }, []);
 
-  const openDraftThread = useCallback((root: DraftThreadRoot) => {
-    setActiveTool("threads");
-    setActiveThreadId(null);
-    setThreadComposerFocusSignal((signal) => signal + 1);
-    setDraftThreadRoot(root);
-  }, []);
+  const openDraftThread = useCallback(
+    (root: DraftThreadRoot) => {
+      if (chatRef && threadsKeyedByRoot) {
+        // As Element's ThreadView, open the root's thread at once, created in
+        // memory: its first message is an ordinary reply, shown while it is
+        // sent, and no draft is left for another view once it is confirmed.
+        const rootId = root.message.id;
+        const cachedRoot = queryClient
+          .getQueryData<ChatMessagesData>(chatKeys.messages(chatRef))
+          ?.pages.flatMap((page) => page.messages)
+          .find((message) => message.id === rootId);
+        queryClient.setQueryData<ChatThreadDetail>(
+          chatKeys.thread(chatRef, rootId),
+          (detail) =>
+            detail ??
+            rootOnlyThreadDetail(cachedRoot ?? root.message, root.author),
+        );
+        openThread(rootId, { focusComposer: true });
+        return;
+      }
+      setActiveTool("threads");
+      setActiveThreadId(null);
+      setThreadComposerFocusSignal((signal) => signal + 1);
+      setDraftThreadRoot(root);
+    },
+    [chatRef, openThread, queryClient, threadsKeyedByRoot],
+  );
 
   const closeThread = useCallback(() => {
     setActiveThreadId(null);

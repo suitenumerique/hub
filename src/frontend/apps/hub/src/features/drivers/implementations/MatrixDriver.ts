@@ -459,6 +459,8 @@ export class MatrixDriver extends Driver {
   }
   override readonly supportsComposition: boolean = true;
   override readonly supportsThreadComposition: boolean = true;
+  // A Matrix thread is its root event: its id is the root's.
+  override readonly threadsKeyedByRoot: boolean = true;
   override readonly supportsConversationHistoryRemoval: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
   override readonly supportsAttachments: boolean = true;

@@ -357,6 +357,12 @@ export abstract class Driver {
   async clearConversationSearch(): Promise<void> {}
   readonly supportsComposition: boolean = false;
   readonly supportsThreadComposition: boolean = false;
+  /**
+   * Whether a thread is identified by its root message. A new thread then
+   * opens on its root at once and its first message is an ordinary reply, as
+   * in Element; otherwise it is drafted until `startChatThread` names it.
+   */
+  readonly threadsKeyedByRoot: boolean = false;
   /** Whether files can be uploaded and sent to a conversation. */
   readonly supportsAttachments: boolean = false;
   /** Whether the driver can leave and forget a conversation for this account. */

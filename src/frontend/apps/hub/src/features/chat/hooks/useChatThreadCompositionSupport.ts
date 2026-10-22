@@ -19,3 +19,18 @@ export const useChatThreadCompositionSupport = (
     );
   }, [entries, ref]);
 };
+
+/** Whether the account's threads are identified by their root message. */
+export const useChatThreadsKeyedByRoot = (ref: ChatRef | null): boolean => {
+  const entries = useDriverEntries();
+
+  return useMemo(() => {
+    if (!ref) {
+      return false;
+    }
+    return (
+      entries.find((entry) => entry.accountId === ref.accountId)?.driver
+        .threadsKeyedByRoot ?? false
+    );
+  }, [entries, ref]);
+};
