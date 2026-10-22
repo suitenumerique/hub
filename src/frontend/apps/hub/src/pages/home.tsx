@@ -59,11 +59,11 @@ const HomePageContent = () => {
   return (
     <div className="hub__home">
       <Head>
-        <title>{t("LaSuite Hub")}</title>
+        <title>{t("LaSuite Tchap")}</title>
         <meta
           name="description"
           content={t(
-            "LaSuite Hub: the gateway to La Suite collaborative tools, with account management features coming soon.",
+            "LaSuite Tchap: one place to chat, share documents and meet.",
           )}
         />
       </Head>
@@ -77,10 +77,10 @@ const HomePageContent = () => {
           <Hero
             logo={<div className="hub__logo-icon" />}
             banner=""
-            title={t("LaSuite Hub, your gateway to the collaborative suite.")}
-            subtitle={t(
-              "Login to La Suite collaborative tools from one place. Soon, you will also be able to manage your account information here.",
+            title={t(
+              "LaSuite Tchap, one place to chat, share documents and meet.",
             )}
+            subtitle={t("Sign in with your work account to get started.")}
             mainButton={
               <div className="c__hero__buttons">
                 <Button onClick={() => login()} fullWidth>

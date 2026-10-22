@@ -65,9 +65,7 @@ export const EncryptionVerification = ({
         )}
         {verification.phase === "incoming" && (
           <p>
-            {t(
-              "Another device on your account is requesting verification of this Hub device.",
-            )}
+            {t("Another device on your account wants to verify this browser.")}
           </p>
         )}
         {verification.phase === "waiting" && (
