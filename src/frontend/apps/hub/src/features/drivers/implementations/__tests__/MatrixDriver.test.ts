@@ -826,3 +826,68 @@ describe("MatrixDriver.ensureMessageDecrypted", () => {
     );
   });
 });
+
+describe("MatrixDriver new conversation readiness", () => {
+  /** A created room whose invitation reaches this client after the room. */
+  const setUp = () => {
+    const memberships: Record<string, string> = { [SELF_ID]: "join" };
+    const listeners = new Set<(...args: unknown[]) => void>();
+    const room = {
+      roomId: ROOM_ID,
+      getMember: (id: string) =>
+        memberships[id]
+          ? { roomId: ROOM_ID, membership: memberships[id] }
+          : null,
+    } as unknown as Room;
+    const mx = {
+      on: (_name: string, listener: (...args: unknown[]) => void) =>
+        listeners.add(listener),
+      off: (_name: string, listener: (...args: unknown[]) => void) =>
+        listeners.delete(listener),
+    } as unknown as MatrixClient;
+    const driver = driverWithClient(mx) as unknown as {
+      waitForParticipants: (
+        mx: MatrixClient,
+        room: Room,
+        participantIds: string[],
+      ) => Promise<void>;
+    };
+    const waitForParticipants = driver.waitForParticipants.bind(driver);
+    const invite = (userId: string) => {
+      memberships[userId] = "invite";
+      const member = room.getMember(userId);
+      listeners.forEach((listener) => listener({}, {}, member));
+    };
+    return { room, mx, listeners, waitForParticipants, invite };
+  };
+
+  it("waits for the invitations before the first message is encrypted", async () => {
+    const { room, mx, listeners, waitForParticipants, invite } = setUp();
+    let ready = false;
+
+    void waitForParticipants(mx, room, [OTHER_ID]).then(() => {
+      ready = true;
+    });
+    await Promise.resolve();
+    expect(ready).toBe(false);
+
+    invite(OTHER_ID);
+    await vi.waitFor(() => expect(ready).toBe(true));
+    expect(listeners.size).toBe(0);
+  });
+
+  it("does not block the conversation when an invitation never shows", async () => {
+    vi.useFakeTimers();
+    try {
+      const { room, mx, listeners, waitForParticipants } = setUp();
+      const waiting = waitForParticipants(mx, room, [OTHER_ID]);
+
+      await vi.advanceTimersByTimeAsync(5000);
+
+      await expect(waiting).resolves.toBeUndefined();
+      expect(listeners.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
