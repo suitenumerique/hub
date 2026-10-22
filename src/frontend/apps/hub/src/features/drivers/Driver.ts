@@ -288,6 +288,14 @@ export type ChatEvent =
       threadId?: string;
     }
   | {
+      type: "thread:reply";
+      chatId: string;
+      threadId: string;
+      message: ChatMessage;
+      /** Authors referenced by the reply, to merge into the thread detail. */
+      authors?: ChatMessageAuthor[];
+    }
+  | {
       type: "reaction:updated";
       chatId: string;
       messageId: string;
@@ -305,6 +313,8 @@ export type ChatEvent =
       /** False when a preceding fine-grained event already patched the open
        * detail and only the thread list metadata needs a refresh. */
       invalidateDetails?: boolean;
+      /** Reloads only this thread's detail instead of every open one. */
+      threadId?: string;
     }
   | { type: "members:changed"; chatId: string }
   | { type: "tags:changed"; chatId: string }

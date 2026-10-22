@@ -164,22 +164,27 @@ export const ThreadDetail = ({
   // locate the first unread reply in the loaded timeline. Mark the latest
   // visible reply instead of using `firstUnreadIndex` as a receipt gate. The
   // event id keeps cache refetches from resending the same receipt, while a new
-  // reply received in an open thread advances it again.
+  // reply received in an open thread advances it again. As Element's
+  // `ignoreOwn`, this user's own replies, sent or still sending, never do.
+  const lastOtherReply = thread?.messages.findLast(
+    (message) =>
+      message.authorId !== "me" && message.id !== thread.rootMessageId,
+  );
   useEffect(() => {
     if (!isOpen) {
       lastMarkedReadRef.current = null;
       return;
     }
-    if (!thread || !lastMessage || lastMessage.id === thread.rootMessageId) {
+    if (!lastOtherReply) {
       return;
     }
-    const receiptKey = `${threadId}:${lastMessage.id}`;
+    const receiptKey = `${threadId}:${lastOtherReply.id}`;
     if (lastMarkedReadRef.current === receiptKey) {
       return;
     }
     lastMarkedReadRef.current = receiptKey;
     markThreadRead(threadId);
-  }, [isOpen, lastMessage, markThreadRead, thread, threadId]);
+  }, [isOpen, lastOtherReply, markThreadRead, threadId]);
 
   const authorsById = useMemo(() => {
     const map = new Map<string, ChatMessageAuthor>();

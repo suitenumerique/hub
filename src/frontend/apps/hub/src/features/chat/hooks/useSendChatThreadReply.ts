@@ -6,6 +6,11 @@ import {
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+import {
+  confirmThreadReply,
+  holdThreadReply,
+  releaseThreadReply,
+} from "@/features/chat/pendingThreadReplies";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
   ChatAttachment,
@@ -34,6 +39,7 @@ import {
   rollbackOptimisticRootThreadSummary,
   upsertThread,
 } from "./chatCompositionCache";
+import { cancelReloads } from "./useChatEvents";
 import { useChatThreadCompositionSupport } from "./useChatThreadCompositionSupport";
 
 type SendThreadReplyVariables = {
@@ -104,9 +110,9 @@ export const useSendChatThreadReply = (
       const threadsKey: QueryKey = chatKeys.threads(ref);
       const messagesKey: QueryKey = chatKeys.messages(ref);
       await Promise.all([
-        queryClient.cancelQueries({ queryKey: threadKey }),
-        queryClient.cancelQueries({ queryKey: threadsKey }),
-        queryClient.cancelQueries({ queryKey: messagesKey }),
+        cancelReloads(queryClient, threadKey),
+        cancelReloads(queryClient, threadsKey),
+        cancelReloads(queryClient, messagesKey),
       ]);
 
       const previousThread =
@@ -120,6 +126,7 @@ export const useSendChatThreadReply = (
         "optimistic-thread-reply",
         attachment,
       );
+      holdThreadReply(ref, threadId, optimistic);
       const previousThreadListEntry = previousThreads?.find(
         (thread) => thread.id === threadId,
       );
@@ -199,6 +206,12 @@ export const useSendChatThreadReply = (
       if (!context) {
         return;
       }
+      confirmThreadReply(
+        ref,
+        threadId,
+        context.optimisticMessageId,
+        result.message,
+      );
       const normalizedThread = {
         ...result.thread,
         replyCount: Math.max(
@@ -250,6 +263,7 @@ export const useSendChatThreadReply = (
       if (!context) {
         return;
       }
+      releaseThreadReply(ref, threadId, context.optimisticMessageId);
       queryClient.setQueryData<ChatThreadDetail>(
         context.threadKey,
         (current) => {

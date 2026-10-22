@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
+import { withHeldThreadReplies } from "@/features/chat/pendingThreadReplies";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { ChatRef, ChatThreadDetail } from "@/features/drivers/types";
 
@@ -24,10 +25,10 @@ export const useChatThread = (
   const query = useQuery({
     queryKey: chatKeys.thread(ref, threadId),
     queryFn: () =>
-      getRegistry().get(ref.accountId).getChatThread({
-        chatId: ref.chatId,
-        threadId,
-      }),
+      getRegistry()
+        .get(ref.accountId)
+        .getChatThread({ chatId: ref.chatId, threadId })
+        .then((detail) => withHeldThreadReplies(ref, threadId, detail)),
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });

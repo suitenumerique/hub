@@ -210,3 +210,6 @@ and this project adheres to
   it loads, instead of showing its loading state until a reload.
 - 🐛(frontend) Show the name of a named conversation left with one other
   person, as Element does, instead of that person's name.
+- 🐛(frontend) Keep a thread reply shown while it is sent. As in Element, a
+  read receipt only updates unread counts from memory and a new reply only
+  updates its own thread, instead of reloading every open thread.
