@@ -152,6 +152,10 @@ export const matrixJoinedRoomToLocalChat = (
   const activeOthers = roomOtherMembers(room, currentUserId);
   const conversationMembers = roomConversationMembers(room, currentUserId);
   const counterpartId = pendingCounterpartId(room, currentUserId);
+  const roomName = explicitRoomName(room);
+  // A named room shows its name, as Element shows the SDK's `room.name`:
+  // direct conversations have none, so a group left with one other person,
+  // whose former members may not even be loaded, stays that group.
   // A DM keeps its sole counterpart after they leave. A group remains a group
   // when its active member count drops to one because former members remain in
   // current room state. Only active members participate in an unnamed group's
@@ -159,9 +163,10 @@ export const matrixJoinedRoomToLocalChat = (
   // With lazy-loaded members, one known counterpart does not prove this is a
   // DM. The sync summary can already establish that more people are present.
   const isDirect =
-    counterpartId !== undefined ||
-    (conversationMembers.length === 1 &&
-      room.getInvitedAndJoinedMemberCount() <= 2);
+    roomName === undefined &&
+    (counterpartId !== undefined ||
+      (conversationMembers.length === 1 &&
+        room.getInvitedAndJoinedMemberCount() <= 2));
   const displayedOthers = isDirect ? conversationMembers : activeOthers;
   const participantIds = counterpartId
     ? [counterpartId]
@@ -173,15 +178,15 @@ export const matrixJoinedRoomToLocalChat = (
     isDirect && counterpartId === undefined && activeOthers.length === 0;
   const timestamp = room.getLastActiveTimestamp();
 
-  // A 1:1 is identified by the other person and ignores any room name (DMs
-  // aren't renameable). Once its counterpart leaves, reuse the client's
-  // localized empty-room label so the historical identity stays visible
-  // without suggesting the person is still present. A group uses its explicit
-  // name when set, otherwise the active members' display names. Until members
-  // load, the SDK's summary-based name avoids showing the room id.
+  // A 1:1 is identified by the other person. Once its counterpart leaves,
+  // reuse the client's localized empty-room label so the historical identity
+  // stays visible without suggesting the person is still present. A group uses
+  // its explicit name when set, otherwise the active members' display names.
+  // Until members load, the SDK's summary-based name avoids showing the room
+  // id.
   let name: string;
   if (!isDirect) {
-    name = explicitRoomName(room) || otherNames.join(", ") || room.name;
+    name = roomName || otherNames.join(", ") || room.name;
   } else if (isEmptyDirect && currentUserId) {
     name = room.getDefaultRoomName(currentUserId);
   } else {

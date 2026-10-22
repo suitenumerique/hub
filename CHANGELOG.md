@@ -208,3 +208,5 @@ and this project adheres to
   first message, so that the people invited can decrypt it.
 - 🐛(frontend) Keep loading a conversation whose first message is sent while
   it loads, instead of showing its loading state until a reload.
+- 🐛(frontend) Show the name of a named conversation left with one other
+  person, as Element does, instead of that person's name.
