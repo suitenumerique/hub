@@ -2985,7 +2985,9 @@ export class MatrixDriver extends Driver {
     if (generation !== this.clientGeneration) return;
     void this.security?.refresh();
     void mx
-      .setDeviceDetails(user.deviceId!, { display_name: "Hub · navigateur" })
+      .setDeviceDetails(user.deviceId!, {
+        display_name: "LaSuite Tchap · navigateur",
+      })
       .catch(() => {});
     if (this.joinedRoomIds)
       this.conversationSearch?.setJoinedRooms(this.joinedRoomIds);

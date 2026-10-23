@@ -184,13 +184,11 @@ export const Auth = ({ children }: PropsWithChildren) => {
     let message: string;
     switch (chatUnconfigured ? "unconfigured" : reason) {
       case "unconfigured":
-        message = t(
-          "The chat is not configured on this Hub. Contact your administrator.",
-        );
+        message = t("Tchap is not set up here. Contact your administrator.");
         break;
       case "another-tab":
         message = t(
-          "Another Hub tab is using this session. Close that tab, then try again here. You can keep Element open.",
+          "LaSuite Tchap is already open in another tab. Close that tab, then try again here. Your other Tchap apps can stay open.",
         );
         break;
       case "unsupported":
@@ -205,17 +203,17 @@ export const Auth = ({ children }: PropsWithChildren) => {
         break;
       case "sign-in-failed":
         message = t(
-          "Signing in to the chat did not succeed. Try again, or contact your administrator if the problem persists.",
+          "Signing in to Tchap failed. Try again, or contact your administrator if the problem persists.",
         );
         break;
       case "unknown-server":
         message = t(
-          "The chat server found for your email is not allowed in this environment.",
+          "Your email belongs to a Tchap server that is not available here.",
         );
         break;
       case "account-expired":
         message = t(
-          "Your chat account has expired. Renew it with the link sent to you by email, then try again.",
+          "Your Tchap account has expired. Renew it with the link sent to you by email, then try again.",
         );
         break;
       default:
@@ -225,7 +223,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     }
     return (
       <main className="hub__connection-error">
-        <h1>{t("Chat connection interrupted")}</h1>
+        <h1>{t("Cannot connect to Tchap")}</h1>
         <p role="alert">{message}</p>
         {detail && <p>{detail}</p>}
         <Button onClick={() => window.location.reload()}>
@@ -252,7 +250,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
                 .catch(() => setReplacementFailed(true));
             }}
           >
-            {t("Reconnect Hub with a new device")}
+            {t("Reconnect as a new device")}
           </Button>
         )}
         {replacementFailed && (

@@ -74,7 +74,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   return (
     <>
       <Head>
-        <title>{t("LaSuite Hub")}</title>
+        <title>{t("LaSuite Tchap")}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/assets/favicon.png" type="image/png" />
       </Head>

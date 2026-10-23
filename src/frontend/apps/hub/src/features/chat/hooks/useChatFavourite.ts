@@ -100,11 +100,9 @@ export const useChatFavourite = (ref: ChatRef): UseChatFavouriteResult => {
       }
       notify.error(
         favourite
-          ? t(
-              "The conversation could not be added to favourites. Please try again.",
-            )
+          ? t("The chat could not be added to favourites. Please try again.")
           : t(
-              "The conversation could not be removed from favourites. Please try again.",
+              "The chat could not be removed from favourites. Please try again.",
             ),
       );
     },

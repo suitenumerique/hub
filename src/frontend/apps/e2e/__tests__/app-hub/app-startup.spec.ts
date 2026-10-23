@@ -7,7 +7,7 @@ test("application starts and displays its default page", async ({ page }) => {
   await expect(page).toHaveURL(/\/home$/);
   await expect(
     page.getByRole("heading", {
-      name: "LaSuite Hub, your gateway to the collaborative suite.",
+      name: "LaSuite Tchap, one place to chat, share documents and meet.",
     }),
   ).toBeVisible();
 });
