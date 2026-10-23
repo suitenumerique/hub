@@ -21,8 +21,11 @@ services:
       - env.d/development/matrix
       - env.d/development/matrix.local
 
+  # Synapse and MAS run as the host user so that, on Linux, they can write
+  # data/matrix/synapse and read the 0600 keys in data/matrix/mas.
   synapse:
     image: ghcr.io/element-hq/synapse:v1.136.0
+    user: "${DOCKER_USER:-1000}"
     environment:
       SYNAPSE_CONFIG_PATH: /config/homeserver.yaml
     volumes:
@@ -45,6 +48,7 @@ services:
   # DB lease (e.g. after the host sleeps), hence the restart policy.
   mas:
     image: ghcr.io/element-hq/matrix-authentication-service:1.3.0
+    user: "${DOCKER_USER:-1000}"
     command: ["server", "--config", "/config/config.yaml"]
     restart: unless-stopped
     volumes:
