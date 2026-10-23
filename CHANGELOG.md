@@ -215,3 +215,6 @@ and this project adheres to
   updates its own thread, instead of reloading every open thread.
 - 🐛(frontend) Open a new thread on its root at once, as Element does, so its
   first reply shows while it is sent, under a root without a reply count.
+- 🐛(frontend) Mark a thread read through its last event, reactions included,
+  and clear its counts, as Element does, so it no longer comes back unread
+  when Tchap already read it.

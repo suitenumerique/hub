@@ -24,6 +24,7 @@ import {
   type SyncStateData,
   type Thread,
   ThreadEvent,
+  threadIdForReceipt,
   ThreepidMedium,
   TimelineWindow,
 } from "matrix-js-sdk/lib/matrix";
@@ -141,6 +142,7 @@ import {
 import {
   authorForSender,
   buildAuthors,
+  clearThreadNotificationCounts,
   computeRoomUnread,
   fetchReactionSnapshot,
   forgetThreadReply,
@@ -2072,29 +2074,115 @@ export class MatrixDriver extends Driver {
     return { ...detail, messages };
   }
 
-  /** Advances only this thread's receipt to its latest reply. */
+  /** Advances only this thread's receipt, as Element's thread view. */
   async markChatThreadRead({
     chatId,
     threadId,
   }: MarkChatThreadReadParams): Promise<void> {
     const { mx, room } = this.requireRoom("markChatThreadRead", chatId);
     const thread = room.getThread(threadId);
-    const lastReply = thread?.replyToEvent;
-    if (lastReply) {
-      await mx.sendReadReceipt(lastReply);
+    if (!thread) {
+      return;
     }
+    this.clearThreadNotifications(mx, room, [thread]);
+    await this.readThroughThread(mx, room, thread);
   }
 
   /** Advances each known thread receipt independently. */
   async markAllChatThreadsRead(chatId: string): Promise<void> {
     const { mx, room } = this.requireRoom("markAllChatThreadsRead", chatId);
     await this.loadAllRoomThreads(mx, room);
+    const threads = room.getThreads();
+    this.clearThreadNotifications(mx, room, threads);
     await Promise.all(
-      room.getThreads().map((thread) => {
-        const lastReply = thread.replyToEvent;
-        return lastReply ? mx.sendReadReceipt(lastReply) : Promise.resolve();
-      }),
+      threads.map((thread) => this.readThroughThread(mx, room, thread)),
     );
+  }
+
+  /**
+   * The event Element's thread view reads through (`TimelinePanel`
+   * `getLastDisplayedEventIndex`): the latest one, including reactions and
+   * edits that have no bubble, before the person's own trailing events and
+   * unsent ones. Never the root, whose receipt belongs to the main timeline.
+   */
+  private threadReceiptTarget(
+    thread: Thread,
+    selfUserId: string,
+  ): MatrixEvent | null {
+    const isTarget = (event: MatrixEvent) =>
+      event.status === null &&
+      event.getSender() !== selfUserId &&
+      threadIdForReceipt(event) === thread.id;
+    // An uninitialised thread may only know its latest reply.
+    const target = thread.timeline.findLast(isTarget) ?? thread.replyToEvent;
+    return target && isTarget(target) ? target : null;
+  }
+
+  /**
+   * Like Element (`TimelinePanel.shouldSendReadReceipt`), only moves the
+   * receipt forward: the homeserver drops a receipt behind the one it has,
+   * e.g. when Tchap already read through the trailing reactions.
+   */
+  private async readThroughThread(
+    mx: MatrixClient,
+    room: Room,
+    thread: Thread,
+  ): Promise<void> {
+    const selfUserId = mx.getUserId();
+    if (!selfUserId) {
+      return;
+    }
+    const target = this.threadReceiptTarget(thread, selfUserId);
+    const targetId = target?.getId();
+    if (!target || !targetId) {
+      return;
+    }
+    const readUpToId = thread.getEventReadUpTo(selfUserId, true);
+    if (readUpToId) {
+      const ordering = room.compareEventOrdering(readUpToId, targetId);
+      if (readUpToId === targetId || (ordering !== null && ordering >= 0)) {
+        return;
+      }
+    }
+    await mx.sendReadReceipt(target);
+  }
+
+  /**
+   * Clears the thread notification counts as Element's
+   * `clearRoomNotification` does. In an encrypted room the SDK counts them on
+   * decryption and only a /sync of the room resets them, which never comes
+   * when the homeserver already had the receipt: the thread stayed unread.
+   * Runs before the receipts, so their local echo republishes cleared counts.
+   */
+  private clearThreadNotifications(
+    mx: MatrixClient,
+    room: Room,
+    threads: Thread[],
+  ): void {
+    const notified = clearThreadNotificationCounts(room, threads);
+    if (notified.length === 0) {
+      return;
+    }
+    const selfUserId = mx.getUserId() ?? undefined;
+    this.emit({
+      type: "unread:changed",
+      chatId: room.roomId,
+      unread: roomUnread(room, selfUserId),
+    });
+    this.emit({
+      type: "threads:changed",
+      chatId: room.roomId,
+      invalidateDetails: false,
+    });
+    for (const thread of notified) {
+      if (thread.rootEvent) {
+        this.emit({
+          type: "message:updated",
+          chatId: room.roomId,
+          message: matrixEventToChatMessage(thread.rootEvent, room, selfUserId),
+        });
+      }
+    }
   }
 
   /**
