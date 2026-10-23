@@ -218,3 +218,6 @@ and this project adheres to
 - 🐛(frontend) Mark a thread read through its last event, reactions included,
   and clear its counts, as Element does, so it no longer comes back unread
   when Tchap already read it.
+- 🐛(frontend) Stop showing a read conversation unread after each reload when
+  one of its threads was read on Tchap: clear the thread counts its receipt
+  already covers once the thread has loaded.

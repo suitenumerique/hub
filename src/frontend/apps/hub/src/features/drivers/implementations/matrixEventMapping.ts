@@ -356,6 +356,25 @@ const computeThreadUnread = (
     threadUnreadReplyEvents(room, thread, selfUserId).length,
   );
 
+/**
+ * Whether nothing in a thread can still notify: it has loaded its latest
+ * replies and the latest one from someone else is known and read.
+ */
+export const isThreadFullyRead = (
+  thread: Thread,
+  selfUserId: string,
+): boolean => {
+  if (!thread.initialEventsFetched) {
+    return false;
+  }
+  const latestId = sortedThreadReplyEvents(thread)
+    .findLast((event) => event.getSender() !== selfUserId)
+    ?.getId();
+  return (
+    latestId !== undefined && thread.hasUserReadEvent(selfUserId, latestId)
+  );
+};
+
 /** Zeroes the SDK's thread notification counts; returns the threads cleared. */
 export const clearThreadNotificationCounts = (
   room: Room,

@@ -150,6 +150,7 @@ import {
   isMainTimelineMessage,
   isMessageEvent,
   isOwnEcho,
+  isThreadFullyRead,
   isThreadReplyMessage,
   isUndecryptedEvent,
   matrixEventToChatMessage,
@@ -3621,6 +3622,32 @@ export class MatrixDriver extends Driver {
         emitThreadChanged(thread, event);
       }
     };
+    /**
+     * In an encrypted room the SDK counts a reply when it decrypts it. At
+     * startup that can run before the thread has loaded the event its receipt
+     * points at (a reaction Tchap read through): the read reply counts as
+     * unread, and only a /sync of the room would reset it. Once the thread
+     * has loaded, clear what its receipt already covers, like the SDK's
+     * startup `fixupNotifications`.
+     */
+    const onThreadUpdate = (thread: Thread) => {
+      const room = thread.room;
+      if (
+        !selfUserId ||
+        !room.hasEncryptionStateEvent() ||
+        !isThreadFullyRead(thread, selfUserId) ||
+        clearThreadNotificationCounts(room, [thread]).length === 0
+      ) {
+        return;
+      }
+      emitUnread(room);
+      emitCurrent({
+        type: "threads:changed",
+        chatId: room.roomId,
+        invalidateDetails: false,
+      });
+      emitThreadRootUpdate(thread);
+    };
     const detachThreadListenersByRoomId = new Map<string, () => void>();
     const attachThreadListeners = (room: Room) => {
       if (detachThreadListenersByRoomId.has(room.roomId)) {
@@ -3629,12 +3656,16 @@ export class MatrixDriver extends Driver {
       room.getThreads().forEach(getThreadReplyCounter);
       room.on(ThreadEvent.New, onThreadNew);
       room.on(ThreadEvent.NewReply, onThreadReply);
+      room.on(ThreadEvent.Update, onThreadUpdate);
       room.on(MatrixEventEvent.BeforeRedaction, onBeforeRedaction);
       detachThreadListenersByRoomId.set(room.roomId, () => {
         room.off(ThreadEvent.New, onThreadNew);
         room.off(ThreadEvent.NewReply, onThreadReply);
+        room.off(ThreadEvent.Update, onThreadUpdate);
         room.off(MatrixEventEvent.BeforeRedaction, onBeforeRedaction);
       });
+      // Threads the SDK loaded before this subscription missed their update.
+      room.getThreads().forEach(onThreadUpdate);
     };
     // A joined / left / created room changes what the list shows; drop the
     // cached joined-room set so `getChats` re-reads it.
