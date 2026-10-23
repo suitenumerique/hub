@@ -356,6 +356,37 @@ const computeThreadUnread = (
     threadUnreadReplyEvents(room, thread, selfUserId).length,
   );
 
+/** Zeroes the SDK's thread notification counts; returns the threads cleared. */
+export const clearThreadNotificationCounts = (
+  room: Room,
+  threads: Thread[],
+): Thread[] => {
+  const notified = threads.filter(
+    (thread) =>
+      room.getThreadUnreadNotificationCount(
+        thread.id,
+        NotificationCountType.Total,
+      ) > 0 ||
+      room.getThreadUnreadNotificationCount(
+        thread.id,
+        NotificationCountType.Highlight,
+      ) > 0,
+  );
+  for (const thread of notified) {
+    room.setThreadUnreadNotificationCount(
+      thread.id,
+      NotificationCountType.Highlight,
+      0,
+    );
+    room.setThreadUnreadNotificationCount(
+      thread.id,
+      NotificationCountType.Total,
+      0,
+    );
+  }
+  return notified;
+};
+
 export const roomUnread = (
   room: Room,
   selfUserId: string | undefined,
