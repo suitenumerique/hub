@@ -142,6 +142,8 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Count thread replies from the server summary, so a read
+  thread no longer shows one reply too many after a reload.
 - 🐛(frontend) Keep encryption settings closed after cancellation failures,
   clean stored search data safely on logout and batch decryption refreshes.
   Preserve acknowledged sends and suppress local message echoes.
