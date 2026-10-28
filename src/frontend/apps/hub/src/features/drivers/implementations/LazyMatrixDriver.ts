@@ -272,6 +272,15 @@ export class LazyMatrixDriver extends BaseDriver {
     );
   }
 
+  async setChatMarkedUnread(
+    chatId: string,
+    markedUnread: boolean,
+  ): Promise<void> {
+    return this.withTarget((driver) =>
+      driver.setChatMarkedUnread(chatId, markedUnread),
+    );
+  }
+
   async removeChatFromHistory(
     chatId: string,
   ): Promise<RemoveChatFromHistoryResult> {

@@ -195,7 +195,9 @@ import {
 } from "./matrixStorage";
 import {
   isFavouriteRoom,
+  isMarkedUnreadRoom,
   MATRIX_FAVOURITE_TAG,
+  MATRIX_MARKED_UNREAD_UNSTABLE,
   matrixJoinedRoomToLocalChat,
   matrixRoomToLocalChat,
   participantSetKey,
@@ -630,6 +632,29 @@ export class MatrixDriver extends Driver {
       return;
     }
     await mx.deleteRoomTag(chatId, MATRIX_FAVOURITE_TAG);
+  }
+
+  /**
+   * Writes the stable `m.marked_unread` room account data, as Tchap does
+   * (`setMarkedUnreadState`). The /sync echo emits `unread:changed`.
+   */
+  async setChatMarkedUnread(
+    chatId: string,
+    markedUnread: boolean,
+  ): Promise<void> {
+    const { mx, room } = this.requireRoom("setChatMarkedUnread", chatId);
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (!joinedRoomIds.has(chatId)) {
+      throw new Error(
+        `MatrixDriver.setChatMarkedUnread: room "${chatId}" is not joined.`,
+      );
+    }
+    if (isMarkedUnreadRoom(room) === markedUnread) {
+      return;
+    }
+    await mx.setRoomAccountData(chatId, EventType.MarkedUnread, {
+      unread: markedUnread,
+    });
   }
 
   /**
@@ -2200,16 +2225,28 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * Marks only the main timeline read. The default SDK receipt adds
-   * `thread_id: "main"`; deliberately do not pass `unthreaded=true`, which
-   * would also clear unread threads.
+   * Marks the whole conversation read, threads included, as Element's
+   * `clearRoomNotification` does: an unthreaded receipt on the latest event,
+   * thread replies included. Receipts per thread would not do: until the
+   * person's first threaded receipt in the room, the SDK takes every thread
+   * as read, so `readThroughThread` sends none and the homeserver keeps
+   * counting them.
+   *
+   * The main read marker also moves to the latest message, even when it
+   * already covers it (it can rest on the person's own message while the
+   * homeserver still counts notifications): the unread banner follows it.
    */
   async markChatRead(chatId: string): Promise<void> {
-    const unread = await this.getMainTimelineUnread(chatId);
-    if (!unread.hasUnread || !unread.liveEndId) {
-      return;
+    const { mx, room } = this.requireRoom("markChatRead", chatId);
+    const { liveEndId } = await this.getMainTimelineUnread(chatId);
+    if (liveEndId) {
+      await this.markChatReadThrough(chatId, liveEndId);
     }
-    await this.markChatReadThrough(chatId, unread.liveEndId);
+    this.clearThreadNotifications(mx, room, room.getThreads());
+    const latest = room.getLastLiveEvent();
+    if (latest) {
+      await mx.sendReadReceipt(latest, ReceiptType.Read, true);
+    }
   }
 
   async markChatReadThrough(chatId: string, eventId: string): Promise<void> {
@@ -3609,8 +3646,15 @@ export class MatrixDriver extends Driver {
       emitCurrent({ type: "tags:changed", chatId: room.roomId });
     };
     const onAccountData = (event: MatrixEvent, room: Room) => {
-      if (event.getType() === EventType.FullyRead) {
+      const type = event.getType();
+      if (type === EventType.FullyRead) {
         emitMainTimelineUnread(room);
+      }
+      if (
+        type === EventType.MarkedUnread ||
+        type === MATRIX_MARKED_UNREAD_UNSTABLE
+      ) {
+        emitUnread(room);
       }
     };
     const onThreadNew = (thread: Thread, toStartOfTimeline: boolean) => {

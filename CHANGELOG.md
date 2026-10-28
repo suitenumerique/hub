@@ -102,6 +102,9 @@ and this project adheres to
 - ✨(frontend) Add read-only chat members and conversation favourites
 - ✨(frontend) Leave and forget conversations from the chat header
 - ✨(frontend) Add Matrix first-unread separator and anchored navigation
+- ✨(frontend) Mark a conversation as unread or read from a quick access menu
+  in the conversation list (right click or "more" button) and from the header
+  menu, shared with Tchap.
 
 ### Changed
 

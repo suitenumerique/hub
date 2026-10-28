@@ -45,11 +45,13 @@ export type ChatVisual =
 /**
  * Read state lives outside the conversation and message payloads so a receipt
  * can move the unread dot without invalidating either cache. `highlight` is a
- * stronger Matrix notification (for example a mention).
+ * stronger Matrix notification (for example a mention). `markedUnread` is set
+ * when the user marked the conversation unread, which also sets `unread`.
  */
 export type ChatUnread = {
   unread: boolean;
   highlight: boolean;
+  markedUnread: boolean;
 };
 
 /**

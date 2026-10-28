@@ -281,7 +281,8 @@ const applyChatEvent = (
           const previous = current?.[event.chatId];
           if (
             previous?.unread === event.unread.unread &&
-            previous.highlight === event.unread.highlight
+            previous.highlight === event.unread.highlight &&
+            previous.markedUnread === event.unread.markedUnread
           ) {
             return current;
           }
