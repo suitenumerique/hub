@@ -14,6 +14,7 @@ export class LeftPanel {
   readonly newChatLink: Locator;
   readonly searchButton: Locator;
   readonly allChats: Locator;
+  readonly favourites: Locator;
 
   constructor(readonly page: Page) {
     this.root = page.getByRole("complementary", { name: "Side panel" });
@@ -23,6 +24,7 @@ export class LeftPanel {
     this.newChatLink = actions.getByRole("link", { name: "New" });
     this.searchButton = actions.getByRole("button", { name: "Search" });
     this.allChats = this.root.getByRole("region", { name: "All chats" });
+    this.favourites = this.root.getByRole("region", { name: "Favourites" });
   }
 
   /** Waits until the chat is connected and its list is shown. */
@@ -55,6 +57,31 @@ export class LeftPanel {
     );
   }
 
+  /** The quick access menu of a row, opened with a right click. */
+  async openContextMenu(target: RowTarget): Promise<Locator> {
+    await this.conversation(target).click({ button: "right" });
+    const menu = this.page.getByRole("menu", { name: "Context menu" });
+    await expect(menu).toBeVisible();
+    return menu;
+  }
+
+  /** The "more" button of a row, shown while it is hovered or focused. */
+  moreButton(name: string): Locator {
+    return this.root.getByRole("button", {
+      name: `More options for ${name}`,
+      exact: true,
+    });
+  }
+
+  /** The same quick access menu, from the "more" button of the row. */
+  async openMoreMenu(name: string): Promise<Locator> {
+    await this.conversation(name).hover();
+    await this.moreButton(name).click();
+    const menu = this.page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    return menu;
+  }
+
   async openNewChat(): Promise<void> {
     await this.newChatLink.click();
     await expect(this.page).toHaveURL(/\/chat\/new$/);
@@ -64,6 +91,12 @@ export class LeftPanel {
     await expect(this.conversation(target)).toBeVisible({
       timeout: SYNC_TIMEOUT,
     });
+  }
+
+  async expectFavourite(name: string): Promise<void> {
+    await expect(
+      this.favourites.getByRole("link", { name, exact: true }),
+    ).toBeVisible({ timeout: SYNC_TIMEOUT });
   }
 
   async expectNoConversation(target: RowTarget): Promise<void> {

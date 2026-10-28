@@ -76,6 +76,12 @@ export class Timeline {
     await this.message(text).scrollIntoViewIfNeeded();
   }
 
+  /** Scrolls up a little with the mouse wheel, as a person reading back. */
+  async scroll(): Promise<void> {
+    await this.root.locator("[data-virtuoso-scroller]").hover();
+    await this.page.mouse.wheel(0, -300);
+  }
+
   /** Shown exactly once: the server echo did not duplicate it. */
   async expectMessageOnce(text: string): Promise<void> {
     await this.expectMessage(text);
