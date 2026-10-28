@@ -1,5 +1,6 @@
+import { SYNC_TIMEOUT } from "./utils/env";
 import { expect, test } from "./utils/fixtures";
-import { createUnencryptedRoom } from "./utils/flows";
+import { createUnencryptedRoom, markRoomRead } from "./utils/flows";
 import { uniqueText } from "./utils/ids";
 import { delayRequests, SEND_REQUESTS } from "./utils/network";
 import { watchText } from "./utils/watch";
@@ -122,4 +123,62 @@ test("starts a thread whose first reply shows while it is sent", async ({
   await aliceChat.threads.timeline.expectMessageOnce(first);
   await expect(aliceChat.timeline.threadButton(root)).toHaveText("1 reply");
   expect(await shown.disappearances()).toBe(0);
+});
+
+/**
+ * Reading a thread must reach the homeserver, which keeps counting its
+ * replies otherwise: they come back unread with its next sync or a reload.
+ * Bob never sent a threaded receipt in the room yet.
+ */
+test("marks unread threads read, from the thread or from the banner", async ({
+  people,
+  hub,
+}) => {
+  const alice = await people.create("Alice");
+  const bob = await people.create("Bob");
+  const carol = await people.create("Carol");
+  const roomId = await createUnencryptedRoom(alice, [bob]);
+  await createUnencryptedRoom(carol, [bob]);
+  await alice.api.sendText(roomId, uniqueText("Already read"));
+  await markRoomRead(bob, roomId);
+
+  const bobChat = await hub.open(bob);
+  await bobChat.openConversation(carol.displayName);
+  // More than one screen: opening at the bottom leaves older ones unread.
+  const prefix = uniqueText("Message");
+  await alice.api.sendMany(roomId, prefix, 40);
+  const opened = uniqueText("Opened thread");
+  const fromBanner = uniqueText("Banner thread");
+  for (const root of [opened, fromBanner]) {
+    const rootId = await alice.api.sendText(roomId, root);
+    await alice.api.sendText(roomId, uniqueText("Reply"), {
+      threadRootId: rootId,
+    });
+  }
+
+  await bobChat.focus();
+  await bobChat.openConversation(alice.displayName);
+  await bobChat.threads.expectUnreadThreadsBanner("2 unread threads");
+
+  await test.step("opening a thread reads it", async () => {
+    await bobChat.timeline.threadButton(opened).click();
+    await bobChat.threads.expectThread(opened);
+    await bobChat.threads.expectUnreadThreadsBanner("1 unread thread");
+  });
+
+  await test.step("the banner reads the others, not the timeline", async () => {
+    await bobChat.threads.markAllRead();
+    await expect(bobChat.timeline.unreadBanner).toBeVisible();
+  });
+
+  await test.step("both stay read after a reload, with one reply each", async () => {
+    await bobChat.reload();
+    for (const root of [opened, fromBanner]) {
+      await expect(bobChat.timeline.threadButton(root)).toHaveText("1 reply", {
+        timeout: SYNC_TIMEOUT,
+      });
+    }
+    await expect(bobChat.threads.unreadBanner).toBeHidden();
+    await expect(bobChat.timeline.unreadBanner).toBeVisible();
+  });
 });
