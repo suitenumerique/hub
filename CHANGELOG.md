@@ -145,6 +145,10 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Stop typing lag caused by encryption: upgrade matrix-js-sdk
+  to 42.4.0, as Tchap web does. With 41.6 and the encryption module 18.9,
+  most syncs created 50 new one-time keys, which slowed every later sync and
+  could break new encrypted sessions. Sign in through its OAuth 2 API.
 - 🐛(frontend) Send the thread receipt when a thread is read before any
   other threaded receipt in the room, so it no longer comes back unread.
 - 🐛(frontend) Count thread replies from the server summary, so a read
