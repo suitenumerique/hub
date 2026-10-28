@@ -182,3 +182,44 @@ test("marks unread threads read, from the thread or from the banner", async ({
     await expect(bobChat.timeline.unreadBanner).toBeVisible();
   });
 });
+
+/** The root's server summary still counts a reply deleted since it loaded. */
+test("keeps a deleted reply out of the thread reply count", async ({
+  people,
+  hub,
+}) => {
+  const alice = await people.create("Alice");
+  const bob = await people.create("Bob");
+  const roomId = await createUnencryptedRoom(alice, [bob]);
+  const root = uniqueText("Thread root");
+  const rootId = await alice.api.sendText(roomId, root);
+  await alice.api.sendText(roomId, uniqueText("Kept reply"), {
+    threadRootId: rootId,
+  });
+  const deletedId = await alice.api.sendText(
+    roomId,
+    uniqueText("Deleted reply"),
+    { threadRootId: rootId },
+  );
+
+  const bobChat = await hub.open(bob);
+  await bobChat.openConversation(alice.displayName);
+  const button = bobChat.timeline.threadButton(root);
+  await expect(button).toContainText("2 replies", { timeout: SYNC_TIMEOUT });
+
+  await test.step("Alice deletes a reply", async () => {
+    await alice.api.redact(roomId, deletedId);
+    await expect(button).toContainText("1 reply", { timeout: SYNC_TIMEOUT });
+  });
+
+  await test.step("it stays out once the thread is opened", async () => {
+    await button.click();
+    await bobChat.threads.expectThread(root);
+    await expect(button).toHaveText("1 reply");
+  });
+
+  await test.step("and after a reload", async () => {
+    await bobChat.reload();
+    await expect(button).toHaveText("1 reply", { timeout: SYNC_TIMEOUT });
+  });
+});

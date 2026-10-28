@@ -207,29 +207,47 @@ export const threadReplyEventKey = (event: MatrixEvent): string | undefined => {
 };
 
 /**
- * Replies counted by the root's server aggregation, not `Thread.length`: the
- * SDK adds one for every reply it appends forward, including one the
- * aggregation already counts when it replays the events it buffered while the
- * thread loaded, and the monotonic counter would keep that overcount. Live
- * replies are counted by `observeThreadReply`, own ones by the send result.
+ * The smaller of `Thread.length` and the root's server aggregation, which each
+ * err one way. The SDK adds one for every reply it appends forward, including
+ * one the aggregation already counts when it replays the events it buffered
+ * while the thread loaded. The aggregation still counts a reply deleted since
+ * it loaded, which the SDK subtracts. The monotonic counter would keep either
+ * overcount. Live replies are counted by `observeThreadReply`, own ones by the
+ * send result.
  */
-const aggregatedReplyCount = (thread: Thread): number =>
-  thread.rootEvent?.getServerAggregatedRelation<{ count?: number }>(
-    RelationType.Thread,
-  )?.count ?? 0;
+const sdkReplyCount = (thread: Thread): number => {
+  const aggregated = thread.rootEvent?.getServerAggregatedRelation<{
+    count?: number;
+  }>(RelationType.Thread)?.count;
+  return aggregated === undefined
+    ? thread.length
+    : Math.min(thread.length, aggregated);
+};
 
 const threadReplySnapshot = (thread: Thread): number =>
-  Math.max(aggregatedReplyCount(thread), threadReplyEvents(thread).length);
+  Math.max(sdkReplyCount(thread), threadReplyEvents(thread).length);
+
+/**
+ * A loaded thread whose timeline starts at its root holds every reply, so
+ * they are counted exactly, deleted ones excluded. That count can go down: a
+ * root restored from the sync cache after a reload may still count a reply
+ * deleted since.
+ */
+const exactThreadReplyCount = (thread: Thread): number | undefined =>
+  thread.initialEventsFetched && thread.events[0]?.getId() === thread.id
+    ? threadReplyEvents(thread).length
+    : undefined;
 
 export const getThreadReplyCounter = (thread: Thread): ThreadReplyCounter => {
   const snapshot = threadReplySnapshot(thread);
+  const exact = exactThreadReplyCount(thread);
   const existing = threadReplyCounters.get(thread);
   if (existing) {
-    existing.count = Math.max(existing.count, snapshot);
+    existing.count = exact ?? Math.max(existing.count, snapshot);
     return existing;
   }
   const counter: ThreadReplyCounter = {
-    count: snapshot,
+    count: exact ?? snapshot,
     redactedEventIds: new Set(),
     observedEventKeys: new Set(
       [
