@@ -108,6 +108,9 @@ and this project adheres to
 
 ### Changed
 
+- ⚡️(frontend) Render only the side panel conversations near the view and
+  re-render a row only when it changes. The open conversation and its
+  composer no longer re-render for every list change or new message.
 - ⚡️(frontend) Open the chat from the local sync cache, before the first
   network sync, as Element does. Load the user, the Matrix driver and its
   crypto in parallel, keep the sync cache in a worker, and stop clearing it
