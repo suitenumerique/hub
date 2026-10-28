@@ -2123,6 +2123,11 @@ export class MatrixDriver extends Driver {
    * Like Element (`TimelinePanel.shouldSendReadReceipt`), only moves the
    * receipt forward: the homeserver drops a receipt behind the one it has,
    * e.g. when Tchap already read through the trailing reactions.
+   *
+   * Compared with the person's own receipts in the thread, not
+   * `thread.getEventReadUpTo`: until their first threaded receipt in the room,
+   * the SDK takes every thread as read, so no receipt would ever be sent and
+   * the homeserver would keep counting its replies.
    */
   private async readThroughThread(
     mx: MatrixClient,
@@ -2138,12 +2143,20 @@ export class MatrixDriver extends Driver {
     if (!target || !targetId) {
       return;
     }
-    const readUpToId = thread.getEventReadUpTo(selfUserId, true);
-    if (readUpToId) {
-      const ordering = room.compareEventOrdering(readUpToId, targetId);
-      if (readUpToId === targetId || (ordering !== null && ordering >= 0)) {
-        return;
+    const isRead = [ReceiptType.Read, ReceiptType.ReadPrivate].some((type) => {
+      const readId = thread.getReadReceiptForUserId(
+        selfUserId,
+        true,
+        type,
+      )?.eventId;
+      if (!readId) {
+        return false;
       }
+      const ordering = room.compareEventOrdering(readId, targetId);
+      return readId === targetId || (ordering !== null && ordering >= 0);
+    });
+    if (isRead) {
+      return;
     }
     await mx.sendReadReceipt(target);
   }

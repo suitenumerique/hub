@@ -37,4 +37,12 @@ export class ThreadsPanel {
       timeout: SYNC_TIMEOUT,
     });
   }
+
+  /** Marks every thread read from the banner, which then disappears. */
+  async markAllRead(): Promise<void> {
+    await this.unreadBanner
+      .getByRole("button", { name: "Mark as read" })
+      .click();
+    await expect(this.unreadBanner).toBeHidden({ timeout: SYNC_TIMEOUT });
+  }
 }

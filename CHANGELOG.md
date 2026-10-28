@@ -142,6 +142,8 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Send the thread receipt when a thread is read before any
+  other threaded receipt in the room, so it no longer comes back unread.
 - 🐛(frontend) Count thread replies from the server summary, so a read
   thread no longer shows one reply too many after a reload.
 - 🐛(frontend) Keep encryption settings closed after cancellation failures,
