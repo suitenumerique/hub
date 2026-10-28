@@ -49,15 +49,18 @@ export const isMarkedUnreadRoom = (room: Room): boolean => {
 export const roomOtherMembers = (
   room: Room,
   currentUserId: string | undefined,
-) =>
-  room
-    .getMembers()
-    .filter(
-      (member) =>
-        member.userId !== currentUserId &&
-        (member.membership === KnownMembership.Join ||
-          member.membership === KnownMembership.Invite),
-    );
+) => otherActiveMembers(room.getMembers(), currentUserId);
+
+const otherActiveMembers = (
+  members: RoomMember[],
+  currentUserId: string | undefined,
+): RoomMember[] =>
+  members.filter(
+    (member) =>
+      member.userId !== currentUserId &&
+      (member.membership === KnownMembership.Join ||
+        member.membership === KnownMembership.Invite),
+  );
 
 const hasConversationMembership = (member: RoomMember): boolean =>
   member.membership === KnownMembership.Join ||
@@ -70,16 +73,14 @@ const hasConversationMembership = (member: RoomMember): boolean =>
  * the latest `m.room.member` event after somebody leaves, which lets a joined
  * user keep a stable DM label instead of exposing the technical room id.
  */
-const roomConversationMembers = (
-  room: Room,
+const conversationCounterparts = (
+  members: RoomMember[],
   currentUserId: string | undefined,
 ): RoomMember[] =>
-  room
-    .getMembers()
-    .filter(
-      (member) =>
-        member.userId !== currentUserId && hasConversationMembership(member),
-    );
+  members.filter(
+    (member) =>
+      member.userId !== currentUserId && hasConversationMembership(member),
+  );
 
 /** Order- and duplicate-independent key for comparing two participant sets. */
 export const participantSetKey = (userIds: string[]): string =>
@@ -99,10 +100,11 @@ const explicitRoomName = (room: Room): string | undefined => {
  */
 const pendingCounterpartId = (
   room: Room,
+  conversationMembers: RoomMember[],
   currentUserId: string | undefined,
 ): string | undefined => {
   if (
-    roomConversationMembers(room, currentUserId).length > 0 ||
+    conversationMembers.length > 0 ||
     room.getInvitedAndJoinedMemberCount() !== 2
   ) {
     return undefined;
@@ -164,9 +166,16 @@ export const matrixJoinedRoomToLocalChat = (
   room: Room,
   currentUserId: string | undefined,
 ): LocalChat => {
-  const activeOthers = roomOtherMembers(room, currentUserId);
-  const conversationMembers = roomConversationMembers(room, currentUserId);
-  const counterpartId = pendingCounterpartId(room, currentUserId);
+  // getMembers copies the whole member map: read it once per room, as a large
+  // room holds thousands of members.
+  const members = room.getMembers();
+  const activeOthers = otherActiveMembers(members, currentUserId);
+  const conversationMembers = conversationCounterparts(members, currentUserId);
+  const counterpartId = pendingCounterpartId(
+    room,
+    conversationMembers,
+    currentUserId,
+  );
   const roomName = explicitRoomName(room);
   // A named room shows its name, as Element shows the SDK's `room.name`:
   // direct conversations have none, so a group left with one other person,

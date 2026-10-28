@@ -1,5 +1,7 @@
 import {
+  hashKey,
   type InfiniteData,
+  partialMatchKey,
   type QueryClient,
   type QueryKey,
   useQueryClient,
@@ -188,6 +190,54 @@ export const replayRecentLiveMessages = (
   );
 };
 
+/**
+ * Coarse events come in bursts: a catch-up `/sync`, a reconnection, the
+ * members of a large room loading one by one. Invalidating each at once would
+ * restart the same reads again and again within one task. Like Element's room
+ * list, which emits once per batch, they are queued and invalidated together at
+ * the end of the current task, in one pass over the query cache. A microtask,
+ * not a frame or a timer: no click can run in between, and it still runs in a
+ * hidden tab. Every queued key is invalidated, so the `staleTime: Infinity`
+ * caches never miss a change.
+ */
+const pendingInvalidations = new WeakMap<
+  QueryClient,
+  Map<string, QueryKey>
+>();
+
+const flushInvalidations = (queryClient: QueryClient): void => {
+  const pending = pendingInvalidations.get(queryClient);
+  pendingInvalidations.delete(queryClient);
+  if (!pending) {
+    return;
+  }
+  const keysByRoot = new Map<string, QueryKey[]>();
+  pending.forEach((queryKey) => {
+    const root = hashKey([queryKey[0]]);
+    keysByRoot.set(root, [...(keysByRoot.get(root) ?? []), queryKey]);
+  });
+  void queryClient.invalidateQueries({
+    predicate: (query) =>
+      keysByRoot
+        .get(hashKey([query.queryKey[0]]))
+        ?.some((queryKey) => partialMatchKey(query.queryKey, queryKey)) ??
+      false,
+  });
+};
+
+const scheduleInvalidation = (
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+): void => {
+  let pending = pendingInvalidations.get(queryClient);
+  if (!pending) {
+    pending = new Map();
+    pendingInvalidations.set(queryClient, pending);
+    queueMicrotask(() => flushInvalidations(queryClient));
+  }
+  pending.set(hashKey(queryKey), queryKey);
+};
+
 /** Replaces a message across every loaded page with a fresh object (so the
  * memoized virtual-list row re-renders). No-op for pages without it. */
 const replaceMessage = (
@@ -267,10 +317,7 @@ const applyChatEvent = (
         ),
       );
       // Touches list ordering / last activity. Read state has its own slice.
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.chatsOf(accountId),
-      });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      scheduleInvalidation(queryClient, chatKeys.chatsOf(accountId));
       return;
     }
 
@@ -292,9 +339,7 @@ const applyChatEvent = (
       return;
 
     case "main-timeline-unread:changed":
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.mainTimelineUnread(ref),
-      });
+      scheduleInvalidation(queryClient, chatKeys.mainTimelineUnread(ref));
       return;
 
     case "message:updated": {
@@ -403,53 +448,39 @@ const applyChatEvent = (
     }
 
     case "chat:changed":
-      void queryClient.invalidateQueries({ queryKey: chatKeys.messages(ref) });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
+      scheduleInvalidation(queryClient, chatKeys.messages(ref));
+      scheduleInvalidation(queryClient, chatKeys.chat(ref));
       return;
 
     case "threads:changed":
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.threads(ref),
-      });
+      scheduleInvalidation(queryClient, chatKeys.threads(ref));
       if (event.invalidateDetails !== false) {
-        void queryClient.invalidateQueries({
-          queryKey: event.threadId
+        scheduleInvalidation(
+          queryClient,
+          event.threadId
             ? chatKeys.thread(ref, event.threadId)
             : chatKeys.threadDetails(ref),
-        });
+        );
       }
       return;
 
     case "members:changed":
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.members(ref),
-      });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.chatsOf(accountId),
-      });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      scheduleInvalidation(queryClient, chatKeys.members(ref));
+      scheduleInvalidation(queryClient, chatKeys.chat(ref));
+      scheduleInvalidation(queryClient, chatKeys.chatsOf(accountId));
       return;
 
     case "tags:changed":
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chat(ref) });
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.chatsOf(accountId),
-      });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      scheduleInvalidation(queryClient, chatKeys.chat(ref));
+      scheduleInvalidation(queryClient, chatKeys.chatsOf(accountId));
       return;
 
     case "chats:changed":
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.chatsOf(accountId),
-      });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
+      scheduleInvalidation(queryClient, chatKeys.chatsOf(accountId));
       // The room list changed, so a New Chat participant-set resolution may now
       // hit (or stop hitting) an existing conversation. Its cache is a separate
       // staleTime:Infinity slice, so it only re-runs when explicitly invalidated.
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.chatForUsersOf(accountId),
-      });
+      scheduleInvalidation(queryClient, chatKeys.chatForUsersOf(accountId));
       return;
   }
 };

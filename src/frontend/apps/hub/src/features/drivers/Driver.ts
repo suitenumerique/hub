@@ -37,6 +37,31 @@ export type ChatUserFilters = {
   excludeIds?: string[];
 };
 
+/**
+ * Options of a read that React Query may supersede: when `signal` aborts, the
+ * read stops before its synchronous mapping instead of computing a result that
+ * would be thrown away.
+ */
+export type DriverReadOptions = {
+  signal?: AbortSignal;
+};
+
+/**
+ * Read options for a React Query `queryFn`, whose signal is only read when the
+ * driver checks it, after its await. React Query aborts a superseded read
+ * either way. But once a `queryFn` reads its signal, losing the query's last
+ * observer cancels the read and reverts the query to its previous state, which
+ * can drop an invalidation that arrived meanwhile: with `staleTime: Infinity`,
+ * nothing would refetch it.
+ */
+export const queryReadOptions = (context: {
+  signal: AbortSignal;
+}): DriverReadOptions => ({
+  get signal() {
+    return context.signal;
+  },
+});
+
 export type GetChatMessagesParams = {
   chatId: string;
   /**
@@ -378,15 +403,21 @@ export abstract class Driver {
     this.accountId = accountId;
   }
 
-  abstract getChats(): Promise<LocalChatSections>;
+  abstract getChats(options?: DriverReadOptions): Promise<LocalChatSections>;
   /** People available when composing a new chat. */
   abstract getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]>;
   /** Joined members and pending invitees of one conversation. */
-  abstract getChatMembers(chatId: string): Promise<ChatMembers>;
+  abstract getChatMembers(
+    chatId: string,
+    options?: DriverReadOptions,
+  ): Promise<ChatMembers>;
   /** Existing conversation for exactly these participants, or `null`. */
   abstract getChatForUsers(userIds: string[]): Promise<LocalChat | null>;
   /** Single conversation, fetched by id. */
-  abstract getChat(chatId: string): Promise<LocalChat>;
+  abstract getChat(
+    chatId: string,
+    options?: DriverReadOptions,
+  ): Promise<LocalChat>;
   abstract getChatMessages(
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;

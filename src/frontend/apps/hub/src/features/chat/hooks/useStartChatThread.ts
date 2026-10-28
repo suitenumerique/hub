@@ -226,7 +226,6 @@ export const useStartChatThread = (ref: ChatRef): UseStartChatThreadResult => {
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(ref.accountId),
       });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
       variables.options?.onCreated?.(result.thread.id);
     },
     onError: (_error, _variables, context) => {

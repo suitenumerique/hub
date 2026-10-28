@@ -96,21 +96,32 @@ export const computeRoomUnread = (
   if (room.getRoomUnreadNotificationCount(NotificationCountType.Total) > 0) {
     return true;
   }
-  return room
-    .getLiveTimeline()
-    .getEvents()
-    .filter(isMainTimelineMessage)
-    .some((event) => {
-      if (event.isRedacted()) {
-        return false;
-      }
-      const eventId = event.getId();
-      return (
-        Boolean(eventId) &&
-        event.getSender() !== selfUserId &&
-        !room.hasUserReadEvent(selfUserId, eventId!)
-      );
-    });
+  // Like Element (Unread.ts), read from the newest message back: each
+  // hasUserReadEvent walks the timeline, so checking every message would be
+  // quadratic. A receipt, or a message we sent, covers every older message
+  // too, so the first read message ends the walk. A thread root can instead be
+  // read because we replied in its thread, which says nothing about the
+  // messages before it: those are still checked.
+  const events = room.getLiveTimeline().getEvents();
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    const eventId = event.getId();
+    if (
+      !isMainTimelineMessage(event) ||
+      event.isRedacted() ||
+      !eventId ||
+      event.getSender() === selfUserId
+    ) {
+      continue;
+    }
+    if (!room.hasUserReadEvent(selfUserId, eventId)) {
+      return true;
+    }
+    if (!event.isThreadRoot) {
+      return false;
+    }
+  }
+  return false;
 };
 
 /** Whether an ephemeral receipt event advances this connected user's marker. */
