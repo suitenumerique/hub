@@ -24,6 +24,21 @@ export const MATRIX_FAVOURITE_TAG = "m.favourite";
 export const isFavouriteRoom = (room: Room): boolean =>
   Object.hasOwn(room.tags, MATRIX_FAVOURITE_TAG);
 
+/** Unstable type of `m.marked_unread`, used before MSC2867 was merged. */
+export const MATRIX_MARKED_UNREAD_UNSTABLE = "com.famedly.marked_unread";
+
+/**
+ * Whether the current user marked this room unread. Like Element and Tchap,
+ * the stable type wins and the unstable one is still read.
+ */
+export const isMarkedUnreadRoom = (room: Room): boolean => {
+  const read = (type: string): unknown =>
+    room.getAccountData(type)?.getContent()?.unread;
+  const unread =
+    read(EventType.MarkedUnread) ?? read(MATRIX_MARKED_UNREAD_UNSTABLE);
+  return unread === true;
+};
+
 /**
  * The active members of a conversation: everyone except the connected user
  * whose membership is `join` or `invite`. This is deliberately stricter than

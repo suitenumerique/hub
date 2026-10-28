@@ -216,6 +216,32 @@
     gap: 1px;
   }
 
+  // Shows the "more" button over the end of the row while it is hovered,
+  // focused from the keyboard or its menu is open; the name then ellipsizes
+  // before it.
+  &__item {
+    position: relative;
+
+    &:hover,
+    &:has(:focus-visible),
+    &:has(.hub__left-panel__chat--menu-open) {
+      .hub__left-panel__chat {
+        padding-right: 34px;
+      }
+
+      .hub__left-panel__chat__more {
+        opacity: 1;
+      }
+    }
+
+    &:has(.hub__left-panel__chat--active) .hub__left-panel__chat__more-button {
+      color: var(
+        --c--contextuals--content--semantic--neutral--on-neutral,
+        #eef1f4
+      );
+    }
+  }
+
   &__chat {
     appearance: none;
     background: transparent;
@@ -232,7 +258,8 @@
     text-align: left;
     text-decoration: none;
 
-    &:hover:not(&--active) {
+    &:hover:not(&--active),
+    &--menu-open:not(&--active) {
       background: var(
         --c--contextuals--background--semantic--overlay--primary,
         rgba(24, 27, 36, 0.05)
@@ -243,6 +270,17 @@
       outline: 2px solid
         var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
       outline-offset: -2px;
+    }
+
+    &__more {
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      display: flex;
+      // Transparent rather than hidden: it stays in the tab order and the
+      // accessibility tree, and shows as soon as it gets the focus.
+      opacity: 0;
     }
 
     &--active {
@@ -398,6 +436,11 @@
       z-index: 1;
       pointer-events: auto;
     }
+  }
+
+  // The app version, after a longer hover than the composer tooltips.
+  &__help-tooltip {
+    --hub-tooltip-delay: 2s;
   }
 
   &__icon-button {

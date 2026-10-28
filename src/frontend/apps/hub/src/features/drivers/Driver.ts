@@ -424,7 +424,7 @@ export abstract class Driver {
   abstract markChatThreadRead(params: MarkChatThreadReadParams): Promise<void>;
   /** Marks every thread of a conversation as read for the current user. */
   abstract markAllChatThreadsRead(chatId: string): Promise<void>;
-  /** Marks the main timeline read once it is genuinely visible to the user. */
+  /** Marks the whole conversation read, threads included ("Mark as read"). */
   abstract markChatRead(chatId: string): Promise<void>;
   /** Advances the main boundary through one genuinely visible Matrix event. */
   abstract markChatReadThrough(chatId: string, eventId: string): Promise<void>;
@@ -433,6 +433,15 @@ export abstract class Driver {
 
   /** Sets the current user's favourite tag for one conversation. */
   abstract setChatFavourite(chatId: string, favourite: boolean): Promise<void>;
+
+  /**
+   * Flags one conversation unread for the current user, or clears the flag.
+   * The flag shows the conversation unread without any unread message.
+   */
+  abstract setChatMarkedUnread(
+    chatId: string,
+    markedUnread: boolean,
+  ): Promise<void>;
 
   /**
    * Leaves a conversation and removes its history from the current account.

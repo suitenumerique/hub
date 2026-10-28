@@ -18,6 +18,7 @@ import type {
 import { isSameChatDay } from "../formatTimestamp";
 import { useChatMessages } from "../hooks/useChatMessages";
 import { useMainTimelineUnread } from "../hooks/useMainTimelineUnread";
+import { useMarkedUnreadGate } from "../hooks/useMarkedUnreadGate";
 import { useUnreadSeparator } from "../hooks/useUnreadSeparator";
 
 import { ChatBubble } from "./ChatBubble";
@@ -111,6 +112,7 @@ export const ChatVirtualList = ({
     openAround,
   } = useChatMessages(chatRef);
   const unread = useMainTimelineUnread(chatRef, messages);
+  const markedUnread = useMarkedUnreadGate(chatRef);
   const {
     slots: separatorSlots,
     eventId: separatorEventId,
@@ -161,6 +163,17 @@ export const ChatVirtualList = ({
       window.clearTimeout(readDwellTimerRef.current);
       readDwellTimerRef.current = null;
     }
+  }, []);
+
+  // A focused dwell distinguishes content that is actually readable from
+  // rows merely rendered by Virtuoso during navigation or layout settling.
+  const startReadDwell = useCallback((read: () => void) => {
+    readDwellTimerRef.current = window.setTimeout(() => {
+      readDwellTimerRef.current = null;
+      if (document.visibilityState === "visible" && document.hasFocus()) {
+        read();
+      }
+    }, READ_DWELL_MS);
   }, []);
 
   const reconcileSeparatorOutsideViewport = useCallback(() => {
@@ -241,8 +254,14 @@ export const ChatVirtualList = ({
     const scroller = scrollerRef.current;
     const isFocused =
       document.visibilityState === "visible" && document.hasFocus();
+    const shouldClearMarkedUnread =
+      markedUnread.isMarkedUnread && markedUnread.canClear();
     if (!unread.hasUnread) {
       setUnreadViewportState("unknown");
+      // With no unread message, reading the timeline only clears the flag.
+      if (shouldClearMarkedUnread && scroller && isFocused) {
+        startReadDwell(markedUnread.clearIfAllowed);
+      }
       return;
     }
     // Keep the last visibility decision while the viewport is unavailable or
@@ -283,18 +302,18 @@ export const ChatVirtualList = ({
       return;
     }
 
-    // A focused dwell distinguishes content that is actually readable from
-    // rows merely rendered by Virtuoso during navigation or layout settling.
-    readDwellTimerRef.current = window.setTimeout(() => {
-      readDwellTimerRef.current = null;
-      if (document.visibilityState === "visible" && document.hasFocus()) {
-        unread.markVisibleMessages(visibleIds, hasNewer);
+    startReadDwell(() => {
+      unread.markVisibleMessages(visibleIds, hasNewer);
+      if (shouldClearMarkedUnread) {
+        markedUnread.clearIfAllowed();
       }
-    }, READ_DWELL_MS);
+    });
   }, [
     cancelReadDwell,
     hasNewer,
+    markedUnread,
     reconcileSeparatorOutsideViewport,
+    startReadDwell,
     unread.areAllUnreadVisible,
     unread.hasUnread,
     unread.isLoading,
@@ -385,6 +404,7 @@ export const ChatVirtualList = ({
     }
     const markInteraction = () => {
       hasUserInteractedRef.current = true;
+      markedUnread.allowClear();
       canReanchorAtBottomRef.current = !atBottomRef.current;
       shouldStickToBottomRef.current = false;
       // endReached can fire before the first interaction at a contextual end.
@@ -409,7 +429,13 @@ export const ChatVirtualList = ({
       scroller.removeEventListener("keydown", markInteraction);
       scroller.removeEventListener("scroll", onScroll);
     };
-  }, [chatKey, fetchNewer, scheduleVisibilityMeasurement, windowVersion]);
+  }, [
+    chatKey,
+    fetchNewer,
+    markedUnread.allowClear,
+    scheduleVisibilityMeasurement,
+    windowVersion,
+  ]);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
     isInitialLoading ? "visible" : "hidden",

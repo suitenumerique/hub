@@ -1,4 +1,7 @@
-import { CunninghamProvider } from "@gouvfr-lasuite/ui-components";
+import {
+  ContextMenuProvider,
+  CunninghamProvider,
+} from "@gouvfr-lasuite/ui-components";
 import {
   MutationCache,
   Query,
@@ -81,11 +84,14 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       <div className="hub__desktop-app">
         <QueryClientProvider client={queryClient}>
           <CunninghamProvider currentLocale={currentLocale} theme="dsfr-light">
-            <ConfigProvider>
-              <AnalyticsProvider>
-                <Auth>{getLayout(<Component {...pageProps} />)}</Auth>
-              </AnalyticsProvider>
-            </ConfigProvider>
+            {/* Renders the one right-click menu that every `ContextMenu` opens. */}
+            <ContextMenuProvider>
+              <ConfigProvider>
+                <AnalyticsProvider>
+                  <Auth>{getLayout(<Component {...pageProps} />)}</Auth>
+                </AnalyticsProvider>
+              </ConfigProvider>
+            </ContextMenuProvider>
           </CunninghamProvider>
           <ToastContainer
             position="top-center"

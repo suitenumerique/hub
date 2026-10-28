@@ -1,18 +1,27 @@
-import { Button } from "@gouvfr-lasuite/ui-components";
-import { Plus, QuestionMark } from "@gouvfr-lasuite/ui-components/icons";
+import {
+  Button,
+  ContextMenu,
+  DropdownMenu,
+  Tooltip,
+  useDropdownMenu,
+} from "@gouvfr-lasuite/ui-components";
+import { More, Plus, QuestionMark } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { ReactNode, useId, useState } from "react";
+import { MouseEventHandler, ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { isInvitationChat } from "@/features/chat/chatMembership";
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
 import { ChatVisualAvatar } from "@/features/chat/components/ChatVisualAvatar";
+import { useChatQuickActions } from "@/features/chat/hooks/useChatQuickActions";
 import {
   type ChatUnreadLookup,
   useChatUnread,
 } from "@/features/chat/hooks/useChatUnread";
 import { useChats } from "@/features/chat/hooks/useChats";
+import { APP_VERSION } from "@/features/config/appVersion";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatUnread } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
@@ -109,12 +118,19 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
 
       <div className="hub__left-panel__footer">
         <AccountSelector />
-        <Button
-          variant="tertiary"
-          color="neutral"
-          icon={<QuestionMark size={24} />}
-          aria-label={t("Help")}
-        />
+        {/* On the left: the panel clips what overflows its right edge. */}
+        <Tooltip
+          content={t("App Version {{version}}", { version: APP_VERSION })}
+          placement="left"
+          className="hub__delayed-tooltip hub__left-panel__help-tooltip"
+        >
+          <Button
+            variant="tertiary"
+            color="neutral"
+            icon={<QuestionMark size={24} />}
+            aria-label={t("Help")}
+          />
+        </Tooltip>
       </div>
     </aside>
   );
@@ -239,7 +255,10 @@ const ChatSection = ({
             </li>
           )}
           {chats.map((chat) => (
-            <li key={`${chat.accountId}:${chat.id}`}>
+            <li
+              key={`${chat.accountId}:${chat.id}`}
+              className="hub__left-panel__item"
+            >
               <ChatRow
                 chat={chat}
                 accountLabel={accountLabels.get(chat.accountId)}
@@ -254,16 +273,73 @@ const ChatSection = ({
   );
 };
 
-const ChatRow = ({
-  chat,
-  accountLabel,
-  showAccountLabel,
-  unread,
-}: {
+type ChatRowProps = {
   chat: Chat;
   accountLabel?: string;
   showAccountLabel: boolean;
   unread: ChatUnread;
+};
+
+/** A pending invitation has no quick access menu, as in the header. */
+const ChatRow = (props: ChatRowProps) =>
+  isInvitationChat(props.chat) ? (
+    <ChatRowLink {...props} />
+  ) : (
+    <ChatRowWithMenus {...props} />
+  );
+
+/**
+ * Opens the quick access menu on right click or from the "more" button shown
+ * while the row is hovered or focused.
+ */
+const ChatRowWithMenus = (props: ChatRowProps) => {
+  const { chat, unread } = props;
+  const { t } = useTranslation();
+  const options = useChatQuickActions(chat, unread);
+  const menu = useDropdownMenu();
+  const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
+
+  return (
+    <>
+      <ContextMenu
+        options={options}
+        asChild
+        onFocus={() => setIsContextMenuOpen(true)}
+        onBlur={() => setIsContextMenuOpen(false)}
+      >
+        <ChatRowLink {...props} isMenuOpen={isContextMenuOpen || menu.isOpen} />
+      </ContextMenu>
+      <div className="hub__left-panel__chat__more">
+        <DropdownMenu options={options} {...menu} onOpenChange={menu.setIsOpen}>
+          <Button
+            type="button"
+            variant="tertiary"
+            color="neutral"
+            size="nano"
+            className="hub__left-panel__chat__more-button"
+            aria-label={t("More options for {{name}}", { name: chat.name })}
+            aria-haspopup="menu"
+            aria-expanded={menu.isOpen}
+            icon={<More size={16} />}
+            onClick={() => menu.setIsOpen((open) => !open)}
+          />
+        </DropdownMenu>
+      </div>
+    </>
+  );
+};
+
+const ChatRowLink = ({
+  chat,
+  accountLabel,
+  showAccountLabel,
+  unread,
+  isMenuOpen = false,
+  onContextMenu,
+}: ChatRowProps & {
+  isMenuOpen?: boolean;
+  /** Set by the `ContextMenu` it is the child of. */
+  onContextMenu?: MouseEventHandler<HTMLAnchorElement>;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -282,7 +358,9 @@ const ChatRow = ({
       className={clsx(
         "hub__left-panel__chat",
         isActive && "hub__left-panel__chat--active",
+        isMenuOpen && "hub__left-panel__chat--menu-open",
       )}
+      onContextMenu={onContextMenu}
     >
       <span
         className={clsx(

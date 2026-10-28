@@ -12,8 +12,6 @@ import {
   Leave,
   Meet,
   Shared,
-  Star,
-  StarSlash,
   Thread,
 } from "@gouvfr-lasuite/ui-components/icons";
 import { useRouter } from "next/router";
@@ -22,7 +20,8 @@ import { useTranslation } from "react-i18next";
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
-import { useChatFavourite } from "@/features/chat/hooks/useChatFavourite";
+import { useChatQuickActions } from "@/features/chat/hooks/useChatQuickActions";
+import { useChatUnread } from "@/features/chat/hooks/useChatUnread";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
 import type { Chat } from "@/features/drivers/types";
 
@@ -129,13 +128,13 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
   const menu = useDropdownMenu();
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isLeaveOpen, setIsLeaveOpen] = useState(false);
-  const { setFavourite, isPending } = useChatFavourite(chat.ref);
+  const unread = useChatUnread()(chat.ref);
+  const quickActions = useChatQuickActions(chat, unread);
   const {
     removeFromHistory,
     isPending: isLeaving,
     isSupported: canLeave,
   } = useRemoveChatFromHistory(chat.ref);
-  const isFavourite = chat.section === "favourites";
   const isInvitation = isInvitationChat(chat);
 
   useEffect(() => {
@@ -166,15 +165,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         icon: <Shared />,
         callback: () => setIsMembersOpen(true),
       },
-      {
-        id: "favourite",
-        label: isFavourite
-          ? t("Remove from favourites")
-          : t("Add to favourites"),
-        icon: isFavourite ? <StarSlash /> : <Star />,
-        isDisabled: isPending,
-        callback: () => setFavourite(!isFavourite),
-      },
+      ...quickActions,
       { type: "separator" },
       {
         id: "rename",
@@ -197,7 +188,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         callback: () => setIsLeaveOpen(true),
       },
     ],
-    [canLeave, isFavourite, isLeaving, isPending, setFavourite, t],
+    [canLeave, isLeaving, quickActions, t],
   );
 
   const trigger = (

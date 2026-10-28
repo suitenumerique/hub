@@ -152,10 +152,11 @@
 // pointer passing over the composer actions does not flash it. Closing hides
 // it at once, including before it ever showed. Positioned inside the
 // composer, it keeps its own width (up to the design-system maximum) rather
-// than shrinking against the composer's right edge.
+// than shrinking against the composer's right edge. Other tooltips can wait
+// longer with `--hub-tooltip-delay`.
 .c__tooltip.hub__delayed-tooltip {
   width: max-content;
-  animation: slide var(--animation-duration) 0.5s both;
+  animation: slide var(--animation-duration) var(--hub-tooltip-delay, 0.5s) both;
 
   &.c__tooltip--exiting {
     animation: none;
