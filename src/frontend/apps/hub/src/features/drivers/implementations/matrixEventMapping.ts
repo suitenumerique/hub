@@ -188,11 +188,11 @@ type ThreadReplyCounter = {
 };
 
 /**
- * `Thread.length` is based on the root's server aggregation. During sync the
- * SDK can briefly re-process an older root summary after already delivering a
- * new reply. Keep the confirmed count monotonic for the lifetime of that SDK
- * Thread object, and remember live event keys so `Thread.newReply` followed by
- * `Thread.new` cannot count or emit the same reply twice.
+ * The root's server aggregation can lag: during sync the SDK can briefly
+ * re-process an older root summary after already delivering a new reply. Keep
+ * the confirmed count monotonic for the lifetime of that SDK Thread object,
+ * and remember live event keys so `Thread.newReply` followed by `Thread.new`
+ * cannot count or emit the same reply twice.
  */
 const threadReplyCounters = new WeakMap<Thread, ThreadReplyCounter>();
 
@@ -205,8 +205,20 @@ export const threadReplyEventKey = (event: MatrixEvent): string | undefined => {
   return eventId ? `event:${eventId}` : undefined;
 };
 
+/**
+ * Replies counted by the root's server aggregation, not `Thread.length`: the
+ * SDK adds one for every reply it appends forward, including one the
+ * aggregation already counts when it replays the events it buffered while the
+ * thread loaded, and the monotonic counter would keep that overcount. Live
+ * replies are counted by `observeThreadReply`, own ones by the send result.
+ */
+const aggregatedReplyCount = (thread: Thread): number =>
+  thread.rootEvent?.getServerAggregatedRelation<{ count?: number }>(
+    RelationType.Thread,
+  )?.count ?? 0;
+
 const threadReplySnapshot = (thread: Thread): number =>
-  Math.max(thread.length, threadReplyEvents(thread).length);
+  Math.max(aggregatedReplyCount(thread), threadReplyEvents(thread).length);
 
 export const getThreadReplyCounter = (thread: Thread): ThreadReplyCounter => {
   const snapshot = threadReplySnapshot(thread);
