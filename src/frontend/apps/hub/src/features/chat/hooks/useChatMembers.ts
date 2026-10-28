@@ -1,6 +1,7 @@
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
+import { queryReadOptions } from "@/features/drivers/Driver";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { ChatMember, ChatRef } from "@/features/drivers/types";
 
@@ -24,7 +25,10 @@ export const useChatMembers = (
   const query = useQuery({
     queryKey: ref ? chatKeys.members(ref) : ["chat-members", "none"],
     queryFn: ref
-      ? () => getRegistry().get(ref.accountId).getChatMembers(ref.chatId)
+      ? (context) =>
+          getRegistry()
+            .get(ref.accountId)
+            .getChatMembers(ref.chatId, queryReadOptions(context))
       : skipToken,
     enabled,
     staleTime: Infinity,

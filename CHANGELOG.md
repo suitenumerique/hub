@@ -145,6 +145,10 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Stop freezing the page when a large conversation opens for the
+  first time: apply its loaded members as one change instead of one per
+  member, refresh conversations once per burst of changes, stop superseded
+  reads early and check unread state from the newest message.
 - 🐛(frontend) Stop typing lag caused by encryption: upgrade matrix-js-sdk
   to 42.4.0, as Tchap web does. With 41.6 and the encryption module 18.9,
   most syncs created 50 new one-time keys, which slowed every later sync and

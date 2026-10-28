@@ -59,7 +59,6 @@ export const useCreateChatForUsers = (
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(accountId),
       });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
 
       return chat.ref;
     },

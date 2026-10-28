@@ -5,7 +5,6 @@ import type {
 } from "@/features/drivers/types";
 
 export const chatKeys = {
-  chatsAll: () => ["chats"] as const,
   chatsOf: (accountId: AccountId) => ["chats", accountId] as const,
   unreadOf: (accountId: AccountId) => ["chat-unread", accountId] as const,
   noChat: () => ["chat", "none"] as const,

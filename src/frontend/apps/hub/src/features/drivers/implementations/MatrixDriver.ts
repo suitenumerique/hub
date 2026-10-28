@@ -98,6 +98,7 @@ import {
   DeleteChatMessageParams,
   DownloadChatAttachmentParams,
   Driver,
+  DriverReadOptions,
   GetChatAvatarParams,
   EditChatMessageParams,
   GetChatThreadParams,
@@ -522,7 +523,7 @@ export class MatrixDriver extends Driver {
     this.settings = parseMatrixDriverSettings(settings);
   }
 
-  async getChats(): Promise<LocalChatSections> {
+  async getChats(options?: DriverReadOptions): Promise<LocalChatSections> {
     const mx = this.mx;
     if (!mx) {
       return {
@@ -535,6 +536,8 @@ export class MatrixDriver extends Driver {
     // invitations, which aren't in `/joined_rooms` and are surfaced by their
     // membership instead.
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    // A newer read replaced this one: skip mapping every room for nothing.
+    options?.signal?.throwIfAborted();
     const currentUserId = mx.getUserId() ?? undefined;
     const localChats = chatRooms(mx)
       .filter(
@@ -569,7 +572,10 @@ export class MatrixDriver extends Driver {
     );
   }
 
-  async getChat(chatId: string): Promise<LocalChat> {
+  async getChat(
+    chatId: string,
+    options?: DriverReadOptions,
+  ): Promise<LocalChat> {
     const { mx, room } = this.requireRoom("getChat", chatId);
     // A joined room (server-confirmed) or a pending invitation is addressable;
     // anything else (left/banned) is not.
@@ -582,12 +588,16 @@ export class MatrixDriver extends Driver {
     }
     const currentUserId = mx.getUserId() ?? undefined;
     if (joinedRoomIds.has(chatId)) await this.prepareRoom(mx, room);
+    options?.signal?.throwIfAborted();
     return joinedRoomIds.has(chatId)
       ? matrixJoinedRoomToLocalChat(room, currentUserId)
       : matrixRoomToLocalChat(room, currentUserId);
   }
 
-  async getChatMembers(chatId: string): Promise<ChatMembers> {
+  async getChatMembers(
+    chatId: string,
+    options?: DriverReadOptions,
+  ): Promise<ChatMembers> {
     const { mx, room } = this.requireRoom("getChatMembers", chatId);
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     if (!joinedRoomIds.has(chatId)) {
@@ -596,6 +606,7 @@ export class MatrixDriver extends Driver {
       );
     }
     await room.loadMembersIfNeeded();
+    options?.signal?.throwIfAborted();
     const currentUserId = mx.getUserId() ?? undefined;
     const members = room.getMembers();
 
@@ -3617,12 +3628,30 @@ export class MatrixDriver extends Driver {
       emitCurrent({ type: "chat:changed", chatId: member.roomId });
       emitCurrent({ type: "threads:changed", chatId: member.roomId });
     };
+    // Lazy-loading a room's members (setOutOfBandMembers) emits
+    // RoomStateEvent.Members once per member, all in one task: thousands for a
+    // large room. Like Element (RoomView throttles them, its room list ignores
+    // them), batch them so each room publishes one change once the SDK is done.
+    const pendingMemberRoomIds = new Set<string>();
+    let membersFlushQueued = false;
     const onMembers = (
       _event: MatrixEvent,
       _state: unknown,
       member: RoomMember,
     ) => {
-      emitCurrent({ type: "members:changed", chatId: member.roomId });
+      pendingMemberRoomIds.add(member.roomId);
+      if (membersFlushQueued) {
+        return;
+      }
+      membersFlushQueued = true;
+      queueMicrotask(() => {
+        membersFlushQueued = false;
+        const roomIds = [...pendingMemberRoomIds];
+        pendingMemberRoomIds.clear();
+        roomIds.forEach((chatId) =>
+          emitCurrent({ type: "members:changed", chatId }),
+        );
+      });
     };
     // Membership events are applied before the SDK recalculates `room.name`.
     // Wait for this final signal before refreshing the conversation metadata,
@@ -3951,6 +3980,7 @@ export class MatrixDriver extends Driver {
       detachThreadListenersByRoomId.clear();
       pendingLiveThreadReplies.clear();
       pendingTypingRoomIds.clear();
+      pendingMemberRoomIds.clear();
       decryptedRooms.clear();
       resetRoomIds.clear();
     };

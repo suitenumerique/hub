@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { decorateChat } from "@/features/chat/chatRefs";
+import { queryReadOptions } from "@/features/drivers/Driver";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatRef, ChatSections } from "@/features/drivers/types";
 
@@ -20,15 +21,15 @@ export type UseChatResult = {
  */
 export const useChat = (ref: ChatRef | null): UseChatResult => {
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const query = useQuery<Chat>({
     queryKey: ref ? chatKeys.chat(ref) : chatKeys.noChat(),
-    queryFn: async () => {
+    queryFn: async (context) => {
       if (!ref) {
         throw new Error("useChat requires a ChatRef.");
       }
       const localChat = await getRegistry()
         .get(ref.accountId)
-        .getChat(ref.chatId);
+        .getChat(ref.chatId, queryReadOptions(context));
       return decorateChat(ref.accountId, localChat);
     },
     enabled: ref !== null,

@@ -171,7 +171,6 @@ export const useDeleteChatMessage = (
       void queryClient.invalidateQueries({
         queryKey: chatKeys.chatsOf(ref.accountId),
       });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.chatsAll() });
     },
     onError: (_error, _variables, context) => {
       if (context) {

@@ -12,6 +12,7 @@ import {
   type DeleteChatMessageParams,
   type DownloadChatAttachmentParams,
   type Driver,
+  type DriverReadOptions,
   type EditChatMessageParams,
   type GetChatAvatarParams,
   type GetChatMessagesParams,
@@ -178,16 +179,19 @@ export class LazyMatrixDriver extends BaseDriver {
     return run(driver);
   }
 
-  async getChats(): Promise<LocalChatSections> {
-    return this.withTarget((driver) => driver.getChats());
+  async getChats(options?: DriverReadOptions): Promise<LocalChatSections> {
+    return this.withTarget((driver) => driver.getChats(options));
   }
 
   async getChatUsers(filters?: ChatUserFilters): Promise<ChatUser[]> {
     return this.withTarget((driver) => driver.getChatUsers(filters));
   }
 
-  async getChatMembers(chatId: string): Promise<ChatMembers> {
-    return this.withTarget((driver) => driver.getChatMembers(chatId));
+  async getChatMembers(
+    chatId: string,
+    options?: DriverReadOptions,
+  ): Promise<ChatMembers> {
+    return this.withTarget((driver) => driver.getChatMembers(chatId, options));
   }
 
   async getChatForUsers(userIds: string[]): Promise<LocalChat | null> {
@@ -206,8 +210,11 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.refuseChatInvitation(chatId));
   }
 
-  async getChat(chatId: string): Promise<LocalChat> {
-    return this.withTarget((driver) => driver.getChat(chatId));
+  async getChat(
+    chatId: string,
+    options?: DriverReadOptions,
+  ): Promise<LocalChat> {
+    return this.withTarget((driver) => driver.getChat(chatId, options));
   }
 
   async getChatMessages(

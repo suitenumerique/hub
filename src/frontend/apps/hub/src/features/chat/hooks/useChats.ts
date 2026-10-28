@@ -2,6 +2,7 @@ import { useQueries, type UseQueryResult } from "@tanstack/react-query";
 
 import { decorateChatSections } from "@/features/chat/chatRefs";
 import { compareChats } from "@/features/chat/chatSorting";
+import { queryReadOptions } from "@/features/drivers/Driver";
 import {
   useDriverEntries,
   type DriverEntry,
@@ -68,8 +69,10 @@ export const useChats = (): MergedChatsResult => {
   return useQueries({
     queries: entries.map((entry) => ({
       queryKey: chatKeys.chatsOf(entry.accountId),
-      queryFn: async () => {
-        const localSections: LocalChatSections = await entry.driver.getChats();
+      queryFn: async (context) => {
+        const localSections: LocalChatSections = await entry.driver.getChats(
+          queryReadOptions(context),
+        );
         return decorateChatSections(entry.accountId, localSections);
       },
       staleTime: Infinity,
