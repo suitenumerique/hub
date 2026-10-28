@@ -1,24 +1,24 @@
 import {
   type AccessTokens,
-  completeAuthorizationCodeGrant,
   createClient,
-  generateOidcAuthorizationUrl,
   MatrixClient,
   MatrixError,
-  OidcClientConfig,
-  OidcTokenRefresher,
-  registerOidcClient,
+  OAuth2,
+  OAuth2Error,
+  TokenRefresher,
   type TokenRefreshFunction,
+  type ValidatedAuthMetadata,
 } from "matrix-js-sdk/lib/matrix";
 import { secureRandomString } from "matrix-js-sdk/lib/randomstring";
-import { type IdTokenClaims } from "oidc-client-ts";
 
 import { CompleteOidcLoginResponse } from "../types";
 
-// OIDC response mode used for the authorization request.
+// OAuth response mode used for the authorization request.
 const RESPONSE_MODE = "query";
-// Nonce length, in characters. OIDC recommends a high-entropy value.
-const NONCE_LENGTH = 32;
+// Length of the authorization `state`, in characters.
+const STATE_LENGTH = 32;
+// Session storage prefix of the context needed to finish a login, per state.
+const AUTH_CONTEXT_STORAGE_PREFIX = "matrixOAuthContext:";
 
 // Use one registered callback even when login starts from a deep link. A
 // pathname such as /home is not necessarily registered with the OIDC issuer.
@@ -32,27 +32,34 @@ export const getOidcRedirectUri = (): string =>
 export type OidcClient = { clientId: string } | { clientName: string };
 
 /**
+ * What the authorization redirect needs to finish the login, saved in session
+ * storage under its `state` like Element (persistOAuthSettings.ts).
+ */
+type StoredAuthContext = {
+  homeserverUrl: string;
+  metadata: ValidatedAuthMetadata;
+  authContext: OAuth2["context"];
+};
+
+/**
  * Dynamic registration (MSC2966). MAS returns the same client id when the
  * registration body is identical, so registering again at each login is cheap
  * and recovers by itself if the issuer forgets the client.
  */
 const registerClient = (
-  metadata: OidcClientConfig,
+  metadata: ValidatedAuthMetadata,
   clientName: string,
   redirectUri: string,
 ): Promise<string> =>
-  registerOidcClient(metadata, {
-    clientName,
-    clientUri: window.location.origin,
-    redirectUris: [redirectUri],
-    applicationType: "web",
-    contacts: undefined,
-    tosUri: undefined,
-    policyUri: undefined,
+  OAuth2.registerClient(metadata, {
+    client_name: clientName,
+    client_uri: window.location.origin,
+    redirect_uris: [redirectUri],
+    application_type: "web",
   });
 
 /**
- * Builds the OIDC authorization URL on the homeserver's delegated-auth issuer.
+ * Builds the OAuth authorization URL on the homeserver's delegated-auth issuer.
  * The homeserver URL travels with the authorization state and comes back from
  * {@link completeOidcLogin}.
  */
@@ -61,8 +68,8 @@ export const getOIDCAuthUrl = async (
   email: string,
   client: OidcClient,
 ): Promise<string> => {
-  const delegatedAuthConfig = await fetchDelegatedAuthMetadata(homeserverUrl);
-  if (!delegatedAuthConfig) {
+  const metadata = await fetchDelegatedAuthMetadata(homeserverUrl);
+  if (!metadata) {
     throw new Error("OIDC metadata not available for this server");
   }
 
@@ -70,27 +77,27 @@ export const getOIDCAuthUrl = async (
   const clientId =
     "clientId" in client
       ? client.clientId
-      : await registerClient(
-          delegatedAuthConfig,
-          client.clientName,
-          redirectUri,
-        );
-  return generateOidcAuthorizationUrl({
-    metadata: delegatedAuthConfig,
-    redirectUri,
-    clientId,
-    homeserverUrl,
-    identityServerUrl: homeserverUrl,
-    nonce: secureRandomString(NONCE_LENGTH),
-    urlState: "",
-    loginHint: email,
-    responseMode: RESPONSE_MODE,
-  });
+      : await registerClient(metadata, client.clientName, redirectUri);
+  const auth = new OAuth2(metadata, { clientId, redirectUri });
+  const state = secureRandomString(STATE_LENGTH);
+  sessionStorage.setItem(
+    AUTH_CONTEXT_STORAGE_PREFIX + state,
+    JSON.stringify({
+      homeserverUrl,
+      metadata,
+      authContext: auth.context,
+    } satisfies StoredAuthContext),
+  );
+  const url = new URL(
+    await auth.generateAuthorizationCodeGrantUrl(state, RESPONSE_MODE),
+  );
+  url.searchParams.set("login_hint", email);
+  return url.toString();
 };
 
 const fetchDelegatedAuthMetadata = async (
   homeserverUrl: string,
-): Promise<OidcClientConfig | undefined> => {
+): Promise<ValidatedAuthMetadata | undefined> => {
   try {
     const tempClient = createClient({ baseUrl: homeserverUrl });
     return await tempClient.getAuthMetadata();
@@ -109,6 +116,17 @@ const fetchDelegatedAuthMetadata = async (
   }
 };
 
+/** Reads, then forgets, the context saved when the authorization started. */
+const takeStoredAuthContext = (state: string): StoredAuthContext => {
+  const key = AUTH_CONTEXT_STORAGE_PREFIX + state;
+  const raw = sessionStorage.getItem(key);
+  sessionStorage.removeItem(key);
+  if (!raw) {
+    throw new Error(OAuth2Error.MissingOrInvalidStoredState);
+  }
+  return JSON.parse(raw) as StoredAuthContext;
+};
+
 /**
  * Completes the authorization-code flow with the parameters returned on the
  * redirect back, resolving with a {@link CompleteOidcLoginResponse}.
@@ -119,68 +137,67 @@ export const completeOidcLogin = async (params: {
   state: string;
 }): Promise<CompleteOidcLoginResponse> => {
   const { code, state } = params;
-  const { homeserverUrl, tokenResponse, idTokenClaims, oidcClientSettings } =
-    await completeAuthorizationCodeGrant(code, state, RESPONSE_MODE);
+  const { homeserverUrl, metadata, authContext } =
+    takeStoredAuthContext(state);
+  const tokenResponse = await new OAuth2(
+    metadata,
+    authContext,
+  ).completeAuthorizationCodeGrant(code);
 
   return {
     homeserverUrl,
     accessToken: tokenResponse.access_token,
     refreshToken: tokenResponse.refresh_token,
-    idToken: tokenResponse.id_token,
-    clientId: oidcClientSettings.clientId,
-    issuer: oidcClientSettings.issuer,
-    idTokenClaims,
+    clientId: authContext.clientId,
+    issuer: metadata.issuer,
   };
 };
 
 type RefreshedTokens = Pick<AccessTokens, "accessToken" | "refreshToken">;
 
 /**
- * OIDC token refresher whose only addition over the SDK base class is handing
- * the freshly minted tokens back to the caller, so token *persistence* stays
- * owned by the driver instead of leaking into this util.
- */
-class HubOidcTokenRefresher extends OidcTokenRefresher {
-  public constructor(
-    issuer: string,
-    clientId: string,
-    redirectUri: string,
-    deviceId: string,
-    idTokenClaims: IdTokenClaims,
-    private readonly onTokensRefreshed: (tokens: RefreshedTokens) => void,
-  ) {
-    super(issuer, clientId, redirectUri, deviceId, idTokenClaims);
-  }
-
-  protected async persistTokens(tokens: RefreshedTokens): Promise<void> {
-    this.onTokensRefreshed(tokens);
-  }
-}
-
-/**
  * Builds the `tokenRefreshFunction` the Matrix client calls when it hits an
  * expired access token. Without this, the SDK treats a 401 after token expiry
  * as a hard logout.
+ * The issuer endpoints are read from the homeserver at the first refresh, so a
+ * page load with a valid token makes no extra request.
  * `onTokensRefreshed` lets the caller persist the rotated tokens for the next
- * page load.
+ * page load, so token persistence stays owned by the driver.
  */
 export const buildOidcTokenRefreshFunction = (params: {
-  issuer: string;
+  homeserverUrl: string;
   clientId: string;
   redirectUri: string;
   deviceId: string;
-  idTokenClaims: IdTokenClaims;
   onTokensRefreshed: (tokens: RefreshedTokens) => void;
 }): TokenRefreshFunction => {
-  const refresher = new HubOidcTokenRefresher(
-    params.issuer,
-    params.clientId,
-    params.redirectUri,
-    params.deviceId,
-    params.idTokenClaims,
-    params.onTokensRefreshed,
-  );
-  return (refreshToken) => refresher.doRefreshAccessToken(refreshToken);
+  let refresher: Promise<TokenRefresher> | undefined;
+  const getRefresher = (): Promise<TokenRefresher> => {
+    refresher ??= createClient({ baseUrl: params.homeserverUrl })
+      .getAuthMetadata()
+      .then(
+        (metadata) =>
+          new TokenRefresher(
+            new OAuth2(metadata, {
+              clientId: params.clientId,
+              redirectUri: params.redirectUri,
+              deviceId: params.deviceId,
+            }),
+            async (tokens) => params.onTokensRefreshed(tokens),
+          ),
+      )
+      .catch((error: unknown) => {
+        // Let the next refresh read the metadata again. The SDK logs out on a
+        // MatrixError, so a homeserver error here (a 5xx while its auth
+        // service restarts, a 429) must stay a failure it retries, as with the
+        // OIDC refresher of matrix-js-sdk 41.
+        refresher = undefined;
+        throw new Error("Failed to read the OAuth metadata.", { cause: error });
+      });
+    return refresher;
+  };
+  return async (refreshToken) =>
+    (await getRefresher()).tokenRefreshFunction(refreshToken);
 };
 
 /**

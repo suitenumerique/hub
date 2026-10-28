@@ -34,8 +34,6 @@ import {
   type RoomMessageEventContent,
 } from "matrix-js-sdk/lib/types";
 
-import { type IdTokenClaims } from "oidc-client-ts";
-
 import { emojiToCodepoints } from "@/features/chat/fluentEmoji";
 import { toggleReaction } from "@/features/chat/reactions";
 import {
@@ -266,12 +264,13 @@ const STORAGE = {
   oidcState: "oidc_state",
 } as const;
 
-/** OIDC session data persisted so tokens can be refreshed after a reload. */
+/**
+ * OIDC session data persisted so tokens can be refreshed after a reload.
+ * Sessions saved before matrix-js-sdk 42 also hold an ID token, now unused.
+ */
 type StoredOidc = {
   clientId: string;
   issuer: string;
-  idToken: string;
-  idTokenClaims: IdTokenClaims;
   redirectUri: string;
 };
 const SYNC_STORE_DB_NAME = "matrix-web-sync-store";
@@ -3025,8 +3024,6 @@ export class MatrixDriver extends Driver {
     this.writeStoredJson(STORAGE.oidc, {
       clientId: oidc.clientId,
       issuer: oidc.issuer,
-      idToken: oidc.idToken,
-      idTokenClaims: oidc.idTokenClaims,
       // Keep the token refresh metadata aligned with the registered callback
       // used to start authorization, including logins started from deep links.
       redirectUri: getOidcRedirectUri(),
@@ -4002,11 +3999,10 @@ export class MatrixDriver extends Driver {
         throw new DOMException("Session replaced", "AbortError");
     };
     const refresh = buildOidcTokenRefreshFunction({
-      issuer: oidc.issuer,
+      homeserverUrl: user.homeserverUrl,
       clientId: oidc.clientId,
       redirectUri: oidc.redirectUri,
       deviceId: user.deviceId,
-      idTokenClaims: oidc.idTokenClaims,
       onTokensRefreshed: ({ accessToken, refreshToken }) => {
         // A refresh started by the previous client must not overwrite tokens
         // saved by its replacement while the refresh request was in flight.

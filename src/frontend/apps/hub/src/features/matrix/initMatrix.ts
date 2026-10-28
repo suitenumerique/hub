@@ -83,22 +83,27 @@ const localizedRoomNameGenerator = (
 };
 
 /** A command the SDK's worker backend posts, answered by the same `seq`. */
-type SyncStoreWorkerCommand = { seq?: number };
+type SyncStoreWorkerCommand = { command?: string; seq?: number };
 
 /**
  * Like Element (createMatrixClient.ts), the sync store runs its IndexedDB
  * backend in a worker: loading, accumulating and saving the cache (about
  * 10 MB on Tchap) no longer blocks the main thread.
  *
- * The SDK's worker backend only listens to `onmessage`: if the worker script
- * fails to load (a stale chunk after a deployment) or the worker dies, its
- * commands would never settle, leaving startup, sync and logout hanging. A
+ * The SDK's worker backend answers its commands from `onmessage` only: if the
+ * worker script fails to load (a stale chunk after a deployment) or the
+ * worker dies, they would never settle, leaving sync and logout hanging. A
  * failed worker answers them with an error instead, so the store degrades to
  * memory as it does when IndexedDB itself fails.
+ *
+ * Its first command, `setupWorker`, is left to the SDK: it watches `onerror`
+ * while starting and then falls back to IndexedDB on the main thread, and an
+ * answer to that command would only be an unhandled rejection.
  */
 const createSyncStoreWorker = (): Worker => {
   const worker = new Worker(new URL("./indexeddb.worker.ts", import.meta.url));
   const pending = new Set<number>();
+  let setupSeq: number | undefined;
   let failed = false;
   const answerFailure = (seq: number) => {
     worker.dispatchEvent(
@@ -114,8 +119,10 @@ const createSyncStoreWorker = (): Worker => {
   const post = worker.postMessage.bind(worker);
   worker.postMessage = ((command: SyncStoreWorkerCommand) => {
     const { seq } = command;
+    if (command.command === "setupWorker") setupSeq = seq;
     if (failed) {
-      if (seq !== undefined) queueMicrotask(() => answerFailure(seq));
+      if (seq !== undefined && seq !== setupSeq)
+        queueMicrotask(() => answerFailure(seq));
       return;
     }
     if (seq !== undefined) pending.add(seq);
@@ -125,11 +132,20 @@ const createSyncStoreWorker = (): Worker => {
     const { seq } = (event.data ?? {}) as SyncStoreWorkerCommand;
     if (seq !== undefined) pending.delete(seq);
   });
-  const fail = () => {
+  const fail = (event: Event) => {
     if (failed) return;
     failed = true;
     worker.terminate();
-    for (const seq of [...pending]) answerFailure(seq);
+    // The SDK watches `onerror` only: report an unreadable message as an error
+    // so that a store still starting falls back instead of waiting forever.
+    if (event.type !== "error") {
+      worker.dispatchEvent(
+        new ErrorEvent("error", { message: "The sync store worker failed." }),
+      );
+    }
+    for (const seq of [...pending]) {
+      if (seq !== setupSeq) answerFailure(seq);
+    }
   };
   worker.addEventListener("error", fail);
   worker.addEventListener("messageerror", fail);
