@@ -1,4 +1,5 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, type UseQueryResult } from "@tanstack/react-query";
+import { useCallback } from "react";
 
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { AccountId, ChatRef, ChatUnread } from "@/features/drivers/types";
@@ -20,24 +21,34 @@ export type ChatUnreadLookup = (ref: ChatRef) => ChatUnread;
  */
 export const useChatUnread = (): ChatUnreadLookup => {
   const entries = useDriverEntries();
-
-  return useQueries({
+  // A plain object, which React Query keeps as long as no read state changed:
+  // the lookup below then stays the same, and so do the memoized rows.
+  const combine = useCallback(
+    (results: UseQueryResult<Record<string, ChatUnread>>[]) => {
+      const byAccount: Partial<Record<AccountId, Record<string, ChatUnread>>> =
+        {};
+      entries.forEach((entry, index) => {
+        const unread = results[index]?.data;
+        if (unread) {
+          byAccount[entry.accountId] = unread;
+        }
+      });
+      return byAccount;
+    },
+    [entries],
+  );
+  const byAccount = useQueries({
     queries: entries.map(({ accountId, driver }) => ({
       queryKey: chatKeys.unreadOf(accountId),
       queryFn: () => driver.getUnread(),
       staleTime: Infinity,
       meta: { noGlobalError: true },
     })),
-    combine: (results) => {
-      const byAccount = new Map<AccountId, Record<string, ChatUnread>>();
-      entries.forEach((entry, index) => {
-        const unread = results[index]?.data;
-        if (unread) {
-          byAccount.set(entry.accountId, unread);
-        }
-      });
-      return (ref: ChatRef): ChatUnread =>
-        byAccount.get(ref.accountId)?.[ref.chatId] ?? READ;
-    },
+    combine,
   });
+
+  return useCallback(
+    (ref: ChatRef): ChatUnread => byAccount[ref.accountId]?.[ref.chatId] ?? READ,
+    [byAccount],
+  );
 };

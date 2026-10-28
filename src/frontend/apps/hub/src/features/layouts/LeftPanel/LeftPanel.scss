@@ -190,7 +190,8 @@
       grid-template-rows: 1fr;
       transition: grid-template-rows 220ms ease;
 
-      > .hub__left-panel__list {
+      > .hub__left-panel__list,
+      > .hub__left-panel__list-viewport {
         overflow: hidden;
         min-height: 0;
       }
@@ -214,6 +215,16 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+
+    // Virtuoso positions rows from their measured heights, which a flex gap
+    // is not part of: the space between rows belongs to each row instead.
+    &--virtual {
+      gap: 0;
+
+      > .hub__left-panel__item {
+        padding-bottom: 1px;
+      }
+    }
   }
 
   // Shows the "more" button over the end of the row while it is hovered,

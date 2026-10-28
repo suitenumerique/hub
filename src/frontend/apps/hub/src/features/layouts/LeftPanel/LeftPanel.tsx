@@ -9,8 +9,25 @@ import { More, Plus, QuestionMark } from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { MouseEventHandler, ReactNode, useId, useState } from "react";
+import {
+  memo,
+  MouseEventHandler,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
+import {
+  type ContextProp,
+  type ItemProps,
+  type ListProps,
+  Virtuoso,
+} from "react-virtuoso";
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
@@ -23,7 +40,7 @@ import {
 import { useChats } from "@/features/chat/hooks/useChats";
 import { APP_VERSION } from "@/features/config/appVersion";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
-import type { Chat, ChatUnread } from "@/features/drivers/types";
+import type { Chat, ChatRef, ChatUnread } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 
 import { TchapLogo } from "./TchapLogo";
@@ -45,12 +62,17 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const chats = useChats();
   const unreadLookup = useChatUnread();
   const entries = useDriverEntries();
+  // The rows render inside this element's scroll, only those near the view.
+  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(
+    null,
+  );
   const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
     ? "⌘K"
     : "Ctrl K";
 
-  const accountLabels = new Map(
-    entries.map((entry) => [entry.accountId, entry.label]),
+  const accountLabels = useMemo(
+    () => new Map(entries.map((entry) => [entry.accountId, entry.label])),
+    [entries],
   );
   const showAccountLabels = entries.length > 1;
 
@@ -94,11 +116,12 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
         </nav>
       </div>
 
-      <div className="hub__left-panel__scroll">
+      <div className="hub__left-panel__scroll" ref={setScrollParent}>
         {chats.favourites.length > 0 ? (
           <ChatSection
             title={t("Favourites")}
             chats={chats.favourites}
+            scrollParent={scrollParent}
             accountLabels={accountLabels}
             showAccountLabels={showAccountLabels}
             unreadLookup={unreadLookup}
@@ -107,6 +130,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
         <ChatSection
           title={t("All chats")}
           chats={chats.all}
+          scrollParent={scrollParent}
           showNewChat={
             !chats.isLoading && !chats.isError && chats.all.length === 0
           }
@@ -175,31 +199,209 @@ const ActionRow = ({ action }: { action: ActionItem }) => {
 type ChatSectionProps = {
   title: string;
   chats: Chat[];
+  scrollParent: HTMLElement | null;
   showNewChat?: boolean;
   accountLabels: Map<string, string>;
   showAccountLabels: boolean;
   unreadLookup: ChatUnreadLookup;
 };
 
-const ChatSection = ({
+/** What every row reads, passed through Virtuoso's context. */
+type ChatRowContext = {
+  count: number;
+  activeRef: ChatRef | null;
+  accountLabels: Map<string, string>;
+  showAccountLabels: boolean;
+  unreadLookup: ChatUnreadLookup;
+  onFocusedRowRemoved: () => void;
+};
+
+// Like Element's room list (VirtualizedRoomListView), only the rows near the
+// view are rendered: each one holds two menus and their mutations, which made
+// rendering every conversation slow on large accounts. As in ThreadList,
+// Virtuoso types its list refs as divs: list roles keep the semantics of the
+// former <ul>, and the position attributes announce the full length.
+const ChatList = ({
+  ref,
+  style,
+  children,
+  "data-testid": testId,
+}: ListProps & ContextProp<ChatRowContext>) => (
+  <div
+    ref={ref}
+    role="list"
+    style={style}
+    data-testid={testId}
+    className="hub__left-panel__list hub__left-panel__list--virtual"
+  >
+    {children}
+  </div>
+);
+
+const ChatListItem = ({
+  children,
+  style,
+  "data-index": index,
+  "data-item-index": itemIndex,
+  "data-known-size": knownSize,
+  context,
+}: ItemProps<Chat> & ContextProp<ChatRowContext>) => {
+  const rowRef = useRef<HTMLDivElement>(null);
+  // The row's link or "more" button while it has the focus.
+  const focusedRef = useRef<HTMLElement | null>(null);
+  const { onFocusedRowRemoved } = context;
+
+  // When the list reorders (a message moves a conversation up), React moves
+  // rows with insertBefore, which drops the focus of a moved one to the page
+  // without a blur event: give it back. A blur the user caused forgets it.
+  useLayoutEffect(() => {
+    const focused = focusedRef.current;
+    if (focused?.isConnected && document.activeElement === document.body)
+      focused.focus({ preventScroll: true });
+  });
+
+  // A row leaving Virtuoso's range is removed. Layout cleanups run while it is
+  // still in the document, so its focus can be seen before it is lost.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    return () => {
+      if (row?.contains(document.activeElement)) onFocusedRowRemoved();
+    };
+  }, [onFocusedRowRemoved]);
+
+  return (
+    <div
+      ref={rowRef}
+      role="listitem"
+      data-index={index}
+      data-item-index={itemIndex}
+      data-known-size={knownSize}
+      aria-posinset={index + 1}
+      aria-setsize={context.count}
+      style={style}
+      className="hub__left-panel__item"
+      onFocus={(event) => {
+        focusedRef.current = event.target;
+      }}
+      onBlur={() => {
+        focusedRef.current = null;
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+// Stable component types: Virtuoso remounts every row when they change.
+const CHAT_LIST_COMPONENTS = { List: ChatList, Item: ChatListItem };
+
+// The avatar line and its padding, plus the pixel between rows (see
+// `hub__left-panel__list--virtual`); an account label adds a second line.
+// Known in advance, Virtuoso renders the rows at once instead of measuring a
+// first one alone.
+const ROW_HEIGHT = 37;
+const ROW_HEIGHT_WITH_ACCOUNT = 46;
+
+const chatRowKey = (_index: number, chat: Chat) =>
+  `${chat.accountId}:${chat.id}`;
+
+const renderChatRow = (_index: number, chat: Chat, context: ChatRowContext) => (
+  <ChatRow
+    chat={chat}
+    accountLabel={context.accountLabels.get(chat.accountId)}
+    showAccountLabel={context.showAccountLabels}
+    unread={context.unreadLookup(chat.ref)}
+    isActive={sameChatRef(context.activeRef, chat.ref)}
+  />
+);
+
+// Rendering more than the view keeps keyboard navigation and fast scrolling
+// from reaching rows that are not rendered yet.
+const OVERSCAN = { top: 400, bottom: 800 };
+
+const ChatSection = memo(function ChatSection({
   title,
   chats,
+  scrollParent,
   showNewChat = false,
   accountLabels,
   showAccountLabels,
   unreadLookup,
-}: ChatSectionProps) => {
+}: ChatSectionProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(true);
   const router = useRouter();
   const reactId = useId();
   const titleId = `${reactId}-title`;
   const panelId = `${reactId}-panel`;
+  const sectionRef = useRef<HTMLElement>(null);
+  const headerRef = useRef<HTMLButtonElement>(null);
+
+  // Virtuoso reads a list's offset in the shared scroll parent again only on
+  // scroll. When a section above grows or collapses, the lists below move
+  // without a scroll and would render the wrong rows until the next one.
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section || !scrollParent) return;
+    const observer = new ResizeObserver(() => {
+      scrollParent.dispatchEvent(new Event("scroll"));
+    });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [scrollParent]);
+
+  // A removed row that had the focus gives it to the section header instead
+  // of dropping it to the page, or to the first header left when its section
+  // went away with it (its last favourite removed).
+  const onFocusedRowRemoved = useCallback(() => {
+    queueMicrotask(() => {
+      if (document.activeElement && document.activeElement !== document.body)
+        return;
+      const header =
+        headerRef.current ??
+        document.querySelector<HTMLElement>(
+          ".hub__left-panel__section__header",
+        );
+      header?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  // Primitives, so the rows' context only changes with the selection.
+  const activeChatRef = readChatRef(router.query);
+  const activeAccountId = activeChatRef?.accountId;
+  const activeId = activeChatRef?.chatId;
+  const rowContext = useMemo<ChatRowContext>(
+    () => ({
+      count: chats.length,
+      activeRef:
+        activeAccountId && activeId
+          ? { accountId: activeAccountId, chatId: activeId }
+          : null,
+      accountLabels,
+      showAccountLabels,
+      unreadLookup,
+      onFocusedRowRemoved,
+    }),
+    [
+      chats.length,
+      activeAccountId,
+      activeId,
+      accountLabels,
+      showAccountLabels,
+      unreadLookup,
+      onFocusedRowRemoved,
+    ],
+  );
 
   return (
-    <section className="hub__left-panel__section" data-open={isOpen}>
+    <section
+      ref={sectionRef}
+      className="hub__left-panel__section"
+      data-open={isOpen}
+    >
       <h2 className="hub__left-panel__section__heading">
         <button
+          ref={headerRef}
           type="button"
           id={titleId}
           className="hub__left-panel__section__header"
@@ -222,8 +424,8 @@ const ChatSection = ({
         aria-labelledby={titleId}
         className="hub__left-panel__section__panel"
       >
-        <ul className="hub__left-panel__list" inert={!isOpen}>
-          {showNewChat && (
+        {showNewChat ? (
+          <ul className="hub__left-panel__list" inert={!isOpen}>
             <li>
               <Link
                 href="/chat/new"
@@ -253,40 +455,53 @@ const ChatSection = ({
                 </span>
               </Link>
             </li>
-          )}
-          {chats.map((chat) => (
-            <li
-              key={`${chat.accountId}:${chat.id}`}
-              className="hub__left-panel__item"
-            >
-              <ChatRow
-                chat={chat}
-                accountLabel={accountLabels.get(chat.accountId)}
-                showAccountLabel={showAccountLabels}
-                unread={unreadLookup(chat.ref)}
+          </ul>
+        ) : (
+          <div className="hub__left-panel__list-viewport" inert={!isOpen}>
+            {scrollParent && (
+              <Virtuoso
+                customScrollParent={scrollParent}
+                data={chats}
+                context={rowContext}
+                computeItemKey={chatRowKey}
+                components={CHAT_LIST_COMPONENTS}
+                itemContent={renderChatRow}
+                increaseViewportBy={OVERSCAN}
+                defaultItemHeight={
+                  showAccountLabels ? ROW_HEIGHT_WITH_ACCOUNT : ROW_HEIGHT
+                }
+                // Measure rows before paint, as ChatVirtualList does. This may
+                // log benign "ResizeObserver loop" errors.
+                skipAnimationFrameInResizeObserver
               />
-            </li>
-          ))}
-        </ul>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );
-};
+});
 
 type ChatRowProps = {
   chat: Chat;
   accountLabel?: string;
   showAccountLabel: boolean;
   unread: ChatUnread;
+  isActive: boolean;
 };
 
-/** A pending invitation has no quick access menu, as in the header. */
-const ChatRow = (props: ChatRowProps) =>
-  isInvitationChat(props.chat) ? (
+/**
+ * A pending invitation has no quick access menu, as in the header. Memoized:
+ * a list update re-renders only the rows whose conversation, read state or
+ * selection changed.
+ */
+const ChatRow = memo(function ChatRow(props: ChatRowProps) {
+  return isInvitationChat(props.chat) ? (
     <ChatRowLink {...props} />
   ) : (
     <ChatRowWithMenus {...props} />
   );
+});
 
 /**
  * Opens the quick access menu on right click or from the "more" button shown
@@ -334,6 +549,7 @@ const ChatRowLink = ({
   accountLabel,
   showAccountLabel,
   unread,
+  isActive,
   isMenuOpen = false,
   onContextMenu,
 }: ChatRowProps & {
@@ -342,8 +558,6 @@ const ChatRowLink = ({
   onContextMenu?: MouseEventHandler<HTMLAnchorElement>;
 }) => {
   const { t } = useTranslation();
-  const router = useRouter();
-  const isActive = sameChatRef(readChatRef(router.query), chat.ref);
 
   return (
     <Link

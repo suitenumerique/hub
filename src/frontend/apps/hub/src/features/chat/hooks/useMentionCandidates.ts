@@ -59,9 +59,10 @@ export const useMentionCandidates = (
   const chatRef = source?.chatRef ?? null;
   const isWanted = wanted && chatRef !== null;
   const { present, pendingInvites } = useChatMembers(chatRef, isWanted);
-  // Read what the timeline already loaded; never fetch from here.
+  // Read what the timeline already loaded; never fetch from here. Only once
+  // wanted: the composer would otherwise re-render with every live message.
   const messages = useCachedQueryData<InfiniteData<ChatMessagesPage>>(
-    chatRef ? chatKeys.messages(chatRef) : chatKeys.noChat(),
+    isWanted && chatRef ? chatKeys.messages(chatRef) : chatKeys.noChat(),
   );
   const speakers = useMemo(
     () => (isWanted && messages ? recentSpeakerIds(messages) : NO_IDS),

@@ -2,7 +2,7 @@ import { useRouter } from "next/router";
 import { useCallback, useRef } from "react";
 
 import { chatHref } from "@/features/chat/chatRefs";
-import { useChats } from "@/features/chat/hooks/useChats";
+import { useHasNoChats } from "@/features/chat/hooks/useChats";
 import type { ChatRef } from "@/features/drivers/types";
 
 import { useReportActiveChat } from "../ActiveChatContext";
@@ -24,9 +24,10 @@ type ChatSurfaceProps = {
 /** Shared view host for `/chat/new` and an existing conversation route. */
 export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
   const router = useRouter();
-  const chats = useChats();
-  const showWelcome =
-    isNew && !chats.isLoading && !chats.isError && chats.all.length === 0;
+  // Only this flag: subscribing to the whole list would re-render the open
+  // conversation, composer included, whenever any conversation changes.
+  const hasNoChats = useHasNoChats();
+  const showWelcome = isNew && hasNoChats;
   const handleSent = useCallback(
     (ref: ChatRef) => {
       void router.replace(chatHref(ref));

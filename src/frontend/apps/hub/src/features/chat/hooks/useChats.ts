@@ -1,4 +1,9 @@
-import { useQueries, type UseQueryResult } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useQueries,
+  type UseQueryResult,
+} from "@tanstack/react-query";
+import { useCallback, useRef } from "react";
 
 import { decorateChatSections } from "@/features/chat/chatRefs";
 import { compareChats } from "@/features/chat/chatSorting";
@@ -63,25 +68,69 @@ export const mergeChatSections = (
   };
 };
 
+const chatsQuery = (entry: DriverEntry) =>
+  queryOptions({
+    queryKey: chatKeys.chatsOf(entry.accountId),
+    queryFn: async (context) => {
+      const localSections: LocalChatSections = await entry.driver.getChats(
+        queryReadOptions(context),
+      );
+      return decorateChatSections(entry.accountId, localSections);
+    },
+    staleTime: Infinity,
+    meta: { noGlobalError: true },
+  });
+
+const sameEntries = <K, V>(a: Map<K, V>, b: Map<K, V>): boolean =>
+  a.size === b.size && [...a].every(([key, value]) => b.get(key) === value);
+
+/**
+ * The previous result while nothing it shows changed. A refetch returning the
+ * same conversations keeps each account's data object (structural sharing),
+ * and a fetch status flip changes nothing shown: returning the same object
+ * then spares the conversation list a render.
+ */
+const keepUnchanged = (
+  previous: MergedChatsResult | null,
+  next: MergedChatsResult,
+): MergedChatsResult =>
+  previous &&
+  previous.isLoading === next.isLoading &&
+  previous.isError === next.isError &&
+  previous.isLoadingRequiredAccounts === next.isLoadingRequiredAccounts &&
+  sameEntries(previous.byAccount, next.byAccount) &&
+  sameEntries(previous.accountErrors, next.accountErrors)
+    ? previous
+    : next;
+
 export const useChats = (): MergedChatsResult => {
   const entries = useDriverEntries();
+  const previous = useRef<MergedChatsResult | null>(null);
+  const combine = useCallback(
+    (results: UseQueryResult<ChatSections, Error>[]) => {
+      previous.current = keepUnchanged(
+        previous.current,
+        mergeChatSections(entries, results),
+      );
+      return previous.current;
+    },
+    [entries],
+  );
 
-  return useQueries({
-    queries: entries.map((entry) => ({
-      queryKey: chatKeys.chatsOf(entry.accountId),
-      queryFn: async (context) => {
-        const localSections: LocalChatSections = await entry.driver.getChats(
-          queryReadOptions(context),
-        );
-        return decorateChatSections(entry.accountId, localSections);
-      },
-      staleTime: Infinity,
-      meta: { noGlobalError: true },
-    })),
-    combine: (results) =>
-      mergeChatSections(
-        entries,
-        results as UseQueryResult<ChatSections, Error>[],
-      ),
-  });
+  return useQueries({ queries: entries.map(chatsQuery), combine });
+};
+
+const hasNoChats = (results: UseQueryResult<ChatSections, Error>[]) =>
+  results.every(
+    (result) =>
+      !result.isPending && !result.isError && result.data.all.length === 0,
+  );
+
+/**
+ * Whether every account loaded and none has a conversation. A boolean, so a
+ * view that only needs this does not re-render with every list change.
+ */
+export const useHasNoChats = (): boolean => {
+  const entries = useDriverEntries();
+  return useQueries({ queries: entries.map(chatsQuery), combine: hasNoChats });
 };
