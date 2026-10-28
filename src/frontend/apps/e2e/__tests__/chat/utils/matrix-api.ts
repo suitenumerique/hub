@@ -141,6 +141,28 @@ export class MatrixApi {
     });
   }
 
+  /** This person's account data on a room, or `null` when never set. */
+  async roomAccountData(
+    roomId: string,
+    type: string,
+  ): Promise<Record<string, unknown> | null> {
+    const path = `/_matrix/client/v3/user/${encodeURIComponent(this.userId)}/rooms/${roomId}/account_data/${type}`;
+    return this.request("GET", path).catch((error: Error) => {
+      if (error.message.includes("→ 404")) return null;
+      throw error;
+    });
+  }
+
+  /** Sets account data on a room, as another client of this person does. */
+  async setRoomAccountData(
+    roomId: string,
+    type: string,
+    content: Record<string, unknown>,
+  ): Promise<void> {
+    const path = `/_matrix/client/v3/user/${encodeURIComponent(this.userId)}/rooms/${roomId}/account_data/${type}`;
+    await this.request("PUT", path, { body: content });
+  }
+
   async join(roomId: string): Promise<void> {
     await this.request(
       "POST",
