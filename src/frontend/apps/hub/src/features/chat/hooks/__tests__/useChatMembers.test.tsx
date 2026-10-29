@@ -57,7 +57,9 @@ describe("useChatMembers", () => {
     rerender({ enabled: true });
     await waitFor(() => expect(result.current.present).toHaveLength(1));
 
-    expect(getChatMembers).toHaveBeenCalledWith("chat-1");
+    expect(getChatMembers).toHaveBeenCalledWith("chat-1", {
+      signal: expect.any(AbortSignal),
+    });
     expect(result.current.pendingInvites[0].name).toBe("Alice");
   });
 });

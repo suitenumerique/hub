@@ -85,6 +85,14 @@ const wrapper = (queryClient: QueryClient) => {
 
 const emit = (event: ChatEvent) => act(() => capturedListener?.(event));
 
+/** Invalidations are batched until the end of the current task. */
+const endOfTask = () => new Promise<void>((resolve) => queueMicrotask(resolve));
+
+const isInvalidated = (
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+): boolean => queryClient.getQueryState(queryKey)?.isInvalidated ?? false;
+
 describe("useChatEvents", () => {
   let queryClient: QueryClient;
 
@@ -141,8 +149,9 @@ describe("useChatEvents", () => {
     expect(data?.pages[0].messages).toHaveLength(1);
   });
 
-  it("patches decrypted messages without refetching lists for every event", () => {
+  it("patches decrypted messages without refetching lists for every event", async () => {
     seedMessages(queryClient, CHAT_REF, [message("m1"), message("m2")], []);
+    queryClient.setQueryData(chatKeys.chatsOf(CHAT_REF.accountId), {});
     mount();
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -162,12 +171,14 @@ describe("useChatEvents", () => {
       "decrypted",
       "decrypted",
     ]);
+    await endOfTask();
     expect(invalidate).not.toHaveBeenCalled();
 
     emit({ type: "chats:changed" });
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: chatKeys.chatsOf(CHAT_REF.accountId),
-    });
+    await endOfTask();
+    expect(
+      isInvalidated(queryClient, chatKeys.chatsOf(CHAT_REF.accountId)),
+    ).toBe(true);
   });
 
   it("PATCHES reactions on reaction:updated", () => {
@@ -419,30 +430,34 @@ describe("useChatEvents", () => {
     expect(detail?.messages.map((m) => m.content)).toEqual(["t1", "decrypted"]);
   });
 
-  it("reloads only the thread a change names", () => {
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+  it("reloads only the thread a change names", async () => {
+    queryClient.setQueryData(chatKeys.thread(CHAT_REF, "t1"), {});
+    queryClient.setQueryData(chatKeys.thread(CHAT_REF, "t2"), {});
     mount();
 
     emit({ type: "threads:changed", chatId: "c1", threadId: "t1" });
+    await endOfTask();
 
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: chatKeys.thread(CHAT_REF, "t1"),
-    });
-    expect(invalidateSpy).not.toHaveBeenCalledWith({
-      queryKey: chatKeys.threadDetails(CHAT_REF),
-    });
+    expect(isInvalidated(queryClient, chatKeys.thread(CHAT_REF, "t1"))).toBe(
+      true,
+    );
+    expect(isInvalidated(queryClient, chatKeys.thread(CHAT_REF, "t2"))).toBe(
+      false,
+    );
   });
 
-  it("leaves open threads alone when only the thread lists change", () => {
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+  it("leaves open threads alone when only the thread lists change", async () => {
+    queryClient.setQueryData(chatKeys.threads(CHAT_REF), []);
+    queryClient.setQueryData(chatKeys.thread(CHAT_REF, "t1"), {});
     mount();
 
     emit({ type: "threads:changed", chatId: "c1", invalidateDetails: false });
+    await endOfTask();
 
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: chatKeys.threads(CHAT_REF),
-    });
-    expect(invalidateSpy).toHaveBeenCalledTimes(1);
+    expect(isInvalidated(queryClient, chatKeys.threads(CHAT_REF))).toBe(true);
+    expect(isInvalidated(queryClient, chatKeys.thread(CHAT_REF, "t1"))).toBe(
+      false,
+    );
   });
 
   it.each<[ChatEvent, readonly unknown[]]>([
@@ -460,12 +475,13 @@ describe("useChatEvents", () => {
     ],
     [{ type: "tags:changed", chatId: "c1" }, ["chat", "account-a", "c1"]],
     [{ type: "chats:changed" }, ["chats", "account-a"]],
-  ])("INVALIDATES the right cache on %o", (event, queryKey) => {
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+  ])("INVALIDATES the right cache on %o", async (event, queryKey) => {
+    queryClient.setQueryData(queryKey, {});
     mount();
 
     emit(event);
+    await endOfTask();
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
+    expect(isInvalidated(queryClient, queryKey)).toBe(true);
   });
 });
