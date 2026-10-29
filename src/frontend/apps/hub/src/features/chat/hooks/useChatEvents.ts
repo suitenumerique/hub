@@ -200,10 +200,7 @@ export const replayRecentLiveMessages = (
  * hidden tab. Every queued key is invalidated, so the `staleTime: Infinity`
  * caches never miss a change.
  */
-const pendingInvalidations = new WeakMap<
-  QueryClient,
-  Map<string, QueryKey>
->();
+const pendingInvalidations = new WeakMap<QueryClient, Map<string, QueryKey>>();
 
 const flushInvalidations = (queryClient: QueryClient): void => {
   const pending = pendingInvalidations.get(queryClient);
