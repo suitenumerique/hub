@@ -9,9 +9,11 @@
     max-width: var(--hub-chat-bubble-max-width);
   }
 
-  &__chip {
+  // Rounder than the package's nano buttons, as in the design.
+  &__list > &__chip {
     gap: var(--c--globals--spacings--xxxs, 4px);
     padding: 0 var(--c--globals--spacings--xxxs, 4px);
+    border-radius: var(--c--globals--spacings--xs, 8px);
   }
 
   &__count {

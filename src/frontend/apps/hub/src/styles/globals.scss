@@ -47,6 +47,12 @@ body {
   box-sizing: border-box;
 }
 
+// The package sizes its tiny menu items with a content-box height: under the
+// border-box above, the padding squeezed the labels.
+.c__dropdown-menu--tiny .c__dropdown-menu-item {
+  box-sizing: content-box;
+}
+
 .hub__visually-hidden {
   position: absolute;
   width: 1px;

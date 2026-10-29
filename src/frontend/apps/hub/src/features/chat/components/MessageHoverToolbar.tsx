@@ -97,7 +97,7 @@ export const MessageHoverToolbar = ({
       ...(onDownload
         ? [
             {
-              icon: <Download />,
+              icon: <Download size={16} />,
               label: t("Download"),
               callback: () => {
                 setAreActionsPinned(false);
@@ -109,7 +109,7 @@ export const MessageHoverToolbar = ({
       ...(onCopy
         ? [
             {
-              icon: <Copy />,
+              icon: <Copy size={16} />,
               label: t("Copy"),
               callback: () => {
                 setAreActionsPinned(false);
@@ -124,7 +124,7 @@ export const MessageHoverToolbar = ({
       ...(onEdit
         ? [
             {
-              icon: <Edit />,
+              icon: <Edit size={16} />,
               label: t("Edit"),
               callback: () => {
                 setAreActionsPinned(false);
@@ -136,7 +136,7 @@ export const MessageHoverToolbar = ({
       ...(onDelete
         ? [
             {
-              icon: <Trash />,
+              icon: <Trash size={16} />,
               label: t("Delete"),
               variant: "danger" as const,
               callback: () => {
@@ -212,6 +212,7 @@ export const MessageHoverToolbar = ({
           options={actionOptions}
           {...actionsMenu}
           onOpenChange={actionsMenu.setIsOpen}
+          variant="tiny"
         >
           <button
             type="button"

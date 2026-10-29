@@ -1,5 +1,5 @@
 import { Trash } from "@gouvfr-lasuite/ui-components/icons";
-import { type PointerEvent, useCallback, useMemo } from "react";
+import { type SyntheticEvent, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -82,7 +82,8 @@ type ChatBubbleSentProps = {
 
 export type ChatBubbleProps = ChatBubbleReceivedProps | ChatBubbleSentProps;
 
-const updateToolbarHoverWidth = (event: PointerEvent<HTMLDivElement>) => {
+// Read on hover and on focus: the toolbar is placed from its own width.
+const updateToolbarHoverWidth = (event: SyntheticEvent<HTMLDivElement>) => {
   const body = event.currentTarget;
   const toolbar = body.querySelector<HTMLElement>(".hub__message-toolbar");
   if (toolbar) {
@@ -301,6 +302,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           data-deleted={props.isDeleted || undefined}
           data-attachment={attachmentKind}
           onPointerEnter={updateToolbarHoverWidth}
+          onFocus={updateToolbarHoverWidth}
         >
           {props.isDeleted ? (
             <span className="hub__chat-bubble__tombstone">
@@ -357,6 +359,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           data-deleted={props.isDeleted || undefined}
           data-attachment={attachmentKind}
           onPointerEnter={updateToolbarHoverWidth}
+          onFocus={updateToolbarHoverWidth}
         >
           {props.isDeleted ? (
             <span className="hub__chat-bubble__tombstone">

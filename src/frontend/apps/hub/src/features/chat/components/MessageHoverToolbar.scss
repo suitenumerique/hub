@@ -1,16 +1,17 @@
 .hub__message-toolbar {
-  // Transparent wrapper, flush against the bubble's top edge. The visual gap
-  // to the bubble is this `padding-bottom` — kept INSIDE the hover hit-area.
-  // It must never be a margin: a margin would be a dead zone over the previous
-  // message and the pointer would lose the bubble's :hover before reaching
-  // the toolbar. Renders above adjacent rows; hidden until hover / focus.
+  // Transparent wrapper above the bubble's top corner, flush against its top
+  // edge: the toolbar never covers the bubble. The visual gap to the bubble
+  // is this `padding-bottom` — kept INSIDE the hover hit-area. It must never
+  // be a margin: a margin would be a dead zone over the previous message and
+  // the pointer would lose the bubble's :hover before reaching the toolbar.
+  // Renders above adjacent rows; hidden until hover / focus.
   position: absolute;
   bottom: 100%;
   left: 0;
   right: auto;
   width: max-content;
   z-index: 3;
-  padding-bottom: var(--c--globals--spacings--xxxs, 4px);
+  padding-bottom: var(--c--globals--spacings--4xs, 2px);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease;
@@ -93,14 +94,17 @@
   }
 }
 
+// On the corner toward the middle of the conversation: top right of a
+// received message, top left of a sent one. Over a bubble narrower than the
+// toolbar, it starts at the bubble's outer edge instead, within the row.
 .hub__chat-bubble--received .hub__message-toolbar {
-  left: 0;
-  right: auto;
+  left: auto;
+  right: min(0px, calc(100% - var(--hub-message-toolbar-width, 0px)));
 }
 
 .hub__chat-bubble--sent .hub__message-toolbar {
-  left: auto;
-  right: 0;
+  left: min(0px, calc(100% - var(--hub-message-toolbar-width, 0px)));
+  right: auto;
 }
 
 // Once the bubble is hovered, keep a path to the whole toolbar alongside short

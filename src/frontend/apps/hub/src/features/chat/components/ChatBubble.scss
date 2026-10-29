@@ -47,7 +47,7 @@
     border-radius: var(--c--globals--spacings--xs, 8px);
     font-size: 14px;
     font-weight: 400;
-    line-height: 18px;
+    line-height: 20px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -69,7 +69,8 @@
   &--received &__body {
     flex: 0 1 auto;
     width: fit-content;
-    padding: var(--c--globals--spacings--xs, 8px);
+    padding: var(--c--globals--spacings--xs, 8px)
+      var(--c--globals--spacings--sm, 12px);
     background: var(
       --c--contextuals--background--semantic--neutral--tertiary,
       #eef1f4
