@@ -324,6 +324,16 @@
     border-radius: var(--c--globals--spacings--xs, 8px);
     overflow: hidden;
     cursor: zoom-in;
+
+    // A faint veil keeps the edges of a white picture visible on white.
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: rgba(0, 0, 0, 0.02);
+      pointer-events: none;
+    }
   }
 
   // The component sizes the image to fit 500x332 through its attributes; it
@@ -366,8 +376,10 @@
     gap: var(--c--globals--spacings--4xs, 2px);
     box-sizing: border-box;
     max-width: 380px;
-    min-height: 44px;
-    padding: 1px var(--c--globals--spacings--xs, 8px) 1px 1px;
+    min-height: 46px;
+    padding: var(--c--globals--spacings--4xs, 2px)
+      var(--c--globals--spacings--xs, 8px) var(--c--globals--spacings--4xs, 2px)
+      var(--c--globals--spacings--4xs, 2px);
     border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
     border-radius: var(--c--globals--spacings--xs, 8px);
     background: var(--c--contextuals--background--surface--primary, #fff);

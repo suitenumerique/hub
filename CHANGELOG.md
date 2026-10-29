@@ -108,6 +108,11 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Apply the latest message design: bubble padding and line
+  height, smaller composer text, rounder reactions, a faint veil on pictures,
+  the file name in its frame, the tiny menu for message actions and the hover
+  toolbar just above the inner top corner of a message. Restyle the file drop
+  zone.
 - 💄(frontend) Slide the tools panel in at its final width, 450px when there
   is room and never wider than the conversation, its content passing under a
   translucent, blurred header that shows a separator once it scrolls. Cap the
