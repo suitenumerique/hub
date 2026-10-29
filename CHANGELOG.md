@@ -108,6 +108,11 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Align the side panel with the design: conversation names one
+  weight lighter in the primary colour, UI kit search and group icons, rows
+  6px apart, the list passing under a translucent, blurred top and footer, a
+  separator under the actions once it scrolls and a hover state on the
+  account avatar. The list no longer moves sideways.
 - ⚡️(frontend) Load the threads panel page by page as it scrolls, as Element
   does, instead of every thread of the conversation at once. Open a thread
   on its latest replies, older ones loading while scrolling up, and from its

@@ -5,7 +5,12 @@ import {
   Tooltip,
   useDropdownMenu,
 } from "@gouvfr-lasuite/ui-components";
-import { More, Plus, QuestionMark } from "@gouvfr-lasuite/ui-components/icons";
+import {
+  More,
+  Plus,
+  QuestionMark,
+  Zoom,
+} from "@gouvfr-lasuite/ui-components/icons";
 import clsx from "clsx";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -64,6 +69,8 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const entries = useDriverEntries();
   // The rows render inside this element's scroll, only those near the view.
   const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null);
+  // Draws the separator under the top actions once the list scrolls under it.
+  const [isScrolled, setIsScrolled] = useState(false);
   const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
     ? "⌘K"
     : "Ctrl K";
@@ -85,11 +92,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   if (entries.some(({ driver }) => driver.supportsConversationSearch)) {
     actions.push({
       id: "search",
-      icon: (
-        <span className="material-icons" aria-hidden="true">
-          search
-        </span>
-      ),
+      icon: <Zoom size={16} />,
       label: t("Search"),
       keyShortcuts: "Meta+K Control+K",
       shortcutLabel: searchShortcut,
@@ -98,23 +101,32 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   }
 
   return (
-    <aside className="hub__left-panel" aria-label={t("Side panel")}>
-      <div className="hub__left-panel__top">
-        <div className="hub__left-panel__logo">
-          <TchapLogo />
+    <aside
+      className="hub__left-panel"
+      aria-label={t("Side panel")}
+      data-scrolled={isScrolled}
+    >
+      <div
+        className="hub__left-panel__scroll"
+        ref={setScrollParent}
+        onScroll={(event) => setIsScrolled(event.currentTarget.scrollTop > 0)}
+      >
+        {/* Sticky inside the scroll, so the rows pass under its blur. */}
+        <div className="hub__left-panel__top">
+          <div className="hub__left-panel__logo">
+            <TchapLogo />
+          </div>
+
+          <nav
+            className="hub__left-panel__actions"
+            aria-label={t("Quick actions")}
+          >
+            {actions.map((action) => (
+              <ActionRow key={action.id} action={action} />
+            ))}
+          </nav>
         </div>
 
-        <nav
-          className="hub__left-panel__actions"
-          aria-label={t("Quick actions")}
-        >
-          {actions.map((action) => (
-            <ActionRow key={action.id} action={action} />
-          ))}
-        </nav>
-      </div>
-
-      <div className="hub__left-panel__scroll" ref={setScrollParent}>
         {chats.favourites.length > 0 ? (
           <ChatSection
             title={t("Favourites")}
@@ -293,12 +305,12 @@ const ChatListItem = ({
 // Stable component types: Virtuoso remounts every row when they change.
 const CHAT_LIST_COMPONENTS = { List: ChatList, Item: ChatListItem };
 
-// The avatar line and its padding, plus the pixel between rows (see
+// The avatar line and its padding, plus the space between rows (see
 // `hub__left-panel__list--virtual`); an account label adds a second line.
 // Known in advance, Virtuoso renders the rows at once instead of measuring a
 // first one alone.
-const ROW_HEIGHT = 37;
-const ROW_HEIGHT_WITH_ACCOUNT = 46;
+const ROW_HEIGHT = 42;
+const ROW_HEIGHT_WITH_ACCOUNT = 51;
 
 const chatRowKey = (_index: number, chat: Chat) =>
   `${chat.accountId}:${chat.id}`;

@@ -6,13 +6,24 @@ import {
 
 import { useChatAvatarUrl } from "../hooks/useChatAvatarUrl";
 
+// Icons the UI kit does not ship yet, exported from the design.
+const ICON_ASSETS: Record<string, string> = {
+  groups: "/assets/chat-group.svg",
+};
+
 /** Emoji, icon, or nothing for the default initials. */
 const visualContent = (visual: ChatVisual) => {
   switch (visual.kind) {
     case "emoji":
       return visual.emoji;
     case "icon":
-      return (
+      return ICON_ASSETS[visual.icon] ? (
+        <img
+          className="hub__avatar__icon"
+          src={ICON_ASSETS[visual.icon]}
+          alt=""
+        />
+      ) : (
         <span className="material-icons" aria-hidden="true">
           {visual.icon}
         </span>
