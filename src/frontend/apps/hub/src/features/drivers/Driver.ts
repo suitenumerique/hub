@@ -436,14 +436,17 @@ export abstract class Driver {
   abstract toggleChatReaction(
     params: ToggleChatReactionParams,
   ): Promise<ChatMessage>;
-  /** Threads opened from messages of the given conversation. */
-  abstract getChatThreads(chatId: string): Promise<ChatThread[]>;
   /**
-   * Threads with unread replies, read from what the client already knows
-   * where possible: unlike {@link getChatThreads}, it may skip the full list.
+   * Threads opened from messages of the given conversation, as far as they
+   * are loaded: {@link loadMoreChatThreads} loads older ones.
    */
+  abstract getChatThreads(chatId: string): Promise<ChatThread[]>;
+  /** Threads with unread replies among those the client already knows. */
   abstract getChatUnreadThreads(chatId: string): Promise<ChatThread[]>;
-  /** Full content (root message + replies) of a single thread. */
+  /**
+   * Root message and replies of a single thread, as far as they are loaded:
+   * {@link loadOlderChatThreadReplies} loads older replies.
+   */
   abstract getChatThread(
     params: GetChatThreadParams,
   ): Promise<ChatThreadDetail>;
@@ -587,6 +590,27 @@ export abstract class Driver {
     void _chatId;
     void _listener;
     return () => {};
+  }
+
+  /** Whether {@link getChatThreads} leaves older threads to load. */
+  async hasMoreChatThreads(_chatId: string): Promise<boolean> {
+    void _chatId;
+    return false;
+  }
+
+  /** Loads the next page of older threads into {@link getChatThreads}. */
+  async loadMoreChatThreads(_chatId: string): Promise<void> {
+    void _chatId;
+  }
+
+  /**
+   * Loads the page of replies before those {@link getChatThread} has, while
+   * its detail says older replies remain.
+   */
+  async loadOlderChatThreadReplies(
+    _params: GetChatThreadParams,
+  ): Promise<void> {
+    void _params;
   }
 
   async sendChatThreadReply(

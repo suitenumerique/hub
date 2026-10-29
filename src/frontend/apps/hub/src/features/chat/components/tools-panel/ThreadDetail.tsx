@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,6 +7,11 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  type ContextProp,
+  Virtuoso,
+  type VirtuosoHandle,
+} from "react-virtuoso";
 
 import type {
   ChatAttachment,
@@ -42,7 +46,62 @@ type ThreadDetailProps = {
   composerFocusSignal?: number;
 };
 
-/** Threads panel detail view — a single thread's root message and replies. */
+type ThreadMessagesContext = {
+  isFetchingOlder: boolean;
+  isFetchOlderError: boolean;
+  onRetry: () => void;
+};
+
+const DEFAULT_ITEM_HEIGHT = 72;
+const LAST_MESSAGE = { index: "LAST", align: "end" } as const;
+
+// Stable header: the loader state arrives through Virtuoso's context. Its
+// spacer leaves room for the hover toolbar of the first message.
+const ThreadMessagesHeader = ({
+  context,
+}: ContextProp<ThreadMessagesContext>) => {
+  const { t } = useTranslation();
+  return (
+    <div className="hub__thread-detail__top-spacer">
+      {context.isFetchingOlder && (
+        <div className="hub__thread-detail__loader" role="status">
+          <span className="material-icons" aria-hidden="true">
+            sync
+          </span>
+          {t("Loading older messages…")}
+        </div>
+      )}
+      {!context.isFetchingOlder && context.isFetchOlderError && (
+        <div className="hub__thread-detail__loader" role="alert">
+          {t("Older messages could not be loaded.")}
+          <button
+            type="button"
+            className="hub__chat-tools-panel__state__retry"
+            onClick={context.onRetry}
+          >
+            {t("Retry")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ThreadMessagesFooter = () => (
+  <div className="hub__thread-detail__bottom-spacer" />
+);
+
+// Stable component types: Virtuoso remounts every row when they change.
+const THREAD_MESSAGES_COMPONENTS = {
+  Header: ThreadMessagesHeader,
+  Footer: ThreadMessagesFooter,
+};
+
+/**
+ * Threads panel detail view — a single thread's root message and replies,
+ * opened on the latest replies as Element's thread view: older ones load
+ * while scrolling up.
+ */
 export const ThreadDetail = ({
   chatRef,
   threadId,
@@ -57,10 +116,16 @@ export const ThreadDetail = ({
     () => ({ accountId: chatRef.accountId, chatRef }),
     [chatRef],
   );
-  const { thread, isInitialLoading, refetch } = useChatThread(
-    chatRef,
-    threadId,
-  );
+  const {
+    thread,
+    messages,
+    firstItemIndex,
+    isFetchingOlder,
+    isFetchOlderError,
+    isInitialLoading,
+    refetch,
+    fetchOlder,
+  } = useChatThread(chatRef, threadId);
   const { markThreadRead } = useChatThreadActions(chatRef);
   const { sendReply, isSending, isSupported } = useSendChatThreadReply(
     chatRef,
@@ -69,7 +134,7 @@ export const ThreadDetail = ({
   const { editMessage, isEditing } = useEditChatMessage(chatRef, threadId);
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
-  const messagesRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   // Files dropped anywhere on the thread go to its composer.
   const detailRef = useRef<HTMLDivElement>(null);
   const previousMessagesRef = useRef<{
@@ -104,28 +169,13 @@ export const ThreadDetail = ({
   const uploadAttachment = useUploadChatAttachment(chatRef);
   const editContext = useMemo(() => ({ startEditing: setEditingMessage }), []);
 
-  // On open, jump to the first unread reply — or to the latest message when the
-  // thread is fully read — so the reader lands on what matters. Gated by
-  // `isOpen` because `ThreadDetail` stays mounted while the panel close
-  // animation runs (see `ThreadsTool`), and we want the scroll logic to re-run
-  // when the panel is reopened on the same thread.
+  // The list opens on the latest message. Gated by `isOpen` because
+  // `ThreadDetail` stays mounted while the panel close animation runs (see
+  // `ThreadsTool`): reopening the panel on the same thread lands there again.
   useEffect(() => {
-    const container = messagesRef.current;
-    if (!isOpen || !container || !thread) {
-      return;
+    if (isOpen) {
+      virtuosoRef.current?.scrollToIndex(LAST_MESSAGE);
     }
-    const firstUnreadId =
-      thread.firstUnreadIndex === null
-        ? null
-        : thread.messages[thread.firstUnreadIndex]?.id;
-    const firstUnread = firstUnreadId
-      ? Array.from(
-          container.querySelectorAll<HTMLElement>("[data-message-id]"),
-        ).find((element) => element.dataset.messageId === firstUnreadId)
-      : null;
-    container.scrollTop = firstUnread
-      ? Math.max(0, firstUnread.offsetTop - 12)
-      : container.scrollHeight;
   }, [isOpen, thread?.id]);
 
   useLayoutEffect(() => {
@@ -145,13 +195,12 @@ export const ThreadDetail = ({
       !isOpen ||
       !isSameThread ||
       !didAppendLatest ||
-      lastMessage?.authorId !== "me" ||
-      !messagesRef.current
+      lastMessage?.authorId !== "me"
     ) {
       return;
     }
 
-    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    virtuosoRef.current?.scrollToIndex(LAST_MESSAGE);
   }, [
     isOpen,
     lastMessage?.authorId,
@@ -222,51 +271,60 @@ export const ThreadDetail = ({
 
     return (
       <div className="hub__thread-detail" ref={detailRef}>
-        <div className="hub__thread-detail__messages" ref={messagesRef}>
-          {thread.messages.map((message, index) => {
-            const prev = thread.messages[index - 1];
-            const next = thread.messages[index + 1];
-            const isSent = message.authorId === "me";
-            const isFirstOfGroup =
-              !prev ||
-              prev.authorId !== message.authorId ||
-              !isSameChatDay(prev.timestamp, message.timestamp);
-            const isLastOfGroup =
-              !next ||
-              next.authorId !== message.authorId ||
-              !isSameChatDay(message.timestamp, next.timestamp);
-            const author = authorsById.get(message.authorId);
+        <div className="hub__thread-detail__messages">
+          <Virtuoso
+            key={threadId}
+            ref={virtuosoRef}
+            // The scroller is focusable: name it for keyboard users.
+            aria-label={t("Thread")}
+            data={messages}
+            context={{
+              isFetchingOlder,
+              isFetchOlderError,
+              onRetry: fetchOlder,
+            }}
+            firstItemIndex={firstItemIndex}
+            initialTopMostItemIndex={LAST_MESSAGE}
+            computeItemKey={(_index, message) => message.id}
+            defaultItemHeight={DEFAULT_ITEM_HEIGHT}
+            // Measure rows before paint, as the conversation timeline does: a
+            // row rendered above the viewport never shifts the visible ones.
+            skipAnimationFrameInResizeObserver
+            // New replies scroll into view while the latest one is shown.
+            followOutput="auto"
+            startReached={fetchOlder}
+            // Coming back to the top asks again, after a failure too:
+            // Virtuoso reports `startReached` only for a new first row.
+            atTopStateChange={(atTop) => {
+              if (atTop) fetchOlder();
+            }}
+            increaseViewportBy={{ top: 400, bottom: 0 }}
+            components={THREAD_MESSAGES_COMPONENTS}
+            itemContent={(virtualIndex, message) => {
+              const index = virtualIndex - firstItemIndex;
+              const prev = messages[index - 1];
+              const next = messages[index + 1];
+              const isSent = message.authorId === "me";
+              const isFirstOfGroup =
+                !prev ||
+                prev.authorId !== message.authorId ||
+                !isSameChatDay(prev.timestamp, message.timestamp);
+              const isLastOfGroup =
+                !next ||
+                next.authorId !== message.authorId ||
+                !isSameChatDay(message.timestamp, next.timestamp);
+              const author = authorsById.get(message.authorId);
 
-            return (
-              <Fragment key={message.id}>
-                {isSent ? (
-                  <ChatBubble
-                    variant="sent"
-                    chatRef={chatRef}
-                    messageId={message.id}
-                    content={message.content}
-                    htmlContent={message.htmlContent}
-                    attachment={message.attachment}
-                    timestamp={message.timestamp}
-                    reactions={message.reactions}
-                    isDeleted={message.isDeleted}
-                    isEdited={message.isEdited}
-                    availability={message.availability}
-                    canEdit={message.canEdit}
-                    canDelete={message.canDelete}
-                    threadId={threadId}
-                    showTimestamp={isLastOfGroup}
-                  />
-                ) : (
-                  author && (
+              return (
+                <div className="hub__thread-detail__row">
+                  {isSent ? (
                     <ChatBubble
-                      variant="received"
+                      variant="sent"
                       chatRef={chatRef}
                       messageId={message.id}
                       content={message.content}
                       htmlContent={message.htmlContent}
                       attachment={message.attachment}
-                      author={author}
                       timestamp={message.timestamp}
                       reactions={message.reactions}
                       isDeleted={message.isDeleted}
@@ -275,14 +333,35 @@ export const ThreadDetail = ({
                       canEdit={message.canEdit}
                       canDelete={message.canDelete}
                       threadId={threadId}
-                      showHeader={isFirstOfGroup}
-                      showAvatar={isLastOfGroup}
+                      showTimestamp={isLastOfGroup}
                     />
-                  )
-                )}
-              </Fragment>
-            );
-          })}
+                  ) : (
+                    author && (
+                      <ChatBubble
+                        variant="received"
+                        chatRef={chatRef}
+                        messageId={message.id}
+                        content={message.content}
+                        htmlContent={message.htmlContent}
+                        attachment={message.attachment}
+                        author={author}
+                        timestamp={message.timestamp}
+                        reactions={message.reactions}
+                        isDeleted={message.isDeleted}
+                        isEdited={message.isEdited}
+                        availability={message.availability}
+                        canEdit={message.canEdit}
+                        canDelete={message.canDelete}
+                        threadId={threadId}
+                        showHeader={isFirstOfGroup}
+                        showAvatar={isLastOfGroup}
+                      />
+                    )
+                  )}
+                </div>
+              );
+            }}
+          />
         </div>
         <div className="hub__thread-detail__composer">
           {sendState === "blocked" && (

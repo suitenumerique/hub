@@ -168,18 +168,54 @@
   display: flex;
   flex-direction: column;
 
+  // Virtualized messages: Virtuoso fills this box and owns the scroll.
   &__messages {
+    position: relative;
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
+  }
+
+  // Each row carries the gap above it and the panel gutter: Virtuoso
+  // measures rows, not the space between them.
+  &__row {
+    padding: var(--c--globals--spacings--xs, 8px)
+      var(--c--globals--spacings--sm, 12px) 0;
+  }
+
+  // With the first row's gap, room for the toolbar that extends 38px above
+  // a bubble, including its hover bridge: sent roots have no author header
+  // to provide any extra space.
+  &__top-spacer {
+    min-height: 40px;
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__bottom-spacer {
+    height: var(--c--globals--spacings--sm, 12px);
+  }
+
+  &__loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     gap: var(--c--globals--spacings--xs, 8px);
-    // The toolbar extends 38px above the bubble, including its hover bridge.
-    // Sent roots have no author header to provide any extra space.
-    padding: var(--c--globals--spacings--xxl, 48px)
-      var(--c--globals--spacings--sm, 12px)
+    padding: var(--c--globals--spacings--xxs, 6px)
       var(--c--globals--spacings--sm, 12px);
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+
+    .material-icons {
+      font-size: 16px;
+      animation: hub-chat-spin 1.2s linear infinite;
+
+      @media (prefers-reduced-motion: reduce) {
+        animation: none;
+      }
+    }
   }
 
   &__composer {

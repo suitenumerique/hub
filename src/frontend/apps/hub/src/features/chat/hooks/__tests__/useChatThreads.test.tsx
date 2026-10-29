@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,9 +21,15 @@ const buildThread = (over: Partial<ChatThread> = {}): ChatThread => ({
 });
 
 const getChatThreads = vi.fn<(chatId: string) => Promise<ChatThread[]>>();
+const hasMoreChatThreads = vi.fn<(chatId: string) => Promise<boolean>>();
+const loadMoreChatThreads = vi.fn<(chatId: string) => Promise<void>>();
 
 const registry = {
-  get: vi.fn(() => ({ getChatThreads })),
+  get: vi.fn(() => ({
+    getChatThreads,
+    hasMoreChatThreads,
+    loadMoreChatThreads,
+  })),
 };
 
 vi.mock("@/features/drivers/DriverRegistry", () => ({
@@ -48,6 +54,8 @@ describe("useChatThreads", () => {
       defaultOptions: { queries: { retry: false } },
     });
     getChatThreads.mockReset();
+    hasMoreChatThreads.mockReset().mockResolvedValue(false);
+    loadMoreChatThreads.mockReset().mockResolvedValue();
     registry.get.mockClear();
   });
 
@@ -114,5 +122,123 @@ describe("useChatThreads", () => {
 
     expect(result.current.threads).toEqual([]);
     expect(result.current.unreadThreads).toEqual([]);
+  });
+
+  it("loads older threads and lists them under the first page", async () => {
+    getChatThreads
+      .mockResolvedValueOnce([buildThread({ id: "t-1" })])
+      .mockResolvedValue([
+        buildThread({ id: "t-1" }),
+        buildThread({ id: "t-2" }),
+      ]);
+    hasMoreChatThreads.mockResolvedValueOnce(true).mockResolvedValue(false);
+    let finishLoading!: () => void;
+    loadMoreChatThreads.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishLoading = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useChatThreads(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+
+    act(() => result.current.fetchMore());
+    await waitFor(() => expect(result.current.isFetchingMore).toBe(true));
+    // The end reached again while loading asks once the load ends, only if
+    // older threads remain: none do here.
+    act(() => result.current.fetchMore());
+    finishLoading();
+
+    await waitFor(() => expect(result.current.isFetchingMore).toBe(false));
+    expect(loadMoreChatThreads).toHaveBeenCalledOnce();
+    expect(loadMoreChatThreads).toHaveBeenCalledWith("chat-1");
+    expect(result.current.threads.map((thread) => thread.id)).toEqual([
+      "t-1",
+      "t-2",
+    ]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it("asks again once a load ends when the end was reached meanwhile", async () => {
+    getChatThreads.mockResolvedValue([buildThread()]);
+    hasMoreChatThreads.mockResolvedValue(true);
+    let finishLoading!: () => void;
+    loadMoreChatThreads.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishLoading = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useChatThreads(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+
+    act(() => result.current.fetchMore());
+    await waitFor(() => expect(result.current.isFetchingMore).toBe(true));
+    act(() => result.current.fetchMore());
+    expect(loadMoreChatThreads).toHaveBeenCalledOnce();
+    finishLoading();
+
+    await waitFor(() => expect(loadMoreChatThreads).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows a failed load and retries it", async () => {
+    getChatThreads.mockResolvedValue([buildThread()]);
+    hasMoreChatThreads.mockResolvedValue(true);
+    loadMoreChatThreads.mockRejectedValueOnce(new Error("offline"));
+
+    const { result } = renderHook(() => useChatThreads(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+
+    act(() => result.current.fetchMore());
+    await waitFor(() => expect(result.current.isFetchMoreError).toBe(true));
+    expect(result.current.isFetchingMore).toBe(false);
+
+    act(() => result.current.fetchMore());
+    await waitFor(() => expect(result.current.isFetchMoreError).toBe(false));
+
+    expect(loadMoreChatThreads).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks for older threads before knowing whether any remain", async () => {
+    getChatThreads.mockResolvedValue([buildThread()]);
+    hasMoreChatThreads.mockReturnValue(new Promise(() => {}));
+
+    const { result } = renderHook(() => useChatThreads(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.isInitialLoading).toBe(false));
+
+    act(() => result.current.fetchMore());
+
+    await waitFor(() => expect(loadMoreChatThreads).toHaveBeenCalledOnce());
+  });
+
+  it("asks nothing once no older thread remains", async () => {
+    getChatThreads.mockResolvedValue([buildThread()]);
+
+    const { result } = renderHook(() => useChatThreads(CHAT_REF), {
+      wrapper: wrapper(queryClient),
+    });
+    await waitFor(() =>
+      expect(hasMoreChatThreads).toHaveBeenCalledWith("chat-1"),
+    );
+    await waitFor(() => expect(result.current.isInitialLoading).toBe(false));
+    await waitFor(() =>
+      expect(queryClient.getQueryData(chatKeys.threadsHasMore(CHAT_REF))).toBe(
+        false,
+      ),
+    );
+
+    act(() => result.current.fetchMore());
+
+    expect(loadMoreChatThreads).not.toHaveBeenCalled();
   });
 });

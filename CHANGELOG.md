@@ -108,6 +108,12 @@ and this project adheres to
 
 ### Changed
 
+- ⚡️(frontend) Load the threads panel page by page as it scrolls, as Element
+  does, instead of every thread of the conversation at once. Open a thread
+  on its latest replies, older ones loading while scrolling up, and from its
+  root alone when it is not loaded yet. A page that fails to load offers to
+  retry. Stop loading every thread when a conversation with unread threads
+  opens.
 - ⚡️(frontend) Render only the side panel conversations near the view and
   re-render a row only when it changes. The open conversation and its
   composer no longer re-render for every list change or new message.

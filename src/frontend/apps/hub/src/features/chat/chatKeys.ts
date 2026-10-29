@@ -28,6 +28,9 @@ export const chatKeys = {
   /** Under `threads`, so every thread list invalidation also refreshes it. */
   unreadThreads: (ref: ChatRef) =>
     ["chat-threads", ref.accountId, ref.chatId, "unread"] as const,
+  /** Under `threads`: whether older threads remain to load. */
+  threadsHasMore: (ref: ChatRef) =>
+    ["chat-threads", ref.accountId, ref.chatId, "has-more"] as const,
   thread: (ref: ChatRef, threadId: string) =>
     ["chat-thread", ref.accountId, ref.chatId, threadId] as const,
   threadDetails: (ref: ChatRef) =>
