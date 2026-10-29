@@ -381,6 +381,11 @@ export type ChatThreadDetail = {
    * unread. Drives the "Unread" separator in the detail view.
    */
   firstUnreadIndex: number | null;
+  /**
+   * Older replies remain to load above `messages`, which then hold the
+   * latest replies only. Absent for a thread loaded from its root.
+   */
+  hasOlderReplies?: boolean;
 };
 
 export type ChatThreadMutationResult = {

@@ -10,6 +10,9 @@ export const SEND_REQUESTS = /\/_matrix\/client\/v3\/rooms\/[^/]+\/send\//;
 /** The `/sync` long-poll of the client API. */
 export const SYNC_REQUESTS = /\/_matrix\/client\/v3\/sync\b/;
 
+/** Pages of a room's thread list (`/rooms/{roomId}/threads`). */
+export const THREAD_LIST_REQUESTS = /\/_matrix\/client\/[^?]+\/threads\?/;
+
 /** Settles once `markHeld` is called, for "a request is being held" signals. */
 const heldSignal = () => {
   let markHeld: () => void = () => {};

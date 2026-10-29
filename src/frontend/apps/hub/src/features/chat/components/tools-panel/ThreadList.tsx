@@ -20,13 +20,20 @@ type ThreadListProps = {
   onOpenThread: (threadId: string) => void;
 };
 
-type ThreadRowsContext = { count: number };
+type ThreadRowsContext = {
+  count: number;
+  hasMore: boolean;
+  isFetchingMore: boolean;
+  isFetchMoreError: boolean;
+  onRetry: () => void;
+};
 
 // Two-line preview plus the separator above it.
 const DEFAULT_ROW_HEIGHT = 88;
 
 // Virtuoso types its list refs as divs: list roles keep the semantics of the
-// former <ul>, and the position attributes announce the full virtual length.
+// former <ul>, and the position attributes announce the full virtual length,
+// unknown while older threads remain to load.
 const ThreadRows = ({
   ref,
   style,
@@ -60,16 +67,49 @@ const ThreadRow = ({
     data-item-index={itemIndex}
     data-known-size={knownSize}
     aria-posinset={index + 1}
-    aria-setsize={context.count}
+    aria-setsize={context.hasMore ? -1 : context.count}
   >
     {children}
   </div>
 );
 
-// Stable component types: Virtuoso remounts every row when they change.
-const THREAD_LIST_COMPONENTS = { List: ThreadRows, Item: ThreadRow };
+const ThreadListFooter = ({ context }: ContextProp<ThreadRowsContext>) => {
+  const { t } = useTranslation();
+  if (context.isFetchingMore) {
+    return (
+      <p className="hub__chat-tools-panel__state" role="status">
+        {t("Loading threads…")}
+      </p>
+    );
+  }
+  if (context.isFetchMoreError) {
+    return (
+      <div className="hub__chat-tools-panel__state" role="alert">
+        <p>{t("Older threads could not be loaded.")}</p>
+        <button
+          type="button"
+          className="hub__chat-tools-panel__state__retry"
+          onClick={context.onRetry}
+        >
+          {t("Retry")}
+        </button>
+      </div>
+    );
+  }
+  return null;
+};
 
-/** Threads panel list view — every thread of the active conversation. */
+// Stable component types: Virtuoso remounts every row when they change.
+const THREAD_LIST_COMPONENTS = {
+  List: ThreadRows,
+  Item: ThreadRow,
+  Footer: ThreadListFooter,
+};
+
+/**
+ * Threads panel list view — the threads of the active conversation, older
+ * ones loading as the list reaches its end.
+ */
 export const ThreadList = ({
   chatRef,
   isOpen,
@@ -77,8 +117,16 @@ export const ThreadList = ({
   onOpenThread,
 }: ThreadListProps) => {
   const { t } = useTranslation();
-  const { threads, isInitialLoading, isError, refetch } =
-    useChatThreads(chatRef);
+  const {
+    threads,
+    hasMore,
+    isFetchingMore,
+    isFetchMoreError,
+    isInitialLoading,
+    isError,
+    refetch,
+    fetchMore,
+  } = useChatThreads(chatRef);
 
   const renderBody = () => {
     if (isInitialLoading) {
@@ -122,7 +170,19 @@ export const ThreadList = ({
           // The scroller is focusable: name it for keyboard users.
           aria-label={t("All threads")}
           data={threads}
-          context={{ count: threads.length }}
+          context={{
+            count: threads.length,
+            hasMore,
+            isFetchingMore,
+            isFetchMoreError,
+            onRetry: fetchMore,
+          }}
+          endReached={() => fetchMore()}
+          // Coming back to the end asks again, after a failure too: Virtuoso
+          // reports `endReached` only when the length changes.
+          atBottomStateChange={(atBottom) => {
+            if (atBottom) fetchMore();
+          }}
           computeItemKey={(_index, thread) => thread.id}
           defaultItemHeight={DEFAULT_ROW_HEIGHT}
           increaseViewportBy={DEFAULT_ROW_HEIGHT * 3}

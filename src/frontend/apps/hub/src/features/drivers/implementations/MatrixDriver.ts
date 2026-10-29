@@ -146,6 +146,7 @@ import {
   fetchReactionSnapshot,
   forgetThreadReply,
   getThreadReplyCounter,
+  hasOlderThreadReplies,
   isMainTimelineMessage,
   isMessageEvent,
   isOwnEcho,
@@ -159,7 +160,6 @@ import {
   reactionUpdateEventsForTarget,
   receiptMentionsUser,
   receiptThreadIds,
-  reconcileMessageReactions,
   rememberThreadReplyCount,
   roomUnread,
   sendResponseToChatMessage,
@@ -204,6 +204,16 @@ import {
 } from "./matrixRoomMapping";
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
+/**
+ * Replies a thread opens with, as the main timeline opens on its latest
+ * messages: older ones load while scrolling up.
+ */
+const INITIAL_THREAD_REPLIES = 30;
+/**
+ * The SDK emits an update when its first load of a thread ends, loaded or
+ * not. Past this delay without one, the thread loads its replies itself.
+ */
+const THREAD_INIT_TIMEOUT_MS = 10_000;
 /**
  * Events asked per backfill round trip, Element's `PAGINATE_SIZE`: an older
  * page shows as soon as one request brings a message, and the list asks for
@@ -401,6 +411,12 @@ export class MatrixDriver extends Driver {
     REACTION_CHECK_CONCURRENCY,
   );
   private readonly reactionChecksInFlight = new Set<string>();
+  /** Thread messages whose reactions a detail load already checked. */
+  private readonly checkedThreadReactions = new WeakSet<MatrixEvent>();
+  /** First page of each room's server-side thread list, loaded once. */
+  private readonly roomThreadLoads = new WeakMap<Room, Promise<void>>();
+  /** Threads whose first load by the SDK ended, loaded or not. */
+  private readonly settledThreadInits = new WeakSet<Thread>();
   /**
    * When this session last toggled a reaction on each event: a homeserver
    * answer asked before then must not overwrite the optimistic state.
@@ -1963,13 +1979,49 @@ export class MatrixDriver extends Driver {
     );
   }
 
-  /** Back-paginates a thread so detail and first-unread use its full history. */
-  private async loadAllThreadReplies(
+  /**
+   * Waits for the end of the SDK's first load of a thread's latest replies,
+   * which it starts on its own when it builds the thread. A load that ended
+   * without them is not waited for again.
+   */
+  private waitForThreadInit(thread: Thread): Promise<void> {
+    if (thread.initialEventsFetched || this.settledThreadInits.has(thread)) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const done = () => {
+        window.clearTimeout(timeout);
+        thread.off(ThreadEvent.Update, done);
+        this.settledThreadInits.add(thread);
+        resolve();
+      };
+      const timeout = window.setTimeout(done, THREAD_INIT_TIMEOUT_MS);
+      thread.on(ThreadEvent.Update, done);
+    });
+  }
+
+  /**
+   * Back-paginates a thread until it holds its latest replies, as Element's
+   * thread view opens at the bottom: older replies load while scrolling up.
+   */
+  private async loadLatestThreadReplies(
     mx: MatrixClient,
     thread: Thread,
   ): Promise<void> {
+    await this.waitForThreadInit(thread);
+    if (
+      !thread.initialEventsFetched &&
+      sortedThreadReplyEvents(thread).length === 0
+    ) {
+      // The SDK could not load them: ask here, so that a failure reaches the
+      // thread view and its Retry. Without a token, the latest replies come.
+      await mx.paginateEventTimeline(thread.liveTimeline, {
+        backwards: true,
+        limit: INITIAL_THREAD_REPLIES,
+      });
+    }
     const seenTokens = new Set<string>();
-    while (true) {
+    while (sortedThreadReplyEvents(thread).length < INITIAL_THREAD_REPLIES) {
       const token = thread.liveTimeline.getPaginationToken(
         EventTimeline.BACKWARDS,
       );
@@ -1977,82 +2029,119 @@ export class MatrixDriver extends Driver {
         return;
       }
       seenTokens.add(token);
-      const hasMore = await mx.paginateEventTimeline(thread.liveTimeline, {
+      await mx.paginateEventTimeline(thread.liveTimeline, {
         backwards: true,
-        limit: DEFAULT_CHAT_PAGE_SIZE,
+        limit: INITIAL_THREAD_REPLIES,
       });
-      if (!hasMore) {
-        return;
-      }
     }
+  }
+
+  /** Loads the page of replies before the loaded ones. */
+  override async loadOlderChatThreadReplies({
+    chatId,
+    threadId,
+  }: GetChatThreadParams): Promise<void> {
+    const { mx, room } = this.requireRoom("loadOlderChatThreadReplies", chatId);
+    const timeline = room.getThread(threadId)?.liveTimeline;
+    if (!timeline?.getPaginationToken(EventTimeline.BACKWARDS)) {
+      return;
+    }
+    await mx.paginateEventTimeline(timeline, {
+      backwards: true,
+      limit: DEFAULT_CHAT_PAGE_SIZE,
+    });
   }
 
   /**
-   * Loads every page of the server-side room thread list, independently of
-   * how much of the main timeline is loaded.
+   * Loads the first page of the server-side room thread list once, as
+   * Element's thread panel does: older pages load while scrolling, through
+   * `loadMoreChatThreads`.
    */
-  private async loadAllRoomThreads(
-    mx: MatrixClient,
-    room: Room,
-  ): Promise<void> {
-    // Must run before the first `fetchRoomThreads()`: without these timeline
-    // sets the SDK skips `/threads` yet still marks the room's threads ready,
-    // leaving `getThreads()` to the roots found in the loaded main timeline.
-    await room.createThreadsTimelineSets();
-    await room.fetchRoomThreads();
-    const allThreadsTimeline = room.threadsTimelineSets[0]?.getLiveTimeline();
-    if (!allThreadsTimeline) {
-      return;
+  private loadRoomThreads(room: Room): Promise<void> {
+    let load = this.roomThreadLoads.get(room);
+    if (!load) {
+      load = (async () => {
+        // Must run before the first `fetchRoomThreads()`: without these
+        // timeline sets the SDK skips `/threads` yet still marks the room's
+        // threads ready, leaving `getThreads()` to the roots found in the
+        // loaded main timeline.
+        await room.createThreadsTimelineSets();
+        await room.fetchRoomThreads();
+      })();
+      this.roomThreadLoads.set(room, load);
+      // The next caller retries a failed load.
+      void load.catch(() => this.roomThreadLoads.delete(room));
     }
-    const seenTokens = new Set<string>();
-    while (true) {
-      const token = allThreadsTimeline.getPaginationToken(
-        EventTimeline.BACKWARDS,
-      );
-      if (token === null || seenTokens.has(token)) {
-        return;
-      }
-      seenTokens.add(token);
-      const hasMore = await mx.paginateEventTimeline(allThreadsTimeline, {
-        backwards: true,
-        limit: DEFAULT_CHAT_PAGE_SIZE,
-      });
-      if (!hasMore) {
-        return;
-      }
-    }
+    return load;
   }
 
-  /** All known room threads, ordered by their latest reply. */
+  /** The server-side thread list, extended backwards page by page. */
+  private roomThreadListTimeline(room: Room): EventTimeline | undefined {
+    return room.threadsTimelineSets[0]?.getLiveTimeline();
+  }
+
+  private hasMoreRoomThreads(room: Room): boolean {
+    return Boolean(
+      this.roomThreadListTimeline(room)?.getPaginationToken(
+        EventTimeline.BACKWARDS,
+      ),
+    );
+  }
+
+  /**
+   * The room threads loaded so far, ordered by their latest reply. While
+   * older pages remain, a thread known from elsewhere (the main timeline, a
+   * thread opened directly) and older than the loaded pages waits for its
+   * page, so a new page never lands above it.
+   */
   async getChatThreads(chatId: string): Promise<ChatThread[]> {
     const { mx, room } = this.requireRoom("getChatThreads", chatId);
-    // Idempotent in the SDK and required even when one thread arrived via sync:
-    // otherwise `getThreads()` can be a partial list.
-    await this.loadAllRoomThreads(mx, room);
-    return this.mapRoomThreads(mx, room);
+    await this.loadRoomThreads(room);
+    const threads = this.mapRoomThreads(mx, room);
+    if (!this.hasMoreRoomThreads(room)) {
+      return threads;
+    }
+    const listedIds = new Set(
+      this.roomThreadListTimeline(room)
+        ?.getEvents()
+        .map((event) => event.getId()),
+    );
+    const oldestListed = threads.findLast((thread) => listedIds.has(thread.id));
+    return oldestListed
+      ? threads.filter(
+          (thread) => thread.lastReplyAt >= oldestListed.lastReplyAt,
+        )
+      : threads;
+  }
+
+  override async hasMoreChatThreads(chatId: string): Promise<boolean> {
+    const { room } = this.requireRoom("hasMoreChatThreads", chatId);
+    await this.loadRoomThreads(room);
+    return this.hasMoreRoomThreads(room);
+  }
+
+  /** Loads the next page of the server-side thread list. */
+  override async loadMoreChatThreads(chatId: string): Promise<void> {
+    const { mx, room } = this.requireRoom("loadMoreChatThreads", chatId);
+    await this.loadRoomThreads(room);
+    const timeline = this.roomThreadListTimeline(room);
+    if (!timeline || !this.hasMoreRoomThreads(room)) {
+      return;
+    }
+    await mx.paginateEventTimeline(timeline, {
+      backwards: true,
+      limit: DEFAULT_CHAT_PAGE_SIZE,
+    });
   }
 
   /**
    * Unread threads from memory, as Element's room thread indicator reads
    * them: the threads the client knows and the homeserver's per-thread
-   * notification counts. Like Element's thread panel, the full list loads
-   * only when the threads panel opens, unless the homeserver counts unread
-   * replies in a thread that is not in memory yet.
+   * notification counts. The thread list only loads with the threads panel,
+   * so an unread thread missing from memory is not listed.
    */
   async getChatUnreadThreads(chatId: string): Promise<ChatThread[]> {
     const { mx, room } = this.requireRoom("getChatUnreadThreads", chatId);
-    const threadNotifications =
-      room.getUnreadNotificationCount() - room.getRoomUnreadNotificationCount();
-    const knownThreadNotifications = room
-      .getThreads()
-      .reduce(
-        (count, thread) =>
-          count + room.getThreadUnreadNotificationCount(thread.id),
-        0,
-      );
-    if (threadNotifications > knownThreadNotifications) {
-      await this.loadAllRoomThreads(mx, room);
-    }
     return this.mapRoomThreads(mx, room).filter(
       (thread) => thread.unreadCount > 0,
     );
@@ -2067,19 +2156,18 @@ export class MatrixDriver extends Driver {
       .sort((left, right) => right.lastReplyAt.localeCompare(left.lastReplyAt));
   }
 
-  /** Root + every reply, with a receipt-derived first-unread boundary. */
+  /**
+   * Root + the replies loaded so far, the latest ones first, with a
+   * receipt-derived first-unread boundary among them.
+   */
   async getChatThread({
     chatId,
     threadId,
   }: GetChatThreadParams): Promise<ChatThreadDetail> {
     const { mx, room } = this.requireRoom("getChatThread", chatId);
-    // The whole thread list (/threads, then a request per thread) is only
-    // worth loading for a thread the SDK does not know yet.
-    let thread = room.getThread(threadId);
-    if (!thread) {
-      await this.loadAllRoomThreads(mx, room);
-      thread = room.getThread(threadId);
-    }
+    const thread =
+      room.getThread(threadId) ??
+      (await this.createThreadFromRoot(mx, room, threadId));
     const selfUserId = mx.getUserId() ?? undefined;
     if (!thread) {
       // The SDK removes a thread when its last reply is redacted. Keep the
@@ -2098,16 +2186,51 @@ export class MatrixDriver extends Driver {
         firstUnreadIndex: null,
       };
     }
-    await this.loadAllThreadReplies(mx, thread);
+    await this.loadLatestThreadReplies(mx, thread);
     const detail = threadToChatThreadDetail(room, thread, selfUserId);
     const replies = sortedThreadReplyEvents(thread);
     const events = thread.rootEvent ? [thread.rootEvent, ...replies] : replies;
-    const messages = await Promise.all(
-      detail.messages.map((message, index) =>
-        reconcileMessageReactions(mx, room, events[index], message, selfUserId),
-      ),
+    // Detail reloads map every reply again: check each one's reactions once,
+    // when it first loads, as the main timeline checks its pages.
+    const unchecked = events.flatMap((event, index) =>
+      this.checkedThreadReactions.has(event)
+        ? []
+        : [{ event, message: detail.messages[index] }],
     );
-    return { ...detail, messages };
+    unchecked.forEach(({ event }) => this.checkedThreadReactions.add(event));
+    this.checkPageReactions(
+      mx,
+      room,
+      unchecked.map(({ event }) => event),
+      unchecked.map(({ message }) => message),
+      selfUserId,
+    );
+    return detail;
+  }
+
+  /**
+   * Builds a thread the SDK does not know yet from its root, as Element's
+   * thread view does, instead of loading the whole thread list to find it.
+   * The root comes from the homeserver, whose summary tells whether replies
+   * remain: a root in memory can miss replies sent during a sync gap, or still
+   * count replies deleted since. Resolves `undefined` without any reply.
+   */
+  private async createThreadFromRoot(
+    mx: MatrixClient,
+    room: Room,
+    threadId: string,
+  ): Promise<Thread | undefined> {
+    const root = await mx.fetchRoomEvent(room.roomId, threadId);
+    const summary = root.unsigned?.["m.relations"]?.[RelationType.Thread] as
+      | { count?: number }
+      | undefined;
+    if (!summary?.count) {
+      return undefined;
+    }
+    return (
+      room.getThread(threadId) ??
+      room.createThread(threadId, mx.getEventMapper()(root), [], true)
+    );
   }
 
   /** Advances only this thread's receipt, as Element's thread view. */
@@ -2124,10 +2247,12 @@ export class MatrixDriver extends Driver {
     await this.readThroughThread(mx, room, thread);
   }
 
-  /** Advances each known thread receipt independently. */
+  /**
+   * Advances each known thread receipt independently: the threads in memory,
+   * the ones the unread banner lists.
+   */
   async markAllChatThreadsRead(chatId: string): Promise<void> {
     const { mx, room } = this.requireRoom("markAllChatThreadsRead", chatId);
-    await this.loadAllRoomThreads(mx, room);
     const threads = room.getThreads();
     this.clearThreadNotifications(mx, room, threads);
     await Promise.all(
@@ -2746,6 +2871,7 @@ export class MatrixDriver extends Driver {
         selfUserId,
       ),
       firstUnreadIndex: null,
+      hasOlderReplies: liveThread ? hasOlderThreadReplies(liveThread) : false,
     };
     const thread: ChatThread = {
       id: rootMessageId,

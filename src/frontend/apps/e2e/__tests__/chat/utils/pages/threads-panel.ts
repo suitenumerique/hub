@@ -25,6 +25,39 @@ export class ThreadsPanel {
     await expect(this.root).toHaveAttribute("aria-hidden", "false");
   }
 
+  /** Opens the list of the conversation's threads from its header. */
+  async openList(): Promise<void> {
+    await this.page
+      .locator(".hub__chat-header")
+      .getByRole("button", { name: "Threads", exact: true })
+      .click();
+    await this.expectOpen();
+  }
+
+  /** A row of the thread list, by a text it shows, such as its last reply. */
+  listedThread(text: string): Locator {
+    return this.root.getByRole("listitem").filter({ hasText: text });
+  }
+
+  /**
+   * Scrolls down the virtualized thread list with the mouse wheel, as a
+   * person would, until the thread is rendered: older pages load on the way.
+   */
+  async expectThreadListedBelow(text: string): Promise<void> {
+    const scroller = this.root.locator("[data-virtuoso-scroller]");
+    await scroller.hover();
+    await expect
+      .poll(
+        async () => {
+          if ((await this.listedThread(text).count()) > 0) return true;
+          await this.page.mouse.wheel(0, 600);
+          return false;
+        },
+        { timeout: SYNC_TIMEOUT, intervals: [300] },
+      )
+      .toBe(true);
+  }
+
   /** The open thread shows its root message. */
   async expectThread(rootText: string): Promise<void> {
     await this.expectOpen();

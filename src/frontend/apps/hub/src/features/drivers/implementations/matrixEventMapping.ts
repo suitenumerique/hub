@@ -9,8 +9,8 @@
  * a module-private `WeakMap`. Splitting on those seams would cycle.
  *
  * Everything here is pure: no `MatrixClient` state, no driver instance. Only
- * `fetchReactionSnapshot` and `reconcileMessageReactions` touch the network, and
- * they take the client as an argument.
+ * `fetchReactionSnapshot` touches the network, and it takes the client as an
+ * argument.
  */
 import {
   Direction,
@@ -672,26 +672,6 @@ export const needsReactionSnapshot = (
   message.reactions.length > 0 ||
   Boolean(event.getServerAggregatedRelation(RelationType.Annotation));
 
-/** Reconciles a mapped message only when Matrix reports or caches reactions. */
-export const reconcileMessageReactions = async (
-  mx: MatrixClient,
-  room: Room,
-  event: MatrixEvent,
-  message: ChatMessage,
-  selfUserId: string | undefined,
-): Promise<ChatMessage> => {
-  if (!needsReactionSnapshot(event, message)) {
-    return message;
-  }
-  const snapshot = await fetchReactionSnapshot(
-    mx,
-    room.roomId,
-    message.id,
-    selfUserId,
-  );
-  return { ...message, reactions: snapshot.reactions };
-};
-
 /** Current user's active annotations for one emoji. */
 export const ownReactionEvents = (
   events: MatrixEvent[],
@@ -956,8 +936,13 @@ export const threadToChatThreadDetail = (
       firstUnreadReply < 0
         ? null
         : firstUnreadReply + (thread.rootEvent ? 1 : 0),
+    hasOlderReplies: hasOlderThreadReplies(thread),
   };
 };
+
+/** The thread's loaded replies do not reach back to its root yet. */
+export const hasOlderThreadReplies = (thread: Thread): boolean =>
+  Boolean(thread.liveTimeline.getPaginationToken(Direction.Backward));
 
 /**
  * One `ChatMessageAuthor` per distinct *other* sender across the given events.

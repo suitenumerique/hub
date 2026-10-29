@@ -2,7 +2,11 @@ import { SYNC_TIMEOUT } from "./utils/env";
 import { expect, test } from "./utils/fixtures";
 import { createUnencryptedRoom, markRoomRead } from "./utils/flows";
 import { uniqueText } from "./utils/ids";
-import { delayRequests, SEND_REQUESTS } from "./utils/network";
+import {
+  delayRequests,
+  SEND_REQUESTS,
+  THREAD_LIST_REQUESTS,
+} from "./utils/network";
 import { watchText } from "./utils/watch";
 
 /** E2E-08: starting a thread, reading it and answering it live. */
@@ -221,5 +225,98 @@ test("keeps a deleted reply out of the thread reply count", async ({
   await test.step("and after a reload", async () => {
     await bobChat.reload();
     await expect(button).toHaveText("1 reply", { timeout: SYNC_TIMEOUT });
+  });
+});
+
+/** Like Element's thread panel: the first page, then older ones on scroll. */
+test("loads the thread list page by page while scrolling", async ({
+  people,
+  hub,
+}) => {
+  const alice = await people.create("Alice");
+  const bob = await people.create("Bob");
+  const roomId = await createUnencryptedRoom(alice, [bob]);
+  // More threads than the first page of the list holds.
+  const reply = uniqueText("Reply");
+  for (let index = 1; index <= 40; index++) {
+    const rootId = await alice.api.sendText(roomId, uniqueText("Root"));
+    await alice.api.sendText(roomId, `${reply} [${index}]`, {
+      threadRootId: rootId,
+    });
+  }
+
+  const bobChat = await hub.open(bob);
+  const olderPages: string[] = [];
+  bobChat.page.on("request", (request) => {
+    const url = request.url();
+    if (THREAD_LIST_REQUESTS.test(url) && new URL(url).searchParams.has("from"))
+      olderPages.push(url);
+  });
+  await bobChat.openConversation(alice.displayName);
+  await bobChat.threads.openList();
+
+  await test.step("the list opens on the latest threads", async () => {
+    await expect(bobChat.threads.listedThread(`${reply} [40]`)).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
+    expect(olderPages).toEqual([]);
+  });
+
+  await test.step("older threads load while scrolling down", async () => {
+    await bobChat.threads.expectThreadListedBelow(`${reply} [1]`);
+    expect(olderPages.length).toBeGreaterThan(0);
+  });
+});
+
+/** Like Element's thread view: the latest replies, then older ones on scroll. */
+test("opens a long thread on its latest replies, then loads older ones", async ({
+  people,
+  hub,
+}) => {
+  const alice = await people.create("Alice");
+  const bob = await people.create("Bob");
+  const roomId = await createUnencryptedRoom(alice, [bob]);
+  const root = uniqueText("Long thread");
+  const rootId = await alice.api.sendText(roomId, root);
+  // More replies than a thread opens with.
+  const reply = uniqueText("Reply");
+  for (let index = 1; index <= 60; index++) {
+    await alice.api.sendText(roomId, `${reply} [${index}]`, {
+      threadRootId: rootId,
+    });
+  }
+
+  const bobChat = await hub.open(bob);
+  // A page of replies without a next token reached the root.
+  const repliesPath = `/relations/${encodeURIComponent(rootId)}?`;
+  const pages: Promise<void>[] = [];
+  let reachedRoot = false;
+  bobChat.page.on("response", (response) => {
+    if (!response.url().includes(repliesPath)) return;
+    pages.push(
+      response.json().then(
+        (body: { next_batch?: string }) => {
+          if (!body.next_batch) reachedRoot = true;
+        },
+        () => {},
+      ),
+    );
+  });
+  await bobChat.openConversation(alice.displayName);
+  await bobChat.timeline.threadButton(root).click();
+  await bobChat.threads.expectOpen();
+
+  await test.step("the thread opens on its latest replies", async () => {
+    await bobChat.threads.timeline.expectMessage(`${reply} [60]`);
+    await Promise.all(pages);
+    expect(reachedRoot).toBe(false);
+    await expect(bobChat.threads.timeline.message(root)).toHaveCount(0);
+  });
+
+  await test.step("older replies load while scrolling up", async () => {
+    await bobChat.threads.timeline.expectMessageAbove(root);
+    await bobChat.threads.timeline.expectMessage(`${reply} [1]`);
+    await Promise.all(pages);
+    expect(reachedRoot).toBe(true);
   });
 });
