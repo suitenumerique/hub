@@ -48,7 +48,8 @@ export const useChatUnread = (): ChatUnreadLookup => {
   });
 
   return useCallback(
-    (ref: ChatRef): ChatUnread => byAccount[ref.accountId]?.[ref.chatId] ?? READ,
+    (ref: ChatRef): ChatUnread =>
+      byAccount[ref.accountId]?.[ref.chatId] ?? READ,
     [byAccount],
   );
 };

@@ -137,8 +137,7 @@ export const completeOidcLogin = async (params: {
   state: string;
 }): Promise<CompleteOidcLoginResponse> => {
   const { code, state } = params;
-  const { homeserverUrl, metadata, authContext } =
-    takeStoredAuthContext(state);
+  const { homeserverUrl, metadata, authContext } = takeStoredAuthContext(state);
   const tokenResponse = await new OAuth2(
     metadata,
     authContext,

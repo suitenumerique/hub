@@ -63,9 +63,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const unreadLookup = useChatUnread();
   const entries = useDriverEntries();
   // The rows render inside this element's scroll, only those near the view.
-  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(
-    null,
-  );
+  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null);
   const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
     ? "⌘K"
     : "Ctrl K";
