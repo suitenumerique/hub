@@ -58,7 +58,9 @@ describe("useChat", () => {
     await waitFor(() => expect(result.current.chat).not.toBeNull());
 
     expect(registry.get).toHaveBeenCalledWith("account-a");
-    expect(getChat).toHaveBeenCalledWith("chat-1");
+    expect(getChat).toHaveBeenCalledWith("chat-1", {
+      signal: expect.any(AbortSignal),
+    });
     expect(result.current.chat?.ref).toEqual(CHAT_REF);
   });
 
