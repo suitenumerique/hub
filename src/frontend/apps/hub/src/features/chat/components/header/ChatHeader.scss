@@ -48,9 +48,26 @@
     -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 70%);
   }
 
-  > .c__dropdown-menu-trigger {
+  // The white frames of the conversation menu and of the tools, as in the
+  // design's floating bar.
+  &__toolbar,
+  &__selector {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--c--globals--spacings--xxxs, 4px);
+    background: var(--c--contextuals--background--surface--primary, #fff);
+    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+    border-radius: var(--c--globals--spacings--xs, 8px);
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+  }
+
+  &__toolbar {
     min-width: 0;
-    justify-content: flex-start;
+
+    > .c__dropdown-menu-trigger {
+      min-width: 0;
+      justify-content: flex-start;
+    }
   }
 
   &__breadcrumb {
@@ -155,14 +172,7 @@
   }
 
   &__selector {
-    display: inline-flex;
-    align-items: center;
     gap: var(--c--globals--spacings--xxxs, 4px);
-    padding: var(--c--globals--spacings--xxxs, 4px);
-    background: var(--c--contextuals--background--surface--primary, #fff);
-    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
-    border-radius: var(--c--globals--spacings--xs, 8px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     overflow: clip;
   }
 

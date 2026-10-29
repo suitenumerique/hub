@@ -65,12 +65,6 @@
     > svg {
       flex: 0 0 auto;
     }
-
-    &:focus-within {
-      outline: 2px solid
-        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
-      outline-offset: 1px;
-    }
   }
 
   &__selection {

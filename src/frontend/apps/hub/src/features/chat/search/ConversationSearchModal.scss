@@ -152,12 +152,14 @@ $tablet: map.get($themes, "default", "globals", "breakpoints", "tablet");
   &__open {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     font-size: 12px;
-    color: var(--c--contextuals--content--semantic--brand--primary);
+    font-weight: 500;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--brand--secondary, #304ddf);
 
-    .material-icons {
-      font-size: 16px;
+    svg {
+      flex: 0 0 auto;
     }
   }
 

@@ -8,9 +8,7 @@ import {
   ArrowDropDown,
   Bell,
   Edit,
-  File,
   Leave,
-  Meet,
   Shared,
   Thread,
 } from "@gouvfr-lasuite/ui-components/icons";
@@ -35,8 +33,8 @@ type ChatHeaderProps = {
   activeTool: ChatTool | null;
   onToggleTool: (tool: ChatTool) => void;
   /**
-   * Whether to render the conversation tools (meeting, threads, files). Off for
-   * a pending invitation, whose tools panel and composer are suppressed.
+   * Whether to render the conversation tools (threads). Off for a pending
+   * invitation, whose tools panel and composer are suppressed.
    */
   showTools?: boolean;
 };
@@ -56,39 +54,31 @@ export const ChatHeader = ({
 
   return (
     <header className="hub__chat-header" aria-label={t("Chat header")}>
-      {chat ? (
-        <ChatMenu chat={chat} />
-      ) : (
-        <div
-          className="hub__chat-header__breadcrumb hub__chat-header__breadcrumb--skeleton"
-          role="status"
-          aria-busy="true"
-          aria-label={t("Loading conversation…")}
-        >
-          <span
-            className="hub__chat-header__breadcrumb__avatar-skeleton"
-            aria-hidden="true"
-          />
-          <span
-            className="hub__chat-header__breadcrumb__name-skeleton"
-            aria-hidden="true"
-          />
-        </div>
-      )}
+      <div className="hub__chat-header__toolbar">
+        {chat ? (
+          <ChatMenu chat={chat} />
+        ) : (
+          <div
+            className="hub__chat-header__breadcrumb hub__chat-header__breadcrumb--skeleton"
+            role="status"
+            aria-busy="true"
+            aria-label={t("Loading conversation…")}
+          >
+            <span
+              className="hub__chat-header__breadcrumb__avatar-skeleton"
+              aria-hidden="true"
+            />
+            <span
+              className="hub__chat-header__breadcrumb__name-skeleton"
+              aria-hidden="true"
+            />
+          </div>
+        )}
+      </div>
 
       <div className="hub__chat-header__actions">
         {showTools && (
           <div className="hub__chat-header__selector">
-            <Button
-              type="button"
-              variant="tertiary"
-              color="neutral"
-              size="small"
-              className="hub__chat-header__icon-button"
-              aria-label={t("Start a meeting")}
-              icon={<Meet />}
-            />
-            <span className="hub__chat-header__separator" aria-hidden="true" />
             <Button
               type="button"
               variant="tertiary"
@@ -101,19 +91,6 @@ export const ChatHeader = ({
               active={activeTool === "threads"}
               onClick={() => onToggleTool("threads")}
               icon={<Thread />}
-            />
-            <Button
-              type="button"
-              variant="tertiary"
-              color="neutral"
-              size="small"
-              className="hub__chat-header__icon-button"
-              aria-label={t("Files")}
-              aria-pressed={activeTool === "files"}
-              data-active={activeTool === "files"}
-              active={activeTool === "files"}
-              onClick={() => onToggleTool("files")}
-              icon={<File />}
             />
           </div>
         )}
