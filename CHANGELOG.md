@@ -108,6 +108,9 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Keep only the threads button in conversation headers and frame
+  the conversation menu as the tools are, drop the focus outline of the people
+  search and align the "Open" action of search results with the design.
 - 💄(frontend) Apply the latest message design: bubble padding and line
   height, smaller composer text, rounder reactions, a faint veil on pictures,
   the file name in its frame, the tiny menu for message actions and the hover

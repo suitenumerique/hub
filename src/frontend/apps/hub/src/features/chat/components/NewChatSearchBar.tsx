@@ -1,9 +1,4 @@
-import {
-  File,
-  Meet,
-  Thread,
-  UserSearch,
-} from "@gouvfr-lasuite/ui-components/icons";
+import { Thread, UserSearch } from "@gouvfr-lasuite/ui-components/icons";
 import { KeyboardEvent, RefObject, useEffect, useMemo, useState } from "react";
 import { ComboBox, Input, Popover } from "react-aria-components";
 import type { Key } from "react-aria-components";
@@ -186,20 +181,6 @@ export const NewChatSearchBar = ({
             <button
               type="button"
               className="hub__new-chat-search__icon-button"
-              aria-label={t("Start a meeting")}
-            >
-              <Meet aria-hidden="true" />
-              <span className="hub__visually-hidden">
-                {t("Start a meeting")}
-              </span>
-            </button>
-            <span
-              className="hub__new-chat-search__separator"
-              aria-hidden="true"
-            />
-            <button
-              type="button"
-              className="hub__new-chat-search__icon-button"
               aria-label={t("Threads")}
               aria-pressed={activeTool === "threads"}
               data-active={activeTool === "threads"}
@@ -207,17 +188,6 @@ export const NewChatSearchBar = ({
             >
               <Thread aria-hidden="true" />
               <span className="hub__visually-hidden">{t("Threads")}</span>
-            </button>
-            <button
-              type="button"
-              className="hub__new-chat-search__icon-button"
-              aria-label={t("Files")}
-              aria-pressed={activeTool === "files"}
-              data-active={activeTool === "files"}
-              onClick={() => onToggleTool("files")}
-            >
-              <File aria-hidden="true" />
-              <span className="hub__visually-hidden">{t("Files")}</span>
             </button>
           </div>
         )}

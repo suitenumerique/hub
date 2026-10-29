@@ -2,6 +2,7 @@ import {
   QuickSearchItem,
   QuickSearchItemTemplate,
 } from "@gouvfr-lasuite/ui-components";
+import { ArrowRight } from "@gouvfr-lasuite/ui-components/icons";
 import { useTranslation } from "react-i18next";
 
 import { ChatVisualAvatar } from "@/features/chat/components/ChatVisualAvatar";
@@ -47,9 +48,7 @@ export const ConversationSearchResultRow = ({
         right={
           <span className="hub__conversation-search__open">
             {t("Open")}
-            <span className="material-icons" aria-hidden="true">
-              arrow_forward
-            </span>
+            <ArrowRight size={16} aria-hidden="true" />
           </span>
         }
       />
