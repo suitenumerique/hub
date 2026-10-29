@@ -3,7 +3,7 @@ import {
   useQueries,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { useCallback, useRef } from "react";
+import { useCallback, useState } from "react";
 
 import { decorateChatSections } from "@/features/chat/chatRefs";
 import { compareChats } from "@/features/chat/chatSorting";
@@ -105,19 +105,20 @@ const keepUnchanged = (
 
 export const useChats = (): MergedChatsResult => {
   const entries = useDriverEntries();
-  const previous = useRef<MergedChatsResult | null>(null);
   const combine = useCallback(
-    (results: UseQueryResult<ChatSections, Error>[]) => {
-      previous.current = keepUnchanged(
-        previous.current,
-        mergeChatSections(entries, results),
-      );
-      return previous.current;
-    },
+    (results: UseQueryResult<ChatSections, Error>[]) =>
+      mergeChatSections(entries, results),
     [entries],
   );
-
-  return useQueries({ queries: entries.map(chatsQuery), combine });
+  const next = useQueries({ queries: entries.map(chatsQuery), combine });
+  // The result shown last lives in state, the way React keeps information
+  // from previous renders: replacing it during render re-renders at once.
+  const [shown, setShown] = useState(next);
+  const result = keepUnchanged(shown, next);
+  if (result !== shown) {
+    setShown(result);
+  }
+  return result;
 };
 
 const hasNoChats = (results: UseQueryResult<ChatSections, Error>[]) =>
