@@ -1,10 +1,12 @@
 .hub__chat-tools-panel {
+  // The header floats over the content, which passes under its translucent,
+  // blurred background as in the side panel: every view starts below it.
+  --hub-tools-panel-header-height: 57px;
+
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--c--globals--spacings--sm, 12px);
-  padding-top: var(--c--globals--spacings--sm, 12px);
   background: var(--c--contextuals--background--surface--primary, #fff);
   border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
   border-radius: var(--c--globals--spacings--xs, 8px);
@@ -12,13 +14,35 @@
   color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
   overflow: hidden;
 
+  // The space under the header is its own, so the separator it shows once
+  // the content scrolls under it sits at the bottom of the veil.
   &__header {
-    flex: 0 0 auto;
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: var(--c--globals--spacings--xxxs, 4px);
-    height: 32px;
-    padding: 0 var(--c--globals--spacings--sm, 12px);
+    height: var(--hub-tools-panel-header-height);
+    padding: var(--c--globals--spacings--sm, 12px);
+    background: color-mix(
+      in srgb,
+      var(--c--contextuals--background--surface--primary, #fff) 80%,
+      transparent
+    );
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid transparent;
+    transition: border-color 350ms cubic-bezier(0.5, 0, 0.5, 1);
+  }
+
+  &[data-scrolled="true"] &__header {
+    border-bottom-color: var(
+      --c--contextuals--border--surface--primary,
+      #dfe2ea
+    );
   }
 
   &__title {
@@ -91,8 +115,15 @@
     display: flex;
     flex-direction: column;
     gap: var(--c--globals--spacings--md, 24px);
-    padding: 0 var(--c--globals--spacings--base, 16px);
+    padding: var(--hub-tools-panel-header-height)
+      var(--c--globals--spacings--base, 16px) 0;
     overflow-y: auto;
+  }
+
+  // A focused element is scrolled clear of the header.
+  &__content,
+  [data-virtuoso-scroller] {
+    scroll-padding-top: var(--hub-tools-panel-header-height);
   }
 
   &__state {
@@ -367,5 +398,11 @@
         height: 16px;
       }
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__chat-tools-panel__header {
+    transition: none;
   }
 }

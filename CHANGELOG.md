@@ -108,6 +108,11 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Slide the tools panel in at its final width, 450px when there
+  is room and never wider than the conversation, its content passing under a
+  translucent, blurred header that shows a separator once it scrolls. Cap the
+  conversation at 900px, put 16px between authors, align its composer with
+  the panel's and let the messages scroll up to the composer.
 - 💄(frontend) Align the side panel with the design: conversation names one
   weight lighter in the primary colour, UI kit search and group icons, rows
   6px apart, the list passing under a translucent, blurred top and footer, a
