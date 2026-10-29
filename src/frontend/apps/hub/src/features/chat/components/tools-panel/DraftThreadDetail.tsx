@@ -100,7 +100,7 @@ export const DraftThreadDetail = ({
         onBack={onBack}
       />
       <div className="hub__thread-detail" ref={detailRef}>
-        <div className="hub__thread-detail__messages">
+        <div className="hub__thread-detail__messages hub__thread-detail__messages--draft">
           <Fragment>
             {message.authorId === "me" ? (
               <ChatBubble

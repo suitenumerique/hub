@@ -56,7 +56,7 @@ const DEFAULT_ITEM_HEIGHT = 72;
 const LAST_MESSAGE = { index: "LAST", align: "end" } as const;
 
 // Stable header: the loader state arrives through Virtuoso's context. Its
-// spacer leaves room for the hover toolbar of the first message.
+// spacer keeps the first message below the floating panel header.
 const ThreadMessagesHeader = ({
   context,
 }: ContextProp<ThreadMessagesContext>) => {

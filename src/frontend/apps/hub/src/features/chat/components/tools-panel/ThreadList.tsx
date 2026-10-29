@@ -99,8 +99,14 @@ const ThreadListFooter = ({ context }: ContextProp<ThreadRowsContext>) => {
   return null;
 };
 
+// Room for the panel header, which floats over the list.
+const ThreadListHeader = () => (
+  <div className="hub__chat-thread-list__top-spacer" />
+);
+
 // Stable component types: Virtuoso remounts every row when they change.
 const THREAD_LIST_COMPONENTS = {
+  Header: ThreadListHeader,
   List: ThreadRows,
   Item: ThreadRow,
   Footer: ThreadListFooter,

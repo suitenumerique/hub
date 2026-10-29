@@ -67,10 +67,15 @@
     box-sizing: border-box;
   }
 
+  // 4px between the messages of an author, 16px before the next author.
   &__row-inner {
     width: 100%;
-    max-width: 1150px;
+    max-width: 900px;
     padding: 2px;
+  }
+
+  &__row[data-group-start] &__row-inner {
+    padding-top: 14px;
   }
 }
 

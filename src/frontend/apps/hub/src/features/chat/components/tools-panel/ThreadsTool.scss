@@ -6,6 +6,12 @@
   flex: 1 1 auto;
   min-height: 0;
 
+  // The first thread starts below the panel header, which floats over the
+  // list (ChatToolsPanel.scss).
+  &__top-spacer {
+    height: var(--hub-tools-panel-header-height);
+  }
+
   // Rows carry the panel gutter: Virtuoso's absolute viewport spans the
   // scroller's full width and would overflow a padded scroller. A flex column
   // keeps the separator's margins inside the measured row.
@@ -173,6 +179,12 @@
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
+
+    // A thread draft shows its root without a list: it only keeps clear of
+    // the floating panel header.
+    &--draft {
+      padding-top: var(--hub-tools-panel-header-height);
+    }
   }
 
   // Each row carries the gap above it and the panel gutter: Virtuoso
@@ -182,11 +194,11 @@
       var(--c--globals--spacings--sm, 12px) 0;
   }
 
-  // With the first row's gap, room for the toolbar that extends 38px above
-  // a bubble, including its hover bridge: sent roots have no author header
-  // to provide any extra space.
+  // Starts below the panel header, which floats over the messages, then
+  // holds the loader of older messages.
   &__top-spacer {
-    min-height: 40px;
+    min-height: calc(var(--hub-tools-panel-header-height) + 40px);
+    padding-top: var(--hub-tools-panel-header-height);
     display: flex;
     align-items: center;
     justify-content: center;

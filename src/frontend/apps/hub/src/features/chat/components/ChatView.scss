@@ -1,14 +1,20 @@
 .hub__chat-view {
+  // The tools panel column with its 12px gutters: 450px wide when there is
+  // room, narrower down to 350px so it is never wider than the conversation.
+  --hub-chat-panel-column: clamp(374px, 50%, 474px);
+
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr 0px;
   width: 100%;
   position: relative;
+  // The panel slides in from beyond the right edge.
+  overflow: clip;
   transition: grid-template-columns 220ms ease;
 
   &[data-panel-open="true"] {
-    grid-template-columns: 1fr 379px;
+    grid-template-columns: 1fr var(--hub-chat-panel-column);
   }
 
   &__main {
@@ -27,29 +33,39 @@
   }
 
   // Mirrors the bubble row layout: spans the full width with a 24px gutter,
-  // while its inner child is capped at 1150px and centered — so the composer's
+  // while its inner child is capped at 900px and centered — so the composer's
   // visible edges line up with `.hub__chat-conversation__row-inner` above it.
+  // Its bottom edge lines up with the tools panel's, 12px above the window's.
+  // No space above it: the messages scroll up to its edge, the list's own
+  // bottom spacer keeps the last one off it.
   &__composer {
     flex: 0 0 auto;
     width: 100%;
-    padding: var(--c--globals--spacings--xs, 8px)
-      var(--c--globals--spacings--md, 24px)
-      var(--c--globals--spacings--md, 24px);
+    padding: 0 var(--c--globals--spacings--md, 24px)
+      var(--c--globals--spacings--sm, 12px);
     display: flex;
     justify-content: center;
 
     > * {
       width: 100%;
-      max-width: 1150px;
+      max-width: 900px;
     }
   }
 
+  // The column grows while the panel keeps its final width: placed against the
+  // column's left edge and sized from the view, it slides in without its text
+  // wrapping again during the animation.
   &__panel {
     min-width: 0;
     min-height: 0;
-    display: flex;
-    padding: 64px var(--c--globals--spacings--sm, 12px)
-      var(--c--globals--spacings--sm, 12px);
+
+    > * {
+      position: absolute;
+      top: 64px;
+      bottom: var(--c--globals--spacings--sm, 12px);
+      width: calc(var(--hub-chat-panel-column) - 24px);
+      margin-left: var(--c--globals--spacings--sm, 12px);
+    }
   }
 }
 

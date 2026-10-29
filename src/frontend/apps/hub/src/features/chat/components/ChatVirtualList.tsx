@@ -892,6 +892,7 @@ const Row = memo(function Row({
     return (
       <RowShell
         messageId={message.id}
+        isFirstOfGroup={isFirstOfGroup}
         hasUnreadSeparator={hasUnreadSeparator}
         isUnreadSeparatorVisible={isUnreadSeparatorVisible}
       >
@@ -923,6 +924,7 @@ const Row = memo(function Row({
   return (
     <RowShell
       messageId={message.id}
+      isFirstOfGroup={isFirstOfGroup}
       hasUnreadSeparator={hasUnreadSeparator}
       isUnreadSeparatorVisible={isUnreadSeparatorVisible}
     >
@@ -952,15 +954,21 @@ const Row = memo(function Row({
 const RowShell = ({
   children,
   messageId,
+  isFirstOfGroup,
   hasUnreadSeparator,
   isUnreadSeparatorVisible,
 }: {
   children: React.ReactNode;
   messageId: string;
+  isFirstOfGroup: boolean;
   hasUnreadSeparator: boolean;
   isUnreadSeparatorVisible: boolean;
 }) => (
-  <div className="hub__chat-conversation__row" data-chat-message-id={messageId}>
+  <div
+    className="hub__chat-conversation__row"
+    data-chat-message-id={messageId}
+    data-group-start={isFirstOfGroup || undefined}
+  >
     <div className="hub__chat-conversation__row-inner">
       {hasUnreadSeparator && (
         <UnreadSeparator visible={isUnreadSeparatorVisible} />

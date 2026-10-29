@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ChatRef } from "@/features/drivers/types";
@@ -11,6 +12,9 @@ import { ThreadsTool } from "./ThreadsTool";
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
 export type ChatTool = "threads" | "files";
+
+const CONTENT_SCROLLERS =
+  "[data-virtuoso-scroller], .hub__chat-tools-panel__content";
 
 type ChatToolsPanelProps = {
   tool: ChatTool | null;
@@ -39,6 +43,10 @@ export const ChatToolsPanel = ({
   onCloseThread,
 }: ChatToolsPanelProps) => {
   const { t } = useTranslation();
+  // The view whose content scrolled under the header, which then draws its
+  // separator as the side panel does. Another view starts without it.
+  const view = `${tool}:${threadId ?? ""}`;
+  const [scrolledView, setScrolledView] = useState<string | null>(null);
 
   return (
     <aside
@@ -47,6 +55,13 @@ export const ChatToolsPanel = ({
       aria-hidden={!isOpen}
       // A closed panel stays mounted: keep its content out of keyboard reach.
       inert={!isOpen}
+      data-scrolled={scrolledView === view}
+      onScrollCapture={(event) => {
+        const target = event.target as HTMLElement;
+        // Only the view's own scroller, not the thread composer's field.
+        if (!target.matches(CONTENT_SCROLLERS)) return;
+        setScrolledView(target.scrollTop > 0 ? view : null);
+      }}
     >
       {tool === "files" && (
         <>
