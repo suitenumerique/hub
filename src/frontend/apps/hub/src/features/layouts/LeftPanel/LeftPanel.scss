@@ -16,25 +16,51 @@
   color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
   position: relative;
 
+  // The top and the footer float over the list, which passes under their
+  // translucent, blurred background.
+  --hub-lp-veil: color-mix(
+    in srgb,
+    var(--c--contextuals--background--surface--tertiary, #f6f8f9) 80%,
+    transparent
+  );
+
   &__top {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 12px 0 16px;
-    background: var(--c--contextuals--background--surface--tertiary, #f6f8f9);
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 16px 0 4px;
+    background: var(--hub-lp-veil);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    // Shows once the list scrolls under the actions, as in the design.
+    border-bottom: 1px solid transparent;
+    transition: border-color 350ms cubic-bezier(0.5, 0, 0.5, 1);
+  }
+
+  &[data-scrolled="true"] &__top {
+    border-bottom-color: var(
+      --c--contextuals--border--surface--primary,
+      #dfe2ea
+    );
   }
 
   &__scroll {
     flex: 1 1 auto;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    // The final rows remain scrollable above the floating, translucent footer.
+    // The final rows remain scrollable above the floating footer, and a
+    // focused row is scrolled clear of the top and the footer.
     padding: 0 0 76px;
+    scroll-padding: 140px 0 76px;
   }
 
   &__logo {
@@ -114,6 +140,10 @@
         var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
       outline-offset: 2px;
     }
+  }
+
+  &__section + &__section {
+    margin-top: 16px;
   }
 
   &__section {
@@ -214,7 +244,7 @@
     padding: 0 8px;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 6px;
 
     // Virtuoso positions rows from their measured heights, which a flex gap
     // is not part of: the space between rows belongs to each row instead.
@@ -222,7 +252,7 @@
       gap: 0;
 
       > .hub__left-panel__item {
-        padding-bottom: 1px;
+        padding-bottom: 6px;
       }
     }
   }
@@ -264,7 +294,7 @@
     gap: 4px;
     padding: 6px 6px 6px 4px;
     border-radius: var(--hub-lp-radius);
-    color: inherit;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
     font: inherit;
     text-align: left;
     text-decoration: none;
@@ -358,7 +388,7 @@
 
     &__name {
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 400;
       line-height: 18px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -390,63 +420,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 24px 12px 12px;
-    pointer-events: none;
-
-    &::before,
-    &::after {
-      content: "";
-      position: absolute;
-      inset: -36px 0 0;
-      z-index: 0;
-      pointer-events: none;
-    }
-
-    // Fade in the blur above the controls so its top edge is imperceptible.
-    &::before {
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      mask-image: linear-gradient(
-        180deg,
-        transparent 0%,
-        rgb(0 0 0 / 5%) 20%,
-        rgb(0 0 0 / 35%) 46%,
-        #000 78%
-      );
-      -webkit-mask-image: linear-gradient(
-        180deg,
-        transparent 0%,
-        rgb(0 0 0 / 5%) 20%,
-        rgb(0 0 0 / 35%) 46%,
-        #000 78%
-      );
-    }
-
-    &::after {
-      background: linear-gradient(
-        180deg,
-        transparent 0%,
-        color-mix(
-            in srgb,
-            var(--c--contextuals--background--surface--tertiary, #f6f8f9) 12%,
-            transparent
-          )
-          35%,
-        color-mix(
-            in srgb,
-            var(--c--contextuals--background--surface--tertiary, #f6f8f9) 65%,
-            transparent
-          )
-          60%,
-        var(--c--contextuals--background--surface--tertiary, #f6f8f9) 100%
-      );
-    }
-
-    > * {
-      position: relative;
-      z-index: 1;
-      pointer-events: auto;
-    }
+    padding: 12px;
+    background: var(--hub-lp-veil);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid
+      var(--c--contextuals--border--surface--primary, #dfe2ea);
   }
 
   // The app version, after a longer hover than the composer tooltips.
@@ -487,6 +466,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hub__left-panel__top,
   .hub__left-panel__section__panel,
   .hub__left-panel__section__chevron {
     transition: none;
