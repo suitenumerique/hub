@@ -29,6 +29,7 @@ import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
 import { useEditChatMessage } from "../../hooks/useEditChatMessage";
+import { useListEdgeReturn } from "../../hooks/useListEdgeReturn";
 import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
 import { useChatSendState } from "../../hooks/useChatSecurity";
 import { ChatBubble } from "../ChatBubble";
@@ -126,6 +127,9 @@ export const ThreadDetail = ({
     refetch,
     fetchOlder,
   } = useChatThread(chatRef, threadId);
+  // Coming back to the top asks again, after a failure too: Virtuoso reports
+  // `startReached` only for a new first row.
+  const topReturn = useListEdgeReturn(fetchOlder, threadId);
   const { markThreadRead } = useChatThreadActions(chatRef);
   const { sendReply, isSending, isSupported } = useSendChatThreadReply(
     chatRef,
@@ -271,7 +275,10 @@ export const ThreadDetail = ({
 
     return (
       <div className="hub__thread-detail" ref={detailRef}>
-        <div className="hub__thread-detail__messages">
+        <div
+          className="hub__thread-detail__messages"
+          {...topReturn.scrollHandlers}
+        >
           <Virtuoso
             key={threadId}
             ref={virtuosoRef}
@@ -293,11 +300,7 @@ export const ThreadDetail = ({
             // New replies scroll into view while the latest one is shown.
             followOutput="auto"
             startReached={fetchOlder}
-            // Coming back to the top asks again, after a failure too:
-            // Virtuoso reports `startReached` only for a new first row.
-            atTopStateChange={(atTop) => {
-              if (atTop) fetchOlder();
-            }}
+            atTopStateChange={topReturn.onEdgeChange}
             increaseViewportBy={{ top: 400, bottom: 0 }}
             components={THREAD_MESSAGES_COMPONENTS}
             itemContent={(virtualIndex, message) => {

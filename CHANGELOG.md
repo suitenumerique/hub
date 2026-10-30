@@ -174,6 +174,8 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Open the thread list and a thread without loading older pages
+  on a slow device: the list's edge reports count only once it is scrolled.
 - 🐛(frontend) Stop freezing the page when a large conversation opens for the
   first time: apply its loaded members as one change instead of one per
   member, refresh conversations once per burst of changes, stop superseded
