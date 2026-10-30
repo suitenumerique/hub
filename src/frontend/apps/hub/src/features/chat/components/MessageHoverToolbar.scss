@@ -1,55 +1,47 @@
 .hub__message-toolbar {
-  // Transparent wrapper above the bubble's top corner, flush against its top
-  // edge: the toolbar never covers the bubble. The visual gap to the bubble
-  // is this `padding-bottom` — kept INSIDE the hover hit-area. It must never
-  // be a margin: a margin would be a dead zone over the previous message and
-  // the pointer would lose the bubble's :hover before reaching the toolbar.
-  // Renders above adjacent rows; hidden until hover / focus.
+  // Hidden until a right click or the keyboard focus shows it. While hidden it
+  // waits above and left of the bubble: overflowing there never stretches the
+  // list's scroll area, which a menu left below the last message did. It stays
+  // in the focus order and measurable for `placeToolbarAt` (ChatBubble.tsx).
   position: absolute;
+  right: 100%;
   bottom: 100%;
-  left: 0;
-  right: auto;
-  width: max-content;
   z-index: 3;
-  padding-bottom: var(--c--globals--spacings--4xs, 2px);
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 160px;
+  overflow: clip;
+  background: var(--c--contextuals--background--surface--primary, #fff);
+  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+  border-radius: var(--c--globals--spacings--xs, 8px);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+  // Inside the bubble: drop its text metrics and colour.
+  color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.12s ease;
 
-  // The visible pill.
-  &__bar {
-    display: inline-flex;
+  &__reactions {
+    display: flex;
     align-items: center;
-    flex-wrap: nowrap;
+    justify-content: space-between;
     gap: var(--c--globals--spacings--xxxs, 4px);
-    width: max-content;
-    padding: var(--c--globals--spacings--xxxs, 4px);
-    background: var(--c--contextuals--background--surface--primary, #fff);
-    border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
-    border-radius: var(--c--globals--spacings--xs, 8px);
-    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+    padding: var(--c--globals--spacings--xxxs, 4px)
+      var(--c--globals--spacings--xxs, 6px);
   }
 
-  &__button {
+  &__button,
+  &__item {
     appearance: none;
     background: transparent;
     border: 0;
     cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    gap: var(--c--globals--spacings--xxxs, 4px);
-    height: 24px;
-    min-width: 24px;
-    padding: 0 var(--c--globals--spacings--xxxs, 4px);
-    border-radius: 4px;
-    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
-    font-family: inherit;
-
-    &--labelled {
-      padding: 0 var(--c--globals--spacings--xxs, 6px);
-    }
+    color: inherit;
+    font: inherit;
 
     &:hover {
       background: var(
@@ -74,77 +66,59 @@
     }
   }
 
-  &__label {
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 16px;
-    white-space: nowrap;
+  &__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    height: 24px;
+    min-width: 24px;
+    padding: 0 var(--c--globals--spacings--xxxs, 4px);
+    border-radius: 4px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  }
+
+  // A tiny menu item of the design system.
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxs, 6px);
+    width: 100%;
+    padding: var(--c--globals--spacings--xs, 8px);
+    text-align: start;
+
+    &__icon {
+      display: inline-flex;
+      flex: 0 0 auto;
+      color: var(
+        --c--contextuals--content--semantic--neutral--secondary,
+        #555e74
+      );
+    }
   }
 
   &__separator {
     flex: 0 0 auto;
-    width: 1px;
-    height: 16px;
+    height: 1px;
     background: var(--c--contextuals--border--surface--primary, #dfe2ea);
   }
-
-  // DropdownMenu inserts its own trigger wrapper inside the flex toolbar.
-  .c__dropdown-menu-trigger {
-    display: inline-flex;
-  }
 }
 
-// On the corner toward the middle of the conversation: top right of a
-// received message, top left of a sent one. Over a bubble narrower than the
-// toolbar, it starts at the bubble's outer edge instead, within the row.
-.hub__chat-bubble--received .hub__message-toolbar {
-  left: auto;
-  right: min(0px, calc(100% - var(--hub-message-toolbar-width, 0px)));
-}
-
-.hub__chat-bubble--sent .hub__message-toolbar {
-  left: min(0px, calc(100% - var(--hub-message-toolbar-width, 0px)));
+// Opened by a right click, or shown while one of its buttons has the keyboard
+// focus, at the place `placeToolbarAt` gives and above adjacent rows. A mouse
+// click on them shows no focus ring, so the menu does not stay after an action
+// chosen with the mouse. It fades in only: hidden, it leaves at once instead of
+// fading out on its way back above the bubble.
+.hub__chat-bubble__body[data-toolbar-open] .hub__message-toolbar,
+.hub__chat-bubble__body:has(.hub__message-toolbar :focus-visible)
+  .hub__message-toolbar {
+  top: var(--hub-message-toolbar-top, 0px);
   right: auto;
-}
-
-// Once the bubble is hovered, keep a path to the whole toolbar alongside short
-// messages. The bridge sits outside the body so text selection stays intact.
-// It cannot trigger hover itself while inactive, and stops at the body's bottom
-// so reactions and adjacent messages keep their own pointer targets.
-.hub__chat-bubble__body::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 100%;
-  width: max(0px, calc(var(--hub-message-toolbar-width, 0px) - 100%));
-  pointer-events: none;
-}
-
-.hub__chat-bubble--sent .hub__chat-bubble__body::after {
-  left: auto;
-  right: 100%;
-}
-
-.hub__chat-bubble__body:hover:not([data-deleted="true"])::after {
-  pointer-events: auto;
-}
-
-// Scoped to the bubble body — not the whole bubble — so hovering or focusing
-// the reactions bar (a sibling of the row, outside the body) does not reveal
-// the toolbar. The toolbar lives inside `__body`, and its `padding-bottom`
-// keeps the gap up to the bubble inside that hover hit-area.
-.hub__chat-bubble__body:hover .hub__message-toolbar,
-.hub__chat-bubble__body:focus-within .hub__message-toolbar {
+  bottom: auto;
+  left: var(--hub-message-toolbar-left, 0px);
   opacity: 1;
   pointer-events: auto;
-}
-
-// Opening More makes the toolbar sticky. The DropdownMenu itself may close on
-// an outside click, but this visibility remains until an option is selected.
-.hub__message-toolbar[data-actions-pinned="true"] {
-  opacity: 1;
-  pointer-events: auto;
+  transition: opacity 0.12s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {

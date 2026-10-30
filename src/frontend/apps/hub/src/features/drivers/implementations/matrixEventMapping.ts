@@ -823,9 +823,13 @@ export const matrixEventToChatMessage = (
     event.getSender() === selfUserId &&
     content.msgtype === "m.text",
   );
+  // Only one's own messages, even with the power level to remove the others'
+  // (in a direct conversation, both members have it): the Hub offers no
+  // moderation.
   const canDelete = Boolean(
     !isDeleted &&
     selfUserId &&
+    event.getSender() === selfUserId &&
     room.currentState.maySendRedactionForEvent(event, selfUserId),
   );
   const message: ChatMessage = {

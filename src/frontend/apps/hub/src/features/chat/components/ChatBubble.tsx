@@ -1,5 +1,11 @@
 import { Trash } from "@gouvfr-lasuite/ui-components/icons";
-import { type SyntheticEvent, useCallback, useMemo } from "react";
+import {
+  type MouseEvent,
+  type SyntheticEvent,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -82,22 +88,98 @@ type ChatBubbleSentProps = {
 
 export type ChatBubbleProps = ChatBubbleReceivedProps | ChatBubbleSentProps;
 
-// Read on hover and on focus: the toolbar is placed from its own width.
-const updateToolbarHoverWidth = (event: SyntheticEvent<HTMLDivElement>) => {
-  const body = event.currentTarget;
-  const toolbar = body.querySelector<HTMLElement>(".hub__message-toolbar");
-  if (toolbar) {
-    body.style.setProperty(
-      "--hub-message-toolbar-width",
-      `${toolbar.offsetWidth}px`,
-    );
+// Space kept between the toolbar and the sides of the message list.
+const TOOLBAR_EDGE_MARGIN = 8;
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(value, max));
+
+/** The message list's visible box, or the window outside a list. */
+const listBounds = (body: HTMLElement) => {
+  const list = body.closest<HTMLElement>("[data-virtuoso-scroller]");
+  if (!list) {
+    return {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+    };
   }
+  const { left, top } = list.getBoundingClientRect();
+  return {
+    left,
+    top,
+    right: left + list.clientWidth,
+    bottom: top + list.clientHeight,
+  };
 };
 
 /**
- * The thread button and the reactions bar share one wrapping row below the
- * bubble; the thread button comes first and the row wraps when the two no
- * longer fit side by side.
+ * Places the menu with its top-left corner at a point, as a context menu
+ * opens: below and right of it, or on the other side where the list has no
+ * room, and never out of the list. Returns whether the bubble has a menu.
+ */
+const placeToolbarAt = (body: HTMLElement, x: number, y: number) => {
+  const toolbar = body.querySelector<HTMLElement>(".hub__message-toolbar");
+  if (!toolbar) return false;
+  const { offsetWidth: width, offsetHeight: height } = toolbar;
+  const bubble = body.getBoundingClientRect();
+  const bounds = listBounds(body);
+  const maxLeft = bounds.right - TOOLBAR_EDGE_MARGIN - width;
+  const maxTop = bounds.bottom - TOOLBAR_EDGE_MARGIN - height;
+  const left = clamp(
+    x > maxLeft ? x - width : x,
+    bounds.left + TOOLBAR_EDGE_MARGIN,
+    maxLeft,
+  );
+  const top = clamp(
+    y > maxTop ? y - height : y,
+    bounds.top + TOOLBAR_EDGE_MARGIN,
+    maxTop,
+  );
+  body.style.setProperty(
+    "--hub-message-toolbar-left",
+    `${left - bubble.left}px`,
+  );
+  body.style.setProperty("--hub-message-toolbar-top", `${top - bubble.top}px`);
+  return true;
+};
+
+/**
+ * From the keyboard, shows the menu beside the bubble while one of its buttons
+ * has the focus: past the corner toward the middle of the conversation. The
+ * menu opened by a right click stays at the pointer.
+ */
+const placeToolbar = (event: SyntheticEvent<HTMLDivElement>) => {
+  const body = event.currentTarget;
+  const toolbar = body.querySelector<HTMLElement>(".hub__message-toolbar");
+  if (!toolbar || body.dataset.toolbarOpen !== undefined) return;
+  const bubble = body.getBoundingClientRect();
+  const isSent = body.closest(".hub__chat-bubble--sent") !== null;
+  placeToolbarAt(
+    body,
+    isSent
+      ? bubble.left - TOOLBAR_EDGE_MARGIN - toolbar.offsetWidth
+      : bubble.right + TOOLBAR_EDGE_MARGIN,
+    bubble.top,
+  );
+};
+
+/** A right click on a link or on selected text keeps the browser's menu. */
+const keepsNativeMenu = (body: HTMLElement, target: Element) => {
+  if (target.closest("a[href]")) return true;
+  const selection = window.getSelection();
+  return Boolean(
+    selection &&
+    !selection.isCollapsed &&
+    selection.toString().trim() &&
+    selection.containsNode(body, true),
+  );
+};
+
+/**
+ * Below the bubble: the reactions bar, then the thread button under it, as in
+ * the design.
  */
 type ChatBubbleFooterProps = {
   thread: ChatThreadSummary | undefined;
@@ -118,10 +200,10 @@ const ChatBubbleFooter = ({
 
   return (
     <div className="hub__chat-bubble__footer">
+      <MessageReactions reactions={reactions} onReact={onReact} />
       {thread && (
         <ThreadButton summary={thread} onOpen={() => openThread(thread.id)} />
       )}
-      <MessageReactions reactions={reactions} onReact={onReact} />
     </div>
   );
 };
@@ -142,6 +224,30 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   // presentational. `messageId` is stable per row, so `onReact` is too. Passing
   // `threadId` routes the toggle to the thread cache when inside a thread.
   const { toggle } = useToggleReaction(chatRef, threadId);
+  // The actions menu shows at the pointer after a right click on the bubble.
+  const [isToolbarOpen, setIsToolbarOpen] = useState(false);
+  const closeToolbar = useCallback(() => setIsToolbarOpen(false), []);
+  const openToolbar = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const body = event.currentTarget;
+    const target = event.target as Element;
+    if (target.closest(".hub__message-toolbar")) {
+      event.preventDefault();
+      return;
+    }
+    if (keepsNativeMenu(body, target)) return;
+    // A right click from the keyboard has no pointer: open on the bubble.
+    const bubble = body.getBoundingClientRect();
+    const fromKeyboard = event.clientX === 0 && event.clientY === 0;
+    const isPlaced = placeToolbarAt(
+      body,
+      fromKeyboard ? bubble.left : event.clientX,
+      fromKeyboard ? bubble.top : event.clientY,
+    );
+    // A deleted message has no menu: the browser's own one stays.
+    if (!isPlaced) return;
+    event.preventDefault();
+    setIsToolbarOpen(true);
+  }, []);
   const onReact = useCallback(
     (emoji: string) => toggle(messageId, emoji),
     [toggle, messageId],
@@ -287,6 +393,8 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         onEdit={props.canEdit ? onEdit : undefined}
         onDelete={props.canDelete ? onDelete : undefined}
         compact={compactToolbar}
+        isOpen={isToolbarOpen}
+        onClose={closeToolbar}
       />
     </>
   );
@@ -301,8 +409,9 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           className="hub__chat-bubble__body"
           data-deleted={props.isDeleted || undefined}
           data-attachment={attachmentKind}
-          onPointerEnter={updateToolbarHoverWidth}
-          onFocus={updateToolbarHoverWidth}
+          data-toolbar-open={isToolbarOpen || undefined}
+          onFocus={placeToolbar}
+          onContextMenu={openToolbar}
         >
           {props.isDeleted ? (
             <span className="hub__chat-bubble__tombstone">
@@ -358,8 +467,9 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           className="hub__chat-bubble__body"
           data-deleted={props.isDeleted || undefined}
           data-attachment={attachmentKind}
-          onPointerEnter={updateToolbarHoverWidth}
-          onFocus={updateToolbarHoverWidth}
+          data-toolbar-open={isToolbarOpen || undefined}
+          onFocus={placeToolbar}
+          onContextMenu={openToolbar}
         >
           {props.isDeleted ? (
             <span className="hub__chat-bubble__tombstone">
