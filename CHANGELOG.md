@@ -108,14 +108,16 @@ and this project adheres to
 
 ### Changed
 
+- 💄(frontend) Open the message actions with a right click on a bubble, as a
+  menu at the pointer: quick reactions, Reply and Copy, then Edit and Delete,
+  the bubble highlighted while it is open. Offer Delete on one's own messages
+  only and show the thread button under the reactions.
 - 💄(frontend) Keep only the threads button in conversation headers and frame
   the conversation menu as the tools are, drop the focus outline of the people
   search and align the "Open" action of search results with the design.
 - 💄(frontend) Apply the latest message design: bubble padding and line
-  height, smaller composer text, rounder reactions, a faint veil on pictures,
-  the file name in its frame, the tiny menu for message actions and the hover
-  toolbar just above the inner top corner of a message. Restyle the file drop
-  zone.
+  height, smaller composer text, rounder reactions, a faint veil on pictures
+  and the file name in its frame. Restyle the file drop zone.
 - 💄(frontend) Slide the tools panel in at its final width, 450px when there
   is room and never wider than the conversation, its content passing under a
   translucent, blurred header that shows a separator once it scrolls. Cap the

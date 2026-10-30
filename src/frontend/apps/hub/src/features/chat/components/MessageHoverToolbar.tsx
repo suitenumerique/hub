@@ -1,18 +1,20 @@
 import {
-  DropdownMenu,
-  type DropdownMenuItem,
-  useDropdownMenu,
-} from "@gouvfr-lasuite/ui-components";
-import {
   Copy,
   Download,
   Edit,
   EmojiAdd,
-  More,
   Reply,
   Trash,
 } from "@gouvfr-lasuite/ui-components/icons";
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { EmojiPickerPopover, preloadEmojiPicker } from "./EmojiPickerPopover";
@@ -34,6 +36,10 @@ type MessageHoverToolbarProps = {
    * for bubbles inside the threads panel.
    */
   compact?: boolean;
+  /** Opened at the pointer by a right click on the bubble. */
+  isOpen?: boolean;
+  /** Called once an action is chosen or the open menu is dismissed. */
+  onClose?: () => void;
 };
 
 type QuickReaction = {
@@ -41,13 +47,20 @@ type QuickReaction = {
   label: string;
 };
 
+type Action = {
+  icon: ReactNode;
+  label: string;
+  /** Omitted while the action is unavailable: it then shows disabled. */
+  run?: () => unknown;
+};
+
 /**
- * Per-bubble hover/focus toolbar (Figma node 13242:2334): quick reactions, an
- * emoji picker trigger, reply, and message actions. Every selection is
- * forwarded through callbacks; the toolbar knows nothing of the data layer.
- * Visibility is driven entirely by CSS — see MessageHoverToolbar.scss. The
- * outer element is a transparent wrapper; the visible pill is `__bar` (the
- * wrapper's padding is the gap to the bubble, kept inside the hover hit-area).
+ * Per-bubble actions menu (Figma node 3629:98707): quick reactions and an
+ * emoji picker trigger, reply, then the message actions. Every selection is
+ * forwarded through callbacks; the menu knows nothing of the data layer. A
+ * right click on the bubble opens it at the pointer (`isOpen`), and it then
+ * closes as a context menu does. From the keyboard, it shows beside the bubble
+ * while one of its buttons has the focus — see MessageHoverToolbar.scss.
  */
 export const MessageHoverToolbar = ({
   onReact,
@@ -57,15 +70,41 @@ export const MessageHoverToolbar = ({
   onEdit,
   onDelete,
   compact = false,
+  isOpen = false,
+  onClose,
 }: MessageHoverToolbarProps) => {
   const { t, i18n } = useTranslation();
   const language = i18n.resolvedLanguage ?? i18n.language;
+  const rootRef = useRef<HTMLDivElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const actionsMenu = useDropdownMenu();
-  // Independent from menu.isOpen on purpose: an outside click may dismiss the
-  // dropdown, but the toolbar remains pinned until an action is selected.
-  const [areActionsPinned, setAreActionsPinned] = useState(false);
+
+  // An action is chosen, or the menu opened at the pointer is dismissed.
+  const finish = useCallback(() => {
+    setIsPickerOpen(false);
+    onClose?.();
+  }, [onClose]);
+
+  // Opened by a right click, the menu closes as a context menu does: on a
+  // press outside it, on Escape or when something scrolls. The emoji picker,
+  // in its own layer, is dismissed first.
+  useEffect(() => {
+    if (!isOpen || isPickerOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) finish();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") finish();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("scroll", finish, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("scroll", finish, true);
+    };
+  }, [finish, isOpen, isPickerOpen]);
 
   const closePicker = useCallback(() => setIsPickerOpen(false), []);
   const preloadPicker = useCallback(
@@ -84,88 +123,56 @@ export const MessageHoverToolbar = ({
   const handlePick = useCallback(
     (emoji: string) => {
       onReact(emoji);
-      setIsPickerOpen(false);
+      finish();
     },
-    [onReact],
+    [finish, onReact],
   );
 
   const anchor = addButtonRef.current;
-  const hasMutationAction = Boolean(onEdit || onDelete);
-  const hasReadAction = Boolean(onDownload || onCopy);
-  const actionOptions = useMemo<DropdownMenuItem[]>(
-    () => [
+  // Reply and the actions reading the message, then those changing it, each
+  // group after a separator.
+  const groups: Action[][] = [
+    [
+      // A thread reply cannot start a nested thread, so only Reply is hidden.
+      ...(compact
+        ? []
+        : [{ icon: <Reply size={16} />, label: t("Reply"), run: onReply }]),
+      ...(onCopy
+        ? [{ icon: <Copy size={16} />, label: t("Copy"), run: onCopy }]
+        : []),
       ...(onDownload
         ? [
             {
               icon: <Download size={16} />,
               label: t("Download"),
-              callback: () => {
-                setAreActionsPinned(false);
-                onDownload();
-              },
-            },
-          ]
-        : []),
-      ...(onCopy
-        ? [
-            {
-              icon: <Copy size={16} />,
-              label: t("Copy"),
-              callback: () => {
-                setAreActionsPinned(false);
-                void onCopy();
-              },
-            },
-          ]
-        : []),
-      ...(hasReadAction && hasMutationAction
-        ? ([{ type: "separator" }] as const)
-        : []),
-      ...(onEdit
-        ? [
-            {
-              icon: <Edit size={16} />,
-              label: t("Edit"),
-              callback: () => {
-                setAreActionsPinned(false);
-                onEdit();
-              },
-            },
-          ]
-        : []),
-      ...(onDelete
-        ? [
-            {
-              icon: <Trash size={16} />,
-              label: t("Delete"),
-              variant: "danger" as const,
-              callback: () => {
-                setAreActionsPinned(false);
-                // The mutation hook already owns user-facing error reporting;
-                // consume its rejection so the menu callback cannot create an
-                // unhandled Promise rejection in the browser.
-                void Promise.resolve(onDelete()).catch(() => {});
-              },
+              run: onDownload,
             },
           ]
         : []),
     ],
-    [hasMutationAction, hasReadAction, onCopy, onDelete, onDownload, onEdit, t],
-  );
+    [
+      ...(onEdit
+        ? [{ icon: <Edit size={16} />, label: t("Edit"), run: onEdit }]
+        : []),
+      ...(onDelete
+        ? [{ icon: <Trash size={16} />, label: t("Delete"), run: onDelete }]
+        : []),
+    ],
+  ].filter((group) => group.length > 0);
 
   return (
-    <div
-      className="hub__message-toolbar"
-      data-actions-pinned={areActionsPinned || undefined}
-    >
-      <div className="hub__message-toolbar__bar">
+    <div ref={rootRef} className="hub__message-toolbar">
+      <div className="hub__message-toolbar__reactions">
         {quickReactions.map(({ emoji, label }) => (
           <button
             key={emoji}
             type="button"
             className="hub__message-toolbar__button"
             aria-label={label}
-            onClick={() => onReact(emoji)}
+            onClick={() => {
+              onReact(emoji);
+              finish();
+            }}
           >
             <FluentEmoji emoji={emoji} emojiStyle="flat" decorative />
           </button>
@@ -184,52 +191,39 @@ export const MessageHoverToolbar = ({
         >
           <EmojiAdd size={16} />
         </button>
-
-        {/* A thread reply cannot start a nested thread, so only Reply is hidden. */}
-        {!compact && (
-          <>
-            <span
-              className="hub__message-toolbar__separator"
-              aria-hidden="true"
-            />
-
-            <button
-              type="button"
-              className="hub__message-toolbar__button hub__message-toolbar__button--labelled"
-              disabled={!onReply}
-              aria-disabled={!onReply}
-              onClick={onReply}
-            >
-              <Reply size={16} />
-              <span className="hub__message-toolbar__label">{t("Reply")}</span>
-            </button>
-          </>
-        )}
-
-        <span className="hub__message-toolbar__separator" aria-hidden="true" />
-
-        <DropdownMenu
-          options={actionOptions}
-          {...actionsMenu}
-          onOpenChange={actionsMenu.setIsOpen}
-          variant="tiny"
-        >
-          <button
-            type="button"
-            className="hub__message-toolbar__button"
-            aria-label={t("More actions")}
-            aria-haspopup="menu"
-            aria-expanded={actionsMenu.isOpen}
-            onClick={() => {
-              setIsPickerOpen(false);
-              setAreActionsPinned(true);
-              actionsMenu.setIsOpen((open) => !open);
-            }}
-          >
-            <More size={16} />
-          </button>
-        </DropdownMenu>
       </div>
+
+      {groups.map((group) => (
+        <Fragment key={group[0].label}>
+          <span
+            className="hub__message-toolbar__separator"
+            aria-hidden="true"
+          />
+          {group.map(({ icon, label, run }) => (
+            <button
+              key={label}
+              type="button"
+              className="hub__message-toolbar__item"
+              disabled={!run}
+              aria-disabled={!run}
+              onClick={() => {
+                finish();
+                // The hooks behind the actions already report their errors:
+                // consume a rejection so it never goes unhandled.
+                void Promise.resolve(run?.()).catch(() => {});
+              }}
+            >
+              <span
+                className="hub__message-toolbar__item__icon"
+                aria-hidden="true"
+              >
+                {icon}
+              </span>
+              {label}
+            </button>
+          ))}
+        </Fragment>
+      ))}
 
       {isPickerOpen && anchor && (
         <EmojiPickerPopover

@@ -91,6 +91,21 @@
     );
   }
 
+  // The bubble whose actions menu a right click opened.
+  &--received &__body[data-toolbar-open]:not([data-attachment]) {
+    background: var(
+      --c--contextuals--background--semantic--neutral--tertiary-hover,
+      #e2e2ea
+    );
+  }
+
+  &--sent &__body[data-toolbar-open]:not([data-attachment]) {
+    background: var(
+      --c--contextuals--background--semantic--brand--primary-hover,
+      #4844ad
+    );
+  }
+
   // Brand colours vanish on the brand bubble: links and mentions follow its text.
   &--sent &__body:not([data-attachment]) {
     .hub__message-link {
@@ -137,12 +152,11 @@
     line-height: 16px;
   }
 
-  // The thread button and the reactions bar share one row below the bubble;
-  // it wraps (thread button stays first) once the two no longer fit together.
+  // The reactions bar, then the thread button under it.
   &__footer {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     gap: var(--c--globals--spacings--xxxs, 4px);
   }
 
@@ -156,6 +170,6 @@
 
   &--sent &__footer {
     max-width: var(--hub-chat-bubble-max-width);
-    justify-content: flex-end;
+    align-items: flex-end;
   }
 }
