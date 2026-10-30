@@ -9,6 +9,7 @@ import {
 import type { ChatRef, ChatThread } from "@/features/drivers/types";
 
 import { useChatThreads } from "../../hooks/useChatThreads";
+import { useListEdgeReturn } from "../../hooks/useListEdgeReturn";
 
 import { ThreadListItem } from "./ThreadListItem";
 import { ToolsPanelHeader } from "./ToolsPanelHeader";
@@ -133,6 +134,12 @@ export const ThreadList = ({
     refetch,
     fetchMore,
   } = useChatThreads(chatRef);
+  // Coming back to the end asks again, after a failure too: Virtuoso
+  // reports `endReached` only when the length changes.
+  const bottomReturn = useListEdgeReturn(
+    fetchMore,
+    `${chatRef.accountId}:${chatRef.chatId}`,
+  );
 
   const renderBody = () => {
     if (isInitialLoading) {
@@ -171,7 +178,7 @@ export const ThreadList = ({
     }
 
     return (
-      <div className="hub__chat-thread-list">
+      <div className="hub__chat-thread-list" {...bottomReturn.scrollHandlers}>
         <Virtuoso
           // The scroller is focusable: name it for keyboard users.
           aria-label={t("All threads")}
@@ -184,11 +191,7 @@ export const ThreadList = ({
             onRetry: fetchMore,
           }}
           endReached={() => fetchMore()}
-          // Coming back to the end asks again, after a failure too: Virtuoso
-          // reports `endReached` only when the length changes.
-          atBottomStateChange={(atBottom) => {
-            if (atBottom) fetchMore();
-          }}
+          atBottomStateChange={bottomReturn.onEdgeChange}
           computeItemKey={(_index, thread) => thread.id}
           defaultItemHeight={DEFAULT_ROW_HEIGHT}
           increaseViewportBy={DEFAULT_ROW_HEIGHT * 3}
