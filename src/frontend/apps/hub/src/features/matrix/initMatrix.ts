@@ -78,8 +78,8 @@ const localizedRoomNameGenerator = (
     return null;
   }
   return state.oldName
-    ? i18n.t("{{name}} left the conversation", { name: state.oldName })
-    : i18n.t("Empty conversation");
+    ? i18n.t("{{name}} left the chat", { name: state.oldName })
+    : i18n.t("Empty chat");
 };
 
 /** A command the SDK's worker backend posts, answered by the same `seq`. */
