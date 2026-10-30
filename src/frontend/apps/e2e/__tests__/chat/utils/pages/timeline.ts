@@ -3,7 +3,7 @@ import { expect, Locator, Page } from "@playwright/test";
 import { SYNC_TIMEOUT } from "../env";
 import { escapeRegExp } from "../text";
 
-/** Reactions offered directly in the message toolbar. */
+/** Reactions offered at the top of the message actions menu. */
 export const QUICK_REACTIONS = {
   "👍": "React with a thumbs up",
   "😂": "React with a laughing face",
@@ -92,17 +92,18 @@ export class Timeline {
     await expect(this.message(text)).toHaveCount(0, { timeout: SYNC_TIMEOUT });
   }
 
-  /** The message toolbar only shows while its bubble is hovered. */
-  async hover(target: MessageTarget): Promise<Locator> {
+  /** A right click on the bubble opens its actions menu at the pointer. */
+  async openActions(target: MessageTarget): Promise<Locator> {
     const body = this.body(target);
     await body.scrollIntoViewIfNeeded();
-    await body.hover();
+    await body.click({ button: "right" });
+    await expect(body).toHaveAttribute("data-toolbar-open", "true");
     return body.locator(".hub__message-toolbar");
   }
 
   async react(text: string, emoji: QuickReaction): Promise<void> {
-    const toolbar = await this.hover(text);
-    await toolbar.getByRole("button", { name: QUICK_REACTIONS[emoji] }).click();
+    const menu = await this.openActions(text);
+    await menu.getByRole("button", { name: QUICK_REACTIONS[emoji] }).click();
   }
 
   /** Reaction chip of `emoji` under the message. */
@@ -155,14 +156,13 @@ export class Timeline {
       .toEqual(emojis);
   }
 
-  /** Opens "More actions" and picks one of its items. */
-  async moreAction(
+  /** Opens the actions menu and picks one of its actions. */
+  async pickAction(
     target: MessageTarget,
     action: "Download" | "Copy" | "Edit" | "Delete",
   ): Promise<void> {
-    const toolbar = await this.hover(target);
-    await toolbar.getByRole("button", { name: "More actions" }).click();
-    await this.page.getByRole("menuitem", { name: action }).click();
+    const menu = await this.openActions(target);
+    await menu.getByRole("button", { name: action, exact: true }).click();
   }
 
   async expectEdited(text: string): Promise<void> {
@@ -204,17 +204,17 @@ export class Timeline {
     });
   }
 
-  /** Downloads an image or a file from its "More actions" menu. */
+  /** Downloads an image or a file from its actions menu. */
   async download(fileName: string, kind: "image" | "file") {
     const download = this.page.waitForEvent("download");
-    await this.moreAction(this.attachmentMessage(fileName, kind), "Download");
+    await this.pickAction(this.attachmentMessage(fileName, kind), "Download");
     return download;
   }
 
   /** "Reply" on a message opens its thread in the tools panel. */
   async reply(text: string): Promise<void> {
-    const toolbar = await this.hover(text);
-    await toolbar.getByRole("button", { name: "Reply", exact: true }).click();
+    const menu = await this.openActions(text);
+    await menu.getByRole("button", { name: "Reply", exact: true }).click();
   }
 
   /** "N replies" button under a thread root. */
