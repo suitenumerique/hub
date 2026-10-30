@@ -31,7 +31,7 @@ test.describe("Message actions across two browsers", () => {
 
     await test.step("Alice edits, Bob sees the new text", async () => {
       const edited = uniqueText("Edited");
-      await aliceChat.timeline.moreAction(original, "Edit");
+      await aliceChat.timeline.pickAction(original, "Edit");
       await expect(aliceChat.composer.editingStatus).toBeVisible();
       await expect(aliceChat.composer.field).toHaveValue(original);
       await aliceChat.composer.field.fill(edited);
@@ -44,7 +44,7 @@ test.describe("Message actions across two browsers", () => {
     await test.step("Alice deletes, Bob sees it deleted and not unread", async () => {
       await bobChat.readOpenConversation(alice.displayName);
       await bobChat.openConversation(carol.displayName);
-      await aliceChat.timeline.moreAction(toDelete, "Delete");
+      await aliceChat.timeline.pickAction(toDelete, "Delete");
       await expect(aliceChat.timeline.deletedMessages()).toHaveCount(1);
       await bobChat.openConversation(alice.displayName);
       await expect(bobChat.timeline.deletedMessages()).toHaveCount(1);
