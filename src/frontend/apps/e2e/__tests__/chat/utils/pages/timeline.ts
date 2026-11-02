@@ -156,6 +156,36 @@ export class Timeline {
       .toEqual(emojis);
   }
 
+  /** Hovers a reaction chip: its tooltip names who reacted, one per line. */
+  async hoverReaction(text: string, emoji: string): Promise<Locator> {
+    // Pressing a chip closes its tooltip until the pointer comes back.
+    await this.page.mouse.move(0, 0);
+    await this.reaction(text, emoji).hover();
+    const tooltip = this.page.getByRole("tooltip");
+    await expect(tooltip).toBeVisible();
+    // It shows after a delay, sliding in: wait until it stands still.
+    await tooltip.evaluate((element) =>
+      Promise.all(element.getAnimations().map(({ finished }) => finished)),
+    );
+    return tooltip;
+  }
+
+  /** Lines of the open reaction tooltip: names, then "and N others". */
+  reactionSenders(tooltip: Locator): Locator {
+    return tooltip.locator(".hub__message-reactions__sender");
+  }
+
+  async expectReactionSenders(
+    text: string,
+    emoji: string,
+    lines: string[],
+  ): Promise<void> {
+    const tooltip = await this.hoverReaction(text, emoji);
+    await expect(this.reactionSenders(tooltip)).toHaveText(lines, {
+      timeout: SYNC_TIMEOUT,
+    });
+  }
+
   /** Opens the actions menu and picks one of its actions. */
   async pickAction(
     target: MessageTarget,
