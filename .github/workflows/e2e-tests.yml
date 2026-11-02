@@ -51,7 +51,9 @@ jobs:
 
   test-e2e:
     needs: [install-dependencies, build-frontend-e2e]
-    runs-on: ubuntu-latest
+    # Playwright's WebKit build needs the Ubuntu 24.04 system libraries, which
+    # Ubuntu 26.04 (now ubuntu-latest) no longer ships.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false

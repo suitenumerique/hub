@@ -177,6 +177,7 @@ and this project adheres to
 
 ### Fixed
 
+- 👷(ci) Run the CI again on the Ubuntu 26.04 runners.
 - 🐛(frontend) Open the thread list and a thread without loading older pages
   on a slow device: the list's edge reports count only once it is scrolled.
 - 🐛(frontend) Stop freezing the page when a large conversation opens for the
