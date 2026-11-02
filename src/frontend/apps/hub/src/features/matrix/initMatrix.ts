@@ -10,6 +10,7 @@ import {
   type TokenRefreshFunction,
 } from "matrix-js-sdk/lib/matrix";
 
+import { withoutOrganization } from "@/features/drivers/implementations/matrixIdentity";
 import i18n from "@/i18n/initI18n";
 
 import { saveOnMembershipChange } from "./membershipSave";
@@ -78,7 +79,9 @@ const localizedRoomNameGenerator = (
     return null;
   }
   return state.oldName
-    ? i18n.t("{{name}} left the conversation", { name: state.oldName })
+    ? i18n.t("{{name}} left the conversation", {
+        name: withoutOrganization(state.oldName),
+      })
     : i18n.t("Empty conversation");
 };
 

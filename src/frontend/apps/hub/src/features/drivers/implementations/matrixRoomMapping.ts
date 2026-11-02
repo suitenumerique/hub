@@ -15,7 +15,7 @@ import {
 import i18n from "@/i18n/initI18n";
 
 import { ChatInvitation, LocalChat } from "../types";
-import { mxcUrl } from "./matrixIdentity";
+import { mxcUrl, withoutOrganization } from "./matrixIdentity";
 import { roomSecurity } from "@/features/matrix/roomSecurity";
 
 export const MATRIX_FAVOURITE_TAG = "m.favourite";
@@ -195,8 +195,8 @@ export const matrixJoinedRoomToLocalChat = (
   const participantIds = counterpartId
     ? [counterpartId]
     : displayedOthers.map((member) => member.userId);
-  const otherNames = displayedOthers.map(
-    (member) => member.name || member.userId,
+  const otherNames = displayedOthers.map((member) =>
+    withoutOrganization(member.name || member.userId),
   );
   const isEmptyDirect =
     isDirect && counterpartId === undefined && activeOthers.length === 0;
@@ -216,8 +216,10 @@ export const matrixJoinedRoomToLocalChat = (
   } else {
     name =
       otherNames[0] ||
-      (counterpartId && timelineProfile(room, counterpartId).displayName) ||
-      room.name;
+      withoutOrganization(
+        (counterpartId && timelineProfile(room, counterpartId).displayName) ||
+          room.name,
+      );
   }
   // Without any display name, a neutral label rather than a Matrix id.
   if (!name || isTechnicalName(name)) {
@@ -271,7 +273,8 @@ const readInviteMetadata = (
   const content =
     memberEvent?.getContent<{ reason?: string; is_direct?: boolean }>() ?? {};
   const invitedAtTs = memberEvent?.getTs() ?? 0;
-  const inviterName = inviterId ? room.getMember(inviterId)?.name : undefined;
+  const inviter = inviterId ? room.getMember(inviterId) : null;
+  const inviterName = inviter?.name && withoutOrganization(inviter.name);
 
   const invitation: ChatInvitation = {
     ...(inviterId ? { inviterId } : {}),
@@ -293,8 +296,11 @@ const matrixInviteRoomToLocalChat = (
   const { invitation, invitedAtTs } = readInviteMetadata(room, currentUserId);
   return {
     id: room.roomId,
+    // Without a name of its own, the room is named after its members, so
+    // without their organization.
     name:
-      room.name ||
+      explicitRoomName(room) ||
+      withoutOrganization(room.name) ||
       invitation.inviterName ||
       invitation.inviterId ||
       room.roomId,

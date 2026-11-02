@@ -171,7 +171,12 @@ import {
   threadToChatThreadDetail,
   timelineEventToChatEvent,
 } from "./matrixEventMapping";
-import { matrixDirectoryUserToChatUser, mxcUrl } from "./matrixIdentity";
+import {
+  matrixDirectoryUserToChatUser,
+  mxcUrl,
+  splitDisplayName,
+  withoutOrganization,
+} from "./matrixIdentity";
 import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
 import {
   createEncryptedThumbnail,
@@ -336,11 +341,14 @@ const toChatMember = (
   currentUserId: string | undefined,
 ): ChatMember => {
   const avatarUrl = mxcUrl(member.getMxcAvatarUrl());
+  const { name, organization } = splitDisplayName(member.name || member.userId);
   return {
     id: member.userId,
-    name: member.name || member.userId,
-    secondaryText: member.userId,
-    rawName: member.rawDisplayName || member.name || member.userId,
+    name,
+    secondaryText: organization ?? member.userId,
+    rawName: withoutOrganization(
+      member.rawDisplayName || member.name || member.userId,
+    ),
     ...(avatarUrl ? { avatarUrl } : {}),
     ...(member.userId === currentUserId ? { isCurrentUser: true } : {}),
   };
@@ -733,7 +741,9 @@ export class MatrixDriver extends Driver {
     const email = threepids.find(
       (threepid) => threepid.medium === ThreepidMedium.Email,
     )?.address;
-    return email ? { ...user, email, subtitle: email } : user;
+    return email
+      ? { ...user, email, subtitle: email }
+      : { ...user, subtitle: userId };
   }
 
   /**
@@ -4285,7 +4295,7 @@ export class MatrixDriver extends Driver {
       .filter((member) => member.typing && member.userId !== selfUserId)
       .map((member) => ({
         id: member.userId,
-        name: member.name,
+        name: withoutOrganization(member.name),
         avatarUrl: mxcUrl(member.getMxcAvatarUrl()),
       }))
       .sort((left, right) => left.name.localeCompare(right.name));

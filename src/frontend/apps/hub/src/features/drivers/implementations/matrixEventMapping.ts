@@ -39,7 +39,7 @@ import {
   ChatThreadDetail,
   ChatUnread,
 } from "../types";
-import { initialsFor, mxcUrl } from "./matrixIdentity";
+import { initialsFor, mxcUrl, withoutOrganization } from "./matrixIdentity";
 import { parseMatrixAttachment } from "./matrixMedia";
 import { isMarkedUnreadRoom } from "./matrixRoomMapping";
 import i18n from "@/i18n/initI18n";
@@ -475,7 +475,7 @@ export const authorForSender = (
   selfUserId: string | undefined,
 ): ChatMessageAuthor => {
   const member = room.getMember(userId);
-  const name = member?.name ?? userId;
+  const name = withoutOrganization(member?.name ?? userId);
   return {
     id: toAuthorId(userId, selfUserId),
     name,
@@ -568,7 +568,9 @@ export const reactionSenderFor = (
   reaction?: MatrixEvent,
 ): ChatReactionSender => ({
   id: toAuthorId(userId, selfUserId),
-  name: (room?.getMember(userId) ?? reaction?.sender)?.name ?? userId,
+  name: withoutOrganization(
+    (room?.getMember(userId) ?? reaction?.sender)?.name ?? userId,
+  ),
 });
 
 /**
@@ -1003,7 +1005,7 @@ export const buildAuthors = (
     const member =
       room.getMember(id) ??
       events.findLast((event) => event.getSender() === id)?.sender;
-    const name = member?.name ?? id;
+    const name = withoutOrganization(member?.name ?? id);
     return {
       id,
       name,
