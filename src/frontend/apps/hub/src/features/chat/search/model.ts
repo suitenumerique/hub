@@ -74,14 +74,19 @@ const searchRank = (chat: LocalChat, explicitName: string | undefined) => {
   return explicitName ? 1 : 2;
 };
 
+/**
+ * What a room is found by and shown as. `memberLabel` turns a stored member
+ * name into the text the result shows for that member.
+ */
 export const searchDocument = (
   room: SearchRoom,
   self: string,
+  memberLabel: (name: string) => string,
 ): SearchDocument | null => {
   if (!room.chat) return null;
   const names = Object.entries(room.members)
     .filter(([id]) => id !== self)
-    .map(([, member]) => member.name);
+    .map(([, member]) => memberLabel(member.name));
   return {
     chat: room.chat,
     fields: [

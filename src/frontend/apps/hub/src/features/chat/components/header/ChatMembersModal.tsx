@@ -53,7 +53,9 @@ export const ChatMembersModal = ({
       pendingInvites.map((member) => ({
         id: member.id,
         role: READ_ONLY_ROLE,
-        email: member.secondaryText,
+        // An invitation row shows only this line: the id names the invitee,
+        // which an organization alone would not.
+        email: member.id,
         user: toShareUser(member),
       })),
     [pendingInvites],

@@ -8,6 +8,9 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Hide the organization Tchap appends to display names, as in
+  `Jean Dupont [Agriculture]`, and show it under the name in people search,
+  the members list and direct conversations in search results.
 - ✨(frontend) Show who reacted when hovering a reaction: the names of the
   first six people, in the order they reacted as in Element, then how many
   others did, a click listing them all.

@@ -29,6 +29,7 @@ import {
   type SearchPreparation,
 } from "@/features/chat/search/types";
 
+import { splitDisplayName, withoutOrganization } from "./matrixIdentity";
 import { matrixJoinedRoomToLocalChat } from "./matrixRoomMapping";
 import {
   observeMatrixSearchSync,
@@ -360,11 +361,26 @@ export class MatrixConversationSearch {
       // A delayed response must never recreate a room that has since been removed.
       if (!room) continue;
       this.prepare(room);
-      const document = searchDocument(room, this.mx.getUserId()!);
+      const document = this.documentFor(room);
       if (document) this.documents.set(id, document);
     }
     this.publish();
     if (!this.heldModes) this.persist();
+  }
+
+  /**
+   * What the room is found by and shown as. A direct chat shows the other
+   * person's organization under their name; a group, its members' names
+   * without their organization.
+   */
+  private documentFor(room: SearchRoom): SearchDocument | null {
+    return searchDocument(
+      room,
+      this.mx.getUserId()!,
+      room.chat?.kind === "direct"
+        ? (name) => splitDisplayName(name).organization ?? name
+        : withoutOrganization,
+    );
   }
 
   /**
@@ -442,7 +458,7 @@ export class MatrixConversationSearch {
    */
   private refreshDocuments(): void {
     for (const [id, room] of this.rooms) {
-      const document = searchDocument(room, this.mx.getUserId()!);
+      const document = this.documentFor(room);
       if (document) this.documents.set(id, document);
     }
   }
