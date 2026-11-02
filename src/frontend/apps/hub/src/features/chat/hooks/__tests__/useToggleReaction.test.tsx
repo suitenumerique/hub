@@ -141,7 +141,12 @@ describe("useToggleReaction", () => {
     // The optimistic update lands before the driver call settles.
     await waitFor(() => {
       expect(reactionsAt(0, 0)).toEqual([
-        { emoji: "👍", count: 1, reactedByMe: true },
+        {
+          emoji: "👍",
+          count: 1,
+          reactedByMe: true,
+          senders: [{ id: "me", name: "You" }],
+        },
       ]);
     });
 
@@ -353,7 +358,12 @@ describe("useToggleReaction (thread mode)", () => {
 
     await waitFor(() => {
       expect(threadReactionsFor("t-1-r1")).toEqual([
-        { emoji: "👍", count: 1, reactedByMe: true },
+        {
+          emoji: "👍",
+          count: 1,
+          reactedByMe: true,
+          senders: [{ id: "me", name: "You" }],
+        },
       ]);
     });
 
