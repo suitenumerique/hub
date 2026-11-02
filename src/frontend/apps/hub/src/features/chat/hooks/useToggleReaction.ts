@@ -5,6 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
@@ -105,6 +106,7 @@ export const useToggleReaction = (
   threadId?: string,
 ): UseToggleReactionResult => {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   // Main bubbles update the conversation, plus the thread detail they root
   // when it is loaded. Thread bubbles update their detail, plus the
@@ -156,9 +158,13 @@ export const useToggleReaction = (
         const data = queryClient.getQueryData(cache.queryKey);
         const reactions = data ? reactionsIn(data, messageId) : undefined;
         if (data && reactions) {
+          // Named until the driver answers with the current user's own name.
+          const self = { id: "me", name: t("You") };
           queryClient.setQueryData(
             cache.queryKey,
-            cache.update(data, (current) => toggleReaction(current, emoji)),
+            cache.update(data, (current) =>
+              toggleReaction(current, emoji, self),
+            ),
           );
           snapshots.push({ ...cache, reactions });
         }

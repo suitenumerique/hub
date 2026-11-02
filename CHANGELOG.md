@@ -8,6 +8,9 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Show who reacted when hovering a reaction: the names of the
+  first six people, in the order they reacted as in Element, then how many
+  others did, a click listing them all.
 - ✨(frontend) Connect the chat to Tchap preprod or prod, selected at runtime
   with the backend setting `FRONTEND_CHAT_ENVIRONMENT`. Ask for the email on a
   sign-in page to find the homeserver, confirm the external server, register

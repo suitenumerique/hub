@@ -157,6 +157,7 @@ import {
   needsReactionSnapshot,
   observeThreadReply,
   ownReactionEvents,
+  reactionSenderFor,
   reactionUpdateEventsForTarget,
   receiptMentionsUser,
   receiptThreadIds,
@@ -1945,7 +1946,11 @@ export class MatrixDriver extends Driver {
 
     return {
       ...matrixEventToChatMessage(target, room, selfUserId),
-      reactions: toggleReaction(previousReactions, emoji),
+      reactions: toggleReaction(
+        previousReactions,
+        emoji,
+        reactionSenderFor(room, selfUserId, selfUserId),
+      ),
     };
   }
 

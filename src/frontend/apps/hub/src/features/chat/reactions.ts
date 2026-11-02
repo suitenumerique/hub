@@ -1,4 +1,7 @@
-import type { ChatReaction } from "@/features/drivers/types";
+import type {
+  ChatReaction,
+  ChatReactionSender,
+} from "@/features/drivers/types";
 
 import { emojiToCodepoints } from "./fluentEmoji";
 
@@ -11,12 +14,17 @@ import { emojiToCodepoints } from "./fluentEmoji";
  * which drops the `fe0f` variation selector) so variant encodings of the same
  * emoji collapse onto one chip instead of creating a duplicate.
  *
+ * `self` is the current user as the reaction tooltip names them: added last
+ * among the senders when they react, removed (by its `"me"` id) when they
+ * take their reaction back.
+ *
  * Returns a new array (and new objects for the touched reaction); the input is
  * never mutated. New reactions are appended, keeping insertion order stable.
  */
 export const toggleReaction = (
   reactions: ChatReaction[],
   emoji: string,
+  self?: ChatReactionSender,
 ): ChatReaction[] => {
   const key = emojiToCodepoints(emoji);
   const index = reactions.findIndex(
@@ -25,7 +33,10 @@ export const toggleReaction = (
 
   if (index === -1) {
     // The emoji is not on the message yet — add it as the current user's.
-    return [...reactions, { emoji, count: 1, reactedByMe: true }];
+    return [
+      ...reactions,
+      { emoji, count: 1, reactedByMe: true, senders: self && [self] },
+    ];
   }
 
   const existing = reactions[index];
@@ -34,7 +45,15 @@ export const toggleReaction = (
     // Others reacted with it, but not the current user — join in.
     return reactions.map((reaction, i) =>
       i === index
-        ? { ...reaction, count: reaction.count + 1, reactedByMe: true }
+        ? {
+            ...reaction,
+            count: reaction.count + 1,
+            reactedByMe: true,
+            senders:
+              self && reaction.senders
+                ? [...reaction.senders, self]
+                : reaction.senders,
+          }
         : reaction,
     );
   }
@@ -46,7 +65,14 @@ export const toggleReaction = (
     return reactions.filter((_, i) => i !== index);
   }
   return reactions.map((reaction, i) =>
-    i === index ? { ...reaction, count, reactedByMe: false } : reaction,
+    i === index
+      ? {
+          ...reaction,
+          count,
+          reactedByMe: false,
+          senders: reaction.senders?.filter((sender) => sender.id !== "me"),
+        }
+      : reaction,
   );
 };
 
