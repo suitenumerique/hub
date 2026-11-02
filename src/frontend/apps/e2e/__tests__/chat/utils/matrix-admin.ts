@@ -13,6 +13,8 @@ import { uniqueId } from "./ids";
 
 const run = promisify(execFile);
 
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /** A person of the test: one Hub account, one Matrix account. */
 export type TestIdentity = {
   /** Matrix localpart and Keycloak username. */
@@ -141,19 +143,22 @@ export const registerKeycloakOnly = async (
   await createKeycloakUser(identity);
 };
 
-/**
- * Signs a new device in, like a client would, without the OIDC chain:
- * compatibility tokens have no expiry and no refresh token.
- */
-export const issueDevice = async (
+/** A device, or null while the homeserver does not know the user yet. */
+const tryIssueDevice = async (
   identity: TestIdentity,
   deviceId?: string,
-): Promise<MatrixCredentials> => {
-  const output = await masCli(
-    "issue-compatibility-token",
-    identity.localpart,
-    ...(deviceId ? [deviceId] : []),
-  );
+): Promise<MatrixCredentials | null> => {
+  let output: string;
+  try {
+    output = await masCli(
+      "issue-compatibility-token",
+      identity.localpart,
+      ...(deviceId ? [deviceId] : []),
+    );
+  } catch (error) {
+    if (String(error).includes("User not found")) return null;
+    throw error;
+  }
   const accessToken = /Compatibility token issued: (\S+)/.exec(output)?.[1];
   if (!accessToken) {
     throw new Error(`No compatibility token for ${identity.localpart}.`);
@@ -162,10 +167,32 @@ export const issueDevice = async (
     `${HOMESERVER_URL}/_matrix/client/v3/account/whoami`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
+  if (whoami.status === 401) return null;
   if (!whoami.ok) {
-    throw new Error(`whoami failed for ${identity.localpart}.`);
+    throw new Error(
+      `whoami failed for ${identity.localpart}: ${whoami.status}.`,
+    );
   }
   const { user_id: userId, device_id: issuedDeviceId } =
     (await whoami.json()) as { user_id: string; device_id: string };
   return { userId, deviceId: issuedDeviceId, accessToken };
+};
+
+/**
+ * Signs a new device in, like a client would, without the OIDC chain:
+ * compatibility tokens have no expiry and no refresh token.
+ */
+export const issueDevice = async (
+  identity: TestIdentity,
+  deviceId?: string,
+): Promise<MatrixCredentials> => {
+  // MAS creates a new user on the homeserver in a background job: right after
+  // `register-user`, Synapse may not know them, and keeps refusing a token it
+  // refused once. Another token, a moment later, goes through.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const credentials = await tryIssueDevice(identity, deviceId);
+    if (credentials) return credentials;
+    await pause(500);
+  }
+  throw new Error(`The homeserver never accepted ${identity.localpart}.`);
 };
