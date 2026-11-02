@@ -209,10 +209,18 @@ export type ChatMembers = {
   pendingInvites: ChatMember[];
 };
 
+/** A user who reacted with an emoji, as the reaction tooltip names them. */
+export type ChatReactionSender = {
+  /** User id, or `"me"` for the current user, as `ChatMessage.authorId`. */
+  id: string;
+  /** Display name in the conversation. */
+  name: string;
+};
+
 /**
- * One emoji's worth of reactions on a message, aggregated across users. The UI
- * only needs the count and whether the current user is part of it — no per-user
- * list is carried (see the `chat-message-reactions` design).
+ * One emoji's worth of reactions on a message, aggregated across users: the
+ * count and whether the current user is part of it for the chip, and who
+ * reacted for its tooltip.
  */
 export type ChatReaction = {
   /** Native emoji character, e.g. "👍". */
@@ -221,6 +229,11 @@ export type ChatReaction = {
   count: number;
   /** Whether the current user reacted with this emoji. */
   reactedByMe: boolean;
+  /**
+   * Users who reacted, once each, in the order they reacted. Absent when the
+   * driver does not tell who reacted.
+   */
+  senders?: ChatReactionSender[];
 };
 
 /**

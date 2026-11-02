@@ -30,4 +30,54 @@
   &__add {
     color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
   }
+
+  // Who reacted, one name per line: a long name ends with an ellipsis rather
+  // than wrapping onto a line of its own. Unfolded, the list scrolls past the
+  // height measured for it, without scrolling the conversation behind.
+  &__senders {
+    display: flex;
+    flex-direction: column;
+    max-height: var(--hub-reaction-senders-max-height, none);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    font-weight: var(--c--globals--font--weights--regular, 400);
+    line-height: 16px;
+  }
+
+  &__sender {
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__more {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+}
+
+// The design-system tooltip, tighter and without its arrow as in the design.
+.c__tooltip.hub__message-reactions__tooltip {
+  max-width: 16rem;
+  // react-aria's inline maximum reads the tooltip's offset in the scrolled
+  // message list as a window position, and squeezes a tooltip opened below its
+  // chip. The sender list sets its own maximum instead.
+  max-height: none !important;
+  // As close to its chip above as below: the pointer crosses the gap to reach
+  // "and N others" before the tooltip closes.
+  margin: var(--c--globals--spacings--xxxs, 4px) 0;
+  padding: var(--c--globals--spacings--xxxs, 4px)
+    var(--c--globals--spacings--xxs, 6px);
+  border-radius: var(--c--globals--spacings--xxxs, 4px);
+
+  .react-aria-OverlayArrow {
+    display: none;
+  }
 }

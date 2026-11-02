@@ -34,6 +34,7 @@ import {
   ChatMessage,
   ChatMessageAuthor,
   ChatReaction,
+  ChatReactionSender,
   ChatThread,
   ChatThreadDetail,
   ChatUnread,
@@ -550,24 +551,43 @@ const aggregateReactions = (
     reactionRelationContainersFor(room, eventId, threadId).flatMap(
       (relations) => relations.getRelations(),
     ),
+    room,
     selfUserId,
   );
+
+/**
+ * A user who reacted, named as Element names them: by their member name in the
+ * room, which tells apart members sharing a display name, else by their id.
+ * Like a message author, a reaction carries its sender's profile even before
+ * the room's members are loaded.
+ */
+export const reactionSenderFor = (
+  room: Room | null,
+  userId: string,
+  selfUserId: string | undefined,
+  reaction?: MatrixEvent,
+): ChatReactionSender => ({
+  id: toAuthorId(userId, selfUserId),
+  name: (room?.getMember(userId) ?? reaction?.sender)?.name ?? userId,
+});
 
 /**
  * Aggregates a concrete set of annotation events by emoji and sender. Emojis
  * come in order of first appearance, whatever the order of `events` (the SDK
  * keeps arrival order, the homeserver answers newest first), so a count
- * change never moves a chip.
+ * change never moves a chip. Senders likewise come in the order they reacted.
  */
 const aggregateReactionEvents = (
   events: MatrixEvent[],
+  room: Room | null,
   selfUserId: string | undefined,
 ): ChatReaction[] => {
   const grouped = new Map<
     string,
     {
       emoji: string;
-      senders: Set<string>;
+      /** Each sender's first reaction with this emoji. */
+      senders: Map<string, MatrixEvent>;
       reactedByMe: boolean;
       firstAt: number;
     }
@@ -585,7 +605,7 @@ const aggregateReactionEvents = (
     const sentAt = event.getTs();
     const group = grouped.get(key) ?? {
       emoji,
-      senders: new Set<string>(),
+      senders: new Map<string, MatrixEvent>(),
       reactedByMe: false,
       firstAt: sentAt,
     };
@@ -593,7 +613,10 @@ const aggregateReactionEvents = (
       group.emoji = emoji;
       group.firstAt = sentAt;
     }
-    group.senders.add(sender);
+    const first = group.senders.get(sender);
+    if (!first || sentAt < first.getTs()) {
+      group.senders.set(sender, event);
+    }
     group.reactedByMe ||= sender === selfUserId;
     grouped.set(key, group);
   }
@@ -604,6 +627,11 @@ const aggregateReactionEvents = (
       emoji,
       count: senders.size,
       reactedByMe,
+      senders: [...senders]
+        .sort(([, a], [, b]) => a.getTs() - b.getTs())
+        .map(([sender, reaction]) =>
+          reactionSenderFor(room, sender, selfUserId, reaction),
+        ),
     }));
 };
 
@@ -654,7 +682,11 @@ export const fetchReactionSnapshot = async (
     if (!result.nextBatch) {
       return {
         events,
-        reactions: aggregateReactionEvents(events, selfUserId),
+        reactions: aggregateReactionEvents(
+          events,
+          mx.getRoom(roomId),
+          selfUserId,
+        ),
       };
     }
     from = result.nextBatch;
