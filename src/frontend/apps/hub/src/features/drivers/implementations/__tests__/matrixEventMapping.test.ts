@@ -261,7 +261,17 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
         type: "reaction:updated",
         chatId: ROOM_ID,
         messageId: targetId,
-        reactions: [{ emoji: "👍", count: 2, reactedByMe: true }],
+        reactions: [
+          {
+            emoji: "👍",
+            count: 2,
+            reactedByMe: true,
+            senders: [
+              { id: "me", name: "Me" },
+              { id: OTHER_ID, name: OTHER_ID },
+            ],
+          },
+        ],
       },
     ]);
   });
@@ -319,8 +329,21 @@ describe("reaction aggregation", () => {
         chatId: ROOM_ID,
         messageId: targetId,
         reactions: [
-          { emoji: "👍", count: 1, reactedByMe: true },
-          { emoji: "✅", count: 2, reactedByMe: true },
+          {
+            emoji: "👍",
+            count: 1,
+            reactedByMe: true,
+            senders: [{ id: "me", name: "Me" }],
+          },
+          {
+            emoji: "✅",
+            count: 2,
+            reactedByMe: true,
+            senders: [
+              { id: OTHER_ID, name: OTHER_ID },
+              { id: "me", name: "Me" },
+            ],
+          },
         ],
       },
     ]);
