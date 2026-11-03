@@ -32,6 +32,7 @@ import { notify } from "@/features/ui/components/toast";
 import { ChatUserAvatar } from "./ChatUserAvatar";
 import { MessageAttachment } from "./MessageAttachment";
 import { MessageContent } from "./MessageContent";
+import { MessageDecrypting } from "./MessageDecrypting";
 import { MessageHoverToolbar } from "./MessageHoverToolbar";
 import { MessageQuote } from "./MessageQuote";
 import { MessageReactions } from "./MessageReactions";
@@ -415,6 +416,20 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       />
     </>
   );
+  // A message still being decrypted shows a shield, without any actions.
+  const isDecrypting =
+    !props.isDeleted && props.availability === "encrypted-pending";
+  const renderContent = () => {
+    if (props.isDeleted) {
+      return (
+        <span className="hub__chat-bubble__tombstone">
+          <Trash size={16} aria-hidden="true" />
+          {t("Message deleted")}
+        </span>
+      );
+    }
+    return isDecrypting ? <MessageDecrypting /> : renderBody();
+  };
 
   if (props.variant === "sent") {
     return (
@@ -435,19 +450,13 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         <div
           className="hub__chat-bubble__body"
           data-deleted={props.isDeleted || undefined}
+          data-decrypting={isDecrypting || undefined}
           data-attachment={attachmentKind}
           data-toolbar-open={isToolbarOpen || undefined}
           onFocus={placeToolbar}
           onContextMenu={openToolbar}
         >
-          {props.isDeleted ? (
-            <span className="hub__chat-bubble__tombstone">
-              <Trash size={16} aria-hidden="true" />
-              {t("Message deleted")}
-            </span>
-          ) : (
-            renderBody()
-          )}
+          {renderContent()}
         </div>
         <ChatBubbleFooter
           thread={thread}
@@ -505,19 +514,13 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         <div
           className="hub__chat-bubble__body"
           data-deleted={props.isDeleted || undefined}
+          data-decrypting={isDecrypting || undefined}
           data-attachment={attachmentKind}
           data-toolbar-open={isToolbarOpen || undefined}
           onFocus={placeToolbar}
           onContextMenu={openToolbar}
         >
-          {props.isDeleted ? (
-            <span className="hub__chat-bubble__tombstone">
-              <Trash size={16} aria-hidden="true" />
-              {t("Message deleted")}
-            </span>
-          ) : (
-            renderBody()
-          )}
+          {renderContent()}
         </div>
       </div>
       <ChatBubbleFooter

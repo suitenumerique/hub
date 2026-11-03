@@ -102,7 +102,8 @@
   // as Element selects the highlighted event like the one with a menu open.
   &--received &__body[data-toolbar-open]:not([data-attachment]),
   &--received[data-highlighted] &__body:not([data-attachment]),
-  &--sent[data-highlighted] &__body[data-deleted="true"] {
+  &--sent[data-highlighted] &__body[data-deleted="true"],
+  &--sent[data-highlighted] &__body[data-decrypting] {
     background: var(
       --c--contextuals--background--semantic--neutral--tertiary-hover,
       #e2e2ea
@@ -110,7 +111,8 @@
   }
 
   &--sent &__body[data-toolbar-open]:not([data-attachment]),
-  &--sent[data-highlighted] &__body:not([data-attachment], [data-deleted]) {
+  &--sent[data-highlighted]
+    &__body:not([data-attachment], [data-deleted], [data-decrypting]) {
     background: var(
       --c--contextuals--background--semantic--brand--primary-hover,
       #4844ad
@@ -157,6 +159,19 @@
     padding: 0;
     background: transparent;
     color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  // A message still being decrypted: a neutral bubble, sent ones included, as
+  // wide as the design's (up to 400px) with the shield in its middle.
+  & &__body[data-decrypting] {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    max-width: 400px;
+    background: var(
+      --c--contextuals--background--semantic--neutral--tertiary,
+      #eef1f4
+    );
   }
 
   &__caption {

@@ -1,0 +1,54 @@
+// The design's "Decryption Spinner": a light shield outline, a darker fifth of
+// which runs around it clockwise.
+.hub__message-decrypting {
+  display: flex;
+  flex: 0 0 auto;
+
+  &__track,
+  &__segment {
+    stroke-width: 1.66667;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  &__track {
+    stroke: var(--c--contextuals--border--semantic--neutral--tertiary, #cfd5de);
+  }
+
+  // The path counts as one unit long (`pathLength`): the dash pattern spans
+  // the outline exactly, so the segment loops around without a jump.
+  &__segment {
+    stroke: var(
+      --c--contextuals--border--semantic--neutral--secondary,
+      #a4abbc
+    );
+    stroke-dasharray: 0.2 0.8;
+    animation: hub-message-decrypting 2s linear infinite;
+  }
+}
+
+@keyframes hub-message-decrypting {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+// Without motion, a still shield in the segment's colour.
+@media (prefers-reduced-motion: reduce) {
+  .hub__message-decrypting {
+    &__track {
+      stroke: var(
+        --c--contextuals--border--semantic--neutral--secondary,
+        #a4abbc
+      );
+    }
+
+    &__segment {
+      display: none;
+    }
+  }
+}
