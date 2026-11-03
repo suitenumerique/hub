@@ -1,9 +1,12 @@
-import { Trash } from "@gouvfr-lasuite/ui-components/icons";
+import { Button, type ButtonElement } from "@gouvfr-lasuite/ui-components";
+import { More, Trash } from "@gouvfr-lasuite/ui-components/icons";
 import {
   type MouseEvent,
   type SyntheticEvent,
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -100,6 +103,8 @@ export type ChatBubbleProps = ChatBubbleReceivedProps | ChatBubbleSentProps;
 
 // Space kept between the toolbar and the sides of the message list.
 const TOOLBAR_EDGE_MARGIN = 8;
+// Space between the "more" button and the menu it opens, as in the design.
+const TOOLBAR_BUTTON_GAP = 4;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(value, max));
@@ -124,6 +129,32 @@ const listBounds = (body: HTMLElement) => {
   };
 };
 
+/** Moves the menu's top-left corner to a point, never out of the list. */
+const moveToolbar = (
+  body: HTMLElement,
+  toolbar: HTMLElement,
+  x: number,
+  y: number,
+) => {
+  const bubble = body.getBoundingClientRect();
+  const bounds = listBounds(body);
+  const left = clamp(
+    x,
+    bounds.left + TOOLBAR_EDGE_MARGIN,
+    bounds.right - TOOLBAR_EDGE_MARGIN - toolbar.offsetWidth,
+  );
+  const top = clamp(
+    y,
+    bounds.top + TOOLBAR_EDGE_MARGIN,
+    bounds.bottom - TOOLBAR_EDGE_MARGIN - toolbar.offsetHeight,
+  );
+  body.style.setProperty(
+    "--hub-message-toolbar-left",
+    `${left - bubble.left}px`,
+  );
+  body.style.setProperty("--hub-message-toolbar-top", `${top - bubble.top}px`);
+};
+
 /**
  * Places the menu with its top-left corner at a point, as a context menu
  * opens: below and right of it, or on the other side where the list has no
@@ -133,25 +164,35 @@ const placeToolbarAt = (body: HTMLElement, x: number, y: number) => {
   const toolbar = body.querySelector<HTMLElement>(".hub__message-toolbar");
   if (!toolbar) return false;
   const { offsetWidth: width, offsetHeight: height } = toolbar;
-  const bubble = body.getBoundingClientRect();
   const bounds = listBounds(body);
-  const maxLeft = bounds.right - TOOLBAR_EDGE_MARGIN - width;
-  const maxTop = bounds.bottom - TOOLBAR_EDGE_MARGIN - height;
-  const left = clamp(
-    x > maxLeft ? x - width : x,
-    bounds.left + TOOLBAR_EDGE_MARGIN,
-    maxLeft,
+  moveToolbar(
+    body,
+    toolbar,
+    x > bounds.right - TOOLBAR_EDGE_MARGIN - width ? x - width : x,
+    y > bounds.bottom - TOOLBAR_EDGE_MARGIN - height ? y - height : y,
   );
-  const top = clamp(
-    y > maxTop ? y - height : y,
-    bounds.top + TOOLBAR_EDGE_MARGIN,
-    maxTop,
+  return true;
+};
+
+/**
+ * Places the menu centered under the "more" button, as in the design, or
+ * above it where the list has no room below. Returns whether the bubble has a
+ * menu.
+ */
+const placeToolbarUnder = (body: HTMLElement, button: HTMLElement) => {
+  const toolbar = body.querySelector<HTMLElement>(".hub__message-toolbar");
+  if (!toolbar) return false;
+  const { offsetWidth: width, offsetHeight: height } = toolbar;
+  const anchor = button.getBoundingClientRect();
+  const below = anchor.bottom + TOOLBAR_BUTTON_GAP;
+  const hasRoomBelow =
+    below + height <= listBounds(body).bottom - TOOLBAR_EDGE_MARGIN;
+  moveToolbar(
+    body,
+    toolbar,
+    anchor.left + (anchor.width - width) / 2,
+    hasRoomBelow ? below : anchor.top - TOOLBAR_BUTTON_GAP - height,
   );
-  body.style.setProperty(
-    "--hub-message-toolbar-left",
-    `${left - bubble.left}px`,
-  );
-  body.style.setProperty("--hub-message-toolbar-top", `${top - bubble.top}px`);
   return true;
 };
 
@@ -242,9 +283,44 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   // presentational. `messageId` is stable per row, so `onReact` is too. Passing
   // `threadId` routes the toggle to the thread cache when inside a thread.
   const { toggle } = useToggleReaction(chatRef, threadId);
-  // The actions menu shows at the pointer after a right click on the bubble.
+  // The actions menu shows at the pointer after a right click on the bubble,
+  // or under the "more" button beside it.
   const [isToolbarOpen, setIsToolbarOpen] = useState(false);
-  const closeToolbar = useCallback(() => setIsToolbarOpen(false), []);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<ButtonElement>(null);
+  // Set when the "more" button opens the menu from the keyboard.
+  const focusesToolbarOnOpen = useRef(false);
+  const closeToolbar = useCallback(() => {
+    setIsToolbarOpen(false);
+    // Closed while the focus is in it, the menu gives it back to its button.
+    const toolbar = bodyRef.current?.querySelector(".hub__message-toolbar");
+    if (toolbar?.contains(document.activeElement)) {
+      moreButtonRef.current?.focus();
+    }
+  }, []);
+  const toggleToolbar = useCallback(
+    (event: MouseEvent<ButtonElement>) => {
+      if (isToolbarOpen) {
+        closeToolbar();
+        return;
+      }
+      const body = bodyRef.current;
+      if (!body || !placeToolbarUnder(body, event.currentTarget)) return;
+      // A click from the keyboard has no pointer press.
+      focusesToolbarOnOpen.current = event.detail === 0;
+      setIsToolbarOpen(true);
+    },
+    [closeToolbar, isToolbarOpen],
+  );
+  // Opened from the keyboard, the menu takes the focus, once placed so that
+  // `placeToolbar` leaves it under the button.
+  useEffect(() => {
+    if (!isToolbarOpen || !focusesToolbarOnOpen.current) return;
+    focusesToolbarOnOpen.current = false;
+    bodyRef.current
+      ?.querySelector<HTMLElement>(".hub__message-toolbar button:enabled")
+      ?.focus({ preventScroll: true });
+  }, [isToolbarOpen]);
   const openToolbar = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const body = event.currentTarget;
     const target = event.target as Element;
@@ -413,6 +489,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         compact={compactToolbar}
         isOpen={isToolbarOpen}
         onClose={closeToolbar}
+        triggerRef={moreButtonRef}
       />
     </>
   );
@@ -430,6 +507,39 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     }
     return isDecrypting ? <MessageDecrypting /> : renderBody();
   };
+  // The bubble, then its "more" button, on the side facing the middle of the
+  // conversation (Figma 3776:123952). A deleted message, or one still being
+  // decrypted, has no actions: the space of the button stays empty.
+  const renderLine = () => (
+    <div className="hub__chat-bubble__line">
+      <div
+        ref={bodyRef}
+        className="hub__chat-bubble__body"
+        data-deleted={props.isDeleted || undefined}
+        data-decrypting={isDecrypting || undefined}
+        data-attachment={attachmentKind}
+        data-toolbar-open={isToolbarOpen || undefined}
+        onFocus={placeToolbar}
+        onContextMenu={openToolbar}
+      >
+        {renderContent()}
+      </div>
+      {!props.isDeleted && !isDecrypting && (
+        <Button
+          ref={moreButtonRef}
+          type="button"
+          variant="tertiary"
+          color="neutral"
+          size="nano"
+          className="hub__chat-bubble__more"
+          aria-label={t("Message actions")}
+          aria-expanded={isToolbarOpen}
+          icon={<More size={16} />}
+          onClick={toggleToolbar}
+        />
+      )}
+    </div>
+  );
 
   if (props.variant === "sent") {
     return (
@@ -447,17 +557,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
             threadId={threadId}
           />
         )}
-        <div
-          className="hub__chat-bubble__body"
-          data-deleted={props.isDeleted || undefined}
-          data-decrypting={isDecrypting || undefined}
-          data-attachment={attachmentKind}
-          data-toolbar-open={isToolbarOpen || undefined}
-          onFocus={placeToolbar}
-          onContextMenu={openToolbar}
-        >
-          {renderContent()}
-        </div>
+        {renderLine()}
         <ChatBubbleFooter
           thread={thread}
           reactions={reactions}
@@ -511,17 +611,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
             aria-hidden="true"
           />
         )}
-        <div
-          className="hub__chat-bubble__body"
-          data-deleted={props.isDeleted || undefined}
-          data-decrypting={isDecrypting || undefined}
-          data-attachment={attachmentKind}
-          data-toolbar-open={isToolbarOpen || undefined}
-          onFocus={placeToolbar}
-          onContextMenu={openToolbar}
-        >
-          {renderContent()}
-        </div>
+        {renderLine()}
       </div>
       <ChatBubbleFooter
         thread={thread}

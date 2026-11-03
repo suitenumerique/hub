@@ -8,6 +8,9 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Open a message's actions from a "more" button shown beside its
+  bubble on hover, as well as with a right click. Its space is kept while it
+  is hidden, so showing it never moves the message.
 - 💄(frontend) Show a message still being decrypted as an animated shield in
   a neutral bubble, with a "Decrypting message…" tooltip, instead of a status
   text that could be taken for the message itself.

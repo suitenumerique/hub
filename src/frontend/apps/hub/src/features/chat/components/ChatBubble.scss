@@ -1,5 +1,9 @@
 .hub__chat-bubble {
   --hub-chat-bubble-max-width: 850px;
+  // The "more" button beside the bubble and the gap before it.
+  --hub-chat-bubble-more-space: calc(
+    24px + var(--c--globals--spacings--xxxs, 4px)
+  );
 
   display: flex;
   flex-direction: column;
@@ -44,6 +48,50 @@
     flex: 0 0 auto;
     width: 24px;
     height: 24px;
+  }
+
+  // The bubble and its "more" button. The button's space is kept while it is
+  // hidden: showing it never moves or narrows the bubble.
+  &__line {
+    position: relative;
+    display: flex;
+    min-width: 0;
+  }
+
+  &--received &__line {
+    flex: 0 1 auto;
+    padding-right: var(--hub-chat-bubble-more-space);
+  }
+
+  &--sent &__line {
+    max-width: 100%;
+    padding-left: var(--hub-chat-bubble-more-space);
+  }
+
+  // Above the design system's button rules.
+  & &__more {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    // Transparent rather than hidden: it stays in the tab order and the
+    // accessibility tree, and shows as soon as it gets the focus.
+    opacity: 0;
+  }
+
+  &--received &__more {
+    right: 0;
+  }
+
+  &--sent &__more {
+    left: 0;
+  }
+
+  // Shown while the message is hovered or the button has the keyboard focus,
+  // and until the menu it or a right click opened closes.
+  &:hover &__more,
+  & &__more:focus-visible,
+  &__body[data-toolbar-open] + &__more {
+    opacity: 1;
   }
 
   &__body {
@@ -162,12 +210,12 @@
   }
 
   // A message still being decrypted: a neutral bubble, sent ones included, as
-  // wide as the design's (up to 400px) with the shield in its middle.
+  // wide as the design's (up to 400px) with the shield in its middle. Its line
+  // takes the width of its content: it shrinks in a narrower one.
   & &__body[data-decrypting] {
     display: flex;
     justify-content: center;
-    width: 100%;
-    max-width: 400px;
+    width: 400px;
     background: var(
       --c--contextuals--background--semantic--neutral--tertiary,
       #eef1f4
