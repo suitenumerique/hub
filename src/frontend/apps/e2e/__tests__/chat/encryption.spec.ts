@@ -1,5 +1,7 @@
 import { VerificationPhase } from "matrix-js-sdk/lib/crypto-api";
 
+import { holdRoomKeyReads } from "./utils/crypto-store";
+import { SYNC_TIMEOUT } from "./utils/env";
 import { expect, test } from "./utils/fixtures";
 import {
   createEncryptedRoom,
@@ -10,9 +12,10 @@ import {
 } from "./utils/flows";
 import { uniqueText } from "./utils/ids";
 import { stashToDeviceMessages } from "./utils/network";
+import { DECRYPTING_MESSAGE } from "./utils/pages/timeline";
 
-const ENCRYPTED_PLACEHOLDER =
-  /Encrypted message (unavailable|awaiting decryption)/;
+// A message still being decrypted shows a shield instead: `decryptingMessages`.
+const ENCRYPTED_PLACEHOLDER = /Encrypted message unavailable/;
 
 /** E2E-10 and E2E-11: the Hub as a new device of an encrypted account. */
 test.describe("Encryption", () => {
@@ -147,6 +150,42 @@ test.describe("Receiving encrypted messages", () => {
     await expect(
       bobChat.timeline.messages().filter({ hasText: ENCRYPTED_PLACEHOLDER }),
     ).toHaveCount(0);
+    await expect(bobChat.timeline.decryptingMessages()).toHaveCount(0);
+  });
+
+  test("shows a shield while a message decrypts", async ({
+    people,
+    hub,
+    devices,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const alicePhone = await devices.start(alice);
+    const roomId = await createEncryptedRoom(alicePhone, [bob.api]);
+    const bobChat = await hub.open(bob);
+    await bobChat.openConversation(alice.displayName);
+    // This first message brings the key of the next ones.
+    const first = uniqueText("Before decrypting");
+    await alicePhone.sendText(roomId, first);
+    await bobChat.timeline.expectMessageOnce(first);
+
+    const keys = await holdRoomKeyReads(bobChat.page);
+    const text = uniqueText("Decrypted after a while");
+    await alicePhone.sendText(roomId, text);
+
+    await test.step("a shield stands for it, with no status text", async () => {
+      const decrypting = bobChat.timeline.decryptingMessages();
+      await expect(decrypting).toHaveCount(1, { timeout: SYNC_TIMEOUT });
+      await expect(bobChat.timeline.body(decrypting)).toHaveText("");
+      const tooltip = await bobChat.timeline.hoverDecryptingMessage(decrypting);
+      await expect(tooltip).toHaveText(DECRYPTING_MESSAGE);
+    });
+
+    await test.step("the message replaces it once decrypted", async () => {
+      await keys.release();
+      await bobChat.timeline.expectMessageOnce(text);
+      await expect(bobChat.timeline.decryptingMessages()).toHaveCount(0);
+    });
   });
 
   test("shows a message whose key arrives after it", async ({
