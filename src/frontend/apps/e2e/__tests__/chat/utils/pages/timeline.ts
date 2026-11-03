@@ -34,9 +34,16 @@ export class Timeline {
     this.encryptionNotice = root.locator(".hub__encryption-notice");
   }
 
-  /** Bubbles containing `text`; texts are unique to a test. */
+  /**
+   * Bubbles whose message contains `text`; texts are unique to a test. A reply
+   * quoting that message is left out: its quote is outside its message.
+   */
   message(text: string): Locator {
-    return this.root.locator(".hub__chat-bubble", { hasText: text });
+    // `has` looks inside each bubble: the inner locator must not start from
+    // the timeline root.
+    return this.root.locator(".hub__chat-bubble", {
+      has: this.page.locator(".hub__chat-bubble__body", { hasText: text }),
+    });
   }
 
   private bubble(target: MessageTarget): Locator {
@@ -68,6 +75,23 @@ export class Timeline {
         async () => {
           if ((await this.message(text).count()) > 0) return true;
           await this.page.mouse.wheel(0, -600);
+          return false;
+        },
+        { timeout: SYNC_TIMEOUT, intervals: [300] },
+      )
+      .toBe(true);
+    await this.message(text).scrollIntoViewIfNeeded();
+  }
+
+  /** As {@link expectMessageAbove}, scrolling down. */
+  async expectMessageBelow(text: string): Promise<void> {
+    const scroller = this.root.locator("[data-virtuoso-scroller]");
+    await scroller.hover();
+    await expect
+      .poll(
+        async () => {
+          if ((await this.message(text).count()) > 0) return true;
+          await this.page.mouse.wheel(0, 600);
           return false;
         },
         { timeout: SYNC_TIMEOUT, intervals: [300] },
@@ -245,6 +269,46 @@ export class Timeline {
   async reply(text: string): Promise<void> {
     const menu = await this.openActions(text);
     await menu.getByRole("button", { name: "Reply", exact: true }).click();
+  }
+
+  /** Quote of the answered message, above a reply sent from Tchap. */
+  quote(text: string): Locator {
+    return this.message(text).locator(".hub__message-quote");
+  }
+
+  /** Checks who and what the quote above a reply shows. */
+  async expectQuote(
+    text: string,
+    { author, quoted }: { author?: string; quoted: string },
+  ): Promise<void> {
+    const quote = this.quote(text);
+    await expect(quote.locator(".hub__message-quote__text")).toHaveText(
+      quoted,
+      { timeout: SYNC_TIMEOUT },
+    );
+    const authorLine = quote.locator(".hub__message-quote__author");
+    if (author) {
+      await expect(authorLine).toHaveText(author);
+    } else {
+      await expect(authorLine).toHaveCount(0);
+    }
+  }
+
+  /** The quote's button that goes to the answered message. */
+  quoteJump(text: string): Locator {
+    return this.quote(text).getByRole("button", {
+      name: "Go to the original message",
+    });
+  }
+
+  /** The message a quote went to is shown and selected. */
+  async expectSelected(text: string): Promise<void> {
+    await expect(this.message(text)).toHaveAttribute(
+      "data-highlighted",
+      "true",
+      { timeout: SYNC_TIMEOUT },
+    );
+    await expect(this.body(text)).toBeInViewport();
   }
 
   /** "N replies" button under a thread root. */
