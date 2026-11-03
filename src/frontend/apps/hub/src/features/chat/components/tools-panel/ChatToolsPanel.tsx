@@ -5,6 +5,7 @@ import type { ChatRef } from "@/features/drivers/types";
 import type {
   DraftThreadRoot,
   OpenThreadOptions,
+  ThreadInitialMessage,
 } from "../../ChatPanelContext";
 
 import { DocumentsTool } from "./DocumentsTool";
@@ -24,6 +25,8 @@ type ChatToolsPanelProps = {
   threadId: string | null;
   /** Incremented whenever a Reply action requests focus in the composer. */
   threadComposerFocusSignal: number;
+  /** Reply the open thread shows highlighted, if it was opened on one. */
+  threadInitialMessage: ThreadInitialMessage | null;
   /** Root message for a not-yet-created thread draft. */
   draftThreadRoot: DraftThreadRoot | null;
   onClose: () => void;
@@ -37,6 +40,7 @@ export const ChatToolsPanel = ({
   chatRef,
   threadId,
   threadComposerFocusSignal,
+  threadInitialMessage,
   draftThreadRoot,
   onClose,
   onOpenThread,
@@ -78,6 +82,7 @@ export const ChatToolsPanel = ({
           chatRef={chatRef}
           threadId={threadId}
           threadComposerFocusSignal={threadComposerFocusSignal}
+          threadInitialMessage={threadInitialMessage}
           draftThreadRoot={draftThreadRoot}
           isOpen={isOpen}
           onClose={onClose}

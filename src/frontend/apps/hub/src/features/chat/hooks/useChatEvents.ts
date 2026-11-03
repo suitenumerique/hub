@@ -19,6 +19,7 @@ import type {
   ChatRef,
   ChatMessage,
   ChatMessagesPage,
+  ChatQuotedMessage,
   ChatThreadDetail,
   ChatUnread,
 } from "@/features/drivers/types";
@@ -258,6 +259,21 @@ const replaceMessage = (
 });
 
 /**
+ * The quote of a message no loaded page holds, fetched on its own, follows
+ * the message's updates: an edit, its deletion, its decryption.
+ */
+const updateQuotedMessage = (
+  queryClient: QueryClient,
+  ref: ChatRef,
+  message: ChatMessage,
+): void => {
+  queryClient.setQueryData<ChatQuotedMessage>(
+    chatKeys.quotedMessage(ref, message.id),
+    (quoted) => (quoted ? { ...quoted, message } : quoted),
+  );
+};
+
+/**
  * Translates a single backend event into a React Query cache operation. Events
  * that carry a payload are **patched** directly (no refetch); coarse events are
  * **invalidated** so the affected hook refetches through the driver. This is
@@ -280,6 +296,7 @@ const applyChatEvent = (
       // Decryption updates an existing placeholder, not a new delivery. A null
       // message removes it when the clear event turns out to be a reply or edit.
       if (!event.message) forgetLiveMessage(ref, event.messageId);
+      else updateQuotedMessage(queryClient, ref, event.message);
       const messagesKey = chatKeys.messages(ref);
       patchAcrossLoads(queryClient, messagesKey, () =>
         queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) => {
@@ -340,6 +357,7 @@ const applyChatEvent = (
       return;
 
     case "message:updated": {
+      updateQuotedMessage(queryClient, ref, event.message);
       const messagesKey = chatKeys.messages(ref);
       patchAcrossLoads(queryClient, messagesKey, () =>
         queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) =>
@@ -447,6 +465,8 @@ const applyChatEvent = (
     case "chat:changed":
       scheduleInvalidation(queryClient, chatKeys.messages(ref));
       scheduleInvalidation(queryClient, chatKeys.chat(ref));
+      // A message the room does not hold changes without an event of its own.
+      scheduleInvalidation(queryClient, chatKeys.quotedMessages(ref));
       return;
 
     case "threads:changed":

@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 
 import type { ChatRef } from "@/features/drivers/types";
 
+import type { ChatMessageJump } from "../ChatMessageJumpContext";
+
 import { ChatVirtualList } from "./ChatVirtualList";
 import { preloadEmojiPicker } from "./EmojiPickerPopover";
 import type { UnreadMessagesBannerProps } from "./UnreadMessagesBanner";
@@ -13,11 +15,14 @@ type ChatConversationProps = {
     chatKey: string,
     banner: UnreadMessagesBannerProps | null,
   ) => void;
+  /** Receives the list's jump to a message, `null` once it is gone. */
+  onMessageJumpChange: (jump: ChatMessageJump | null) => void;
 };
 
 export const ChatConversation = ({
   chatRef,
   onUnreadBannerChange,
+  onMessageJumpChange,
 }: ChatConversationProps) => {
   const { i18n } = useTranslation();
   const language = i18n.resolvedLanguage ?? i18n.language;
@@ -40,6 +45,7 @@ export const ChatConversation = ({
         key={`${chatRef.accountId}:${chatRef.chatId}`}
         chatRef={chatRef}
         onUnreadBannerChange={onUnreadBannerChange}
+        onMessageJumpChange={onMessageJumpChange}
       />
     </div>
   );

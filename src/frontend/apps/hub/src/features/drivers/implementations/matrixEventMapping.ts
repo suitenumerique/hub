@@ -21,6 +21,7 @@ import {
   NotificationCountType,
   RelationType,
   type Room,
+  type RoomMember,
   type Thread,
 } from "matrix-js-sdk/lib/matrix";
 
@@ -473,8 +474,10 @@ export const authorForSender = (
   room: Room,
   userId: string,
   selfUserId: string | undefined,
+  /** Profile an event carries, for a member the room has not loaded. */
+  eventSender?: RoomMember | null,
 ): ChatMessageAuthor => {
-  const member = room.getMember(userId);
+  const member = room.getMember(userId) ?? eventSender;
   const name = withoutOrganization(member?.name ?? userId);
   return {
     id: toAuthorId(userId, selfUserId),
@@ -789,6 +792,33 @@ const formattedBodyOf = (
     ? content.formatted_body
     : undefined;
 
+/**
+ * The message an event replies to, as Element's `shouldDisplayReply`: none
+ * once deleted, nor for the reply a thread message carries for clients
+ * without threads (`is_falling_back`).
+ */
+const replyToIdOf = (event: MatrixEvent): string | undefined => {
+  if (event.isRedacted() || event.getRelation()?.is_falling_back) {
+    return undefined;
+  }
+  return event.replyEventId;
+};
+
+/**
+ * Drops the quote older clients put at the start of a reply's plain body
+ * (`> <@user> …` lines then a blank line), as Element's `stripPlainReply`.
+ */
+const stripPlainReply = (body: string): string => {
+  const lines = body.split("\n");
+  while (lines.length && lines[0].startsWith("> ")) {
+    lines.shift();
+  }
+  if (lines[0] === "") {
+    lines.shift();
+  }
+  return lines.join("\n");
+};
+
 /** Whether an encrypted event is still unreadable (pending or key missing). */
 export const isUndecryptedEvent = (event: MatrixEvent): boolean =>
   event.isEncrypted() &&
@@ -805,7 +835,12 @@ export const matrixEventToChatMessage = (
   const content = event.getContent<
     { body?: string; msgtype?: string } & FormattedContent
   >();
-  const body = content.body;
+  const replyToId = replyToIdOf(event);
+  // Only the original body carries the quote: an edit's new content has none.
+  const body =
+    replyToId && typeof content.body === "string" && !event.replacingEvent()
+      ? stripPlainReply(content.body)
+      : content.body;
   // Keep the encrypted event's id and position while its key is missing. A
   // later decryption event can replace this placeholder without adding a row.
   // The SDK also attaches edits before decrypting them (server-bundled edit,
@@ -881,6 +916,7 @@ export const matrixEventToChatMessage = (
     isEdited: !isDeleted && Boolean(event.replacingEventId()),
     canEdit,
     canDelete,
+    ...(replyToId ? { replyToId } : {}),
   };
   const thread = room.getThread(eventId);
   if (thread) {
