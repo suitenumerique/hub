@@ -8,6 +8,9 @@ and this project adheres to
 
 ### Added
 
+- 💄(frontend) Show a message still being decrypted as an animated shield in
+  a neutral bubble, with a "Decrypting message…" tooltip, instead of a status
+  text that could be taken for the message itself.
 - 💄(frontend) Follow the design in every state of the conversation list rows:
   a visible unread dot on the open conversation, the "more" button centered,
   in the brand color there, and the row kept hovered while pointing at it.
