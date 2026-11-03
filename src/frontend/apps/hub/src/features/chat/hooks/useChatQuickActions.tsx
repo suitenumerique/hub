@@ -39,14 +39,14 @@ export const useChatQuickActions = (
         label: isFavourite
           ? t("Remove from favourites")
           : t("Add to favourites"),
-        icon: isFavourite ? <StarSlash /> : <Star />,
+        icon: isFavourite ? <StarSlash size={16} /> : <Star size={16} />,
         isDisabled: isFavouritePending,
         callback: () => setFavourite(!isFavourite),
       },
       {
         id: "read-state",
         label: unread.unread ? t("Mark as read") : t("Mark as unread"),
-        icon: unread.unread ? <Show /> : <Hide />,
+        icon: unread.unread ? <Show size={16} /> : <Hide size={16} />,
         isDisabled: isReadStatePending,
         callback: unread.unread ? markAsRead : markAsUnread,
       },

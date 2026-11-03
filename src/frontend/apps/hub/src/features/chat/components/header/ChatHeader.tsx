@@ -139,7 +139,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       {
         id: "members",
         label: t("Members"),
-        icon: <Shared />,
+        icon: <Shared size={16} />,
         callback: () => setIsMembersOpen(true),
       },
       ...quickActions,
@@ -147,19 +147,19 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       {
         id: "rename",
         label: t("Rename conversation"),
-        icon: <Edit />,
+        icon: <Edit size={16} />,
         isDisabled: true,
       },
       {
         id: "notifications",
         label: t("Notifications"),
-        icon: <Bell />,
+        icon: <Bell size={16} />,
         isDisabled: true,
       },
       {
         id: "leave",
         label: t("Leave conversation"),
-        icon: <Leave />,
+        icon: <Leave size={16} />,
         variant: "danger",
         isDisabled: !canLeave || isLeaving,
         callback: () => setIsLeaveOpen(true),
@@ -193,7 +193,12 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
 
   return (
     <>
-      <DropdownMenu options={options} {...menu} onOpenChange={menu.setIsOpen}>
+      <DropdownMenu
+        options={options}
+        {...menu}
+        onOpenChange={menu.setIsOpen}
+        variant="tiny"
+      >
         {trigger}
       </DropdownMenu>
       <ChatMembersModal

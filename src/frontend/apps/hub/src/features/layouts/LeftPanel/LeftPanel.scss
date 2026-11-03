@@ -481,6 +481,23 @@
   }
 }
 
+// The package's context menu has no tiny variant. A conversation row is its
+// only use: it takes the `c__dropdown-menu--tiny` rules, as the row's "more"
+// menu does. Its menu is labelled "Context menu" by the package.
+.c__dropdown-menu[aria-label="Context menu"] {
+  border-radius: var(--c--globals--spacings--xs, 8px);
+  background-color: var(--c--contextuals--background--surface--secondary);
+
+  .c__dropdown-menu-item {
+    box-sizing: content-box;
+    gap: var(--c--globals--spacings--xxs, 6px);
+    height: 16px;
+    padding: var(--c--globals--spacings--xs, 8px);
+    font-size: var(--c--globals--font--sizes--xs, 0.75rem);
+    line-height: var(--c--globals--line-heights--xs, 16px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hub__left-panel__top,
   .hub__left-panel__section__panel,
