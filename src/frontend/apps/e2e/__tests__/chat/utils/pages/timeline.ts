@@ -13,6 +13,9 @@ export type QuickReaction = keyof typeof QUICK_REACTIONS;
 
 export const DELETED_MESSAGE = "Message deleted";
 
+/** Names the shield shown instead of a message still being decrypted. */
+export const DECRYPTING_MESSAGE = "Decrypting message…";
+
 /** A message, by its text, or a bubble already located (an image…). */
 export type MessageTarget = string | Locator;
 
@@ -184,7 +187,18 @@ export class Timeline {
   async hoverReaction(text: string, emoji: string): Promise<Locator> {
     // Pressing a chip closes its tooltip until the pointer comes back.
     await this.page.mouse.move(0, 0);
-    await this.reaction(text, emoji).hover();
+    return this.openTooltip(this.reaction(text, emoji));
+  }
+
+  /** Hovers the shield of a message still being decrypted. */
+  async hoverDecryptingMessage(target: Locator): Promise<Locator> {
+    return this.openTooltip(
+      target.getByRole("img", { name: DECRYPTING_MESSAGE }),
+    );
+  }
+
+  private async openTooltip(trigger: Locator): Promise<Locator> {
+    await trigger.hover();
     const tooltip = this.page.getByRole("tooltip");
     await expect(tooltip).toBeVisible();
     // It shows after a delay, sliding in: wait until it stands still.
@@ -223,6 +237,13 @@ export class Timeline {
     await expect(
       this.message(text).locator(".hub__chat-bubble__edited"),
     ).toHaveText("edited", { timeout: SYNC_TIMEOUT });
+  }
+
+  /** Messages still being decrypted keep their place, as a shield. */
+  decryptingMessages(): Locator {
+    return this.messages().filter({
+      has: this.page.getByRole("img", { name: DECRYPTING_MESSAGE }),
+    });
   }
 
   /** Deleted messages keep their place, as a tombstone. */
