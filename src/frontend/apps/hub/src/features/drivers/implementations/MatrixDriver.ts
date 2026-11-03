@@ -103,6 +103,7 @@ import {
   EditChatMessageParams,
   GetChatThreadParams,
   GetChatMessagesParams,
+  GetQuotedChatMessageParams,
   MarkChatThreadReadParams,
   RemoveChatFromHistoryResult,
   SendChatMessageParams,
@@ -123,6 +124,7 @@ import {
   ChatMember,
   ChatMembers,
   ChatMessagesPage,
+  ChatQuotedMessage,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -2619,6 +2621,56 @@ export class MatrixDriver extends Driver {
   }: GetChatAvatarParams): Promise<Blob> {
     const mx = this.requireClient("getChatAvatar");
     return fetchAvatarThumbnail(mx, avatarUrl, size, signal);
+  }
+
+  /**
+   * As Element's ReplyChain: the quoted event from the room when it is loaded,
+   * otherwise loaded through the context API, which also brings its sender's
+   * profile. Throws when the homeserver does not give it.
+   */
+  override async getQuotedChatMessage({
+    chatId,
+    messageId,
+  }: GetQuotedChatMessageParams): Promise<ChatQuotedMessage> {
+    const { mx, room } = this.requireRoom("getQuotedChatMessage", chatId);
+    let event = room.findEventById(messageId);
+    if (!event) {
+      const timeline = await mx.getEventTimeline(
+        room.getUnfilteredTimelineSet(),
+        messageId,
+      );
+      event = room.findEventById(messageId);
+      // The SDK gives no timeline for a thread reply, which the room's cannot
+      // hold: fetch it on its own, as Element resolves a link to one. Loading
+      // it in the thread's timeline instead would split the one its view
+      // paginates.
+      if (!event && !timeline) {
+        const rawEvent = await mx.fetchRoomEvent(chatId, messageId);
+        event = mx.getEventMapper({ decrypt: false })({
+          ...rawEvent,
+          room_id: chatId,
+        });
+      }
+    }
+    if (!event) {
+      throw new Error(
+        `MatrixDriver.getQuotedChatMessage: message "${messageId}" not found in room "${chatId}".`,
+      );
+    }
+    // A key still missing leaves the message unavailable, not the request.
+    await mx.decryptEventIfNeeded(event).catch(() => {});
+    const selfUserId = mx.getUserId() ?? undefined;
+    const threadId = event.isThreadRoot ? undefined : event.threadRootId;
+    return {
+      message: matrixEventToChatMessage(event, room, selfUserId),
+      author: authorForSender(
+        room,
+        event.getSender() ?? "",
+        selfUserId,
+        event.sender,
+      ),
+      ...(threadId ? { threadId } : {}),
+    };
   }
 
   /**

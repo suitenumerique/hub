@@ -17,6 +17,7 @@ import {
   type GetChatAvatarParams,
   type GetChatMessagesParams,
   type GetChatThreadParams,
+  type GetQuotedChatMessageParams,
   type MarkChatThreadReadParams,
   type RemoveChatFromHistoryResult,
   type SendChatMessageParams,
@@ -34,6 +35,7 @@ import type {
   ChatMessage,
   ChatMessagesPage,
   ChatMembers,
+  ChatQuotedMessage,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
@@ -332,6 +334,12 @@ export class LazyMatrixDriver extends BaseDriver {
 
   async getChatAvatar(params: GetChatAvatarParams): Promise<Blob> {
     return this.withTarget((driver) => driver.getChatAvatar(params));
+  }
+
+  async getQuotedChatMessage(
+    params: GetQuotedChatMessageParams,
+  ): Promise<ChatQuotedMessage> {
+    return this.withTarget((driver) => driver.getQuotedChatMessage(params));
   }
 
   async editChatMessage(params: EditChatMessageParams): Promise<ChatMessage> {

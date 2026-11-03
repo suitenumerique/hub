@@ -24,6 +24,12 @@ import {
   ChatMessageEditProvider,
   type EditingChatMessage,
 } from "../../ChatMessageEditContext";
+import {
+  type ChatMessageJump,
+  ChatMessageJumpProvider,
+  focusJumpTarget,
+} from "../../ChatMessageJumpContext";
+import type { ThreadInitialMessage } from "../../ChatPanelContext";
 import { isSameChatDay } from "../../formatTimestamp";
 import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useChatThread } from "../../hooks/useChatThread";
@@ -45,6 +51,8 @@ type ThreadDetailProps = {
   onClose: () => void;
   onBack: () => void;
   composerFocusSignal?: number;
+  /** Reply to show highlighted, the thread being opened on it. */
+  initialMessage?: ThreadInitialMessage | null;
 };
 
 type ThreadMessagesContext = {
@@ -110,6 +118,7 @@ export const ThreadDetail = ({
   onClose,
   onBack,
   composerFocusSignal,
+  initialMessage,
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
   const sendState = useChatSendState(chatRef);
@@ -154,6 +163,9 @@ export const ThreadDetail = ({
   const lastMessage = thread?.messages[thread.messages.length - 1];
 
   useEffect(() => setEditingMessage(null), [threadId]);
+  // As Element's highlighted event: selected until the next jump.
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  useEffect(() => setHighlightedId(null), [threadId]);
 
   const handleSubmit = useCallback(
     async (composed: ChatComposedMessage) => {
@@ -172,6 +184,72 @@ export const ThreadDetail = ({
   );
   const uploadAttachment = useUploadChatAttachment(chatRef);
   const editContext = useMemo(() => ({ startEditing: setEditingMessage }), []);
+
+  // A quote inside the thread goes to the replies it holds, without loading
+  // older ones around it.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const jumpScrollRafRef = useRef<number | null>(null);
+  const cancelJumpFocusRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      if (jumpScrollRafRef.current !== null) {
+        cancelAnimationFrame(jumpScrollRafRef.current);
+      }
+      cancelJumpFocusRef.current?.();
+    },
+    [],
+  );
+  const messageJump = useMemo<ChatMessageJump>(
+    () => ({
+      loadsMissing: false,
+      jumpTo: async (messageId) => {
+        if (!messagesRef.current.some((message) => message.id === messageId)) {
+          return;
+        }
+        setHighlightedId(messageId);
+        // As the conversation's jump, once the list has laid out: a thread
+        // just opened on the reply first settles on its latest one.
+        if (jumpScrollRafRef.current !== null) {
+          cancelAnimationFrame(jumpScrollRafRef.current);
+        }
+        jumpScrollRafRef.current = requestAnimationFrame(() => {
+          jumpScrollRafRef.current = requestAnimationFrame(() => {
+            jumpScrollRafRef.current = null;
+            const index = messagesRef.current.findIndex(
+              (message) => message.id === messageId,
+            );
+            if (index >= 0) {
+              virtuosoRef.current?.scrollToIndex({ index, align: "center" });
+            }
+          });
+        });
+        cancelJumpFocusRef.current?.();
+        cancelJumpFocusRef.current = focusJumpTarget(
+          () => detailRef.current,
+          messageId,
+        );
+      },
+    }),
+    [],
+  );
+
+  // As Element's ShowThread with an initial event: opened from a quote outside
+  // the thread, it goes to the quoted reply once loaded, if it holds it.
+  const handledInitialMessageRef = useRef<ThreadInitialMessage | null>(null);
+  useEffect(() => {
+    if (
+      !isOpen ||
+      isInitialLoading ||
+      !thread ||
+      !initialMessage ||
+      handledInitialMessageRef.current === initialMessage
+    ) {
+      return;
+    }
+    handledInitialMessageRef.current = initialMessage;
+    void messageJump.jumpTo(initialMessage.messageId);
+  }, [initialMessage, isInitialLoading, isOpen, messageJump, thread]);
 
   // The list opens on the latest message. Gated by `isOpen` because
   // `ThreadDetail` stays mounted while the panel close animation runs (see
@@ -279,92 +357,98 @@ export const ThreadDetail = ({
           className="hub__thread-detail__messages"
           {...topReturn.scrollHandlers}
         >
-          <Virtuoso
-            key={threadId}
-            ref={virtuosoRef}
-            // The scroller is focusable: name it for keyboard users.
-            aria-label={t("Thread")}
-            data={messages}
-            context={{
-              isFetchingOlder,
-              isFetchOlderError,
-              onRetry: fetchOlder,
-            }}
-            firstItemIndex={firstItemIndex}
-            initialTopMostItemIndex={LAST_MESSAGE}
-            computeItemKey={(_index, message) => message.id}
-            defaultItemHeight={DEFAULT_ITEM_HEIGHT}
-            // Measure rows before paint, as the conversation timeline does: a
-            // row rendered above the viewport never shifts the visible ones.
-            skipAnimationFrameInResizeObserver
-            // New replies scroll into view while the latest one is shown.
-            followOutput="auto"
-            startReached={fetchOlder}
-            atTopStateChange={topReturn.onEdgeChange}
-            increaseViewportBy={{ top: 400, bottom: 0 }}
-            components={THREAD_MESSAGES_COMPONENTS}
-            itemContent={(virtualIndex, message) => {
-              const index = virtualIndex - firstItemIndex;
-              const prev = messages[index - 1];
-              const next = messages[index + 1];
-              const isSent = message.authorId === "me";
-              const isFirstOfGroup =
-                !prev ||
-                prev.authorId !== message.authorId ||
-                !isSameChatDay(prev.timestamp, message.timestamp);
-              const isLastOfGroup =
-                !next ||
-                next.authorId !== message.authorId ||
-                !isSameChatDay(message.timestamp, next.timestamp);
-              const author = authorsById.get(message.authorId);
+          <ChatMessageJumpProvider value={messageJump}>
+            <Virtuoso
+              key={threadId}
+              ref={virtuosoRef}
+              // The scroller is focusable: name it for keyboard users.
+              aria-label={t("Thread")}
+              data={messages}
+              context={{
+                isFetchingOlder,
+                isFetchOlderError,
+                onRetry: fetchOlder,
+              }}
+              firstItemIndex={firstItemIndex}
+              initialTopMostItemIndex={LAST_MESSAGE}
+              computeItemKey={(_index, message) => message.id}
+              defaultItemHeight={DEFAULT_ITEM_HEIGHT}
+              // Measure rows before paint, as the conversation timeline does: a
+              // row rendered above the viewport never shifts the visible ones.
+              skipAnimationFrameInResizeObserver
+              // New replies scroll into view while the latest one is shown.
+              followOutput="auto"
+              startReached={fetchOlder}
+              atTopStateChange={topReturn.onEdgeChange}
+              increaseViewportBy={{ top: 400, bottom: 0 }}
+              components={THREAD_MESSAGES_COMPONENTS}
+              itemContent={(virtualIndex, message) => {
+                const index = virtualIndex - firstItemIndex;
+                const prev = messages[index - 1];
+                const next = messages[index + 1];
+                const isSent = message.authorId === "me";
+                const isFirstOfGroup =
+                  !prev ||
+                  prev.authorId !== message.authorId ||
+                  !isSameChatDay(prev.timestamp, message.timestamp);
+                const isLastOfGroup =
+                  !next ||
+                  next.authorId !== message.authorId ||
+                  !isSameChatDay(message.timestamp, next.timestamp);
+                const author = authorsById.get(message.authorId);
 
-              return (
-                <div className="hub__thread-detail__row">
-                  {isSent ? (
-                    <ChatBubble
-                      variant="sent"
-                      chatRef={chatRef}
-                      messageId={message.id}
-                      content={message.content}
-                      htmlContent={message.htmlContent}
-                      attachment={message.attachment}
-                      timestamp={message.timestamp}
-                      reactions={message.reactions}
-                      isDeleted={message.isDeleted}
-                      isEdited={message.isEdited}
-                      availability={message.availability}
-                      canEdit={message.canEdit}
-                      canDelete={message.canDelete}
-                      threadId={threadId}
-                      showTimestamp={isLastOfGroup}
-                    />
-                  ) : (
-                    author && (
+                return (
+                  <div className="hub__thread-detail__row">
+                    {isSent ? (
                       <ChatBubble
-                        variant="received"
+                        variant="sent"
                         chatRef={chatRef}
                         messageId={message.id}
                         content={message.content}
                         htmlContent={message.htmlContent}
                         attachment={message.attachment}
-                        author={author}
                         timestamp={message.timestamp}
                         reactions={message.reactions}
                         isDeleted={message.isDeleted}
                         isEdited={message.isEdited}
+                        replyToId={message.replyToId}
+                        isHighlighted={message.id === highlightedId}
                         availability={message.availability}
                         canEdit={message.canEdit}
                         canDelete={message.canDelete}
                         threadId={threadId}
-                        showHeader={isFirstOfGroup}
-                        showAvatar={isLastOfGroup}
+                        showTimestamp={isLastOfGroup}
                       />
-                    )
-                  )}
-                </div>
-              );
-            }}
-          />
+                    ) : (
+                      author && (
+                        <ChatBubble
+                          variant="received"
+                          chatRef={chatRef}
+                          messageId={message.id}
+                          content={message.content}
+                          htmlContent={message.htmlContent}
+                          attachment={message.attachment}
+                          author={author}
+                          timestamp={message.timestamp}
+                          reactions={message.reactions}
+                          isDeleted={message.isDeleted}
+                          isEdited={message.isEdited}
+                          replyToId={message.replyToId}
+                          isHighlighted={message.id === highlightedId}
+                          availability={message.availability}
+                          canEdit={message.canEdit}
+                          canDelete={message.canDelete}
+                          threadId={threadId}
+                          showHeader={isFirstOfGroup}
+                          showAvatar={isLastOfGroup}
+                        />
+                      )
+                    )}
+                  </div>
+                );
+              }}
+            />
+          </ChatMessageJumpProvider>
         </div>
         <div className="hub__thread-detail__composer">
           {sendState === "blocked" && (

@@ -31,11 +31,13 @@ import {
   ChatMessageEditProvider,
   type EditingChatMessage,
 } from "../ChatMessageEditContext";
+import type { ChatMessageJump } from "../ChatMessageJumpContext";
 import {
   ChatPanelProvider,
   type DraftThreadRoot,
   type ChatPanelContextValue,
   type OpenThreadOptions,
+  type ThreadInitialMessage,
 } from "../ChatPanelContext";
 import {
   type ChatMessagesData,
@@ -256,8 +258,18 @@ export const ChatView = ({
   // list view.
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [threadComposerFocusSignal, setThreadComposerFocusSignal] = useState(0);
+  const [threadInitialMessage, setThreadInitialMessage] =
+    useState<ThreadInitialMessage | null>(null);
   const [draftThreadRoot, setDraftThreadRoot] =
     useState<DraftThreadRoot | null>(null);
+  // Set by the conversation's message list while it is shown.
+  const conversationJumpRef = useRef<ChatMessageJump | null>(null);
+  const handleConversationJumpChange = useCallback(
+    (jump: ChatMessageJump | null) => {
+      conversationJumpRef.current = jump;
+    },
+    [],
+  );
   const queryClient = useQueryClient();
   const threadsKeyedByRoot = useChatThreadsKeyedByRoot(chatRef);
   useEffect(() => {
@@ -296,10 +308,17 @@ export const ChatView = ({
       setThreadComposerFocusSignal((signal) =>
         options?.focusComposer ? signal + 1 : 0,
       );
+      setThreadInitialMessage(
+        options?.messageId ? { messageId: options.messageId } : null,
+      );
       setDraftThreadRoot(null);
     },
     [],
   );
+
+  const jumpToConversationMessage = useCallback(async (messageId: string) => {
+    await conversationJumpRef.current?.jumpTo(messageId);
+  }, []);
 
   const openThreadList = useCallback(() => {
     setActiveTool("threads");
@@ -343,8 +362,13 @@ export const ChatView = ({
   }, []);
 
   const panelContext = useMemo<ChatPanelContextValue>(
-    () => ({ openThread, openDraftThread, openThreadList }),
-    [openDraftThread, openThread, openThreadList],
+    () => ({
+      openThread,
+      openDraftThread,
+      openThreadList,
+      jumpToConversationMessage,
+    }),
+    [jumpToConversationMessage, openDraftThread, openThread, openThreadList],
   );
   const editContext = useMemo(() => ({ startEditing: setEditingMessage }), []);
 
@@ -357,6 +381,7 @@ export const ChatView = ({
         <ChatConversation
           chatRef={chatRef}
           onUnreadBannerChange={handleUnreadBannerChange}
+          onMessageJumpChange={handleConversationJumpChange}
         />
       );
     }
@@ -472,6 +497,7 @@ export const ChatView = ({
                   chatRef={chatRef}
                   threadId={activeThreadId}
                   threadComposerFocusSignal={threadComposerFocusSignal}
+                  threadInitialMessage={threadInitialMessage}
                   draftThreadRoot={draftThreadRoot}
                   onClose={closePanel}
                   onOpenThread={openThread}

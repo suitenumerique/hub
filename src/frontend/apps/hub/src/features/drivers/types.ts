@@ -315,6 +315,16 @@ export type ChatMessage = {
   canDelete?: boolean;
   /** Set when this message opened a thread; omitted otherwise. */
   thread?: ChatThreadSummary;
+  /** Id of the message this one replies to, quoted above it. */
+  replyToId?: string;
+};
+
+/** A message as quoted above a reply to it, with who sent it. */
+export type ChatQuotedMessage = {
+  message: ChatMessage;
+  author: ChatMessageAuthor;
+  /** Thread the message is a reply in; omitted in the main timeline. */
+  threadId?: string;
 };
 
 /** Volatile room member identity used only by the typing indicator. */

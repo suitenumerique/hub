@@ -37,6 +37,11 @@ export const chatKeys = {
     ["chat-thread", ref.accountId, ref.chatId] as const,
   members: (ref: ChatRef) =>
     ["chat-members", ref.accountId, ref.chatId] as const,
+  /** A message quoted by a reply, when no loaded page holds it. */
+  quotedMessage: (ref: ChatRef, messageId: string) =>
+    ["chat-quoted-message", ref.accountId, ref.chatId, messageId] as const,
+  quotedMessages: (ref: ChatRef) =>
+    ["chat-quoted-message", ref.accountId, ref.chatId] as const,
   /** Bytes of one attachment; the driver-owned source identifies the file. */
   attachment: (
     accountId: AccountId,

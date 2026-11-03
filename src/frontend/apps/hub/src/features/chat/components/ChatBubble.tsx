@@ -33,6 +33,7 @@ import { ChatUserAvatar } from "./ChatUserAvatar";
 import { MessageAttachment } from "./MessageAttachment";
 import { MessageContent } from "./MessageContent";
 import { MessageHoverToolbar } from "./MessageHoverToolbar";
+import { MessageQuote } from "./MessageQuote";
 import { MessageReactions } from "./MessageReactions";
 import { ThreadButton } from "./ThreadButton";
 
@@ -54,6 +55,10 @@ type ChatBubbleReceivedProps = {
   canDelete?: boolean;
   /** Thread opened from this message, if any. */
   thread?: ChatThreadSummary;
+  /** Message this one replies to, quoted above the bubble. */
+  replyToId?: string;
+  /** Set on the message a click on a reply's quote went to. */
+  isHighlighted?: boolean;
   /** Set when this bubble is rendered inside a thread's detail view. */
   threadId?: string;
   /** Drops Reply while keeping reactions and message actions. */
@@ -79,6 +84,10 @@ type ChatBubbleSentProps = {
   canDelete?: boolean;
   /** Thread opened from this message, if any. */
   thread?: ChatThreadSummary;
+  /** Message this one replies to, quoted above the bubble. */
+  replyToId?: string;
+  /** Set on the message a click on a reply's quote went to. */
+  isHighlighted?: boolean;
   /** Set when this bubble is rendered inside a thread's detail view. */
   threadId?: string;
   /** Drops Reply while keeping reactions and message actions. */
@@ -211,7 +220,15 @@ const ChatBubbleFooter = ({
 export const ChatBubble = (props: ChatBubbleProps) => {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? i18n.language;
-  const { attachment, chatRef, messageId, reactions, thread, threadId } = props;
+  const {
+    attachment,
+    chatRef,
+    messageId,
+    reactions,
+    replyToId,
+    thread,
+    threadId,
+  } = props;
   useEnsureMessageDecrypted(chatRef, messageId, props.availability);
   const { openThread, openDraftThread } = useChatPanel();
   const { startEditing } = useChatMessageEdit();
@@ -404,7 +421,17 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       <div
         className="hub__chat-bubble hub__chat-bubble--sent"
         data-message-id={messageId}
+        data-highlighted={props.isHighlighted || undefined}
+        // The jump that highlighted it gives it the focus.
+        tabIndex={props.isHighlighted ? -1 : undefined}
       >
+        {replyToId && !props.isDeleted && (
+          <MessageQuote
+            chatRef={chatRef}
+            messageId={replyToId}
+            threadId={threadId}
+          />
+        )}
         <div
           className="hub__chat-bubble__body"
           data-deleted={props.isDeleted || undefined}
@@ -442,6 +469,9 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     <div
       className="hub__chat-bubble hub__chat-bubble--received"
       data-message-id={messageId}
+      data-highlighted={props.isHighlighted || undefined}
+      // The jump that highlighted it gives it the focus.
+      tabIndex={props.isHighlighted ? -1 : undefined}
     >
       {showHeader && (
         <div className="hub__chat-bubble__header">
@@ -452,6 +482,15 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           <span className="hub__chat-bubble__timestamp">
             {formatChatGroupTimestamp(timestamp, locale)}
           </span>
+        </div>
+      )}
+      {replyToId && !props.isDeleted && (
+        <div className="hub__chat-bubble__quote">
+          <MessageQuote
+            chatRef={chatRef}
+            messageId={replyToId}
+            threadId={threadId}
+          />
         </div>
       )}
       <div className="hub__chat-bubble__row">

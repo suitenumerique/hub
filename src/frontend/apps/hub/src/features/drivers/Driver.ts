@@ -15,6 +15,7 @@ import {
   ChatMessageAuthor,
   ChatMessagesPage,
   ChatMembers,
+  ChatQuotedMessage,
   ChatReaction,
   ChatThread,
   ChatThreadDetail,
@@ -130,6 +131,11 @@ export type GetChatAvatarParams = {
   /** Square size requested, in device pixels. */
   size: number;
   signal?: AbortSignal;
+};
+
+export type GetQuotedChatMessageParams = {
+  chatId: string;
+  messageId: string;
 };
 
 export type DownloadChatAttachmentParams = {
@@ -537,6 +543,19 @@ export abstract class Driver {
     void _params;
     throw new Error(
       `${this.constructor.name}.getChatAvatar: avatars are not supported by this driver.`,
+    );
+  }
+
+  /**
+   * A message quoted by a reply (`ChatMessage.replyToId`), fetched by id when
+   * no loaded page holds it. Throws when it cannot be loaded.
+   */
+  async getQuotedChatMessage(
+    _params: GetQuotedChatMessageParams,
+  ): Promise<ChatQuotedMessage> {
+    void _params;
+    throw new Error(
+      `${this.constructor.name}.getQuotedChatMessage: replies are not supported by this driver.`,
     );
   }
 

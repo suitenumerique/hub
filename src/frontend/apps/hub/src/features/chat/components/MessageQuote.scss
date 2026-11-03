@@ -1,0 +1,121 @@
+// The message a reply answers, quoted above the reply bubble.
+.hub__message-quote {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--c--globals--spacings--4xs, 2px);
+  width: 350px;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--c--globals--spacings--xs, 8px)
+    var(--c--globals--spacings--sm, 12px);
+  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+  border-radius: var(--c--globals--spacings--xs, 8px);
+  background: var(--c--contextuals--background--surface--primary, #ffffff);
+  color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+
+  &__author {
+    font-weight: 500;
+    line-height: 16px;
+  }
+
+  // A long message keeps its first lines only.
+  &__text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+    white-space: pre-wrap;
+  }
+
+  &__status {
+    font-style: italic;
+  }
+
+  &__placeholder {
+    display: flex;
+    align-items: center;
+    height: 18px;
+
+    &::before {
+      content: "";
+      width: 70%;
+      height: 12px;
+      border-radius: 6px;
+      background: var(
+        --c--contextuals--background--semantic--neutral--tertiary,
+        #eef1f4
+      );
+    }
+
+    &--author {
+      height: 16px;
+
+      &::before {
+        width: 35%;
+      }
+    }
+  }
+
+  // Unavailable, the quote has no author line: as in Element, it keeps the
+  // height of the placeholder rows it replaces.
+  &[data-no-author] {
+    justify-content: center;
+    min-height: calc(
+      16px + var(--c--globals--spacings--4xs, 2px) + 18px + 2 *
+        var(--c--globals--spacings--xs, 8px) + 2px
+    );
+  }
+
+  &[data-jumpable]:hover {
+    background: var(
+      --c--contextuals--background--semantic--overlay--primary,
+      rgba(24, 27, 36, 0.05)
+    );
+  }
+
+  // Goes to the quoted message from anywhere on the quote.
+  &__jump {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: 2px;
+    }
+  }
+
+  // Links of the quoted text stay clickable above the jump.
+  &__text a[href] {
+    position: relative;
+    z-index: 1;
+  }
+
+  &[aria-busy] &__jump {
+    cursor: progress;
+  }
+
+  &__loader {
+    position: absolute;
+    top: var(--c--globals--spacings--xs, 8px);
+    right: var(--c--globals--spacings--sm, 12px);
+    display: inline-flex;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+}

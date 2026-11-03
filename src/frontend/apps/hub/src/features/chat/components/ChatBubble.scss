@@ -34,6 +34,12 @@
     gap: var(--c--globals--spacings--xs, 8px);
   }
 
+  // The quote of the answered message, aligned with the bubble.
+  &--received &__quote {
+    display: flex;
+    padding-left: calc(24px + var(--c--globals--spacings--xs, 8px));
+  }
+
   &__avatar-spacer {
     flex: 0 0 auto;
     width: 24px;
@@ -92,18 +98,35 @@
   }
 
   // The bubble whose actions menu a right click opened.
-  &--received &__body[data-toolbar-open]:not([data-attachment]) {
+  // The message a click on a reply's quote went to is selected the same way,
+  // as Element selects the highlighted event like the one with a menu open.
+  &--received &__body[data-toolbar-open]:not([data-attachment]),
+  &--received[data-highlighted] &__body:not([data-attachment]),
+  &--sent[data-highlighted] &__body[data-deleted="true"] {
     background: var(
       --c--contextuals--background--semantic--neutral--tertiary-hover,
       #e2e2ea
     );
   }
 
-  &--sent &__body[data-toolbar-open]:not([data-attachment]) {
+  &--sent &__body[data-toolbar-open]:not([data-attachment]),
+  &--sent[data-highlighted] &__body:not([data-attachment], [data-deleted]) {
     background: var(
       --c--contextuals--background--semantic--brand--primary-hover,
       #4844ad
     );
+  }
+
+  // The jump to it gives it the focus, which its bubble shows rather than the
+  // whole row, for the keyboard only.
+  &[data-highlighted] {
+    outline: none;
+  }
+
+  &[data-highlighted]:focus-visible &__body {
+    outline: 2px solid
+      var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+    outline-offset: 2px;
   }
 
   // Brand colours vanish on the brand bubble: links and mentions follow its text.
