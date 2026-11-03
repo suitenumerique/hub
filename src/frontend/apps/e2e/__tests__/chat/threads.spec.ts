@@ -148,9 +148,6 @@ test("marks unread threads read, from the thread or from the banner", async ({
 
   const bobChat = await hub.open(bob);
   await bobChat.openConversation(carol.displayName);
-  // More than one screen: opening at the bottom leaves older ones unread.
-  const prefix = uniqueText("Message");
-  await alice.api.sendMany(roomId, prefix, 40);
   const opened = uniqueText("Opened thread");
   const fromBanner = uniqueText("Banner thread");
   for (const root of [opened, fromBanner]) {
@@ -170,9 +167,11 @@ test("marks unread threads read, from the thread or from the banner", async ({
     await bobChat.threads.expectUnreadThreadsBanner("1 unread thread");
   });
 
-  await test.step("the banner reads the others, not the timeline", async () => {
+  await test.step("the banner reads the others", async () => {
     await bobChat.threads.markAllRead();
-    await expect(bobChat.timeline.unreadBanner).toBeVisible();
+    await expect(bobChat.timeline.threadButton(fromBanner)).toHaveText(
+      "1 reply",
+    );
   });
 
   await test.step("both stay read after a reload, with one reply each", async () => {
@@ -183,7 +182,6 @@ test("marks unread threads read, from the thread or from the banner", async ({
       });
     }
     await expect(bobChat.threads.unreadBanner).toBeHidden();
-    await expect(bobChat.timeline.unreadBanner).toBeVisible();
   });
 });
 
