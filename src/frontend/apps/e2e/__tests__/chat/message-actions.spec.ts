@@ -1,3 +1,4 @@
+import { SYNC_TIMEOUT } from "./utils/env";
 import { expect, test } from "./utils/fixtures";
 import {
   createEncryptedRoom,
@@ -5,6 +6,7 @@ import {
   markRoomRead,
 } from "./utils/flows";
 import { uniqueText } from "./utils/ids";
+import { DELETED_MESSAGE, QUICK_REACTIONS } from "./utils/pages/timeline";
 
 /** E2E-07: edits, deletions and reactions seen on both sides. */
 test.describe("Message actions across two browsers", () => {
@@ -123,6 +125,107 @@ test.describe("Message actions across two browsers", () => {
         mine: false,
       });
     });
+  });
+});
+
+/** The "more" button beside a bubble opens the menu of the right click. */
+test.describe("Message actions button", () => {
+  test("shows beside the bubble and opens its actions menu", async ({
+    people,
+    hub,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const roomId = await createUnencryptedRoom(alice, [bob]);
+    const received = uniqueText("From Alice");
+    const sent = uniqueText("From Bob");
+    await alice.api.sendText(roomId, received);
+    const sentId = await bob.api.sendText(roomId, sent);
+    const bobChat = await hub.open(bob);
+    await bobChat.openConversation(alice.displayName);
+    await bobChat.timeline.expectMessage(sent);
+    const { timeline, page } = bobChat;
+
+    await test.step("hovering shows it outside the bubble, which stays put", async () => {
+      // Received messages have it on the right, Bob's own on the left.
+      for (const [text, side] of [
+        [received, "right"],
+        [sent, "left"],
+      ] as const) {
+        const body = timeline.body(text);
+        const button = timeline.moreButton(text);
+        await page.mouse.move(0, 0);
+        await expect(button).toHaveCSS("opacity", "0");
+        const before = (await body.boundingBox())!;
+        await body.hover();
+        await expect(button).toHaveCSS("opacity", "1");
+        expect(await body.boundingBox()).toEqual(before);
+        const box = (await button.boundingBox())!;
+        const isRight = box.x >= before.x + before.width;
+        const isLeft = box.x + box.width <= before.x;
+        expect(isRight ? "right" : isLeft ? "left" : "over").toBe(side);
+      }
+    });
+
+    await test.step("its menu stays open until it is pressed again", async () => {
+      await timeline.openActionsFromButton(received);
+      const button = timeline.moreButton(received);
+      await expect(button).toHaveAttribute("aria-expanded", "true");
+      await page.mouse.move(0, 0);
+      await expect(button).toHaveCSS("opacity", "1");
+      await button.click();
+      await expect(timeline.body(received)).not.toHaveAttribute(
+        "data-toolbar-open",
+      );
+      await expect(button).toHaveAttribute("aria-expanded", "false");
+    });
+
+    await test.step("its menu acts on the message", async () => {
+      const menu = await timeline.openActionsFromButton(received);
+      await menu.getByRole("button", { name: QUICK_REACTIONS["👍"] }).click();
+      await timeline.expectReaction(received, "👍", { count: 1, mine: true });
+    });
+
+    await test.step("a deleted message has none", async () => {
+      await bob.api.redact(roomId, sentId);
+      await expect(timeline.deletedMessages()).toHaveCount(1, {
+        timeout: SYNC_TIMEOUT,
+      });
+      const deleted = timeline.messages().filter({ hasText: DELETED_MESSAGE });
+      await expect(timeline.moreButton(deleted)).toHaveCount(0);
+    });
+  });
+
+  test("opens from the keyboard and gives the focus back", async ({
+    people,
+    hub,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const roomId = await createUnencryptedRoom(alice, [bob]);
+    const text = uniqueText("Keyboard");
+    await alice.api.sendText(roomId, text);
+    const bobChat = await hub.open(bob);
+    await bobChat.openConversation(alice.displayName);
+    await bobChat.timeline.expectMessage(text);
+    const { timeline, page } = bobChat;
+    const button = timeline.moreButton(text);
+
+    await button.focus();
+    await page.keyboard.press("Enter");
+    await expect(timeline.body(text)).toHaveAttribute(
+      "data-toolbar-open",
+      "true",
+    );
+    await expect(
+      timeline.body(text).getByRole("button", { name: QUICK_REACTIONS["👍"] }),
+    ).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(timeline.body(text)).not.toHaveAttribute("data-toolbar-open");
+    await expect(button).toBeFocused();
+    // Focused from the keyboard, it shows without the pointer on the message.
+    await expect(button).toHaveCSS("opacity", "1");
   });
 });
 
