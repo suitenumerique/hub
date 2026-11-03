@@ -71,6 +71,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null);
   // Draws the separator under the top actions once the list scrolls under it.
   const [isScrolled, setIsScrolled] = useState(false);
+  const topRef = useRef<HTMLDivElement>(null);
   const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
     ? "⌘K"
     : "Ctrl K";
@@ -80,6 +81,24 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
     [entries],
   );
   const showAccountLabels = entries.length > 1;
+
+  // The top floats over the list outside its scroll, as the footer does, so
+  // the wheel over it leaves the list still. The list starts below it, at a
+  // height that changes with the actions shown.
+  useLayoutEffect(() => {
+    const top = topRef.current;
+    if (!top || !scrollParent) return;
+    const observer = new ResizeObserver(() => {
+      scrollParent.style.setProperty(
+        "--hub-lp-top-height",
+        `${top.offsetHeight}px`,
+      );
+      // Virtuoso reads the lists' offset again only on scroll.
+      scrollParent.dispatchEvent(new Event("scroll"));
+    });
+    observer.observe(top);
+    return () => observer.disconnect();
+  }, [scrollParent]);
 
   const actions: ActionItem[] = [
     {
@@ -106,27 +125,26 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
       aria-label={t("Side panel")}
       data-scrolled={isScrolled}
     >
+      <div ref={topRef} className="hub__left-panel__top">
+        <div className="hub__left-panel__logo">
+          <TchapLogo />
+        </div>
+
+        <nav
+          className="hub__left-panel__actions"
+          aria-label={t("Quick actions")}
+        >
+          {actions.map((action) => (
+            <ActionRow key={action.id} action={action} />
+          ))}
+        </nav>
+      </div>
+
       <div
         className="hub__left-panel__scroll"
         ref={setScrollParent}
         onScroll={(event) => setIsScrolled(event.currentTarget.scrollTop > 0)}
       >
-        {/* Sticky inside the scroll, so the rows pass under its blur. */}
-        <div className="hub__left-panel__top">
-          <div className="hub__left-panel__logo">
-            <TchapLogo />
-          </div>
-
-          <nav
-            className="hub__left-panel__actions"
-            aria-label={t("Quick actions")}
-          >
-            {actions.map((action) => (
-              <ActionRow key={action.id} action={action} />
-            ))}
-          </nav>
-        </div>
-
         {chats.favourites.length > 0 ? (
           <ChatSection
             title={t("Favourites")}
