@@ -7,22 +7,19 @@ import type { ChatMessageJump } from "../ChatMessageJumpContext";
 
 import { ChatVirtualList } from "./ChatVirtualList";
 import { preloadEmojiPicker } from "./EmojiPickerPopover";
-import type { UnreadMessagesBannerProps } from "./UnreadMessagesBanner";
 
 type ChatConversationProps = {
   chatRef: ChatRef;
-  onUnreadBannerChange: (
-    chatKey: string,
-    banner: UnreadMessagesBannerProps | null,
-  ) => void;
   /** Receives the list's jump to a message, `null` once it is gone. */
   onMessageJumpChange: (jump: ChatMessageJump | null) => void;
+  /** Called by the jump to the latest messages, to focus the composer. */
+  onJumpToLatest: () => void;
 };
 
 export const ChatConversation = ({
   chatRef,
-  onUnreadBannerChange,
   onMessageJumpChange,
+  onJumpToLatest,
 }: ChatConversationProps) => {
   const { i18n } = useTranslation();
   const language = i18n.resolvedLanguage ?? i18n.language;
@@ -44,8 +41,8 @@ export const ChatConversation = ({
       <ChatVirtualList
         key={`${chatRef.accountId}:${chatRef.chatId}`}
         chatRef={chatRef}
-        onUnreadBannerChange={onUnreadBannerChange}
         onMessageJumpChange={onMessageJumpChange}
+        onJumpToLatest={onJumpToLatest}
       />
     </div>
   );

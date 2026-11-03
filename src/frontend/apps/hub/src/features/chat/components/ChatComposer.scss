@@ -62,24 +62,13 @@
     background: var(--c--contextuals--background--surface--primary, #ffffff);
   }
 
-  > .hub__unread-threads-banner,
-  > .hub__unread-messages-banner-transition {
+  > .hub__unread-threads-banner {
     width: 100%;
-  }
-
-  > .hub__unread-threads-banner + .hub__unread-messages-banner-transition {
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 0;
-    border-top: 1px solid
-      var(--c--contextuals--border--surface--primary, #dfe2ea);
   }
 }
 
 .hub__chat-composer-overlay-anchor:has(
-  .hub__chat-composer-floating-banners
-    > :is(.hub__unread-threads-banner, .hub__unread-messages-banner-transition)
+  .hub__chat-composer-floating-banners > .hub__unread-threads-banner
 ) {
   .hub__chat-composer-edit {
     border-radius: 0;

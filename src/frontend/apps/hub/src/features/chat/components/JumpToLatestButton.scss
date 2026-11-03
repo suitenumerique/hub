@@ -1,0 +1,44 @@
+// A toolbar centered over the bottom of the timeline, 8px above the composer
+// (Figma node 3659:158397).
+.hub__jump-to-latest {
+  position: absolute;
+  z-index: 2;
+  bottom: var(--c--globals--spacings--xs, 8px);
+  left: 50%;
+  display: flex;
+  padding: 3px;
+  background: var(--c--contextuals--background--surface--primary, #fff);
+  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+  border-radius: var(--c--globals--spacings--xs, 8px);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+  transform: translateX(-50%);
+  animation: hub-jump-to-latest-in 180ms ease;
+
+  // The unread dot of the conversation list.
+  &__dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--c--contextuals--background--surface--primary, #fff);
+    border-radius: 50%;
+    background: var(
+      --c--contextuals--content--semantic--brand--tertiary,
+      #3e5de7
+    );
+  }
+}
+
+@keyframes hub-jump-to-latest-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__jump-to-latest {
+    animation: none;
+  }
+}

@@ -8,7 +8,12 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { type ListRange, Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import {
+  type IndexLocationWithAlign,
+  type ListRange,
+  Virtuoso,
+  type VirtuosoHandle,
+} from "react-virtuoso";
 
 import type {
   ChatMessage,
@@ -24,23 +29,21 @@ import {
 import { isSameChatDay } from "../formatTimestamp";
 import { useChatMessages } from "../hooks/useChatMessages";
 import { useMainTimelineUnread } from "../hooks/useMainTimelineUnread";
+import { useChatVisit } from "../hooks/useChatVisit";
 import { useMarkedUnreadGate } from "../hooks/useMarkedUnreadGate";
-import { useUnreadSeparator } from "../hooks/useUnreadSeparator";
 
 import { ChatBubble } from "./ChatBubble";
 import { ChatEncryptionNotice } from "./ChatEncryptionNotice";
 import { ChatConversationSkeleton } from "./ChatConversationSkeleton";
-import type { UnreadMessagesBannerProps } from "./UnreadMessagesBanner";
+import { JumpToLatestButton } from "./JumpToLatestButton";
 import { UnreadSeparator } from "./UnreadSeparator";
 
 type ChatVirtualListProps = {
   chatRef: ChatRef;
-  onUnreadBannerChange: (
-    chatKey: string,
-    banner: UnreadMessagesBannerProps | null,
-  ) => void;
   /** Receives the list's jump to a message, `null` once it is gone. */
   onMessageJumpChange: (jump: ChatMessageJump | null) => void;
+  /** Called by the jump to the latest messages, to focus the composer. */
+  onJumpToLatest: () => void;
 };
 
 type TimelineContext = {
@@ -87,20 +90,36 @@ const OLDER_PREFETCH_ROWS = 50;
 const VISIBILITY_SETTLE_MS = 150;
 // After measuring, require focused visibility before marking a message read.
 const READ_DWELL_MS = 250;
-// A jump resolved from memory ends before this delay: no spinner flashes.
-const NAVIGATION_LOADER_DELAY_MS = 200;
 // Frames the backfill check waits for Virtuoso to render the first rows.
 const FILL_CHECK_MAX_FRAMES = 10;
 // A message qualifies as visible only when 60% of its rendered height is shown.
 const MESSAGE_VISIBILITY_RATIO = 0.6;
+// The first unread message opens below the 56px floating header, with the
+// 8px gap `__top-spacer` also keeps.
+const OPENING_TOP_OFFSET = 64;
 
 type SkeletonState = "visible" | "leaving" | "hidden";
-type UnreadViewportState = "unknown" | "all-visible" | "needs-navigation";
+
+/**
+ * Where the conversation opens. With unread messages, the window around the
+ * first one loads behind the skeleton before the list shows, so it never opens
+ * at the bottom and then jumps.
+ */
+type Opening =
+  | { status: "resolving" }
+  | { status: "loading" }
+  | {
+      status: "loaded";
+      targetId: string | null;
+      /** The target is the first unread message after this marker. */
+      afterMarkerId: string | null;
+    }
+  | { status: "opened"; targetId: string | null; windowVersion: number };
 
 export const ChatVirtualList = ({
   chatRef,
-  onUnreadBannerChange,
   onMessageJumpChange,
+  onJumpToLatest,
 }: ChatVirtualListProps) => {
   const { t } = useTranslation();
   const {
@@ -119,21 +138,28 @@ export const ChatVirtualList = ({
     fetchOlder,
     fetchNewer,
     openAround,
+    openLatest,
   } = useChatMessages(chatRef);
   const unread = useMainTimelineUnread(chatRef, messages);
   const markedUnread = useMarkedUnreadGate(chatRef);
-  const {
-    slots: separatorSlots,
-    eventId: separatorEventId,
-    anchorTo: anchorSeparatorTo,
-    releaseHiddenSlots,
-  } = useUnreadSeparator(
-    unread.firstUnreadId,
-    unread.hasUnread,
-    unread.isLoading,
-  );
+  const [opening, setOpening] = useState<Opening>({ status: "resolving" });
+  const isListLoading = isInitialLoading || opening.status !== "opened";
+  // Unlike Element, opening the conversation also clears its unread dot for
+  // the thread replies, which stay unread in the threads.
+  useChatVisit(chatRef, opening.status === "opened");
+  // The separator stays before the message the visit opened on, even once
+  // the conversation is read: like Element's read marker line, it shows
+  // where this visit's unread messages started.
+  const separatorEventId =
+    opening.status === "opened" ? opening.targetId : null;
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
   const lastMessage = messages[messages.length - 1];
+  const openingIndex =
+    opening.status === "opened" &&
+    opening.targetId &&
+    opening.windowVersion === windowVersion
+      ? messages.findIndex((message) => message.id === opening.targetId)
+      : -1;
   const initialWindowIndex = windowAnchorId
     ? messages.findIndex((message) => message.id === windowAnchorId)
     : -1;
@@ -151,24 +177,115 @@ export const ChatVirtualList = ({
   const isAtLiveEndRef = useRef(isAtLiveEnd);
   const shouldStickToBottomRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
-  const canReanchorAtBottomRef = useRef(false);
-  const pendingBottomArrivalRef = useRef(false);
+  const isReadOnOpeningRef = useRef(false);
   const navigationRef = useRef<symbol | null>(null);
   const pendingScrollRaf = useRef<number | null>(null);
   const cancelJumpFocusRef = useRef<(() => void) | null>(null);
   const visibilityRafRef = useRef<number | null>(null);
   const visibilityTimerRef = useRef<number | null>(null);
   const readDwellTimerRef = useRef<number | null>(null);
-  const [unreadViewportState, setUnreadViewportState] =
-    useState<UnreadViewportState>("unknown");
-  const [isNavigating, setIsNavigating] = useState(false);
-  const [isNavigationLoaderVisible, setIsNavigationLoaderVisible] =
-    useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
   // As Element's highlighted event: selected until the next jump.
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   messagesRef.current = messages;
   isAtLiveEndRef.current = isAtLiveEnd;
+
+  // Like Element's jump to the read marker, a conversation with unread
+  // messages opens on the first one, loading the window around it, or around
+  // the read marker, when the latest messages do not hold it. A marker on an
+  // event the timeline does not show, such as a reaction, opens on the next
+  // message. Without unread messages, or a position for them (a thread
+  // reply), the conversation opens at the bottom.
+  useEffect(() => {
+    if (
+      opening.status !== "resolving" ||
+      isInitialLoading ||
+      unread.isLoading
+    ) {
+      return;
+    }
+    const firstUnreadId = unread.firstUnreadId;
+    const markerId = unread.readUpToId;
+    if (!unread.hasUnread || (!firstUnreadId && !markerId)) {
+      setOpening({ status: "opened", targetId: null, windowVersion });
+      return;
+    }
+    if (
+      firstUnreadId &&
+      messagesRef.current.some((message) => message.id === firstUnreadId)
+    ) {
+      setOpening({ status: "opened", targetId: firstUnreadId, windowVersion });
+      return;
+    }
+    setOpening({ status: "loading" });
+    const aroundId = (firstUnreadId ?? markerId) as string;
+    void openAround(aroundId)
+      .catch(() => null)
+      .then((anchorId) => {
+        const isAfterMarker = !firstUnreadId && anchorId === markerId;
+        setOpening({
+          status: "loaded",
+          targetId: isAfterMarker ? null : anchorId,
+          afterMarkerId: isAfterMarker ? markerId : null,
+        });
+      });
+  }, [
+    isInitialLoading,
+    openAround,
+    opening.status,
+    unread.firstUnreadId,
+    unread.hasUnread,
+    unread.isLoading,
+    unread.readUpToId,
+    windowVersion,
+  ]);
+
+  // Open once the loaded window holds its target.
+  useEffect(() => {
+    if (opening.status !== "loaded" || isInitialLoading) {
+      return;
+    }
+    const isLoaded = (eventId: string) =>
+      messages.some((message) => message.id === eventId);
+    if (opening.afterMarkerId) {
+      if (isLoaded(opening.afterMarkerId)) {
+        setOpening({
+          status: "opened",
+          targetId: unread.firstUnreadId,
+          windowVersion,
+        });
+      }
+      return;
+    }
+    if (!opening.targetId || isLoaded(opening.targetId)) {
+      setOpening({
+        status: "opened",
+        targetId: opening.targetId,
+        windowVersion,
+      });
+    }
+  }, [
+    isInitialLoading,
+    messages,
+    opening,
+    unread.firstUnreadId,
+    windowVersion,
+  ]);
+
+  // The whole conversation is read as soon as it shows, not only the messages
+  // in view; threads keep their own unread replies. Before paint, so the jump
+  // to the latest messages does not flash its new-message dot.
+  useLayoutEffect(() => {
+    if (opening.status !== "opened" || isReadOnOpeningRef.current) {
+      return;
+    }
+    isReadOnOpeningRef.current = true;
+    unread.markAllRead();
+    if (markedUnread.isMarkedUnread) {
+      markedUnread.clearIfAllowed();
+    }
+  }, [markedUnread, opening.status, unread]);
 
   const cancelReadDwell = useCallback(() => {
     if (readDwellTimerRef.current !== null) {
@@ -188,96 +305,21 @@ export const ChatVirtualList = ({
     }, READ_DWELL_MS);
   }, []);
 
-  const reconcileSeparatorOutsideViewport = useCallback(() => {
-    const scroller = scrollerRef.current;
-    if (
-      !scroller ||
-      (!pendingBottomArrivalRef.current &&
-        !separatorSlots.some((slot) => !slot.isVisible))
-    ) {
-      return;
-    }
-    const viewport = scroller.getBoundingClientRect();
-    const rows = new Map(
-      Array.from(
-        scroller.querySelectorAll<HTMLElement>("[data-chat-message-id]"),
-        (row) => [row.dataset.chatMessageId, row.getBoundingClientRect()],
-      ),
-    );
-    const isAtBottom = atBottomRef.current && isAtLiveEndRef.current;
-    const canChangeSlot = (eventId: string, allowAbove: boolean) => {
-      const index = messagesRef.current.findIndex(
-        (message) => message.id === eventId,
-      );
-      // The separator also splits the author group on the preceding row.
-      const previousId = messagesRef.current[index - 1]?.id;
-      return [eventId, previousId].every((id) => {
-        const bounds = rows.get(id);
-        return (
-          !bounds ||
-          bounds.top >= viewport.bottom ||
-          (allowAbove && bounds.bottom <= viewport.top)
-        );
-      });
-    };
-
-    if (pendingBottomArrivalRef.current) {
-      pendingBottomArrivalRef.current = false;
-      const targetId = unread.firstUnreadId;
-      if (
-        isAtBottom &&
-        !hasNewer &&
-        separatorEventId &&
-        targetId &&
-        targetId !== separatorEventId &&
-        canChangeSlot(separatorEventId, true) &&
-        canChangeSlot(targetId, true)
-      ) {
-        shouldStickToBottomRef.current = true;
-        anchorSeparatorTo(targetId);
-      }
-    }
-
-    const releasableIds = new Set(
-      separatorSlots
-        .filter(
-          (slot) => !slot.isVisible && canChangeSlot(slot.eventId, isAtBottom),
-        )
-        .map((slot) => slot.eventId),
-    );
-    if (releasableIds.size > 0) {
-      if (isAtBottom) {
-        shouldStickToBottomRef.current = true;
-      }
-      releaseHiddenSlots(releasableIds);
-    }
-  }, [
-    anchorSeparatorTo,
-    hasNewer,
-    releaseHiddenSlots,
-    separatorEventId,
-    separatorSlots,
-    unread.firstUnreadId,
-  ]);
-
+  // Messages received after the opening are read once they are seen.
   const measureVisibleMessages = useCallback(() => {
     cancelReadDwell();
-    reconcileSeparatorOutsideViewport();
     const scroller = scrollerRef.current;
     const isFocused =
       document.visibilityState === "visible" && document.hasFocus();
     const shouldClearMarkedUnread =
       markedUnread.isMarkedUnread && markedUnread.canClear();
     if (!unread.hasUnread) {
-      setUnreadViewportState("unknown");
       // With no unread message, reading the timeline only clears the flag.
       if (shouldClearMarkedUnread && scroller && isFocused) {
         startReadDwell(markedUnread.clearIfAllowed);
       }
       return;
     }
-    // Keep the last visibility decision while the viewport is unavailable or
-    // unread data is loading; neither means the shortcut is no longer useful.
     if (!scroller || unread.isLoading || !isFocused) {
       return;
     }
@@ -302,14 +344,6 @@ export const ChatVirtualList = ({
           }
         }
       });
-
-    const areAllUnreadVisible = unread.areAllUnreadVisible(
-      visibleIds,
-      hasNewer,
-    );
-    setUnreadViewportState(
-      areAllUnreadVisible ? "all-visible" : "needs-navigation",
-    );
     if (visibleIds.size === 0) {
       return;
     }
@@ -324,9 +358,7 @@ export const ChatVirtualList = ({
     cancelReadDwell,
     hasNewer,
     markedUnread,
-    reconcileSeparatorOutsideViewport,
     startReadDwell,
-    unread.areAllUnreadVisible,
     unread.hasUnread,
     unread.isLoading,
     unread.markVisibleMessages,
@@ -351,10 +383,8 @@ export const ChatVirtualList = ({
 
   useEffect(() => {
     hasUserInteractedRef.current = false;
-    canReanchorAtBottomRef.current = false;
-    pendingBottomArrivalRef.current = false;
     atBottomRef.current = true;
-    // A new message window keeps the current banner until it can be measured.
+    setIsAtBottom(true);
     // Switching conversation already resets state by remounting this component.
     return () => {
       if (visibilityTimerRef.current !== null) {
@@ -376,8 +406,7 @@ export const ChatVirtualList = ({
       if (isFocused) {
         scheduleVisibilityMeasurement();
       } else {
-        // Focus gates read acknowledgement, not navigation visibility. Keep an
-        // already useful shortcut stable while the user visits another tab.
+        // Focus gates read acknowledgement.
         cancelReadDwell();
       }
     };
@@ -394,13 +423,13 @@ export const ChatVirtualList = ({
   }, [cancelReadDwell, scheduleVisibilityMeasurement]);
 
   useEffect(() => {
-    if (!isInitialLoading) {
+    if (!isListLoading) {
       scheduleVisibilityMeasurement();
     }
   }, [
     chatKey,
     hasNewer,
-    isInitialLoading,
+    isListLoading,
     messages.length,
     scheduleVisibilityMeasurement,
     unread.firstUnreadId,
@@ -417,7 +446,6 @@ export const ChatVirtualList = ({
     const markInteraction = () => {
       hasUserInteractedRef.current = true;
       markedUnread.allowClear();
-      canReanchorAtBottomRef.current = !atBottomRef.current;
       shouldStickToBottomRef.current = false;
       // endReached can fire before the first interaction at a contextual end.
       // A new interaction there must still be able to request the next page.
@@ -444,17 +472,18 @@ export const ChatVirtualList = ({
   }, [
     chatKey,
     fetchNewer,
+    isListLoading,
     markedUnread.allowClear,
     scheduleVisibilityMeasurement,
     windowVersion,
   ]);
 
   const [skeletonState, setSkeletonState] = useState<SkeletonState>(() =>
-    isInitialLoading ? "visible" : "hidden",
+    isListLoading ? "visible" : "hidden",
   );
 
   useEffect(() => {
-    if (isInitialLoading) {
+    if (isListLoading) {
       setSkeletonState("visible");
       return;
     }
@@ -464,7 +493,7 @@ export const ChatVirtualList = ({
       );
     });
     return () => cancelAnimationFrame(raf);
-  }, [isInitialLoading]);
+  }, [isListLoading]);
 
   useEffect(
     () => () => {
@@ -511,68 +540,6 @@ export const ChatVirtualList = ({
     });
   }, []);
 
-  const handleNavigateToUnread = useCallback(async () => {
-    const eventId = unread.firstUnreadId;
-    const markerId = unread.readUpToId;
-    if ((!eventId && !markerId) || navigationRef.current) {
-      return;
-    }
-    const navigation = Symbol();
-    navigationRef.current = navigation;
-    // Programmatic navigation exposes the target, but the focused dwell still
-    // has to confirm that it remained readable in the real viewport.
-    hasUserInteractedRef.current = false;
-    canReanchorAtBottomRef.current = false;
-    pendingBottomArrivalRef.current = false;
-    shouldStickToBottomRef.current = false;
-    setIsNavigating(true);
-    setHighlightedId(null);
-    try {
-      if (!eventId) {
-        // Like Element's jump to the read marker: open the window around it.
-        // The separator anchors to the next message once it is loaded. A
-        // marker on an event the timeline does not show, such as a reaction,
-        // opens on the next message, which carries the separator instead. A
-        // thread reply cannot be positioned and does nothing.
-        const anchorId = markerId
-          ? await openAround(markerId).catch(() => null)
-          : null;
-        if (
-          anchorId &&
-          anchorId !== markerId &&
-          navigationRef.current === navigation
-        ) {
-          anchorSeparatorTo(anchorId);
-          scrollToEvent(anchorId);
-        }
-        return;
-      }
-      if (!messagesRef.current.some((message) => message.id === eventId)) {
-        await openAround(eventId);
-      }
-      if (navigationRef.current !== navigation) {
-        return;
-      }
-      anchorSeparatorTo(eventId);
-      scrollToEvent(eventId);
-    } finally {
-      if (navigationRef.current === navigation) {
-        navigationRef.current = null;
-        setIsNavigating(false);
-      }
-    }
-  }, [
-    anchorSeparatorTo,
-    openAround,
-    scrollToEvent,
-    unread.firstUnreadId,
-    unread.readUpToId,
-  ]);
-
-  const navigateToUnread = useCallback(() => {
-    void handleNavigateToUnread();
-  }, [handleNavigateToUnread]);
-
   // Like Element's click on a reply's quote: open the window around the
   // quoted message when the list does not hold it, then show it highlighted.
   const jumpToMessage = useCallback(
@@ -582,11 +549,9 @@ export const ChatVirtualList = ({
       }
       const navigation = Symbol();
       navigationRef.current = navigation;
-      // As the jump to unread messages: the scroll it makes is not the
-      // user's, which would load older messages above the target.
+      // The scroll it makes is not the user's, which would load older
+      // messages above the target.
       hasUserInteractedRef.current = false;
-      canReanchorAtBottomRef.current = false;
-      pendingBottomArrivalRef.current = false;
       shouldStickToBottomRef.current = false;
       try {
         let targetId: string | null = eventId;
@@ -621,62 +586,21 @@ export const ChatVirtualList = ({
     return () => onMessageJumpChange(null);
   }, [messageJump, onMessageJumpChange]);
 
-  // The jump waits for its whole window instead of filling it in view. Only a
-  // jump that waits for the homeserver shows the banner spinner.
-  useEffect(() => {
-    if (!isNavigating) {
-      return;
+  // Like Element's `RoomView.jumpToLiveTimeline`: scroll down when the window
+  // reaches the live end, reload the latest messages otherwise, then focus the
+  // composer.
+  const jumpToLatest = useCallback(() => {
+    navigationRef.current = null;
+    cancelJumpFocusRef.current?.();
+    setHighlightedId(null);
+    if (isAtLiveEndRef.current) {
+      shouldStickToBottomRef.current = true;
+      scrollToBottom();
+    } else {
+      openLatest();
     }
-    const timer = window.setTimeout(
-      () => setIsNavigationLoaderVisible(true),
-      NAVIGATION_LOADER_DELAY_MS,
-    );
-    return () => {
-      window.clearTimeout(timer);
-      setIsNavigationLoaderVisible(false);
-    };
-  }, [isNavigating]);
-
-  // Show known unread messages immediately. The settled viewport check can then
-  // hide the shortcut when every unread message is already visible.
-  const shouldShowUnreadBanner =
-    unread.hasUnread && unreadViewportState !== "all-visible";
-
-  // Publish the controls to ChatView because the list owns their callbacks,
-  // while Figma places the rendered banner inside the composer stack.
-  useEffect(() => {
-    onUnreadBannerChange(
-      chatKey,
-      shouldShowUnreadBanner
-        ? {
-            count: unread.unreadCount,
-            canNavigate:
-              unread.firstUnreadId !== null || unread.readUpToId !== null,
-            isResolving: unread.isResolving || isNavigating,
-            isLoading: isNavigationLoaderVisible,
-            onNavigate: navigateToUnread,
-            onMarkAllRead: unread.markAllRead,
-          }
-        : null,
-    );
-  }, [
-    chatKey,
-    isNavigating,
-    isNavigationLoaderVisible,
-    navigateToUnread,
-    onUnreadBannerChange,
-    unread.firstUnreadId,
-    unread.readUpToId,
-    unread.isResolving,
-    unread.markAllRead,
-    unread.unreadCount,
-    shouldShowUnreadBanner,
-  ]);
-
-  useEffect(
-    () => () => onUnreadBannerChange(chatKey, null),
-    [chatKey, onUnreadBannerChange],
-  );
+    onJumpToLatest();
+  }, [onJumpToLatest, openLatest, scrollToBottom]);
 
   const handleAtTopStateChange = useCallback(
     (atTop: boolean) => {
@@ -719,7 +643,7 @@ export const ChatVirtualList = ({
   const fillIfShortRef = useRef<() => void>(() => {});
   useEffect(() => {
     if (
-      isInitialLoading ||
+      isListLoading ||
       !hasOlder ||
       isFetchingOlder ||
       isFetchOlderError ||
@@ -765,7 +689,7 @@ export const ChatVirtualList = ({
     isAtLiveEnd,
     isFetchOlderError,
     isFetchingOlder,
-    isInitialLoading,
+    isListLoading,
     messages.length,
     windowAnchorId,
   ]);
@@ -786,7 +710,14 @@ export const ChatVirtualList = ({
       lastMessageId: lastMessage?.id ?? null,
     };
 
-    if (!isSameWindow || !didAppendLatest || !shouldFollowAppend) {
+    // The first page arriving while the list opens is not an append: following
+    // it would stick the list to the bottom instead of its first unread message.
+    if (
+      isListLoading ||
+      !isSameWindow ||
+      !didAppendLatest ||
+      !shouldFollowAppend
+    ) {
       return;
     }
     shouldStickToBottomRef.current = true;
@@ -794,6 +725,7 @@ export const ChatVirtualList = ({
   }, [
     chatKey,
     isAtLiveEnd,
+    isListLoading,
     lastMessage?.authorId,
     lastMessage?.id,
     messages.length,
@@ -801,16 +733,24 @@ export const ChatVirtualList = ({
     windowVersion,
   ]);
 
-  useLayoutEffect(() => {
-    if (shouldStickToBottomRef.current && isAtLiveEndRef.current) {
-      scrollToBottom();
-    }
-  }, [scrollToBottom, separatorSlots]);
+  let initialTopMostItemIndex: IndexLocationWithAlign | number = Math.max(
+    0,
+    messages.length - 1,
+  );
+  if (openingIndex >= 0) {
+    initialTopMostItemIndex = {
+      index: openingIndex,
+      align: "start",
+      offset: -OPENING_TOP_OFFSET,
+    };
+  } else if (initialWindowIndex >= 0) {
+    initialTopMostItemIndex = { index: initialWindowIndex, align: "center" };
+  }
 
   return (
     <ChatMessageJumpProvider value={messageJump}>
       <div className="hub__chat-conversation__list">
-        {!isInitialLoading && (
+        {!isListLoading && (
           <Virtuoso
             key={`${chatKey}:${windowVersion}`}
             ref={virtuosoRef}
@@ -828,27 +768,15 @@ export const ChatVirtualList = ({
             // its estimation error. This may log benign "ResizeObserver loop"
             // errors.
             skipAnimationFrameInResizeObserver
-            initialTopMostItemIndex={
-              initialWindowIndex >= 0
-                ? { index: initialWindowIndex, align: "center" }
-                : Math.max(0, messages.length - 1)
-            }
+            initialTopMostItemIndex={initialTopMostItemIndex}
             followOutput={isAtLiveEnd ? "auto" : false}
             // A short conversation sits above the composer, as in Element:
             // backfilled history then appears above it instead of moving it.
             alignToBottom
             atTopStateChange={handleAtTopStateChange}
             atBottomStateChange={(atBottom) => {
-              if (
-                atBottom &&
-                !atBottomRef.current &&
-                isAtLiveEndRef.current &&
-                canReanchorAtBottomRef.current
-              ) {
-                pendingBottomArrivalRef.current = true;
-                canReanchorAtBottomRef.current = false;
-              }
               atBottomRef.current = atBottom;
+              setIsAtBottom(atBottom);
               if (atBottom && isAtLiveEndRef.current) {
                 shouldStickToBottomRef.current = false;
               }
@@ -884,29 +812,29 @@ export const ChatVirtualList = ({
             }}
             itemContent={(virtualIndex, message) => {
               const arrayIndex = virtualIndex - firstItemIndex;
-              const separator = separatorSlots.find(
-                (slot) => slot.eventId === message.id,
-              );
-              const hasSeparator = separator !== undefined;
+              const hasSeparator = message.id === separatorEventId;
+              const next = messages[arrayIndex + 1];
               return (
                 <Row
                   message={message}
                   chatRef={chatRef}
                   prev={hasSeparator ? undefined : messages[arrayIndex - 1]}
-                  next={
-                    separatorSlots.some(
-                      (slot) => slot.eventId === messages[arrayIndex + 1]?.id,
-                    )
-                      ? undefined
-                      : messages[arrayIndex + 1]
-                  }
+                  next={next?.id === separatorEventId ? undefined : next}
                   authorsById={authorsById}
                   hasUnreadSeparator={hasSeparator}
-                  isUnreadSeparatorVisible={separator?.isVisible === true}
                   isHighlighted={message.id === highlightedId}
                 />
               );
             }}
+          />
+        )}
+        {/* Like Element's jump to bottom, shown away from the latest messages:
+        a dot stands for the messages received since the conversation was
+        read, where Element counts them. */}
+        {!isListLoading && !(isAtBottom && isAtLiveEnd) && (
+          <JumpToLatestButton
+            hasNewMessages={unread.hasUnread}
+            onClick={jumpToLatest}
           />
         )}
         {skeletonState !== "hidden" && (
@@ -931,7 +859,6 @@ type RowProps = {
   next: ChatMessage | undefined;
   authorsById: Map<string, ChatMessageAuthor>;
   hasUnreadSeparator: boolean;
-  isUnreadSeparatorVisible: boolean;
   isHighlighted: boolean;
 };
 
@@ -942,7 +869,6 @@ const Row = memo(function Row({
   next,
   authorsById,
   hasUnreadSeparator,
-  isUnreadSeparatorVisible,
   isHighlighted,
 }: RowProps) {
   const isSent = message.authorId === "me";
@@ -961,7 +887,6 @@ const Row = memo(function Row({
         messageId={message.id}
         isFirstOfGroup={isFirstOfGroup}
         hasUnreadSeparator={hasUnreadSeparator}
-        isUnreadSeparatorVisible={isUnreadSeparatorVisible}
       >
         <ChatBubble
           variant="sent"
@@ -995,7 +920,6 @@ const Row = memo(function Row({
       messageId={message.id}
       isFirstOfGroup={isFirstOfGroup}
       hasUnreadSeparator={hasUnreadSeparator}
-      isUnreadSeparatorVisible={isUnreadSeparatorVisible}
     >
       <ChatBubble
         variant="received"
@@ -1027,13 +951,11 @@ const RowShell = ({
   messageId,
   isFirstOfGroup,
   hasUnreadSeparator,
-  isUnreadSeparatorVisible,
 }: {
   children: React.ReactNode;
   messageId: string;
   isFirstOfGroup: boolean;
   hasUnreadSeparator: boolean;
-  isUnreadSeparatorVisible: boolean;
 }) => (
   <div
     className="hub__chat-conversation__row"
@@ -1041,9 +963,7 @@ const RowShell = ({
     data-group-start={isFirstOfGroup || undefined}
   >
     <div className="hub__chat-conversation__row-inner">
-      {hasUnreadSeparator && (
-        <UnreadSeparator visible={isUnreadSeparatorVisible} />
-      )}
+      {hasUnreadSeparator && <UnreadSeparator />}
       {children}
     </div>
   </div>

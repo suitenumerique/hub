@@ -67,6 +67,8 @@ export type UseChatMessagesResult = {
    * request replaced it.
    */
   openAround: (eventId: string) => Promise<string | null>;
+  /** Replaces a window away from the live end with the latest messages. */
+  openLatest: () => void;
 };
 
 /**
@@ -271,6 +273,15 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     [queryClient, queryKey, ref.accountId, ref.chatId],
   );
 
+  // Like Element's `TimelinePanel.jumpToLiveTimeline`: reload the latest page
+  // instead of paginating forward through everything after the window.
+  const openLatest = useCallback(() => {
+    contextRequestRef.current = null;
+    setWindowAnchor(null);
+    setWindowVersion((version) => version + 1);
+    void queryClient.resetQueries({ queryKey, exact: true });
+  }, [queryClient, queryKey]);
+
   // Virtuoso indexes are derived from Matrix identities. When older messages
   // are prepended, find the former first event and move the virtual origin by
   // exactly that many rows. Appends and counter updates leave it untouched.
@@ -328,6 +339,7 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     fetchOlder,
     fetchNewer,
     openAround,
+    openLatest,
   };
 };
 

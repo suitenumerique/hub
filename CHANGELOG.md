@@ -8,6 +8,14 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Open a conversation with unread messages on the first one,
+  below the unread line, and mark it all read as soon as it shows, threads
+  aside; it then reopens at the bottom. A button, as in Element, goes back to
+  the latest messages, with a dot when new ones arrived. The unread messages
+  banner and its count are gone. Unlike Element, opening it also removes its
+  unread dot for thread replies, which stay unread in the threads, until a
+  new reply arrives while it is closed; the visit follows the person across
+  Hub sessions.
 - ✨(frontend) Open a message's actions from a "more" button shown beside its
   bubble on hover, as well as with a right click. Its space is kept while it
   is hidden, so showing it never moves the message.

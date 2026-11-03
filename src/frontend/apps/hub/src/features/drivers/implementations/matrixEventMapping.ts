@@ -450,22 +450,62 @@ export const clearThreadNotificationCounts = (
   return notified;
 };
 
+/** Timestamp of the latest reply across the threads the SDK has loaded. */
+export const latestThreadReplyTs = (room: Room): number | null =>
+  room.getThreads().reduce<number | null>((latest, thread) => {
+    const ts = thread.replyToEvent?.getTs();
+    return ts !== undefined && (latest === null || ts > latest) ? ts : latest;
+  }, null);
+
+/**
+ * Unlike Element, which keeps a room unread while its threads are, threads
+ * count only until the person opens the conversation (`threadsSeenUntil`):
+ * their unread replies stay unread in the threads, and a newer reply makes the
+ * conversation unread again.
+ */
 export const roomUnread = (
   room: Room,
   selfUserId: string | undefined,
+  threadsSeenUntil: number | null,
 ): ChatUnread => {
   const markedUnread = isMarkedUnreadRoom(room);
+  const threads = room.getThreads();
+  const unseenThreads = threads.filter(
+    (thread) =>
+      threadsSeenUntil === null ||
+      (thread.replyToEvent?.getTs() ?? 0) > threadsSeenUntil,
+  );
+  // The homeserver also counts threads the SDK has not loaded: with no reply
+  // to date, they count until the first visit only.
+  const hasUnloadedThreadCount = (type: NotificationCountType) =>
+    threadsSeenUntil === null &&
+    room.getUnreadNotificationCount(type) -
+      room.getRoomUnreadNotificationCount(type) -
+      threads.reduce(
+        (sum, thread) =>
+          sum + room.getThreadUnreadNotificationCount(thread.id, type),
+        0,
+      ) >
+      0;
   return {
     unread:
       markedUnread ||
-      room.getUnreadNotificationCount(NotificationCountType.Total) > 0 ||
       computeRoomUnread(room, selfUserId) ||
-      room
-        .getThreads()
-        .some((thread) => computeThreadUnread(room, thread, selfUserId) > 0),
-    // Unlike getRoomUnreadNotificationCount, this includes thread mentions.
+      unseenThreads.some(
+        (thread) => computeThreadUnread(room, thread, selfUserId) > 0,
+      ) ||
+      hasUnloadedThreadCount(NotificationCountType.Total),
     highlight:
-      room.getUnreadNotificationCount(NotificationCountType.Highlight) > 0,
+      room.getRoomUnreadNotificationCount(NotificationCountType.Highlight) >
+        0 ||
+      unseenThreads.some(
+        (thread) =>
+          room.getThreadUnreadNotificationCount(
+            thread.id,
+            NotificationCountType.Highlight,
+          ) > 0,
+      ) ||
+      hasUnloadedThreadCount(NotificationCountType.Highlight),
     markedUnread,
   };
 };

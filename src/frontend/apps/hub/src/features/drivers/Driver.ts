@@ -428,8 +428,8 @@ export abstract class Driver {
     params: GetChatMessagesParams,
   ): Promise<ChatMessagesPage>;
   /**
-   * Main-timeline read marker, homeserver unread count and, when the marker
-   * is in memory, the first unread message. Never loads history.
+   * Main-timeline read marker and, when the marker is in memory, the first
+   * unread message. Never loads history.
    */
   abstract getMainTimelineUnread(
     chatId: string,
@@ -482,6 +482,11 @@ export abstract class Driver {
     chatId: string,
     markedUnread: boolean,
   ): Promise<void>;
+  /**
+   * Records that the current user opened the conversation: its thread replies
+   * until now no longer show it unread, while the threads keep them unread.
+   */
+  abstract markChatVisited(chatId: string): Promise<void>;
 
   /**
    * Leaves a conversation and removes its history from the current account.

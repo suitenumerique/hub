@@ -306,6 +306,10 @@ export class LazyMatrixDriver extends BaseDriver {
     );
   }
 
+  async markChatVisited(chatId: string): Promise<void> {
+    return this.withTarget((driver) => driver.markChatVisited(chatId));
+  }
+
   async removeChatFromHistory(
     chatId: string,
   ): Promise<RemoveChatFromHistoryResult> {
