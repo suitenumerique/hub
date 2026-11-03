@@ -25,7 +25,8 @@ export type MessageTarget = string | Locator;
  */
 export class Timeline {
   readonly unreadSeparator: Locator;
-  readonly unreadBanner: Locator;
+  /** Shown away from the latest messages, as Element's jump to bottom. */
+  readonly jumpToLatestButton: Locator;
   readonly encryptionNotice: Locator;
 
   constructor(
@@ -33,7 +34,9 @@ export class Timeline {
     readonly root: Locator,
   ) {
     this.unreadSeparator = root.getByTestId("unread-separator");
-    this.unreadBanner = page.getByTestId("unread-banner");
+    this.jumpToLatestButton = root
+      .getByTestId("jump-to-latest")
+      .getByRole("button");
     this.encryptionNotice = root.locator(".hub__encryption-notice");
   }
 
@@ -352,28 +355,50 @@ export class Timeline {
     return this.message(text).locator(".hub__chat-thread-button");
   }
 
+  private separatorBefore(text: string): Locator {
+    return this.root
+      .locator(".hub__chat-conversation__row", { hasText: text })
+      .getByTestId("unread-separator");
+  }
+
   async expectUnreadSeparatorBefore(text: string): Promise<void> {
-    await expect(
-      this.root
-        .locator(".hub__chat-conversation__row", { hasText: text })
-        .getByTestId("unread-separator"),
-    ).toHaveAttribute("data-visible", "true", { timeout: SYNC_TIMEOUT });
-  }
-
-  unreadBannerButton(): Locator {
-    return this.unreadBanner.locator(".hub__unread-messages-banner__open");
-  }
-
-  async expectUnreadBanner(label: string | RegExp): Promise<void> {
-    await expect(this.unreadBannerButton()).toHaveAccessibleName(label, {
+    await expect(this.separatorBefore(text)).toBeVisible({
       timeout: SYNC_TIMEOUT,
     });
   }
 
-  async markAllRead(): Promise<void> {
-    await this.unreadBanner
-      .getByRole("button", { name: "Mark as read" })
-      .click();
-    await expect(this.unreadBanner).toBeHidden({ timeout: SYNC_TIMEOUT });
+  /**
+   * The conversation opened on its first unread message: the separator and
+   * that message at the top of the timeline, not at its bottom.
+   */
+  async expectOpenedOnFirstUnread(text: string): Promise<void> {
+    await this.expectUnreadSeparatorBefore(text);
+    await expect(this.message(text)).toBeInViewport();
+    const scroller = await this.root
+      .locator("[data-virtuoso-scroller]")
+      .boundingBox();
+    const separator = await this.separatorBefore(text).boundingBox();
+    expect(separator!.y - scroller!.y).toBeLessThan(scroller!.height / 3);
+  }
+
+  /** The timeline shows its latest message, without the jump to it. */
+  async expectAtLatest(text: string): Promise<void> {
+    await expect(this.message(text)).toBeInViewport({ timeout: SYNC_TIMEOUT });
+    await expect(this.jumpToLatestButton).toBeHidden();
+  }
+
+  /**
+   * The jump to the latest messages, named after whether messages from
+   * others arrived since the conversation was read.
+   */
+  async expectJumpToLatest({
+    newMessages,
+  }: {
+    newMessages: boolean;
+  }): Promise<void> {
+    await expect(this.jumpToLatestButton).toHaveAccessibleName(
+      newMessages ? "Scroll to new messages" : "Scroll to most recent messages",
+      { timeout: SYNC_TIMEOUT },
+    );
   }
 }

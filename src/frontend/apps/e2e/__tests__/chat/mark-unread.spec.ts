@@ -124,9 +124,6 @@ test("marking the open conversation read reads its messages and threads", async 
 
   const bobChat = await hub.open(bob);
   await bobChat.openConversation(carol.displayName);
-  // More than one screen: opening at the bottom leaves older ones unread.
-  const prefix = uniqueText("Message");
-  await alice.api.sendMany(roomId, prefix, 40);
   const root = uniqueText("Thread root");
   const rootId = await alice.api.sendText(roomId, root);
   await alice.api.sendText(roomId, uniqueText("Thread reply"), {
@@ -137,13 +134,15 @@ test("marking the open conversation read reads its messages and threads", async 
   await bobChat.focus();
   await bobChat.openConversation(alice.displayName);
   await bobChat.timeline.expectMessage(root);
-  await expect(bobChat.timeline.unreadBanner).toBeVisible();
+  // Opening reads the messages; the thread stays unread.
   await bobChat.threads.expectUnreadThreadsBanner("1 unread thread");
+  await expect(bobChat.timeline.threadButton(root)).toHaveText(
+    "1 reply • 1 unread",
+  );
 
   const menu = await bobChat.header.openMenu(alice.displayName);
   await menu.getByRole("menuitem", { name: "Mark as read" }).click();
 
-  await expect(bobChat.timeline.unreadBanner).toBeHidden();
   await expect(bobChat.threads.unreadBanner).toBeHidden();
   await expect(bobChat.timeline.threadButton(root)).toHaveText("1 reply");
   await bobChat.leftPanel.expectRead(alice.displayName);

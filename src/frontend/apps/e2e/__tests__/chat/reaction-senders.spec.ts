@@ -188,7 +188,8 @@ test.describe("Who reacted", () => {
         await reactors[0].api.sendText(roomId, last);
       }
       await timeline.expectMessage(last);
-      await page.setViewportSize({ width: 1280, height: 440 });
+      // Short enough for the twelve names not to fit below the chip.
+      await page.setViewportSize({ width: 1280, height: 400 });
       // Scroll back up, as a person would, until the chip sits just under
       // the conversation header: there is no room for the tooltip above it.
       const chip = timeline.reaction(text, "🎉");
