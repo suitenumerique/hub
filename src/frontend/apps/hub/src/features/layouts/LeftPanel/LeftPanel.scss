@@ -27,14 +27,14 @@
   );
 
   &__top {
-    position: sticky;
+    position: absolute;
     top: 0;
+    right: 0;
+    left: 0;
     z-index: 1;
-    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    margin-bottom: 10px;
     padding: 16px 0 4px;
     background: var(--hub-lp-veil);
     backdrop-filter: blur(12px);
@@ -59,10 +59,11 @@
     overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
-    // The final rows remain scrollable above the floating footer, and a
-    // focused row is scrolled clear of the top and the footer.
-    padding: 0 0 76px;
-    scroll-padding: 140px 0 76px;
+    // The first rows start below the floating top, whose height LeftPanel.tsx
+    // measures, and the final rows remain scrollable above the floating
+    // footer. A focused row is scrolled clear of both.
+    padding: calc(var(--hub-lp-top-height, 0px) + 10px) 0 76px;
+    scroll-padding: var(--hub-lp-top-height, 0px) 0 76px;
   }
 
   &__logo {
