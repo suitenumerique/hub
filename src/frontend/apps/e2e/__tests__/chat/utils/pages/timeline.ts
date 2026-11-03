@@ -128,6 +128,21 @@ export class Timeline {
     return body.locator(".hub__message-toolbar");
   }
 
+  /** The "more" button beside the bubble, shown while it is hovered. */
+  moreButton(target: MessageTarget): Locator {
+    return this.bubble(target).getByRole("button", { name: "Message actions" });
+  }
+
+  /** The "more" button opens the same actions menu, under itself. */
+  async openActionsFromButton(target: MessageTarget): Promise<Locator> {
+    const body = this.body(target);
+    await body.scrollIntoViewIfNeeded();
+    await body.hover();
+    await this.moreButton(target).click();
+    await expect(body).toHaveAttribute("data-toolbar-open", "true");
+    return body.locator(".hub__message-toolbar");
+  }
+
   async react(text: string, emoji: QuickReaction): Promise<void> {
     const menu = await this.openActions(text);
     await menu.getByRole("button", { name: QUICK_REACTIONS[emoji] }).click();
