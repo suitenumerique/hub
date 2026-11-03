@@ -553,7 +553,12 @@ const ChatRowWithMenus = (props: ChatRowProps) => {
         <ChatRowLink {...props} isMenuOpen={isContextMenuOpen || menu.isOpen} />
       </ContextMenu>
       <div className="hub__left-panel__chat__more">
-        <DropdownMenu options={options} {...menu} onOpenChange={menu.setIsOpen}>
+        <DropdownMenu
+          options={options}
+          {...menu}
+          onOpenChange={menu.setIsOpen}
+          variant="tiny"
+        >
           {/* On the open chat's brand background, a brand button. */}
           <Button
             type="button"
