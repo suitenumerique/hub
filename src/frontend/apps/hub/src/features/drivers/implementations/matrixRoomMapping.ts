@@ -28,6 +28,24 @@ export const isFavouriteRoom = (room: Room): boolean =>
 export const MATRIX_MARKED_UNREAD_UNSTABLE = "com.famedly.marked_unread";
 
 /**
+ * Hub-only room account data: the latest thread reply there was when the
+ * current user last opened the conversation. Tchap and Element ignore it.
+ */
+export const MATRIX_HUB_VISIT = "fr.gouv.lasuite.hub.visit";
+
+declare module "matrix-js-sdk/lib/@types/event" {
+  interface RoomAccountDataEvents {
+    [MATRIX_HUB_VISIT]: { thread_ts: number };
+  }
+}
+
+/** Timestamp of the latest thread reply seen in the last visit, if any. */
+export const threadsSeenUntil = (room: Room): number | null => {
+  const ts = room.getAccountData(MATRIX_HUB_VISIT)?.getContent()?.thread_ts;
+  return typeof ts === "number" ? ts : null;
+};
+
+/**
  * Whether the current user marked this room unread. Like Element and Tchap,
  * the stable type wins and the unstable one is still read.
  */

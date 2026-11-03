@@ -67,17 +67,8 @@ import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
-import {
-  type UnreadMessagesBannerProps,
-  UnreadMessagesBannerTransition,
-} from "./UnreadMessagesBanner";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 import { TypingIndicator } from "./TypingIndicator";
-
-type UnreadMessagesBannerState = {
-  chatKey: string;
-  banner: UnreadMessagesBannerProps;
-};
 
 const FLOATING_STACK_SAFETY_GAP = 8;
 
@@ -181,26 +172,12 @@ export const ChatView = ({
   });
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
-  const [unreadMessagesBanner, setUnreadMessagesBanner] =
-    useState<UnreadMessagesBannerState | null>(null);
   const chatKey = chatRef ? `${chatRef.accountId}:${chatRef.chatId}` : null;
-  const activeUnreadMessagesBanner =
-    chatKey && unreadMessagesBanner?.chatKey === chatKey
-      ? unreadMessagesBanner.banner
-      : null;
-
-  // The list owns navigation but the banner belongs visually to the composer.
-  // Scope lifted props by conversation so an old list unmount cannot clear the
-  // banner already published by the newly selected conversation.
-  const handleUnreadBannerChange = useCallback(
-    (chatKey: string, banner: UnreadMessagesBannerProps | null) => {
-      setUnreadMessagesBanner((current) => {
-        if (banner) {
-          return { chatKey, banner };
-        }
-        return current?.chatKey === chatKey ? null : current;
-      });
-    },
+  // Bumped by the jump to the latest messages, which moves the focus into the
+  // composer as Element's does. Added to the host's own signal.
+  const [jumpFocusSignal, setJumpFocusSignal] = useState(0);
+  const focusComposerAfterJump = useCallback(
+    () => setJumpFocusSignal((signal) => signal + 1),
     [],
   );
 
@@ -380,8 +357,8 @@ export const ChatView = ({
       return (
         <ChatConversation
           chatRef={chatRef}
-          onUnreadBannerChange={handleUnreadBannerChange}
           onMessageJumpChange={handleConversationJumpChange}
+          onJumpToLatest={focusComposerAfterJump}
         />
       );
     }
@@ -448,9 +425,6 @@ export const ChatView = ({
                           {chatRef && (
                             <ConversationUnreadBanner chatRef={chatRef} />
                           )}
-                          <UnreadMessagesBannerTransition
-                            banner={activeUnreadMessagesBanner}
-                          />
                         </div>
                       </ComposerFloatingArea>
                       <ChatComposer
@@ -461,7 +435,9 @@ export const ChatView = ({
                           (chatRef ? !isCompositionSupported : !canComposeDraft)
                         }
                         isSubmitting={isSendingMessage || isEditing}
-                        focusSignal={composerFocusSignal}
+                        focusSignal={
+                          (composerFocusSignal ?? 0) + jumpFocusSignal
+                        }
                         errorMessage={
                           editingMessage
                             ? t(

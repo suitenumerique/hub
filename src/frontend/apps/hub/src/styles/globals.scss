@@ -34,7 +34,8 @@
 @use "./../features/chat/components/MessageQuote.scss";
 @use "./../features/chat/components/ThreadButton.scss";
 @use "./../features/chat/components/UnreadThreadsBanner.scss";
-@use "./../features/chat/components/UnreadMessages.scss";
+@use "./../features/chat/components/UnreadSeparator.scss";
+@use "./../features/chat/components/JumpToLatestButton.scss";
 @use "./../features/chat/components/EmojiPicker.scss";
 @use "./../features/chat/search/ConversationSearchModal.scss";
 @use "./../features/chat/components/tools-panel/ChatToolsPanel.scss";

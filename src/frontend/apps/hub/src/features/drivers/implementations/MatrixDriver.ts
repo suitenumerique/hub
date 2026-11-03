@@ -11,7 +11,6 @@ import {
   type MatrixEvent,
   MatrixEventEvent,
   MsgType,
-  NotificationCountType,
   Preset,
   ReceiptType,
   RelationType,
@@ -155,6 +154,7 @@ import {
   isThreadFullyRead,
   isThreadReplyMessage,
   isUndecryptedEvent,
+  latestThreadReplyTs,
   matrixEventToChatMessage,
   needsReactionSnapshot,
   observeThreadReply,
@@ -204,11 +204,13 @@ import {
   isFavouriteRoom,
   isMarkedUnreadRoom,
   MATRIX_FAVOURITE_TAG,
+  MATRIX_HUB_VISIT,
   MATRIX_MARKED_UNREAD_UNSTABLE,
   matrixJoinedRoomToLocalChat,
   matrixRoomToLocalChat,
   participantSetKey,
   roomOtherMembers,
+  threadsSeenUntil,
 } from "./matrixRoomMapping";
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
@@ -535,6 +537,8 @@ export class MatrixDriver extends Driver {
    * moving the UI boundary backwards after the user has read farther.
    */
   private confirmedMainReadBoundaries = new Map<string, string>();
+  /** Visits written by this session, until `/sync` echoes them back. */
+  private pendingVisits = new Map<string, number>();
   /**
    * Storage namespace for the Hub/Matrix login context currently being
    * connected. `matrix-local` may be used by several seeded users in the same
@@ -595,7 +599,7 @@ export class MatrixDriver extends Driver {
     return Object.fromEntries(
       chatRooms(mx)
         .filter((room) => joinedRoomIds.has(room.roomId))
-        .map((room) => [room.roomId, roomUnread(room, selfUserId)]),
+        .map((room) => [room.roomId, this.roomUnread(room, selfUserId)]),
     );
   }
 
@@ -692,6 +696,55 @@ export class MatrixDriver extends Driver {
     await mx.setRoomAccountData(chatId, EventType.MarkedUnread, {
       unread: markedUnread,
     });
+  }
+
+  /**
+   * Records that the current user opened the conversation, in Hub-only room
+   * account data so it follows them across Hub sessions: the thread replies
+   * there are then no longer show it unread in the list, while the threads
+   * keep them unread. Writes only when a reply is newer than the last visit.
+   */
+  async markChatVisited(chatId: string): Promise<void> {
+    const { mx, room } = this.requireRoom("markChatVisited", chatId);
+    const latest = latestThreadReplyTs(room);
+    const seenUntil = this.threadsSeenUntil(room);
+    if (latest === null || (seenUntil !== null && latest <= seenUntil)) {
+      return;
+    }
+    const selfUserId = mx.getUserId() ?? undefined;
+    const emitUnread = () =>
+      this.emit({
+        type: "unread:changed",
+        chatId,
+        unread: this.roomUnread(room, selfUserId),
+      });
+    this.pendingVisits.set(chatId, latest);
+    emitUnread();
+    try {
+      await mx.setRoomAccountData(chatId, MATRIX_HUB_VISIT, {
+        thread_ts: latest,
+      });
+    } catch (error) {
+      if (this.pendingVisits.get(chatId) === latest) {
+        this.pendingVisits.delete(chatId);
+        emitUnread();
+      }
+      throw error;
+    }
+  }
+
+  /** The last visit, this session's write included before its echo. */
+  private threadsSeenUntil(room: Room): number | null {
+    const stored = threadsSeenUntil(room);
+    const pending = this.pendingVisits.get(room.roomId) ?? null;
+    if (stored === null || pending === null) {
+      return stored ?? pending;
+    }
+    return Math.max(stored, pending);
+  }
+
+  private roomUnread(room: Room, selfUserId: string | undefined): ChatUnread {
+    return roomUnread(room, selfUserId, this.threadsSeenUntil(room));
   }
 
   /**
@@ -1652,9 +1705,9 @@ export class MatrixDriver extends Driver {
 
   /**
    * Main-timeline unread state from memory only, as Element shows it. The
-   * count is the homeserver's notification count. The first unread message is
-   * known only when a read marker is already in the live timeline; otherwise
-   * `readUpToId` is the marker that navigation loads the conversation around.
+   * first unread message is known only when a read marker is already in the
+   * live timeline; otherwise `readUpToId` is the marker that the conversation
+   * opens around.
    */
   async getMainTimelineUnread(chatId: string): Promise<ChatMainTimelineUnread> {
     const { mx, room } = this.requireRoom("getMainTimelineUnread", chatId);
@@ -1667,7 +1720,6 @@ export class MatrixDriver extends Driver {
         hasUnread: false,
         readUpToId: null,
         firstUnreadId: null,
-        unreadCount: null,
         liveEndId,
       };
     }
@@ -1723,15 +1775,7 @@ export class MatrixDriver extends Driver {
       firstUnreadId = null;
       hasUnread = computeRoomUnread(room, selfUserId);
     }
-    let unreadCount: number | null = 0;
-    if (hasUnread) {
-      const notificationCount = room.getRoomUnreadNotificationCount(
-        NotificationCountType.Total,
-      );
-      // Unread messages of a muted conversation do not notify: no number.
-      unreadCount = notificationCount > 0 ? notificationCount : null;
-    }
-    return { hasUnread, readUpToId, firstUnreadId, unreadCount, liveEndId };
+    return { hasUnread, readUpToId, firstUnreadId, liveEndId };
   }
 
   /** Resolves a connected client for Matrix-only operations. */
@@ -2358,7 +2402,7 @@ export class MatrixDriver extends Driver {
     this.emit({
       type: "unread:changed",
       chatId: room.roomId,
-      unread: roomUnread(room, selfUserId),
+      unread: this.roomUnread(room, selfUserId),
     });
     this.emit({
       type: "threads:changed",
@@ -2386,7 +2430,8 @@ export class MatrixDriver extends Driver {
    *
    * The main read marker also moves to the latest message, even when it
    * already covers it (it can rest on the person's own message while the
-   * homeserver still counts notifications): the unread banner follows it.
+   * homeserver still counts notifications): the conversation then opens on
+   * its latest messages.
    */
   async markChatRead(chatId: string): Promise<void> {
     const { mx, room } = this.requireRoom("markChatRead", chatId);
@@ -3359,7 +3404,7 @@ export class MatrixDriver extends Driver {
       emitCurrent({
         type: "unread:changed",
         chatId: room.roomId,
-        unread: roomUnread(room, selfUserId),
+        unread: this.roomUnread(room, selfUserId),
       });
     const emitMainTimelineUnread = (room: Room) =>
       emitCurrent({
@@ -3871,7 +3916,9 @@ export class MatrixDriver extends Driver {
       }
       if (
         type === EventType.MarkedUnread ||
-        type === MATRIX_MARKED_UNREAD_UNSTABLE
+        type === MATRIX_MARKED_UNREAD_UNSTABLE ||
+        // A visit from another Hub session.
+        type === MATRIX_HUB_VISIT
       ) {
         emitUnread(room);
       }

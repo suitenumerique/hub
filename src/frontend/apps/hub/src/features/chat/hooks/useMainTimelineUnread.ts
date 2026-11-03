@@ -14,7 +14,7 @@ const READ_RETRY_MAX_MS = 8_000;
 
 type Projection = Pick<
   ChatMainTimelineUnread,
-  "hasUnread" | "firstUnreadId" | "unreadCount" | "readUpToId"
+  "hasUnread" | "firstUnreadId" | "readUpToId"
 > & {
   throughId: string;
 };
@@ -25,7 +25,7 @@ const isEligibleUnreadMessage = (message: ChatMessage): boolean =>
 /**
  * The driver knows the first unread message only when the read marker was in
  * memory. Otherwise it appears once the marker is loaded, like Element's read
- * marker line: on scrolling up, or when navigation opens the window around it.
+ * marker line: when the conversation opens the window around it.
  */
 const resolveFirstUnreadId = (
   state:
@@ -53,11 +53,6 @@ const resolveFirstUnreadId = (
 
 export type UseMainTimelineUnreadResult = ChatMainTimelineUnread & {
   isLoading: boolean;
-  isResolving: boolean;
-  areAllUnreadVisible: (
-    visibleIds: ReadonlySet<string>,
-    hasNewer: boolean,
-  ) => boolean;
   markVisibleMessages: (
     visibleIds: ReadonlySet<string>,
     hasNewer: boolean,
@@ -190,36 +185,6 @@ export const useMainTimelineUnread = (
 
   const current = projection ?? query.data;
 
-  const areAllUnreadVisible = useCallback(
-    (visibleIds: ReadonlySet<string>, hasNewer: boolean) => {
-      const firstUnreadId = resolveFirstUnreadId(
-        projectionRef.current ?? query.data,
-        messages,
-      );
-      if (!firstUnreadId || hasNewer) {
-        return false;
-      }
-      const firstUnreadIndex = messages.findIndex(
-        (message) => message.id === firstUnreadId,
-      );
-      if (firstUnreadIndex < 0) {
-        return false;
-      }
-
-      // The homeserver count can include events this timeline does not show:
-      // the loaded messages after the first unread one are the reference.
-      const unreadIds = messages
-        .slice(firstUnreadIndex)
-        .filter(isEligibleUnreadMessage)
-        .map((message) => message.id);
-      return (
-        unreadIds.length > 0 &&
-        unreadIds.every((eventId) => visibleIds.has(eventId))
-      );
-    },
-    [messages, query.data],
-  );
-
   /**
    * Without a read boundary among the loaded messages, Element
    * (`TimelinePanel.sendReadReceipts`) reads through the last displayed
@@ -250,9 +215,6 @@ export const useMainTimelineUnread = (
         hasUnread,
         readUpToId: lastDisplayed.id,
         firstUnreadId: hasUnread ? nextFirstUnreadId : null,
-        // Unread messages older than the loaded ones may be counted: the
-        // homeserver count no longer matches what is left.
-        unreadCount: hasUnread ? null : 0,
         throughId: lastDisplayed.id,
       });
       queueBoundary(lastDisplayed.id);
@@ -278,7 +240,6 @@ export const useMainTimelineUnread = (
         return;
       }
 
-      let consumedCount = 0;
       let throughId: string | null = null;
       let nextFirstUnreadId: string | null = null;
       // Progress only through the contiguous visible prefix of eligible unread
@@ -292,29 +253,19 @@ export const useMainTimelineUnread = (
           nextFirstUnreadId = message.id;
           break;
         }
-        consumedCount += 1;
         throughId = message.id;
       }
       if (!throughId) {
         return;
       }
 
-      // The loaded messages decide what is left; the homeserver count only
-      // gives the number, and no number once it no longer matches.
       const hasUnread = nextFirstUnreadId !== null || hasNewer;
-      let unreadCount: number | null = 0;
-      if (hasUnread) {
-        const remaining = (state.unreadCount ?? 0) - consumedCount;
-        unreadCount = remaining > 0 ? remaining : null;
-      }
-      const next: Projection = {
+      updateProjection({
         hasUnread,
         readUpToId: throughId,
         firstUnreadId: hasUnread ? nextFirstUnreadId : null,
-        unreadCount,
         throughId,
-      };
-      updateProjection(next);
+      });
       queueBoundary(throughId);
     },
     [
@@ -336,7 +287,6 @@ export const useMainTimelineUnread = (
       hasUnread: false,
       readUpToId: liveEndId,
       firstUnreadId: null,
-      unreadCount: state.unreadCount === null ? null : 0,
       throughId: liveEndId,
     });
     queueBoundary(liveEndId);
@@ -347,22 +297,17 @@ export const useMainTimelineUnread = (
       hasUnread: current?.hasUnread ?? false,
       readUpToId: current?.readUpToId ?? null,
       firstUnreadId: resolveFirstUnreadId(current, messages),
-      unreadCount: current?.unreadCount ?? null,
       liveEndId: query.data?.liveEndId ?? null,
       isLoading: query.isPending,
-      isResolving: query.isFetching,
-      areAllUnreadVisible,
       markVisibleMessages,
       markAllRead,
     }),
     [
-      areAllUnreadVisible,
       current,
       markAllRead,
       markVisibleMessages,
       messages,
       query.data?.liveEndId,
-      query.isFetching,
       query.isPending,
     ],
   );

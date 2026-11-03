@@ -353,14 +353,12 @@ export type ChatMessagesPage = {
 
 /** Persistent read boundary for one room's Matrix main timeline. */
 export type ChatMainTimelineUnread = {
-  /** Reliable boolean even when the global numeric count is unavailable. */
+  /** Whether messages from others follow the boundary. */
   hasUnread: boolean;
   /** Last persisted or locally-confirmed event before the unread boundary. */
   readUpToId: string | null;
   /** First eligible remote message after the boundary, when it is loaded. */
   firstUnreadId: string | null;
-  /** Homeserver count, or null when the unread messages do not notify. */
-  unreadCount: number | null;
   /** Last main-timeline message at the genuine live end. */
   liveEndId: string | null;
 };
