@@ -30,6 +30,13 @@ export type SendTextOptions = {
   mentions?: string[];
 };
 
+export type SendReplyOptions = {
+  /** Quote of the answered message that older clients put in the reply. */
+  fallback?: { sender: string; body: string; html?: boolean };
+  /** Thread of an explicit reply inside it, not the reply it falls back to. */
+  threadRootId?: string;
+};
+
 type RequestOptions = {
   body?: unknown;
   query?: Record<string, string>;
@@ -262,6 +269,40 @@ export class MatrixApi {
             },
           }
         : {}),
+    });
+  }
+
+  /** A reply to `replyToId`, as Tchap sends one with "Reply". */
+  async sendReply(
+    roomId: string,
+    replyToId: string,
+    body: string,
+    { fallback, threadRootId }: SendReplyOptions = {},
+  ): Promise<string> {
+    return this.sendEvent(roomId, "m.room.message", {
+      msgtype: "m.text",
+      body: fallback
+        ? `> <${fallback.sender}> ${fallback.body}\n\n${body}`
+        : body,
+      ...(fallback?.html
+        ? {
+            format: "org.matrix.custom.html",
+            formatted_body:
+              `<mx-reply><blockquote><a href="https://matrix.to/#/${roomId}/${replyToId}">In reply to</a> ` +
+              `<a href="https://matrix.to/#/${fallback.sender}">${fallback.sender}</a><br>` +
+              `${fallback.body}</blockquote></mx-reply>${body}`,
+          }
+        : {}),
+      "m.relates_to": {
+        "m.in_reply_to": { event_id: replyToId },
+        ...(threadRootId
+          ? {
+              rel_type: "m.thread",
+              event_id: threadRootId,
+              is_falling_back: false,
+            }
+          : {}),
+      },
     });
   }
 
