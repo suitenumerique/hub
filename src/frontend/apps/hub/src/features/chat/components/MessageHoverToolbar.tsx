@@ -9,6 +9,7 @@ import {
 import {
   Fragment,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -36,10 +37,15 @@ type MessageHoverToolbarProps = {
    * for bubbles inside the threads panel.
    */
   compact?: boolean;
-  /** Opened at the pointer by a right click on the bubble. */
+  /**
+   * Opened by a right click on the bubble, at the pointer, or by its "more"
+   * button, under it.
+   */
   isOpen?: boolean;
   /** Called once an action is chosen or the open menu is dismissed. */
   onClose?: () => void;
+  /** The "more" button: a press on it toggles the menu itself. */
+  triggerRef?: RefObject<HTMLElement | null>;
 };
 
 type QuickReaction = {
@@ -58,9 +64,10 @@ type Action = {
  * Per-bubble actions menu (Figma node 3629:98707): quick reactions and an
  * emoji picker trigger, reply, then the message actions. Every selection is
  * forwarded through callbacks; the menu knows nothing of the data layer. A
- * right click on the bubble opens it at the pointer (`isOpen`), and it then
- * closes as a context menu does. From the keyboard, it shows beside the bubble
- * while one of its buttons has the focus — see MessageHoverToolbar.scss.
+ * right click on the bubble opens it at the pointer, the "more" button beside
+ * the bubble under itself (`isOpen`), and it then closes as a context menu
+ * does. From the keyboard, it also shows beside the bubble while one of its
+ * buttons has the focus — see MessageHoverToolbar.scss.
  */
 export const MessageHoverToolbar = ({
   onReact,
@@ -72,6 +79,7 @@ export const MessageHoverToolbar = ({
   compact = false,
   isOpen = false,
   onClose,
+  triggerRef,
 }: MessageHoverToolbarProps) => {
   const { t, i18n } = useTranslation();
   const language = i18n.resolvedLanguage ?? i18n.language;
@@ -85,13 +93,19 @@ export const MessageHoverToolbar = ({
     onClose?.();
   }, [onClose]);
 
-  // Opened by a right click, the menu closes as a context menu does: on a
-  // press outside it, on Escape or when something scrolls. The emoji picker,
-  // in its own layer, is dismissed first.
+  // Once open, the menu closes as a context menu does: on a press outside it
+  // and its "more" button, on Escape or when something scrolls. The emoji
+  // picker, in its own layer, is dismissed first.
   useEffect(() => {
     if (!isOpen || isPickerOpen) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) finish();
+      const target = event.target as Node;
+      if (
+        !rootRef.current?.contains(target) &&
+        !triggerRef?.current?.contains(target)
+      ) {
+        finish();
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") finish();
@@ -104,7 +118,7 @@ export const MessageHoverToolbar = ({
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("scroll", finish, true);
     };
-  }, [finish, isOpen, isPickerOpen]);
+  }, [finish, isOpen, isPickerOpen, triggerRef]);
 
   const closePicker = useCallback(() => setIsPickerOpen(false), []);
   const preloadPicker = useCallback(

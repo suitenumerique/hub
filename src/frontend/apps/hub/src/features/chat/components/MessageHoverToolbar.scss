@@ -104,8 +104,9 @@
   }
 }
 
-// Opened by a right click, or shown while one of its buttons has the keyboard
-// focus, at the place `placeToolbarAt` gives and above adjacent rows. A mouse
+// Opened by a right click or the "more" button, or shown while one of its
+// buttons has the keyboard focus, at the place `placeToolbarAt`,
+// `placeToolbarUnder` or `placeToolbar` gives and above adjacent rows. A mouse
 // click on them shows no focus ring, so the menu does not stay after an action
 // chosen with the mouse. It fades in only: hidden, it leaves at once instead of
 // fading out on its way back above the bubble.
