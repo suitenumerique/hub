@@ -518,7 +518,7 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps) {
  * while the row is hovered or focused.
  */
 const ChatRowWithMenus = (props: ChatRowProps) => {
-  const { chat, unread } = props;
+  const { chat, unread, isActive } = props;
   const { t } = useTranslation();
   const options = useChatQuickActions(chat, unread);
   const menu = useDropdownMenu();
@@ -536,10 +536,11 @@ const ChatRowWithMenus = (props: ChatRowProps) => {
       </ContextMenu>
       <div className="hub__left-panel__chat__more">
         <DropdownMenu options={options} {...menu} onOpenChange={menu.setIsOpen}>
+          {/* On the open chat's brand background, a brand button. */}
           <Button
             type="button"
-            variant="tertiary"
-            color="neutral"
+            variant={isActive ? "primary" : "tertiary"}
+            color={isActive ? "brand" : "neutral"}
             size="nano"
             className="hub__left-panel__chat__more-button"
             aria-label={t("More options for {{name}}", { name: chat.name })}

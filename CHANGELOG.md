@@ -8,6 +8,9 @@ and this project adheres to
 
 ### Added
 
+- 💄(frontend) Follow the design in every state of the conversation list rows:
+  a visible unread dot on the open conversation, the "more" button centered,
+  in the brand color there, and the row kept hovered while pointing at it.
 - ✨(frontend) Hide the organization Tchap appends to display names, as in
   `Jean Dupont [Agriculture]`, and show it under the name in people search,
   the members list and direct conversations in search results.
