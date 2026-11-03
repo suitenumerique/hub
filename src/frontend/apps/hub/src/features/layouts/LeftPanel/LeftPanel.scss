@@ -1,6 +1,8 @@
 .hub__left-panel {
   --hub-lp-row-height: 32px;
   --hub-lp-radius: 4px;
+  // The space between two conversations.
+  --hub-lp-row-gap: 6px;
 
   display: flex;
   flex-direction: column;
@@ -244,7 +246,7 @@
     padding: 0 8px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--hub-lp-row-gap);
 
     // Virtuoso positions rows from their measured heights, which a flex gap
     // is not part of: the space between rows belongs to each row instead.
@@ -252,7 +254,7 @@
       gap: 0;
 
       > .hub__left-panel__item {
-        padding-bottom: 6px;
+        padding-bottom: var(--hub-lp-row-gap);
       }
     }
   }
@@ -266,8 +268,9 @@
     &:hover,
     &:has(:focus-visible),
     &:has(.hub__left-panel__chat--menu-open) {
+      // The button, its right padding and the 6px gap before it.
       .hub__left-panel__chat {
-        padding-right: 34px;
+        padding-right: 36px;
       }
 
       .hub__left-panel__chat__more {
@@ -275,10 +278,12 @@
       }
     }
 
-    &:has(.hub__left-panel__chat--active) .hub__left-panel__chat__more-button {
-      color: var(
-        --c--contextuals--content--semantic--neutral--on-neutral,
-        #eef1f4
+    // The "more" button is not inside the link: the row stays hovered while
+    // the pointer is on it.
+    &:hover .hub__left-panel__chat:not(.hub__left-panel__chat--active) {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
       );
     }
   }
@@ -315,7 +320,8 @@
 
     &__more {
       position: absolute;
-      top: 50%;
+      // Centered on the row, above the space its item keeps below it.
+      top: calc(50% - var(--hub-lp-row-gap) / 2);
       right: 6px;
       transform: translateY(-50%);
       display: flex;
@@ -358,6 +364,15 @@
       }
     }
 
+    // Neither the brand nor the error color shows on the open chat's brand
+    // background: its dot, a mention included, is drawn like its name.
+    &--active &__dot {
+      background: var(
+        --c--contextuals--content--semantic--neutral--on-neutral,
+        #eef1f4
+      );
+    }
+
     &__content {
       flex: 1 1 0;
       min-width: 0;
@@ -388,7 +403,7 @@
 
     &__name {
       font-size: 14px;
-      font-weight: 400;
+      font-weight: 500;
       line-height: 18px;
       overflow: hidden;
       text-overflow: ellipsis;
