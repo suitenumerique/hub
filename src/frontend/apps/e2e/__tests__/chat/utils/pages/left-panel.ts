@@ -131,6 +131,30 @@ export class LeftPanel {
     );
   }
 
+  async expectNoMention(target: RowTarget): Promise<void> {
+    await expect(this.dot(target)).not.toHaveClass(
+      /hub__left-panel__chat__dot--highlight/,
+      { timeout: SYNC_TIMEOUT },
+    );
+  }
+
+  /**
+   * Starts watching the dot of a row. The result tells whether it showed since
+   * then, even for a moment: `expectRead` would miss a dot already gone.
+   */
+  async watchDot(target: RowTarget): Promise<() => Promise<boolean>> {
+    const seen = await this.dot(target).evaluateHandle((dot) => {
+      const state = { shown: false };
+      new MutationObserver(() => {
+        state.shown ||= dot.classList.contains(
+          "hub__left-panel__chat__dot--visible",
+        );
+      }).observe(dot, { attributes: true, attributeFilter: ["class"] });
+      return state;
+    });
+    return () => seen.evaluate((state) => state.shown);
+  }
+
   /** The conversation is the first row: the most recently active one. */
   async expectFirst(name: string): Promise<void> {
     await expect(this.rows().first().getByRole("link")).toHaveAccessibleName(

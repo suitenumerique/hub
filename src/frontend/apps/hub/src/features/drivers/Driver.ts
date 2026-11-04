@@ -483,10 +483,11 @@ export abstract class Driver {
     markedUnread: boolean,
   ): Promise<void>;
   /**
-   * Records that the current user opened the conversation: its thread replies
-   * until now no longer show it unread, while the threads keep them unread.
+   * The conversation opens, then closes: its thread replies until it closes no
+   * longer show it unread, while the threads keep them unread.
    */
-  abstract markChatVisited(chatId: string): Promise<void>;
+  abstract startChatVisit(chatId: string): Promise<void>;
+  abstract endChatVisit(chatId: string): Promise<void>;
 
   /**
    * Leaves a conversation and removes its history from the current account.

@@ -144,8 +144,6 @@ export const ChatVirtualList = ({
   const markedUnread = useMarkedUnreadGate(chatRef);
   const [opening, setOpening] = useState<Opening>({ status: "resolving" });
   const isListLoading = isInitialLoading || opening.status !== "opened";
-  // Unlike Element, opening the conversation also clears its unread dot for
-  // the thread replies, which stay unread in the threads.
   useChatVisit(chatRef, opening.status === "opened");
   // The separator stays before the message the visit opened on, even once
   // the conversation is read: like Element's read marker line, it shows
@@ -178,6 +176,7 @@ export const ChatVirtualList = ({
   const shouldStickToBottomRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
   const isReadOnOpeningRef = useRef(false);
+  const isJumpingToLatestRef = useRef(false);
   const navigationRef = useRef<symbol | null>(null);
   const pendingScrollRaf = useRef<number | null>(null);
   const cancelJumpFocusRef = useRef<(() => void) | null>(null);
@@ -593,6 +592,7 @@ export const ChatVirtualList = ({
     navigationRef.current = null;
     cancelJumpFocusRef.current?.();
     setHighlightedId(null);
+    isJumpingToLatestRef.current = true;
     if (isAtLiveEndRef.current) {
       shouldStickToBottomRef.current = true;
       scrollToBottom();
@@ -601,6 +601,19 @@ export const ChatVirtualList = ({
     }
     onJumpToLatest();
   }, [onJumpToLatest, openLatest, scrollToBottom]);
+
+  const isJumpToLatestShown = !isListLoading && !(isAtBottom && isAtLiveEnd);
+  // The button goes away once at the bottom, and a composer that is blocked
+  // does not take the focus: it stays in the conversation, not on the page.
+  useEffect(() => {
+    if (!isJumpingToLatestRef.current || isListLoading || isJumpToLatestShown) {
+      return;
+    }
+    isJumpingToLatestRef.current = false;
+    if (document.activeElement === document.body) {
+      scrollerRef.current?.focus({ preventScroll: true });
+    }
+  }, [isJumpToLatestShown, isListLoading]);
 
   const handleAtTopStateChange = useCallback(
     (atTop: boolean) => {
@@ -831,7 +844,7 @@ export const ChatVirtualList = ({
         {/* Like Element's jump to bottom, shown away from the latest messages:
         a dot stands for the messages received since the conversation was
         read, where Element counts them. */}
-        {!isListLoading && !(isAtBottom && isAtLiveEnd) && (
+        {isJumpToLatestShown && (
           <JumpToLatestButton
             hasNewMessages={unread.hasUnread}
             onClick={jumpToLatest}

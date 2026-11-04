@@ -109,6 +109,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
       chatRef={chatRef}
       onSent={isNew ? handleSent : undefined}
       composerFocusSignal={composerFocusSignal}
+      onFocusComposer={focusComposer}
       canComposeDraft={canComposeDraft}
       draftAccountId={isNew ? (accountId ?? undefined) : undefined}
       draftParticipants={isNew ? selectedUsers : undefined}

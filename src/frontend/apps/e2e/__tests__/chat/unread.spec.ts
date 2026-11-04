@@ -1,5 +1,11 @@
+import { SYNC_TIMEOUT } from "./utils/env";
 import { expect, type Person, test } from "./utils/fixtures";
-import { createUnencryptedRoom, markRoomRead } from "./utils/flows";
+import {
+  createEncryptedRoom,
+  createUnencryptedRoom,
+  markRoomRead,
+  withSyncGap,
+} from "./utils/flows";
 import { uniqueText } from "./utils/ids";
 
 /** As many unread messages as the issue's example: more than one screen. */
@@ -127,6 +133,7 @@ test("goes back to the latest messages, with a dot for new ones", async ({
 }) => {
   const alice = await people.create("Alice");
   const bob = await people.create("Bob");
+  const carol = await people.create("Carol");
   const roomId = await createUnencryptedRoom(alice, [bob]);
   const prefix = uniqueText("Message");
   await alice.api.sendMany(roomId, prefix, UNREAD_COUNT);
@@ -155,12 +162,45 @@ test("goes back to the latest messages, with a dot for new ones", async ({
     await expect(bobChat.composer.field).toBeFocused();
     await bobChat.readOpenConversation(alice.displayName);
   });
+
+  await test.step("the composer does not take the focus from New afterwards", async () => {
+    await bobChat.leftPanel.openNewChat();
+    await bobChat.newChat.add(carol);
+    // Longer than the composer takes to grab the focus once it is enabled.
+    await bobChat.page.waitForTimeout(1_000);
+    await expect(bobChat.newChat.input).toBeFocused();
+  });
+});
+
+test("keeps the focus in the conversation when the composer is blocked", async ({
+  people,
+  hub,
+  devices,
+}) => {
+  const alice = await people.create("Alice");
+  const bob = await people.create("Bob");
+  const alicePhone = await devices.start(alice);
+  const roomId = await createEncryptedRoom(alicePhone, [bob.api]);
+  for (let index = 1; index <= UNREAD_COUNT; index++) {
+    await alicePhone.sendText(roomId, uniqueText(`Message ${index}`));
+  }
+
+  const bobChat = await hub.open(bob);
+  await bobChat.openConversation(alice.displayName);
+  await bobChat.composer.expectBlocked();
+  await bobChat.timeline.scroll();
+
+  const { jumpToLatestButton, root } = bobChat.timeline;
+  await jumpToLatestButton.focus();
+  await bobChat.page.keyboard.press("Enter");
+  await expect(jumpToLatestButton).toBeHidden({ timeout: SYNC_TIMEOUT });
+  await expect(root.locator("[data-virtuoso-scroller]")).toBeFocused();
 });
 
 /**
- * Unlike Element, which keeps a conversation unread while its threads are,
- * opening it removes its dot for the thread replies it then has. The threads
- * keep them unread, and a newer reply brings the dot back.
+ * Specific to the Hub, as Element keeps threads out of a room's dot: thread
+ * replies show the dot until the conversation opens. The threads keep them
+ * unread, and a newer reply brings the dot back.
  */
 test.describe("Unread threads and the conversation dot", () => {
   test("opening reads the messages, not the threads, and removes the dot", async ({
@@ -198,7 +238,7 @@ test.describe("Unread threads and the conversation dot", () => {
     await test.step("the visit is kept in Bob's account, even after a reload", async () => {
       await expect
         .poll(() => bob.api.roomAccountData(roomId, HUB_VISIT))
-        .toEqual({ thread_ts: expect.any(Number) });
+        .toMatchObject({ thread_ts: expect.any(Number) });
       await bobChat.reload();
       await bobChat.leftPanel.expectRead(alice.displayName);
       await bobChat.threads.expectUnreadThreadsBanner("1 unread thread");
@@ -215,16 +255,55 @@ test.describe("Unread threads and the conversation dot", () => {
       );
     });
 
-    await test.step("a reply while it is open does not", async () => {
+    await test.step("a reply while it is open does not, even for a moment", async () => {
+      const dotShown = await bobChat.leftPanel.watchDot(alice.displayName);
       await reply("Third reply");
       await expect(bobChat.timeline.threadButton(root)).toHaveText(
         "3 replies • 3 unread",
-        { timeout: 20_000 },
+        { timeout: SYNC_TIMEOUT },
       );
-      await bobChat.leftPanel.expectRead(alice.displayName);
+      expect(await dotShown()).toBe(false);
       await bobChat.openConversation(carol.displayName);
       await bobChat.leftPanel.expectRead(alice.displayName);
     });
+  });
+
+  test("a reply the Hub did not receive still brings the dot back", async ({
+    people,
+    hub,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const carol = await people.create("Carol");
+    const roomId = await createUnencryptedRoom(alice, [bob]);
+    await createUnencryptedRoom(carol, [bob]);
+    const rootId = await alice.api.sendText(roomId, uniqueText("Thread root"));
+    await alice.api.sendText(roomId, uniqueText("First reply"), {
+      threadRootId: rootId,
+    });
+    await markRoomRead(bob, roomId);
+
+    const bobChat = await hub.open(bob);
+    await bobChat.openConversation(alice.displayName);
+    await bobChat.leftPanel.expectRead(alice.displayName);
+    await bobChat.openConversation(carol.displayName);
+
+    // Events that notify nobody push the reply out of the next sync: only the
+    // homeserver's notification count tells about it.
+    await withSyncGap(bobChat, roomId, {
+      wake: () => alice.api.react(roomId, rootId, "👍"),
+      write: async () => {
+        await alice.api.sendText(roomId, uniqueText("Missed reply"), {
+          threadRootId: rootId,
+        });
+        for (let index = 1; index <= 25; index++) {
+          await alice.api.sendState(roomId, "m.room.topic", {
+            topic: `Topic ${index}`,
+          });
+        }
+      },
+    });
+    await bobChat.leftPanel.expectUnread(alice.displayName);
   });
 
   test("a thread reply alone shows the dot until the conversation opens", async ({
@@ -280,6 +359,15 @@ test.describe("Unread threads and the conversation dot", () => {
     await bobChat.openConversation(alice.displayName);
     await bobChat.leftPanel.expectRead(alice.displayName);
     await bobChat.threads.expectUnreadThreadsBanner("1 unread thread");
+
+    await test.step("a next reply brings the dot back, not the mention", async () => {
+      await bobChat.openConversation(carol.displayName);
+      await alice.api.sendText(roomId, uniqueText("Next reply"), {
+        threadRootId: rootId,
+      });
+      await bobChat.leftPanel.expectUnread(alice.displayName);
+      await bobChat.leftPanel.expectNoMention(alice.displayName);
+    });
   });
 });
 

@@ -110,7 +110,7 @@ test("keeps the open conversation unread until its timeline is scrolled", async 
   });
 });
 
-test("marking the open conversation read reads its messages and threads", async ({
+test("marking a conversation read from the list reads its messages and threads", async ({
   people,
   hub,
 }) => {
@@ -131,21 +131,14 @@ test("marking the open conversation read reads its messages and threads", async 
   });
   await bobChat.leftPanel.expectUnread(alice.displayName);
 
-  await bobChat.focus();
+  const menu = await bobChat.leftPanel.openContextMenu(alice.displayName);
+  await menu.getByRole("menuitem", { name: "Mark as read" }).click();
+  await bobChat.leftPanel.expectRead(alice.displayName);
+
   await bobChat.openConversation(alice.displayName);
   await bobChat.timeline.expectMessage(root);
-  // Opening reads the messages; the thread stays unread.
-  await bobChat.threads.expectUnreadThreadsBanner("1 unread thread");
-  await expect(bobChat.timeline.threadButton(root)).toHaveText(
-    "1 reply • 1 unread",
-  );
-
-  const menu = await bobChat.header.openMenu(alice.displayName);
-  await menu.getByRole("menuitem", { name: "Mark as read" }).click();
-
   await expect(bobChat.threads.unreadBanner).toBeHidden();
   await expect(bobChat.timeline.threadButton(root)).toHaveText("1 reply");
-  await bobChat.leftPanel.expectRead(alice.displayName);
   await bobChat.reload();
   await bobChat.leftPanel.expectRead(alice.displayName);
 });
