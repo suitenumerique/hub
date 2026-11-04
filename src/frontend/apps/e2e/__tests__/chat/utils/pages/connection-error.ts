@@ -1,6 +1,6 @@
 import { expect, Locator, Page } from "@playwright/test";
 
-/** "Cannot connect to Tchap": the screen shown when the chat cannot start. */
+/** "Chat connection interrupted": the screen shown when the chat cannot start. */
 export class ConnectionError {
   readonly root: Locator;
   readonly message: Locator;
@@ -16,11 +16,11 @@ export class ConnectionError {
 
   async expectShown(message: string): Promise<void> {
     await expect(
-      this.root.getByRole("heading", { name: "Cannot connect to Tchap" }),
+      this.root.getByRole("heading", { name: "Chat connection interrupted" }),
     ).toBeVisible({ timeout: 30_000 });
     await expect(this.message).toHaveText(message);
   }
 }
 
 export const ANOTHER_TAB_MESSAGE =
-  "LaSuite Tchap is already open in another tab. Close that tab, then try again here. Your other Tchap apps can stay open.";
+  "Another LaSuite Tchap v2 tab is using this session. Close that tab, then try again here. You can keep Tchap open.";

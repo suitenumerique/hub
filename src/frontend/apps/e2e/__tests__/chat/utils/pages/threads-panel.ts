@@ -16,7 +16,7 @@ export class ThreadsPanel {
   constructor(readonly page: Page) {
     this.root = page.getByRole("complementary", { name: "Tools panel" });
     this.messages = this.root.locator(".hub__thread-detail__messages");
-    this.composer = new Composer(this.root, "Answer");
+    this.composer = new Composer(this.root, "Reply");
     this.timeline = new Timeline(page, this.root);
     this.unreadBanner = page.locator(".hub__unread-threads-banner");
   }
@@ -60,9 +60,7 @@ export class ThreadsPanel {
 
   /** Leaves the open thread for the list of threads. */
   async backToList(): Promise<void> {
-    await this.root
-      .getByRole("button", { name: "Back to all threads" })
-      .click();
+    await this.root.getByRole("button", { name: "Back to threads" }).click();
     await expect(this.composer.field).toHaveCount(0);
   }
 
