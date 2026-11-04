@@ -4395,6 +4395,10 @@ export class MatrixDriver extends Driver {
               isOwnThreadEcho(event)
             ) {
               // The send mutation owns this session's reply row.
+            } else if (update.type === "thread:reply") {
+              // Its arrival already moved the conversation up. The grouped
+              // refresh below covers the list for the whole batch.
+              emitCurrent({ ...update, decrypted: true });
             } else if (update.type !== "message:new") emitCurrent(update);
           }
         }

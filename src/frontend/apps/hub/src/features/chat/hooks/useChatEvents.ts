@@ -415,8 +415,12 @@ const applyChatEvent = (
           };
         }),
       );
-      // Touches list ordering / last activity, like a new message.
-      scheduleInvalidation(queryClient, chatKeys.chatsOf(accountId));
+      // Touches list ordering / last activity, like a new message. A reply
+      // that only finished decrypting is not new: it would read the whole list
+      // for every reply of a thread.
+      if (!event.decrypted) {
+        scheduleInvalidation(queryClient, chatKeys.chatsOf(accountId));
+      }
       return;
     }
 

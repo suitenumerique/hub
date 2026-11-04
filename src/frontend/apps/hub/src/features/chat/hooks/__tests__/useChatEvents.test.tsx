@@ -404,6 +404,23 @@ describe("useChatEvents", () => {
     expect(isInvalidated(queryClient, chatsKey)).toBe(true);
   });
 
+  it("leaves the list alone when a thread reply only finished decrypting", async () => {
+    const chatsKey = chatKeys.chatsOf(CHAT_REF.accountId);
+    queryClient.setQueryData(chatsKey, { favourites: [], all: [] });
+    mount();
+
+    emit({
+      type: "thread:reply",
+      chatId: "c1",
+      threadId: "t1",
+      message: message("r1"),
+      decrypted: true,
+    });
+    await endOfTask();
+
+    expect(isInvalidated(queryClient, chatsKey)).toBe(false);
+  });
+
   it("refreshes the chat and the list on notification-level:changed", async () => {
     const chatsKey = chatKeys.chatsOf(CHAT_REF.accountId);
     const chatKey = chatKeys.chat(CHAT_REF);
