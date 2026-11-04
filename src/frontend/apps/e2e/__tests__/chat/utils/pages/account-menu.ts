@@ -15,6 +15,16 @@ export class AccountMenu {
     await this.menu.getByRole("menuitem", { name: item }).click();
   }
 
+  /** Changes the language of the Hub, by its name in that language. */
+  async chooseLanguage(name: string): Promise<void> {
+    await this.trigger.click();
+    await this.page.getByTestId("hub-user-menu-language").click();
+    await this.page
+      .getByTestId("hub-user-menu-language-option")
+      .filter({ hasText: name })
+      .click();
+  }
+
   /** Logs out of the Hub, which leads back to the home page. */
   async logout(): Promise<void> {
     await this.choose("Logout");

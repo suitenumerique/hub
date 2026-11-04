@@ -15,6 +15,24 @@ export type MatrixEvent = {
   unsigned?: Record<string, unknown>;
 };
 
+/** One push rule, as the client-server API returns it. */
+export type PushRule = {
+  rule_id: string;
+  enabled: boolean;
+  default?: boolean;
+  actions: unknown[];
+  conditions?: Record<string, unknown>[];
+};
+
+type PushRuleKind = "override" | "room" | "underride";
+
+/** What Tchap writes for All messages, and for a room in Mentions & following. */
+export const ALL_MESSAGES_ACTIONS = [
+  "notify",
+  { set_tweak: "sound", value: "default" },
+];
+export const MENTIONS_ACTIONS = ["dont_notify"];
+
 export type CreateRoomOptions = {
   name?: string;
   invite?: string[];
@@ -351,6 +369,71 @@ export class MatrixApi {
   async react(roomId: string, eventId: string, key: string): Promise<string> {
     return this.sendEvent(roomId, "m.reaction", {
       "m.relates_to": { rel_type: "m.annotation", event_id: eventId, key },
+    });
+  }
+
+  // --- Push rules ------------------------------------------------------
+
+  private pushRulePath(kind: PushRuleKind, ruleId: string): string {
+    return `/_matrix/client/v3/pushrules/global/${kind}/${encodeURIComponent(ruleId)}`;
+  }
+
+  /** The rule of that kind and id, or null. */
+  async pushRule(kind: PushRuleKind, ruleId: string): Promise<PushRule | null> {
+    const { global } = await this.request<{
+      global: Record<PushRuleKind, PushRule[] | undefined>;
+    }>("GET", "/_matrix/client/v3/pushrules/");
+    return global[kind]?.find((rule) => rule.rule_id === ruleId) ?? null;
+  }
+
+  /** Sets the room's level, as Tchap does: no mute rule, one room rule. */
+  async setRoomRule(roomId: string, actions: unknown[]): Promise<void> {
+    await this.deleteMuteRule(roomId);
+    await this.request("PUT", this.pushRulePath("room", roomId), {
+      body: { actions },
+    });
+  }
+
+  /** Mutes the room, as Tchap does: no room rule, one override rule. */
+  async setMuteRule(roomId: string): Promise<void> {
+    await this.deleteRoomRule(roomId);
+    await this.request("PUT", this.pushRulePath("override", roomId), {
+      body: {
+        conditions: [{ kind: "event_match", key: "room_id", pattern: roomId }],
+        actions: ["dont_notify"],
+      },
+    });
+  }
+
+  async deleteRoomRule(roomId: string): Promise<void> {
+    if (await this.pushRule("room", roomId)) {
+      await this.request("DELETE", this.pushRulePath("room", roomId));
+    }
+  }
+
+  async deleteMuteRule(roomId: string): Promise<void> {
+    if (await this.pushRule("override", roomId)) {
+      await this.request("DELETE", this.pushRulePath("override", roomId));
+    }
+  }
+
+  async setPushRuleEnabled(
+    kind: PushRuleKind,
+    ruleId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.request("PUT", `${this.pushRulePath(kind, ruleId)}/enabled`, {
+      body: { enabled },
+    });
+  }
+
+  async setPushRuleActions(
+    kind: PushRuleKind,
+    ruleId: string,
+    actions: unknown[],
+  ): Promise<void> {
+    await this.request("PUT", `${this.pushRulePath(kind, ruleId)}/actions`, {
+      body: { actions },
     });
   }
 
