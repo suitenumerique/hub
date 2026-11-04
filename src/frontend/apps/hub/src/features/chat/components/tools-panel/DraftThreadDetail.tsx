@@ -155,10 +155,10 @@ export const DraftThreadDetail = ({
             conversationId={root.message.id}
             placeholder={
               isSupported
-                ? t("Answer")
+                ? t("Reply")
                 : t("Replying isn't available on this account yet.")
             }
-            inputLabel={t("Answer")}
+            inputLabel={t("Reply")}
             disabled={!isSupported || sendState === "blocked"}
             isSubmitting={isStarting}
             focusSignal={isOpen ? composerFocusSignal : undefined}

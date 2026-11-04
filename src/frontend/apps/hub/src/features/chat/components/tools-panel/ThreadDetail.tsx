@@ -458,10 +458,10 @@ export const ThreadDetail = ({
             conversationId={threadId}
             placeholder={
               isSupported
-                ? t("Answer")
+                ? t("Reply")
                 : t("Replying isn't available on this account yet.")
             }
-            inputLabel={t("Answer")}
+            inputLabel={t("Reply")}
             disabled={!isSupported || sendState === "blocked"}
             isSubmitting={isSending || isEditing}
             focusSignal={isOpen ? composerFocusSignal : undefined}

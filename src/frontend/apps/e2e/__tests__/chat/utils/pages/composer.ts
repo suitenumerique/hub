@@ -8,7 +8,7 @@ export const BLOCKED_PLACEHOLDER =
 
 /**
  * A message composer: the conversation one ("Message") or a thread one
- * ("Answer"), scoped to its own region of the page.
+ * ("Reply"), scoped to its own region of the page.
  */
 export class Composer {
   readonly field: Locator;
@@ -20,7 +20,7 @@ export class Composer {
 
   constructor(
     readonly scope: Locator,
-    fieldName: "Message" | "Answer" = "Message",
+    fieldName: "Message" | "Reply" = "Message",
   ) {
     this.field = scope.getByRole("textbox", { name: fieldName });
     const form = scope.locator(".hub__chat-composer");

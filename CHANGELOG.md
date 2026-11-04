@@ -124,6 +124,10 @@ and this project adheres to
 
 ### Changed
 
+- 🌐(frontend) Follow the agreed wording: "chat" in English and "discussion"
+  in French for a conversation, "fil de réponses" for a thread, "Message
+  privé" for an unnamed direct message, and "LaSuite Tchap v2" instead of
+  "Hub". Translate the missing French strings and fix wrong plurals.
 - 💄(frontend) Open the message actions with a right click on a bubble, as a
   menu at the pointer: quick reactions, Reply and Copy, then Edit and Delete,
   the bubble highlighted while it is open. Offer Delete on one's own messages
@@ -190,6 +194,8 @@ and this project adheres to
 
 ### Fixed
 
+- ✅(i18n) Keep keys containing a colon whole in the missing translations
+  test, as the extraction does.
 - 👷(ci) Run the CI again on the Ubuntu 26.04 runners.
 - 🐛(frontend) Open the thread list and a thread without loading older pages
   on a slow device: the list's edge reports count only once it is scrolled.

@@ -16,7 +16,7 @@ export class ThreadsPanel {
   constructor(readonly page: Page) {
     this.root = page.getByRole("complementary", { name: "Tools panel" });
     this.messages = this.root.locator(".hub__thread-detail__messages");
-    this.composer = new Composer(this.root, "Answer");
+    this.composer = new Composer(this.root, "Reply");
     this.timeline = new Timeline(page, this.root);
     this.unreadBanner = page.locator(".hub__unread-threads-banner");
   }
