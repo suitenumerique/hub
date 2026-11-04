@@ -313,6 +313,10 @@ export type ChatMessage = {
   /** Server-derived permissions for the connected user. */
   canEdit?: boolean;
   canDelete?: boolean;
+  /** Could not be sent: only this browser knows it, until it is sent again. */
+  sendFailed?: boolean;
+  /** The send it came from, for a message of this device. */
+  transactionId?: string;
   /** Set when this message opened a thread; omitted otherwise. */
   thread?: ChatThreadSummary;
   /** Id of the message this one replies to, quoted above it. */

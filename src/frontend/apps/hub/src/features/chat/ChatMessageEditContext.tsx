@@ -9,10 +9,16 @@ export type EditingChatMessage = {
 
 type ChatMessageEditContextValue = {
   startEditing: (message: EditingChatMessage) => void;
+  /** Sends again a message that could not be sent. */
+  retryFailedMessage: (id: string) => void;
+  /** Drops a message that could not be sent. */
+  discardFailedMessage: (id: string) => void;
 };
 
 const ChatMessageEditContext = createContext<ChatMessageEditContextValue>({
   startEditing: () => {},
+  retryFailedMessage: () => {},
+  discardFailedMessage: () => {},
 });
 
 export const ChatMessageEditProvider = ({

@@ -44,6 +44,7 @@ const driver = {
 
 const registry = {
   get: vi.fn(() => driver),
+  getSnapshot: vi.fn(() => []),
 };
 
 vi.mock("@/features/drivers/DriverRegistry", () => ({

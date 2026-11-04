@@ -109,6 +109,8 @@ export type SendChatMessageParams = ChatComposedMessage & {
   chatId: string;
   /** Posts a file previously stored through `uploadChatAttachment`. */
   attachment?: ChatAttachment;
+  /** Sending again with the same one never records the message twice. */
+  transactionId?: string;
 };
 
 export type UploadChatAttachmentParams = {
@@ -197,6 +199,8 @@ export type SendChatThreadReplyParams = ChatComposedMessage & {
   chatId: string;
   threadId: string;
   attachment?: ChatAttachment;
+  /** Sending again with the same one never records the message twice. */
+  transactionId?: string;
 };
 
 /** The first reply, whose `content` is the caption of `attachment` when one is sent. */

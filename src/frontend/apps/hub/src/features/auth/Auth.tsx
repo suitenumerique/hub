@@ -10,6 +10,7 @@ import { baseApiUrl } from "../api/utils";
 import { useChatAccountsBootstrap } from "../chat/hooks/useChatAccounts";
 import { useChatConnections } from "../chat/hooks/useChatConnection";
 import { clearComposerDrafts } from "../chat/composer/composerDraftStore";
+import { clearFailedMessages } from "../chat/composer/failedMessagesStore";
 import { useConfig } from "../config/ConfigProvider";
 import { getRegistry } from "../drivers/DriverRegistry";
 import { AppLoader } from "../layouts/components/AppLoader/AppLoader";
@@ -26,8 +27,9 @@ export const logout = async () => {
   registry.destroyAll();
   // Unavailable local storage must not prevent logout from Hub itself.
   await Promise.allSettled(cleanup);
-  // Last: a send interrupted by the cleanup above gives its text back as a draft.
+  // Last: a send interrupted by the cleanup above keeps its text on disk.
   clearComposerDrafts();
+  clearFailedMessages();
   window.location.replace(new URL("logout/", baseApiUrl()).href);
   posthog.reset();
 };

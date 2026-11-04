@@ -24,6 +24,10 @@ export const loadComposerDraft = (key: string): ComposerDraft => {
       return EMPTY_DRAFT;
     }
     const { text, mentions } = JSON.parse(stored) as ComposerDraft;
+    // What another version wrote, or a damaged entry, must not break the chat.
+    if (typeof text !== "string" || !Array.isArray(mentions)) {
+      return EMPTY_DRAFT;
+    }
     return { text, mentions: validateMentions(mentions, text) };
   } catch {
     // An unreadable draft is no draft.
@@ -63,3 +67,6 @@ export const removeChatDrafts = ({ accountId, chatId }: ChatRef) => {
 export const clearComposerDrafts = () => {
   removeDrafts(() => true);
 };
+
+/** What `/chat/new` holds before it has a conversation. */
+export const NEW_CHAT_DRAFT_ID = "new-chat";

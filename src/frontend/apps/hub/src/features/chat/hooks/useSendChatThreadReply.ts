@@ -15,14 +15,25 @@ import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
   ChatAttachment,
   ChatComposedMessage,
+  ChatMessage,
   ChatRef,
   ChatThread,
   ChatThreadDetail,
   ChatThreadMutationResult,
   ChatThreadSummary,
 } from "@/features/drivers/types";
+import { notify } from "@/features/ui/components/toast";
 
 import { chatKeys } from "../chatKeys";
+import {
+  createTransactionId,
+  getFailedMessages,
+  markMessageFailed,
+  removeFailedMessage,
+  trackSendingMessage,
+} from "../composer/failedMessagesStore";
+import { sendFailureMessage } from "../securityMessages";
+import { reserveSendSlot, type SendSlot } from "../sendQueue";
 
 import {
   appendThreadMessage,
@@ -30,7 +41,9 @@ import {
   createCurrentUserThreadAuthor,
   createOptimisticMessage,
   getRootThreadSummary,
+  isOptimisticThreadReplyId,
   mergeRootThreadSummary,
+  OPTIMISTIC_THREAD_REPLY_PREFIX,
   patchRootThreadSummary,
   removeThread,
   removeThreadMessage,
@@ -42,10 +55,31 @@ import {
 import { cancelReloads } from "./useChatEvents";
 import { useChatThreadCompositionSupport } from "./useChatThreadCompositionSupport";
 
+/** The thread's counters as this reply raised them, to undo if it fails. */
+type ReplyCountPatch = {
+  previousThreads: ChatThread[] | undefined;
+  optimisticThreads: ChatThread[] | undefined;
+  previousThreadListEntry: ChatThread | undefined;
+  rootMessageId: string | null;
+  previousRootThreadSummary: ChatThreadSummary | undefined;
+  expectedReplyCount: number;
+};
+
+// TanStack copies the hook's options onto a mutation still pending, at every
+// render: what a reply needs is fixed in its variables, as the thread on screen
+// may have changed by its turn.
 type SendThreadReplyVariables = {
+  ref: ChatRef;
+  threadId: string;
   message: ChatComposedMessage;
   /** Posts this uploaded file; `message` is then its caption. */
   attachment?: ChatAttachment;
+  optimistic: ChatMessage;
+  slot: SendSlot;
+  transactionId: string;
+  isSupported: boolean;
+  /** Filled at its turn: see `raiseReplyCount`. */
+  replyCount: { patch: ReplyCountPatch | null };
 };
 
 type SendThreadReplyContext = {
@@ -53,24 +87,22 @@ type SendThreadReplyContext = {
   threadsKey: QueryKey;
   messagesKey: QueryKey;
   previousThread: ChatThreadDetail | undefined;
-  previousThreads: ChatThread[] | undefined;
   optimisticThread: ChatThreadDetail | undefined;
-  optimisticThreads: ChatThread[] | undefined;
-  optimisticMessageId: string;
-  optimisticTimestamp: string;
-  previousThreadListEntry: ChatThread | undefined;
-  rootMessageId: string | null;
-  previousRootThreadSummary: ChatThreadSummary | undefined;
-  optimisticRootThreadMarker: string;
-  expectedReplyCount: number;
 };
 
 export type UseSendChatThreadReplyResult = {
+  /**
+   * Queues a reply. Replies leave one at a time and in order; one that fails
+   * stays in the thread. No need to wait for it.
+   */
   sendReply: (
     message: ChatComposedMessage,
     attachment?: ChatAttachment,
   ) => Promise<ChatThreadMutationResult>;
-  isSending: boolean;
+  /** Queues a failed reply again. */
+  retryFailedReply: (id: string) => void;
+  /** Drops a failed reply for good. */
+  discardFailedReply: (id: string) => void;
   isSupported: boolean;
 };
 
@@ -86,153 +118,174 @@ export const useSendChatThreadReply = (
     [t],
   );
 
-  const { mutateAsync, isPending } = useMutation<
+  /**
+   * The bubble shows at once, but a reply only counts from its turn: the replies
+   * before it are settled by then, so undoing it restores the exact counts.
+   */
+  const raiseReplyCount = async ({
+    ref: targetRef,
+    threadId: targetThreadId,
+    optimistic,
+    replyCount,
+  }: SendThreadReplyVariables) => {
+    const threadsKey: QueryKey = chatKeys.threads(targetRef);
+    const messagesKey: QueryKey = chatKeys.messages(targetRef);
+    await Promise.all([
+      cancelReloads(queryClient, threadsKey),
+      cancelReloads(queryClient, messagesKey),
+    ]);
+    const thread = queryClient.getQueryData<ChatThreadDetail>(
+      chatKeys.thread(targetRef, targetThreadId),
+    );
+    const previousThreads = queryClient.getQueryData<ChatThread[]>(threadsKey);
+    const previousMessages =
+      queryClient.getQueryData<ChatMessagesData>(messagesKey);
+    const previousThreadListEntry = previousThreads?.find(
+      (candidate) => candidate.id === targetThreadId,
+    );
+    const rootMessageId =
+      thread?.rootMessageId ?? previousThreadListEntry?.rootMessageId ?? null;
+    const previousRootThreadSummary = rootMessageId
+      ? getRootThreadSummary(previousMessages, rootMessageId)
+      : undefined;
+    // Without this reply and the ones queued behind it, and without the root.
+    const confirmedRows = (thread?.messages ?? []).filter(
+      ({ id }) => !isOptimisticThreadReplyId(id),
+    ).length;
+    const expectedReplyCount =
+      Math.max(
+        previousThreadListEntry?.replyCount ?? 0,
+        confirmedRows - 1,
+        previousRootThreadSummary?.replyCount ?? 0,
+      ) + 1;
+
+    queryClient.setQueryData<ChatThread[]>(threadsKey, (old) => {
+      const current = old?.find((candidate) => candidate.id === targetThreadId);
+      if (!old || !current) {
+        return old;
+      }
+      return upsertThread(old, {
+        ...current,
+        author: currentUserAuthor,
+        lastReplyAt: optimistic.timestamp,
+        lastReplyPreview: replyPreview(optimistic),
+        replyCount: Math.max(current.replyCount + 1, expectedReplyCount),
+        unreadCount: 0,
+      });
+    });
+    if (rootMessageId) {
+      queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
+        old
+          ? patchRootThreadSummary(
+              old,
+              rootMessageId,
+              {
+                id: targetThreadId,
+                replyCount: expectedReplyCount,
+                unreadCount: 0,
+              },
+              optimistic.id,
+            )
+          : old,
+      );
+    }
+    replyCount.patch = {
+      previousThreads,
+      optimisticThreads: queryClient.getQueryData<ChatThread[]>(threadsKey),
+      previousThreadListEntry,
+      rootMessageId,
+      previousRootThreadSummary,
+      expectedReplyCount,
+    };
+  };
+
+  const { mutateAsync } = useMutation<
     ChatThreadMutationResult,
     Error,
     SendThreadReplyVariables,
     SendThreadReplyContext
   >({
-    mutationFn: ({ message, attachment }) => {
-      if (!isSupported) {
+    // Offline, the send fails and the reply says so, rather than wait unseen.
+    networkMode: "always",
+    mutationFn: async (variables) => {
+      const {
+        ref: targetRef,
+        threadId: targetThreadId,
+        message,
+        attachment,
+        slot,
+        transactionId,
+      } = variables;
+      await slot.turn;
+      if (!variables.isSupported) {
         throw new Error("Thread reply composition is not available.");
       }
+      await raiseReplyCount(variables);
       return getRegistry()
-        .get(ref.accountId)
+        .get(targetRef.accountId)
         .sendChatThreadReply({
           ...message,
-          chatId: ref.chatId,
-          threadId,
+          chatId: targetRef.chatId,
+          threadId: targetThreadId,
           attachment,
+          transactionId,
         });
     },
-    onMutate: async ({ message, attachment }) => {
-      const threadKey: QueryKey = chatKeys.thread(ref, threadId);
-      const threadsKey: QueryKey = chatKeys.threads(ref);
-      const messagesKey: QueryKey = chatKeys.messages(ref);
-      await Promise.all([
-        cancelReloads(queryClient, threadKey),
-        cancelReloads(queryClient, threadsKey),
-        cancelReloads(queryClient, messagesKey),
-      ]);
-
+    onMutate: async ({
+      ref: targetRef,
+      threadId: targetThreadId,
+      optimistic,
+    }) => {
+      const threadKey: QueryKey = chatKeys.thread(targetRef, targetThreadId);
+      await cancelReloads(queryClient, threadKey);
       const previousThread =
         queryClient.getQueryData<ChatThreadDetail>(threadKey);
-      const previousThreads =
-        queryClient.getQueryData<ChatThread[]>(threadsKey);
-      const previousMessages =
-        queryClient.getQueryData<ChatMessagesData>(messagesKey);
-      const optimistic = createOptimisticMessage(
-        message,
-        "optimistic-thread-reply",
-        attachment,
-      );
-      holdThreadReply(ref, threadId, optimistic);
-      const previousThreadListEntry = previousThreads?.find(
-        (thread) => thread.id === threadId,
-      );
-      const rootMessageId =
-        previousThread?.rootMessageId ??
-        previousThreadListEntry?.rootMessageId ??
-        null;
-      const previousRootReplyCount = rootMessageId
-        ? getRootThreadSummary(previousMessages, rootMessageId)?.replyCount
-        : undefined;
-      const previousRootThreadSummary = rootMessageId
-        ? getRootThreadSummary(previousMessages, rootMessageId)
-        : undefined;
-      const expectedReplyCount =
-        Math.max(
-          previousThreadListEntry?.replyCount ?? 0,
-          Math.max(0, (previousThread?.messages.length ?? 1) - 1),
-          previousRootReplyCount ?? 0,
-        ) + 1;
-
+      holdThreadReply(targetRef, targetThreadId, optimistic);
       queryClient.setQueryData<ChatThreadDetail>(threadKey, (old) =>
         old ? appendThreadMessage(old, optimistic) : old,
       );
-      queryClient.setQueryData<ChatThread[]>(threadsKey, (old) => {
-        const current = old?.find((thread) => thread.id === threadId);
-        if (!old || !current) {
-          return old;
-        }
-        return upsertThread(old, {
-          ...current,
-          author: currentUserAuthor,
-          lastReplyAt: optimistic.timestamp,
-          lastReplyPreview: replyPreview(optimistic),
-          replyCount: Math.max(current.replyCount + 1, expectedReplyCount),
-          unreadCount: 0,
-        });
-      });
-      if (rootMessageId) {
-        queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
-          old
-            ? patchRootThreadSummary(
-                old,
-                rootMessageId,
-                {
-                  id: threadId,
-                  replyCount: expectedReplyCount,
-                  unreadCount: 0,
-                },
-                optimistic.id,
-              )
-            : old,
-        );
-      }
-
-      const optimisticThread =
-        queryClient.getQueryData<ChatThreadDetail>(threadKey);
-      const optimisticThreads =
-        queryClient.getQueryData<ChatThread[]>(threadsKey);
       return {
         threadKey,
-        threadsKey,
-        messagesKey,
+        threadsKey: chatKeys.threads(targetRef),
+        messagesKey: chatKeys.messages(targetRef),
         previousThread,
-        previousThreads,
-        optimisticThread,
-        optimisticThreads,
-        optimisticMessageId: optimistic.id,
-        optimisticTimestamp: optimistic.timestamp,
-        previousThreadListEntry,
-        rootMessageId,
-        previousRootThreadSummary,
-        optimisticRootThreadMarker: optimistic.id,
-        expectedReplyCount,
+        optimisticThread: queryClient.getQueryData<ChatThreadDetail>(threadKey),
       };
     },
-    onSuccess: (result, _variables, context) => {
+    onSuccess: (
+      result,
+      { ref: targetRef, threadId: targetThreadId, optimistic, replyCount },
+      context,
+    ) => {
+      removeFailedMessage(targetRef, targetThreadId, optimistic.id);
       if (!context) {
         return;
       }
       confirmThreadReply(
-        ref,
-        threadId,
-        context.optimisticMessageId,
+        targetRef,
+        targetThreadId,
+        optimistic.id,
         result.message,
       );
       const normalizedThread = {
         ...result.thread,
         replyCount: Math.max(
           result.thread.replyCount,
-          context.expectedReplyCount,
+          replyCount.patch?.expectedReplyCount ?? 0,
         ),
       };
       queryClient.setQueryData<ChatThreadDetail>(context.threadKey, (old) =>
         old
-          ? replaceOrAppendThreadMessage(
-              old,
-              context.optimisticMessageId,
-              result.message,
-            )
+          ? replaceOrAppendThreadMessage(old, optimistic.id, result.message)
           : result.threadDetail,
       );
       queryClient.setQueryData<ChatThread[]>(context.threadsKey, (old) => {
         if (!old) {
           return [normalizedThread];
         }
-        const current = old.find((thread) => thread.id === threadId);
+        const current = old.find(
+          (candidate) => candidate.id === targetThreadId,
+        );
         const newest =
           current && current.lastReplyAt > normalizedThread.lastReplyAt
             ? current
@@ -255,77 +308,153 @@ export const useSendChatThreadReply = (
           : old,
       );
       void queryClient.invalidateQueries({
-        queryKey: chatKeys.chatsOf(ref.accountId),
+        queryKey: chatKeys.chatsOf(targetRef.accountId),
       });
     },
-    onError: (_error, _variables, context) => {
+    onError: (
+      error,
+      { ref: targetRef, threadId: targetThreadId, optimistic, replyCount },
+      context,
+    ) => {
+      // First: its row takes over from the optimistic one, with the same id.
+      markMessageFailed(targetRef, targetThreadId, optimistic.id);
+      const failure = sendFailureMessage(
+        error,
+        t,
+        t("Your message could not be sent. Please try again."),
+      );
+      // Several replies failing together show one toast, not a pile.
+      notify.error(failure, { toastOptions: { toastId: failure } });
       if (!context) {
         return;
       }
-      releaseThreadReply(ref, threadId, context.optimisticMessageId);
+      releaseThreadReply(targetRef, targetThreadId, optimistic.id);
       queryClient.setQueryData<ChatThreadDetail>(
         context.threadKey,
         (current) => {
           if (current === context.optimisticThread)
             return context.previousThread;
           if (!current) return current;
-          return removeThreadMessage(current, context.optimisticMessageId);
+          return removeThreadMessage(current, optimistic.id);
         },
       );
-      queryClient.setQueryData<ChatThread[]>(context.threadsKey, (current) => {
-        if (current === context.optimisticThreads) {
-          return context.previousThreads;
-        }
-        if (!current) {
-          return current;
-        }
-        const optimisticEntry = current.find(
-          (thread) =>
-            thread.id === threadId &&
-            thread.lastReplyAt === context.optimisticTimestamp,
+      const patch = replyCount.patch;
+      if (patch) {
+        queryClient.setQueryData<ChatThread[]>(
+          context.threadsKey,
+          (current) => {
+            if (current === patch.optimisticThreads) {
+              return patch.previousThreads;
+            }
+            if (!current) {
+              return current;
+            }
+            const optimisticEntry = current.find(
+              (thread) =>
+                thread.id === targetThreadId &&
+                thread.lastReplyAt === optimistic.timestamp,
+            );
+            if (!optimisticEntry) {
+              return current;
+            }
+            return patch.previousThreadListEntry
+              ? upsertThread(current, {
+                  ...optimisticEntry,
+                  author: patch.previousThreadListEntry.author,
+                  lastReplyAt: patch.previousThreadListEntry.lastReplyAt,
+                  lastReplyPreview:
+                    patch.previousThreadListEntry.lastReplyPreview,
+                  replyCount: patch.previousThreadListEntry.replyCount,
+                  unreadCount:
+                    optimisticEntry.unreadCount === 0
+                      ? patch.previousThreadListEntry.unreadCount
+                      : optimisticEntry.unreadCount,
+                })
+              : removeThread(current, targetThreadId);
+          },
         );
-        if (!optimisticEntry) {
-          return current;
-        }
-        return context.previousThreadListEntry
-          ? upsertThread(current, {
-              ...optimisticEntry,
-              author: context.previousThreadListEntry.author,
-              lastReplyAt: context.previousThreadListEntry.lastReplyAt,
-              lastReplyPreview:
-                context.previousThreadListEntry.lastReplyPreview,
-              replyCount: context.previousThreadListEntry.replyCount,
-              unreadCount:
-                optimisticEntry.unreadCount === 0
-                  ? context.previousThreadListEntry.unreadCount
-                  : optimisticEntry.unreadCount,
-            })
-          : removeThread(current, threadId);
-      });
-      queryClient.setQueryData<ChatMessagesData>(
-        context.messagesKey,
-        (current) =>
-          current && context.rootMessageId
-            ? rollbackOptimisticRootThreadSummary(
-                current,
-                context.rootMessageId,
-                context.optimisticRootThreadMarker,
-                context.previousRootThreadSummary,
-              )
-            : current,
-      );
+        queryClient.setQueryData<ChatMessagesData>(
+          context.messagesKey,
+          (current) =>
+            current && patch.rootMessageId
+              ? rollbackOptimisticRootThreadSummary(
+                  current,
+                  patch.rootMessageId,
+                  optimistic.id,
+                  patch.previousRootThreadSummary,
+                )
+              : current,
+        );
+      }
       void queryClient.invalidateQueries({ queryKey: context.threadKey });
       void queryClient.invalidateQueries({ queryKey: context.threadsKey });
       void queryClient.invalidateQueries({ queryKey: context.messagesKey });
     },
+    onSettled: (_data, _error, { slot }) => slot.release(),
     meta: { noGlobalError: true },
   });
 
-  const sendReply = useCallback(
-    (message: ChatComposedMessage, attachment?: ChatAttachment) =>
-      mutateAsync({ message, attachment }),
-    [mutateAsync],
+  /** Takes its place in the queue now, whatever the hook shows by its turn. */
+  const send = useCallback(
+    (
+      message: ChatComposedMessage,
+      attachment: ChatAttachment | undefined,
+      transactionId: string,
+    ) => {
+      const optimistic = createOptimisticMessage(
+        message,
+        OPTIMISTIC_THREAD_REPLY_PREFIX,
+        attachment,
+      );
+      trackSendingMessage(ref, threadId, {
+        id: optimistic.id,
+        message,
+        attachment,
+        timestamp: optimistic.timestamp,
+        transactionId,
+      });
+      return mutateAsync({
+        ref,
+        threadId,
+        message,
+        attachment,
+        optimistic,
+        slot: reserveSendSlot(ref, threadId),
+        transactionId,
+        isSupported,
+        replyCount: { patch: null },
+      });
+    },
+    [isSupported, mutateAsync, ref, threadId],
   );
 
-  return { sendReply, isSending: isPending, isSupported };
+  const sendReply = useCallback(
+    (message: ChatComposedMessage, attachment?: ChatAttachment) =>
+      send(message, attachment, createTransactionId()),
+    [send],
+  );
+
+  const retryFailedReply = useCallback(
+    (id: string) => {
+      const failed = getFailedMessages(ref, threadId).find(
+        (candidate) => candidate.id === id,
+      );
+      if (!failed) {
+        return;
+      }
+      removeFailedMessage(ref, threadId, id);
+      // A new failure is reported by `onError`.
+      void send(failed.message, failed.attachment, failed.transactionId).catch(
+        () => {},
+      );
+    },
+    [ref, send, threadId],
+  );
+
+  const discardFailedReply = useCallback(
+    (id: string) => removeFailedMessage(ref, threadId, id),
+    [ref, threadId],
+  );
+
+  return { sendReply, retryFailedReply, discardFailedReply, isSupported };
 };

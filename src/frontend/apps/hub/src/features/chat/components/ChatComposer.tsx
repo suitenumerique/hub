@@ -18,7 +18,6 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/features/auth/Auth";
-import { ChatSecuritySendError } from "@/features/drivers/security";
 import type {
   ChatAttachment,
   ChatComposedMessage,
@@ -43,7 +42,7 @@ import { useComposerDraft } from "../hooks/useComposerDraft";
 import { useMentionAutocomplete } from "../hooks/useMentionAutocomplete";
 import type { ComposerMentionSource } from "../hooks/useMentionCandidates";
 import { usePendingAttachments } from "../hooks/usePendingAttachments";
-import { securityFailureMessage } from "../securityMessages";
+import { sendFailureMessage } from "../securityMessages";
 
 import { ComposerAttachments } from "./ComposerAttachments";
 import { ComposerMentionBackdrop } from "./ComposerMentionBackdrop";
@@ -57,11 +56,15 @@ type ChatComposerProps = {
   /**
    * Identifies the conversation or thread the draft belongs to. Each one keeps
    * its own draft until it is sent, so a message typed for one is still there
-   * on coming back and can never be sent to another. A transition from
-   * `undefined` to a value is NOT a switch — it is the new-chat → resolved-chat
-   * handoff — and keeps what was typed.
+   * on coming back and can never be sent to another.
    */
   conversationId?: string;
+  /**
+   * The people of a new conversation are being chosen: while they change, what
+   * is typed and the attached files follow, whichever conversation they resolve
+   * to. Leaving this state leaves them behind, in its own draft.
+   */
+  followsSelection?: boolean;
   disabled?: boolean;
   isSubmitting?: boolean;
   autoFocus?: boolean;
@@ -71,7 +74,7 @@ type ChatComposerProps = {
    * into the composer on Enter without holding a ref to it.
    */
   focusSignal?: number;
-  /** Message shown in the error toast on send failure. Defaults to a generic one. */
+  /** Message of the error toast when `onSubmit` rejects. Defaults to a generic one. */
   errorMessage?: string;
   /** Receives the text as typed and its formatted version (markdown, mentions). */
   onSubmit?: (message: ChatComposedMessage) => Promise<unknown> | unknown;
@@ -113,6 +116,7 @@ export const ChatComposer = ({
   placeholder,
   inputLabel,
   conversationId,
+  followsSelection = false,
   disabled = false,
   isSubmitting = false,
   autoFocus = false,
@@ -152,6 +156,9 @@ export const ChatComposer = ({
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const draftKeyRef = useRef(draftKey);
+  const followedSelectionRef = useRef(followsSelection);
+  // Changes when the composer moves on to another message than the one typed.
+  const compositionRef = useRef(0);
   const wasEditingRef = useRef(false);
   const handledFocusSignalRef = useRef<number | undefined>(undefined);
   const trimmedDraft = useMemo(() => draft.text.trim(), [draft.text]);
@@ -236,28 +243,32 @@ export const ChatComposer = ({
 
   // Show the draft of the conversation the composer now belongs to, before
   // paint: the text of conversation A must not appear in conversation B. The
-  // draft left behind is already stored. Only a `undefined → value` step, the
-  // new-chat → resolved-chat handoff, keeps what was typed, after the draft
-  // that conversation may already hold.
+  // draft left behind is already stored. Only while the people of a new
+  // conversation change does the message stay, after the draft that
+  // conversation may already hold.
   useLayoutEffect(() => {
     const previous = draftKeyRef.current;
+    const followedSelection = followedSelectionRef.current;
     draftKeyRef.current = draftKey;
+    followedSelectionRef.current = followsSelection;
     if (previous === draftKey) {
       return;
     }
     const stored = draftKey ? loadComposerDraft(draftKey) : EMPTY_DRAFT;
-    if (previous) {
-      setDraft(stored);
-      clearAttachments();
+    if (previous && followedSelection && followsSelection) {
+      saveComposerDraft(previous, EMPTY_DRAFT);
+      setDraft((typed) => {
+        if (!typed.text.trim()) {
+          return stored;
+        }
+        return stored.text ? joinDrafts(stored, "\n", typed) : typed;
+      });
       return;
     }
-    setDraft((typed) => {
-      if (!typed.text.trim()) {
-        return stored;
-      }
-      return stored.text ? joinDrafts(stored, "\n", typed) : typed;
-    });
-  }, [clearAttachments, draftKey, setDraft]);
+    compositionRef.current += 1;
+    setDraft(stored);
+    clearAttachments();
+  }, [clearAttachments, draftKey, followsSelection, setDraft]);
 
   useEffect(() => {
     if (!editDraft) {
@@ -331,12 +342,14 @@ export const ChatComposer = ({
 
       setIsSubmittingDraft(true);
       // Like Element, empty the field at once: the message already shows as an
-      // optimistic bubble while it is encrypted and sent, and a failure puts
-      // the text back below.
+      // optimistic bubble, and a conversation keeps what fails to send. Only
+      // what has nowhere else to go comes back below: a New Chat message without
+      // its conversation yet. The text of an edit stays until it is saved.
       const sent = trimDraft(draftRef.current);
       const text = sent.text;
+      const composition = compositionRef.current;
       const sentFrom = draftKeyRef.current;
-      if (text.length > 0) setDraft(EMPTY_DRAFT);
+      if (text.length > 0 && !editDraft) setDraft(EMPTY_DRAFT);
       let textSent = text.length === 0;
       // useChatTyping keeps typing writes ordered; the send never waits for it.
       void onTypingActivity?.(false);
@@ -346,7 +359,8 @@ export const ChatComposer = ({
           textSent = true;
         }
         // The text goes first, as in a message with files below it. Each file
-        // leaves the queue once posted so a failure only keeps the rest.
+        // leaves the list once handed over: to the conversation's send queue,
+        // or once posted in a new conversation, where a failure keeps the rest.
         if (!editDraft) {
           for (const item of readyAttachments) {
             await onSendAttachment?.(item.attachment);
@@ -358,34 +372,25 @@ export const ChatComposer = ({
         // Give the draft back so the user can retry, ahead of anything typed
         // meanwhile, and surface the failure: the send mutations silence the
         // global error handler (noGlobalError), so without this toast a failed
-        // send would vanish with no feedback. Never into another conversation:
-        // after leaving, it waits in the draft of the one it was written for.
+        // send would vanish with no feedback. Never into another conversation.
         const giveBack = (current: ComposerDraft) =>
           current.text.trim() ? joinDrafts(sent, "\n", current) : sent;
-        if (!textSent) {
-          if (!sentFrom || draftKeyRef.current === sentFrom) {
+        if (!textSent && !editDraft) {
+          if (compositionRef.current === composition) {
             setDraft(giveBack);
-          } else if (!editDraft) {
+          } else if (sentFrom) {
+            // Moved on meanwhile: it waits in the draft it was written from.
             saveComposerDraft(sentFrom, giveBack(loadComposerDraft(sentFrom)));
           }
         }
-        let message =
-          errorMessage ??
-          t("Your message could not be sent. Please try again.");
-        if (error instanceof ChatSecuritySendError) {
-          if (error.reason === "not-ready") {
-            message = t(
-              "Verify this device and wait for its keys before sending messages.",
-            );
-          } else if (error.reason === "send-failed") {
-            message = t(
-              "The encrypted message was rejected or interrupted. Check your connection and device security, then try again. Your draft is saved.",
-            );
-          } else {
-            message = securityFailureMessage(error.reason, t);
-          }
-        }
-        notify.error(message);
+        notify.error(
+          sendFailureMessage(
+            error,
+            t,
+            errorMessage ??
+              t("Your message could not be sent. Please try again."),
+          ),
+        );
       } finally {
         setIsSubmittingDraft(false);
       }

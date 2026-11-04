@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type {
@@ -12,8 +13,18 @@ import type {
   ChatMessage,
   ChatRef,
 } from "@/features/drivers/types";
+import { notify } from "@/features/ui/components/toast";
 
 import { chatKeys } from "../chatKeys";
+import {
+  createTransactionId,
+  getFailedMessages,
+  markMessageFailed,
+  removeFailedMessage,
+  trackSendingMessage,
+} from "../composer/failedMessagesStore";
+import { sendFailureMessage } from "../securityMessages";
+import { reserveSendSlot, type SendSlot } from "../sendQueue";
 
 import {
   appendMessageToNewestPage,
@@ -25,29 +36,42 @@ import {
 import { useChatCompositionSupport } from "./useChatCompositionSupport";
 import { cancelReloads, patchAcrossLoads } from "./useChatEvents";
 
+// TanStack copies the hook's options onto a mutation still pending, at every
+// render: what a send needs is fixed in its variables, never read from the hook.
 type SendMessageVariables = {
   ref: ChatRef;
   /** The text, or the caption of `attachment` (usually empty). */
   message: ChatComposedMessage;
   /** Posts this uploaded file instead of a text message. */
   attachment?: ChatAttachment;
+  optimistic: ChatMessage;
+  slot: SendSlot;
+  /** Set when a failure stays in the conversation, to send it again from there. */
+  transactionId?: string;
 };
 
 type SendMessageContext = {
-  ref: ChatRef;
   messagesKey: QueryKey;
-  optimisticId: string;
 };
 
 export type UseSendChatMessageResult = {
+  /**
+   * Queues a message in this conversation. Messages leave one at a time and in
+   * order; one that fails stays in the conversation. No need to wait for it.
+   */
   sendMessage: (message: ChatComposedMessage) => Promise<ChatMessage>;
+  /** Sends to another conversation; a failure is left to the caller. */
   sendMessageTo: (
     ref: ChatRef,
     message: ChatComposedMessage,
     attachment?: ChatAttachment,
   ) => Promise<ChatMessage>;
+  /** Queues an uploaded file, as `sendMessage` does. */
   sendAttachment: (attachment: ChatAttachment) => Promise<ChatMessage>;
-  isSending: boolean;
+  /** Queues a failed message again. */
+  retryFailedMessage: (id: string) => void;
+  /** Drops a failed message for good. */
+  discardFailedMessage: (id: string) => void;
   isSupported: boolean;
 };
 
@@ -55,15 +79,25 @@ export const useSendChatMessage = (
   ref: ChatRef | null,
 ): UseSendChatMessageResult => {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const isSupported = useChatCompositionSupport(ref);
 
-  const { mutateAsync, isPending } = useMutation<
+  const { mutateAsync } = useMutation<
     ChatMessage,
     Error,
     SendMessageVariables,
     SendMessageContext
   >({
-    mutationFn: ({ ref: targetRef, message, attachment }) => {
+    // Offline, the send fails and the message says so, rather than wait unseen.
+    networkMode: "always",
+    mutationFn: async ({
+      ref: targetRef,
+      message,
+      attachment,
+      slot,
+      transactionId,
+    }) => {
+      await slot.turn;
       const driver = getRegistry().get(targetRef.accountId);
       if (!driver.supportsComposition) {
         throw new Error("Conversation message composition is not available.");
@@ -72,28 +106,25 @@ export const useSendChatMessage = (
         ...message,
         chatId: targetRef.chatId,
         attachment,
+        transactionId,
       });
     },
-    onMutate: async ({ ref: targetRef, message, attachment }) => {
+    onMutate: async ({ ref: targetRef, optimistic }) => {
       const messagesKey: QueryKey = chatKeys.messages(targetRef);
       await cancelReloads(queryClient, messagesKey);
-      const optimistic = createOptimisticMessage(
-        message,
-        "optimistic-message",
-        attachment,
-      );
-
       queryClient.setQueryData<ChatMessagesData>(messagesKey, (old) =>
         old ? appendMessageToNewestPage(old, optimistic) : old,
       );
-
-      return {
-        ref: targetRef,
-        messagesKey,
-        optimisticId: optimistic.id,
-      };
+      return { messagesKey };
     },
-    onSuccess: async (message, _variables, context) => {
+    onSuccess: async (
+      message,
+      { ref: targetRef, optimistic, transactionId },
+      context,
+    ) => {
+      if (transactionId) {
+        removeFailedMessage(targetRef, undefined, optimistic.id);
+      }
       if (!context) {
         return;
       }
@@ -113,14 +144,14 @@ export const useSendChatMessage = (
                 page.messages.some((row) => row.id === message.id),
               )
             ) {
-              return removeMessageFromPages(old, context.optimisticId);
+              return removeMessageFromPages(old, optimistic.id);
             }
             if (
               old.pages.some((page) =>
-                page.messages.some((row) => row.id === context.optimisticId),
+                page.messages.some((row) => row.id === optimistic.id),
               )
             ) {
-              return replaceMessageInPages(old, context.optimisticId, message);
+              return replaceMessageInPages(old, optimistic.id, message);
             }
             return old.pages[0]?.isAtLiveEnd === false
               ? old
@@ -129,22 +160,71 @@ export const useSendChatMessage = (
         ),
       );
       void queryClient.invalidateQueries({
-        queryKey: chatKeys.chatsOf(context.ref.accountId),
+        queryKey: chatKeys.chatsOf(targetRef.accountId),
       });
     },
-    onError: (_error, _variables, context) => {
+    onError: (
+      error,
+      { ref: targetRef, optimistic, transactionId },
+      context,
+    ) => {
+      if (transactionId) {
+        // First: its row takes over from the optimistic one, with the same id.
+        markMessageFailed(targetRef, undefined, optimistic.id);
+        const failure = sendFailureMessage(
+          error,
+          t,
+          t("Your message could not be sent. Please try again."),
+        );
+        // Several messages failing together show one toast, not a pile.
+        notify.error(failure, { toastOptions: { toastId: failure } });
+      }
       if (context) {
         // Remove only this failed send. Restoring an earlier cache snapshot
         // would discard messages or decrypted content received in the meantime.
         queryClient.setQueryData<ChatMessagesData>(
           context.messagesKey,
-          (old) =>
-            old ? removeMessageFromPages(old, context.optimisticId) : old,
+          (old) => (old ? removeMessageFromPages(old, optimistic.id) : old),
         );
       }
     },
+    onSettled: (_data, _error, { slot }) => slot.release(),
     meta: { noGlobalError: true },
   });
+
+  /** Takes its place in the queue now, whatever the hook shows by its turn. */
+  const send = useCallback(
+    (
+      targetRef: ChatRef,
+      message: ChatComposedMessage,
+      attachment: ChatAttachment | undefined,
+      transactionId?: string,
+    ) => {
+      const optimistic = createOptimisticMessage(
+        message,
+        "optimistic-message",
+        attachment,
+      );
+      if (transactionId) {
+        trackSendingMessage(targetRef, undefined, {
+          id: optimistic.id,
+          message,
+          attachment,
+          timestamp: optimistic.timestamp,
+          transactionId,
+        });
+      }
+      return mutateAsync({
+        ref: targetRef,
+        message,
+        attachment,
+        optimistic,
+        slot: reserveSendSlot(targetRef),
+        transactionId,
+      });
+    },
+    [mutateAsync],
+  );
 
   const sendMessage = useCallback(
     (message: ChatComposedMessage) => {
@@ -153,9 +233,9 @@ export const useSendChatMessage = (
           new Error("Conversation message composition requires a chat."),
         );
       }
-      return mutateAsync({ ref, message });
+      return send(ref, message, undefined, createTransactionId());
     },
-    [mutateAsync, ref],
+    [ref, send],
   );
 
   const sendMessageTo = useCallback(
@@ -163,8 +243,8 @@ export const useSendChatMessage = (
       targetRef: ChatRef,
       message: ChatComposedMessage,
       attachment?: ChatAttachment,
-    ) => mutateAsync({ ref: targetRef, message, attachment }),
-    [mutateAsync],
+    ) => send(targetRef, message, attachment),
+    [send],
   );
 
   const sendAttachment = useCallback(
@@ -174,16 +254,45 @@ export const useSendChatMessage = (
           new Error("Sending an attachment requires a chat."),
         );
       }
-      return mutateAsync({ ref, message: { content: "" }, attachment });
+      return send(ref, { content: "" }, attachment, createTransactionId());
     },
-    [mutateAsync, ref],
+    [ref, send],
+  );
+
+  const retryFailedMessage = useCallback(
+    (id: string) => {
+      const failed =
+        ref && getFailedMessages(ref).find((candidate) => candidate.id === id);
+      if (!ref || !failed) {
+        return;
+      }
+      removeFailedMessage(ref, undefined, id);
+      // A new failure is reported by `onError`.
+      void send(
+        ref,
+        failed.message,
+        failed.attachment,
+        failed.transactionId,
+      ).catch(() => {});
+    },
+    [ref, send],
+  );
+
+  const discardFailedMessage = useCallback(
+    (id: string) => {
+      if (ref) {
+        removeFailedMessage(ref, undefined, id);
+      }
+    },
+    [ref],
   );
 
   return {
     sendMessage,
     sendMessageTo,
     sendAttachment,
-    isSending: isPending,
+    retryFailedMessage,
+    discardFailedMessage,
     isSupported,
   };
 };

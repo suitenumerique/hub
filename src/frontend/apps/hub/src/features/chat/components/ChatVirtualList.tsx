@@ -24,6 +24,7 @@ import {
 import { useChatMessages } from "../hooks/useChatMessages";
 import { useChatVisit } from "../hooks/useChatVisit";
 import { useConversationOpening } from "../hooks/useConversationOpening";
+import { useMessagesWithFailed } from "../hooks/useFailedMessages";
 import { useMainTimelineUnread } from "../hooks/useMainTimelineUnread";
 import { useMarkedUnreadGate } from "../hooks/useMarkedUnreadGate";
 import { useReadAtLatest } from "../hooks/useReadAtLatest";
@@ -58,7 +59,7 @@ export const ChatVirtualList = ({
 }: ChatVirtualListProps) => {
   const { t } = useTranslation();
   const {
-    messages,
+    messages: loadedMessages,
     authorsById,
     hasOlder,
     hasNewer,
@@ -75,10 +76,16 @@ export const ChatVirtualList = ({
     openAround,
     openLatest,
   } = useChatMessages(chatRef);
+  // As in Element, below the others: where they land if sent again.
+  const messages = useMessagesWithFailed(chatRef, undefined, loadedMessages, {
+    isEnabled: isAtLiveEnd,
+  });
   const unread = useMainTimelineUnread(chatRef);
   const markedUnread = useMarkedUnreadGate(chatRef);
+  // The server does not know a failed message: it cannot be read through. They
+  // come after the loaded messages, so the opening index holds for the list.
   const { isOpened, openedOnId, openingIndex } = useConversationOpening({
-    messages,
+    messages: loadedMessages,
     isInitialLoading,
     windowVersion,
     openAround,
@@ -90,7 +97,9 @@ export const ChatVirtualList = ({
   useChatVisit(chatRef, isOpened);
 
   const chatKey = `${chatRef.accountId}:${chatRef.chatId}`;
-  const lastMessage = messages[messages.length - 1];
+  // The latest message the server knows: a failed one stays below it, and can
+  // neither be read through nor tell that a new message arrived.
+  const lastMessage = loadedMessages[loadedMessages.length - 1];
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
@@ -98,7 +107,7 @@ export const ChatVirtualList = ({
   const previousAppendState = useRef({
     chatKey,
     windowVersion,
-    messageCount: messages.length,
+    messageCount: loadedMessages.length,
     lastMessageId: lastMessage?.id ?? null,
   });
   const atBottomRef = useRef(true);
@@ -120,7 +129,7 @@ export const ChatVirtualList = ({
   useReadAtLatest({
     isOpened,
     isAtLatest,
-    lastLoadedId: lastMessage?.id,
+    lastLoadedId: loadedMessages.at(-1)?.id,
     unread,
     markedUnread,
   });
@@ -328,14 +337,14 @@ export const ChatVirtualList = ({
     const isSameWindow =
       previous.chatKey === chatKey && previous.windowVersion === windowVersion;
     const didAppendLatest =
-      messages.length > previous.messageCount &&
+      loadedMessages.length > previous.messageCount &&
       lastMessage?.id !== previous.lastMessageId;
     const shouldFollowAppend =
       isAtLiveEnd && (atBottomRef.current || lastMessage?.authorId === "me");
     previousAppendState.current = {
       chatKey,
       windowVersion,
-      messageCount: messages.length,
+      messageCount: loadedMessages.length,
       lastMessageId: lastMessage?.id ?? null,
     };
 
@@ -357,7 +366,7 @@ export const ChatVirtualList = ({
     isListLoading,
     lastMessage?.authorId,
     lastMessage?.id,
-    messages.length,
+    loadedMessages.length,
     scrollToBottom,
     windowVersion,
   ]);

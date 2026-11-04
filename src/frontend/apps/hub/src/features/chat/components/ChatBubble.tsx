@@ -1,5 +1,13 @@
-import { Button, type ButtonElement } from "@gouvfr-lasuite/ui-components";
-import { More, Trash } from "@gouvfr-lasuite/ui-components/icons";
+import {
+  Button,
+  type ButtonElement,
+  Tooltip,
+} from "@gouvfr-lasuite/ui-components";
+import {
+  More,
+  Trash,
+  WarningFilled,
+} from "@gouvfr-lasuite/ui-components/icons";
 import {
   type MouseEvent,
   type SyntheticEvent,
@@ -96,6 +104,8 @@ type ChatBubbleSentProps = {
   threadId?: string;
   /** Drops Reply while keeping reactions and message actions. */
   compactToolbar?: boolean;
+  /** Could not be sent: an icon on its left sends it again. */
+  sendFailed?: boolean;
   showTimestamp: boolean;
 };
 
@@ -273,7 +283,10 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   } = props;
   useEnsureMessageDecrypted(chatRef, messageId, props.availability);
   const { openThread, openDraftThread } = useChatPanel();
-  const { startEditing } = useChatMessageEdit();
+  const { startEditing, retryFailedMessage, discardFailedMessage } =
+    useChatMessageEdit();
+  // Only a message of this user can fail to send.
+  const sendFailed = props.variant === "sent" && props.sendFailed === true;
   const isCompositionSupported = useChatCompositionSupport(chatRef);
   const { deleteMessage } = useDeleteChatMessage(chatRef, threadId);
   const downloadAttachment = useDownloadChatAttachment(chatRef.accountId);
@@ -407,6 +420,21 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     () => deleteMessage(messageForAction),
     [deleteMessage, messageForAction],
   );
+  const onRetry = useCallback(
+    () => retryFailedMessage(messageId),
+    [messageId, retryFailedMessage],
+  );
+  const onDiscard = useCallback(
+    () => discardFailedMessage(messageId),
+    [discardFailedMessage, messageId],
+  );
+  // The server does not have a failed message: deleting it is only local.
+  let deleteAction: (() => void | Promise<unknown>) | undefined;
+  if (sendFailed) {
+    deleteAction = onDiscard;
+  } else if (props.canDelete) {
+    deleteAction = onDelete;
+  }
   const isPendingThread = Boolean(thread && isOptimisticThreadId(thread.id));
   const canReply =
     (Boolean(thread) && !isPendingThread) ||
@@ -480,13 +508,14 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         <span className="hub__chat-bubble__edited">{t("edited")}</span>
       )}
       <MessageHoverToolbar
-        onReact={onReact}
+        onReact={sendFailed ? undefined : onReact}
         onReply={canReply ? onReply : undefined}
+        onRetry={sendFailed ? onRetry : undefined}
         onCopy={props.content ? onCopy : undefined}
         onDownload={attachment ? onDownload : undefined}
         onEdit={props.canEdit ? onEdit : undefined}
-        onDelete={props.canDelete ? onDelete : undefined}
-        compact={compactToolbar}
+        onDelete={deleteAction}
+        compact={compactToolbar || sendFailed}
         isOpen={isToolbarOpen}
         onClose={closeToolbar}
         triggerRef={moreButtonRef}
@@ -510,8 +539,27 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   // The bubble, then its "more" button, on the side facing the middle of the
   // conversation (Figma 3776:123952). A deleted message, or one still being
   // decrypted, has no actions: the space of the button stays empty.
+  const retryLabel = t("Message not sent. Click to retry");
   const renderLine = () => (
     <div className="hub__chat-bubble__line">
+      {sendFailed && (
+        <Tooltip
+          content={retryLabel}
+          placement="top"
+          className="hub__delayed-tooltip"
+        >
+          <Button
+            type="button"
+            size="nano"
+            variant="tertiary"
+            color="error"
+            className="hub__chat-bubble__retry"
+            aria-label={retryLabel}
+            icon={<WarningFilled size={16} aria-hidden="true" />}
+            onClick={onRetry}
+          />
+        </Tooltip>
+      )}
       <div
         ref={bodyRef}
         className="hub__chat-bubble__body"
