@@ -42,7 +42,7 @@ import {
 } from "../types";
 import { initialsFor, mxcUrl, withoutOrganization } from "./matrixIdentity";
 import { parseMatrixAttachment } from "./matrixMedia";
-import { isMarkedUnreadRoom } from "./matrixRoomMapping";
+import { isMarkedUnreadRoom, type RoomVisit } from "./matrixRoomMapping";
 import i18n from "@/i18n/initI18n";
 import { DecryptionFailureCode } from "matrix-js-sdk/lib/crypto-api";
 
@@ -450,62 +450,65 @@ export const clearThreadNotificationCounts = (
   return notified;
 };
 
-/** Timestamp of the latest reply across the threads the SDK has loaded. */
-export const latestThreadReplyTs = (room: Room): number | null =>
-  room.getThreads().reduce<number | null>((latest, thread) => {
+/** Notifications of the room's threads, whether the SDK loaded them or not. */
+const threadNotificationCount = (
+  room: Room,
+  type: NotificationCountType,
+): number =>
+  room.getUnreadNotificationCount(type) -
+  room.getRoomUnreadNotificationCount(type);
+
+/** The room's threads as they are now, to record a visit. */
+export const currentRoomVisit = (
+  room: Room,
+  previous: RoomVisit | null,
+): RoomVisit => ({
+  threadTs: room.getThreads().reduce<number | null>((latest, thread) => {
     const ts = thread.replyToEvent?.getTs();
     return ts !== undefined && (latest === null || ts > latest) ? ts : latest;
-  }, null);
+  }, previous?.threadTs ?? null),
+  threadNotifications: threadNotificationCount(
+    room,
+    NotificationCountType.Total,
+  ),
+  threadHighlights: threadNotificationCount(
+    room,
+    NotificationCountType.Highlight,
+  ),
+});
 
 /**
- * Unlike Element, which keeps a room unread while its threads are, threads
- * count only until the person opens the conversation (`threadsSeenUntil`):
- * their unread replies stay unread in the threads, and a newer reply makes the
- * conversation unread again.
+ * Specific to the Hub, as Element keeps threads out of a room's unread state
+ * and shows them in its threads activity centre: threads count here too, but
+ * only for what came after the person's last visit. Their unread replies stay
+ * unread in the threads themselves.
  */
 export const roomUnread = (
   room: Room,
   selfUserId: string | undefined,
-  threadsSeenUntil: number | null,
+  visit: RoomVisit | null,
 ): ChatUnread => {
   const markedUnread = isMarkedUnreadRoom(room);
-  const threads = room.getThreads();
-  const unseenThreads = threads.filter(
-    (thread) =>
-      threadsSeenUntil === null ||
-      (thread.replyToEvent?.getTs() ?? 0) > threadsSeenUntil,
-  );
-  // The homeserver also counts threads the SDK has not loaded: with no reply
-  // to date, they count until the first visit only.
-  const hasUnloadedThreadCount = (type: NotificationCountType) =>
-    threadsSeenUntil === null &&
-    room.getUnreadNotificationCount(type) -
-      room.getRoomUnreadNotificationCount(type) -
-      threads.reduce(
-        (sum, thread) =>
-          sum + room.getThreadUnreadNotificationCount(thread.id, type),
-        0,
-      ) >
-      0;
+  const seenUntil = visit?.threadTs ?? null;
   return {
     unread:
       markedUnread ||
       computeRoomUnread(room, selfUserId) ||
-      unseenThreads.some(
-        (thread) => computeThreadUnread(room, thread, selfUserId) > 0,
-      ) ||
-      hasUnloadedThreadCount(NotificationCountType.Total),
+      threadNotificationCount(room, NotificationCountType.Total) >
+        (visit?.threadNotifications ?? 0) ||
+      room
+        .getThreads()
+        .some(
+          (thread) =>
+            (seenUntil === null ||
+              (thread.replyToEvent?.getTs() ?? 0) > seenUntil) &&
+            computeThreadUnread(room, thread, selfUserId) > 0,
+        ),
     highlight:
       room.getRoomUnreadNotificationCount(NotificationCountType.Highlight) >
         0 ||
-      unseenThreads.some(
-        (thread) =>
-          room.getThreadUnreadNotificationCount(
-            thread.id,
-            NotificationCountType.Highlight,
-          ) > 0,
-      ) ||
-      hasUnloadedThreadCount(NotificationCountType.Highlight),
+      threadNotificationCount(room, NotificationCountType.Highlight) >
+        (visit?.threadHighlights ?? 0),
     markedUnread,
   };
 };

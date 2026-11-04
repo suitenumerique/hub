@@ -28,21 +28,42 @@ export const isFavouriteRoom = (room: Room): boolean =>
 export const MATRIX_MARKED_UNREAD_UNSTABLE = "com.famedly.marked_unread";
 
 /**
- * Hub-only room account data: the latest thread reply there was when the
- * current user last opened the conversation. Tchap and Element ignore it.
+ * Hub-only room account data: what the current user had seen of the threads
+ * when they last left the conversation. Tchap and Element ignore it.
  */
 export const MATRIX_HUB_VISIT = "fr.gouv.lasuite.hub.visit";
 
 declare module "matrix-js-sdk/lib/@types/event" {
   interface RoomAccountDataEvents {
-    [MATRIX_HUB_VISIT]: { thread_ts: number };
+    [MATRIX_HUB_VISIT]: {
+      thread_ts: number | null;
+      thread_notifications: number;
+      thread_highlights: number;
+    };
   }
 }
 
-/** Timestamp of the latest thread reply seen in the last visit, if any. */
-export const threadsSeenUntil = (room: Room): number | null => {
-  const ts = room.getAccountData(MATRIX_HUB_VISIT)?.getContent()?.thread_ts;
-  return typeof ts === "number" ? ts : null;
+/**
+ * The threads as seen in a visit: their latest known reply, and their
+ * notifications, which also count the replies the SDK has not loaded.
+ */
+export type RoomVisit = {
+  threadTs: number | null;
+  threadNotifications: number;
+  threadHighlights: number;
+};
+
+/** The current user's last visit, from any of their Hub sessions. */
+export const lastRoomVisit = (room: Room): RoomVisit | null => {
+  const content = room.getAccountData(MATRIX_HUB_VISIT)?.getContent();
+  if (!content) {
+    return null;
+  }
+  return {
+    threadTs: content.thread_ts ?? null,
+    threadNotifications: content.thread_notifications ?? 0,
+    threadHighlights: content.thread_highlights ?? 0,
+  };
 };
 
 /**

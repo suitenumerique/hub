@@ -144,6 +144,7 @@ import {
   buildAuthors,
   clearThreadNotificationCounts,
   computeRoomUnread,
+  currentRoomVisit,
   fetchReactionSnapshot,
   forgetThreadReply,
   getThreadReplyCounter,
@@ -154,7 +155,6 @@ import {
   isThreadFullyRead,
   isThreadReplyMessage,
   isUndecryptedEvent,
-  latestThreadReplyTs,
   matrixEventToChatMessage,
   needsReactionSnapshot,
   observeThreadReply,
@@ -203,6 +203,7 @@ import {
 import {
   isFavouriteRoom,
   isMarkedUnreadRoom,
+  lastRoomVisit,
   MATRIX_FAVOURITE_TAG,
   MATRIX_HUB_VISIT,
   MATRIX_MARKED_UNREAD_UNSTABLE,
@@ -210,8 +211,13 @@ import {
   matrixRoomToLocalChat,
   participantSetKey,
   roomOtherMembers,
-  threadsSeenUntil,
+  type RoomVisit,
 } from "./matrixRoomMapping";
+const isSameRoomVisit = (left: RoomVisit, right: RoomVisit | null): boolean =>
+  left.threadTs === right?.threadTs &&
+  left.threadNotifications === right.threadNotifications &&
+  left.threadHighlights === right.threadHighlights;
+
 /** Matches `getChatMessages`'s default; the homeserver may clamp it lower. */
 const DEFAULT_CHAT_PAGE_SIZE = 50;
 /**
@@ -538,7 +544,9 @@ export class MatrixDriver extends Driver {
    */
   private confirmedMainReadBoundaries = new Map<string, string>();
   /** Visits written by this session, until `/sync` echoes them back. */
-  private pendingVisits = new Map<string, number>();
+  private pendingVisits = new Map<string, RoomVisit>();
+  /** The conversation being visited: its threads count as seen meanwhile. */
+  private visitedChatId: string | null = null;
   /**
    * Storage namespace for the Hub/Matrix login context currently being
    * connected. `matrix-local` may be used by several seeded users in the same
@@ -699,52 +707,76 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * Records that the current user opened the conversation, in Hub-only room
-   * account data so it follows them across Hub sessions: the thread replies
-   * there are then no longer show it unread in the list, while the threads
-   * keep them unread. Writes only when a reply is newer than the last visit.
+   * The conversation opens: its thread replies no longer show it unread in
+   * the list, those it has and those received until it closes. The threads
+   * keep them unread.
    */
-  async markChatVisited(chatId: string): Promise<void> {
-    const { mx, room } = this.requireRoom("markChatVisited", chatId);
-    const latest = latestThreadReplyTs(room);
-    const seenUntil = this.threadsSeenUntil(room);
-    if (latest === null || (seenUntil !== null && latest <= seenUntil)) {
+  async startChatVisit(chatId: string): Promise<void> {
+    const { mx, room } = this.requireRoom("startChatVisit", chatId);
+    this.visitedChatId = chatId;
+    this.emit({
+      type: "unread:changed",
+      chatId,
+      unread: this.roomUnread(room, mx.getUserId() ?? undefined),
+    });
+    await this.saveRoomVisit(mx, room);
+  }
+
+  async endChatVisit(chatId: string): Promise<void> {
+    const { mx, room } = this.requireRoom("endChatVisit", chatId);
+    const saved = this.saveRoomVisit(mx, room);
+    if (this.visitedChatId === chatId) {
+      this.visitedChatId = null;
+    }
+    await saved;
+  }
+
+  /**
+   * Records the room's threads as seen, in Hub-only room account data so that
+   * it follows the person across Hub sessions. Writes only what changed.
+   */
+  private async saveRoomVisit(mx: MatrixClient, room: Room): Promise<void> {
+    const seen = this.lastVisit(room);
+    const visit = currentRoomVisit(room, seen);
+    const hasThreads =
+      visit.threadTs !== null ||
+      visit.threadNotifications > 0 ||
+      visit.threadHighlights > 0;
+    if (!hasThreads || isSameRoomVisit(visit, seen)) {
       return;
     }
-    const selfUserId = mx.getUserId() ?? undefined;
-    const emitUnread = () =>
-      this.emit({
-        type: "unread:changed",
-        chatId,
-        unread: this.roomUnread(room, selfUserId),
-      });
-    this.pendingVisits.set(chatId, latest);
-    emitUnread();
+    this.pendingVisits.set(room.roomId, visit);
     try {
-      await mx.setRoomAccountData(chatId, MATRIX_HUB_VISIT, {
-        thread_ts: latest,
+      await mx.setRoomAccountData(room.roomId, MATRIX_HUB_VISIT, {
+        thread_ts: visit.threadTs,
+        thread_notifications: visit.threadNotifications,
+        thread_highlights: visit.threadHighlights,
       });
     } catch (error) {
-      if (this.pendingVisits.get(chatId) === latest) {
-        this.pendingVisits.delete(chatId);
-        emitUnread();
+      if (this.pendingVisits.get(room.roomId) === visit) {
+        this.pendingVisits.delete(room.roomId);
+        this.emit({
+          type: "unread:changed",
+          chatId: room.roomId,
+          unread: this.roomUnread(room, mx.getUserId() ?? undefined),
+        });
       }
       throw error;
     }
   }
 
   /** The last visit, this session's write included before its echo. */
-  private threadsSeenUntil(room: Room): number | null {
-    const stored = threadsSeenUntil(room);
-    const pending = this.pendingVisits.get(room.roomId) ?? null;
-    if (stored === null || pending === null) {
-      return stored ?? pending;
-    }
-    return Math.max(stored, pending);
+  private lastVisit(room: Room): RoomVisit | null {
+    return this.pendingVisits.get(room.roomId) ?? lastRoomVisit(room);
   }
 
   private roomUnread(room: Room, selfUserId: string | undefined): ChatUnread {
-    return roomUnread(room, selfUserId, this.threadsSeenUntil(room));
+    const seen = this.lastVisit(room);
+    return roomUnread(
+      room,
+      selfUserId,
+      room.roomId === this.visitedChatId ? currentRoomVisit(room, seen) : seen,
+    );
   }
 
   /**
@@ -2444,6 +2476,7 @@ export class MatrixDriver extends Driver {
     if (latest) {
       await mx.sendReadReceipt(latest, ReceiptType.Read, true);
     }
+    await this.saveRoomVisit(mx, room);
   }
 
   async markChatReadThrough(chatId: string, eventId: string): Promise<void> {
@@ -3914,6 +3947,12 @@ export class MatrixDriver extends Driver {
       if (type === EventType.FullyRead) {
         emitMainTimelineUnread(room);
       }
+      if (type === MATRIX_HUB_VISIT) {
+        const pending = this.pendingVisits.get(room.roomId);
+        if (pending && isSameRoomVisit(pending, lastRoomVisit(room))) {
+          this.pendingVisits.delete(room.roomId);
+        }
+      }
       if (
         type === EventType.MarkedUnread ||
         type === MATRIX_MARKED_UNREAD_UNSTABLE ||
@@ -4339,6 +4378,8 @@ export class MatrixDriver extends Driver {
     this.mediaUploadLimit = null;
     this.encryptionPreparedAt.clear();
     this.confirmedMainReadBoundaries.clear();
+    this.pendingVisits.clear();
+    this.visitedChatId = null;
   }
 
   destroy(): void {

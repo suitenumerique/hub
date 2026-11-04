@@ -89,6 +89,8 @@ type ChatViewProps = {
   onSent?: (ref: ChatRef) => void;
   /** Bumped by the host to move focus into the composer. */
   composerFocusSignal?: number;
+  /** Asks the host for that, as the jump to the latest messages does. */
+  onFocusComposer: () => void;
   /** Enables drafting before a selected participant set has a conversation. */
   canComposeDraft?: boolean;
   /** Account of that draft, so files can be uploaded before it exists. */
@@ -117,6 +119,7 @@ export const ChatView = ({
   renderEmpty,
   onSent,
   composerFocusSignal,
+  onFocusComposer,
   canComposeDraft = false,
   draftAccountId,
   draftParticipants,
@@ -173,13 +176,6 @@ export const ChatView = ({
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
   const chatKey = chatRef ? `${chatRef.accountId}:${chatRef.chatId}` : null;
-  // Bumped by the jump to the latest messages, which moves the focus into the
-  // composer as Element's does. Added to the host's own signal.
-  const [jumpFocusSignal, setJumpFocusSignal] = useState(0);
-  const focusComposerAfterJump = useCallback(
-    () => setJumpFocusSignal((signal) => signal + 1),
-    [],
-  );
 
   // The same composer submits either a new event or an in-place edit. Notify
   // `onSent` only for new messages so editing never changes navigation state.
@@ -358,7 +354,7 @@ export const ChatView = ({
         <ChatConversation
           chatRef={chatRef}
           onMessageJumpChange={handleConversationJumpChange}
-          onJumpToLatest={focusComposerAfterJump}
+          onJumpToLatest={onFocusComposer}
         />
       );
     }
@@ -435,9 +431,7 @@ export const ChatView = ({
                           (chatRef ? !isCompositionSupported : !canComposeDraft)
                         }
                         isSubmitting={isSendingMessage || isEditing}
-                        focusSignal={
-                          (composerFocusSignal ?? 0) + jumpFocusSignal
-                        }
+                        focusSignal={composerFocusSignal}
                         errorMessage={
                           editingMessage
                             ? t(

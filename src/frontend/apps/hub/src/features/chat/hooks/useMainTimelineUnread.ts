@@ -62,8 +62,8 @@ export type UseMainTimelineUnreadResult = ChatMainTimelineUnread & {
 
 /**
  * Owns the monotonic local projection and serialised Matrix writes for the
- * main timeline. Rendering rows never marks them read: the caller must pass
- * identities measured inside a stable, focused scroll viewport.
+ * main timeline. Opening reads it all with `markAllRead`; afterwards, rows are
+ * read only through identities measured in a stable, focused scroll viewport.
  */
 export const useMainTimelineUnread = (
   ref: ChatRef,
