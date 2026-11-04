@@ -17,6 +17,8 @@ export class Composer {
   readonly attachments: Locator;
   readonly editingStatus: Locator;
   readonly mentionSuggestions: Locator;
+  /** Highlight of a mention in the field, before sending. */
+  readonly draftMention: Locator;
 
   constructor(
     readonly scope: Locator,
@@ -33,6 +35,7 @@ export class Composer {
     this.mentionSuggestions = scope.page().getByRole("listbox", {
       name: "Mention suggestions",
     });
+    this.draftMention = form.locator(".hub__chat-composer__mention");
   }
 
   /**
@@ -45,6 +48,13 @@ export class Composer {
     });
     await this.field.fill(text);
     await expect(this.field).toBeEditable();
+    await this.field.press("Enter");
+    await expect(this.field).toHaveValue("");
+  }
+
+  /** Sends what the field already holds, such as a draft found there. */
+  async sendDraft(): Promise<void> {
+    await expect(this.sendButton).toBeEnabled({ timeout: 15_000 });
     await this.field.press("Enter");
     await expect(this.field).toHaveValue("");
   }

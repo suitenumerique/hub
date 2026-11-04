@@ -58,6 +58,14 @@ export class ThreadsPanel {
       .toBe(true);
   }
 
+  /** Leaves the open thread for the list of threads. */
+  async backToList(): Promise<void> {
+    await this.root
+      .getByRole("button", { name: "Back to all threads" })
+      .click();
+    await expect(this.composer.field).toHaveCount(0);
+  }
+
   /** The open thread shows its root message. */
   async expectThread(rootText: string): Promise<void> {
     await this.expectOpen();
