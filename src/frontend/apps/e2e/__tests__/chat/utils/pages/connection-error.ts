@@ -23,4 +23,4 @@ export class ConnectionError {
 }
 
 export const ANOTHER_TAB_MESSAGE =
-  "Another Hub tab is using this session. Close that tab, then try again here. You can keep Element open.";
+  "Another LaSuite Tchap v2 tab is using this session. Close that tab, then try again here. You can keep Tchap open.";
