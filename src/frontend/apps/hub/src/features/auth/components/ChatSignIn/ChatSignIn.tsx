@@ -75,15 +75,15 @@ export const ChatSignIn = ({ user, accountId }: ChatSignInProps) => {
         break;
       case "unknown-server":
         error = t(
-          "Your email belongs to a Tchap server that is not available here.",
+          "The chat server found for your email is not allowed in this environment.",
         );
         break;
       case "unavailable":
-        error = t("Tchap cannot be reached. Try again in a moment.");
+        error = t("The chat servers cannot be reached. Try again in a moment.");
     }
   } else if (signIn.error) {
     error = t(
-      "Signing in to Tchap failed. Try again, or contact your administrator if the problem persists.",
+      "Signing in to the chat did not succeed. Try again, or contact your administrator if the problem persists.",
     );
   }
 

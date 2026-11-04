@@ -34,7 +34,7 @@ export const ToolsPanelHeader = ({
           type="button"
           className="hub__chat-tools-panel__header-button"
           onClick={onBack}
-          aria-label={t("Back to all threads")}
+          aria-label={t("Back to threads")}
           tabIndex={isOpen ? 0 : -1}
         >
           <ArrowLeft />

@@ -282,9 +282,10 @@ export const matrixJoinedRoomToLocalChat = (
           room.name,
       );
   }
-  // Without any display name, a neutral label rather than a Matrix id.
+  // Without any display name, a neutral label rather than a Matrix id. A direct
+  // message reads the same with two people or more.
   if (!name || isTechnicalName(name)) {
-    name = isDirect ? i18n.t("Private chat") : i18n.t("Group chat");
+    name = i18n.t("Direct message");
   }
 
   return {
