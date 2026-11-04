@@ -59,11 +59,11 @@ const HomePageContent = () => {
   return (
     <div className="hub__home">
       <Head>
-        <title>{t("LaSuite Tchap")}</title>
+        <title>{t("LaSuite Tchap v2")}</title>
         <meta
           name="description"
           content={t(
-            "LaSuite Tchap: one place to chat, share documents and meet.",
+            "LaSuite Tchap v2: create a group for your team or project and find its chat, shared files and video calls in one place. Add or remove a member in one click.",
           )}
         />
       </Head>
@@ -78,9 +78,11 @@ const HomePageContent = () => {
             logo={<div className="hub__logo-icon" />}
             banner=""
             title={t(
-              "LaSuite Tchap, one place to chat, share documents and meet.",
+              "LaSuite Tchap v2: chat, files and video calls for your team, in one place.",
             )}
-            subtitle={t("Sign in with your work account to get started.")}
+            subtitle={t(
+              "Login to La Suite collaborative tools from one place. Soon, you will also be able to manage your account information here.",
+            )}
             mainButton={
               <div className="c__hero__buttons">
                 <Button onClick={() => login()} fullWidth>

@@ -189,11 +189,13 @@ export const Auth = ({ children }: PropsWithChildren) => {
     let message: string;
     switch (chatUnconfigured ? "unconfigured" : reason) {
       case "unconfigured":
-        message = t("Tchap is not set up here. Contact your administrator.");
+        message = t(
+          "Chat is not configured on LaSuite Tchap v2. Contact your administrator.",
+        );
         break;
       case "another-tab":
         message = t(
-          "LaSuite Tchap is already open in another tab. Close that tab, then try again here. Your other Tchap apps can stay open.",
+          "Another LaSuite Tchap v2 tab is using this session. Close that tab, then try again here. You can keep Tchap open.",
         );
         break;
       case "unsupported":
@@ -208,17 +210,17 @@ export const Auth = ({ children }: PropsWithChildren) => {
         break;
       case "sign-in-failed":
         message = t(
-          "Signing in to Tchap failed. Try again, or contact your administrator if the problem persists.",
+          "Signing in to the chat did not succeed. Try again, or contact your administrator if the problem persists.",
         );
         break;
       case "unknown-server":
         message = t(
-          "Your email belongs to a Tchap server that is not available here.",
+          "The chat server found for your email is not allowed in this environment.",
         );
         break;
       case "account-expired":
         message = t(
-          "Your Tchap account has expired. Renew it with the link sent to you by email, then try again.",
+          "Your chat account has expired. Renew it with the link sent to you by email, then try again.",
         );
         break;
       default:
@@ -228,7 +230,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     }
     return (
       <main className="hub__connection-error">
-        <h1>{t("Cannot connect to Tchap")}</h1>
+        <h1>{t("Chat connection interrupted")}</h1>
         <p role="alert">{message}</p>
         {detail && <p>{detail}</p>}
         <Button onClick={() => window.location.reload()}>
@@ -255,7 +257,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
                 .catch(() => setReplacementFailed(true));
             }}
           >
-            {t("Reconnect as a new device")}
+            {t("Reconnect LaSuite Tchap v2 with a new device")}
           </Button>
         )}
         {replacementFailed && (
