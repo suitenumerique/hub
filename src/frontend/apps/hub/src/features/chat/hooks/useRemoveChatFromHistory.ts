@@ -15,6 +15,7 @@ import type {
 import { notify } from "@/features/ui/components/toast";
 
 import { chatKeys } from "../chatKeys";
+import { removeChatDrafts } from "../composer/composerDraftStore";
 
 export type UseRemoveChatFromHistoryResult = {
   removeFromHistory: () => Promise<RemoveChatFromHistoryResult>;
@@ -48,6 +49,7 @@ export const useRemoveChatFromHistory = (
   );
 
   const clearConversationCaches = () => {
+    removeChatDrafts(ref);
     queryClient.setQueryData<ChatSections>(
       chatKeys.chatsOf(ref.accountId),
       (sections) => withoutChat(sections, ref.chatId),
