@@ -483,8 +483,8 @@ export abstract class Driver {
     markedUnread: boolean,
   ): Promise<void>;
   /**
-   * The conversation opens, then closes: its thread replies until it closes no
-   * longer show it unread, while the threads keep them unread.
+   * The conversation starts showing, then stops: its thread replies until then
+   * no longer show it unread, while the threads keep them unread.
    */
   abstract startChatVisit(chatId: string): Promise<void>;
   abstract endChatVisit(chatId: string): Promise<void>;

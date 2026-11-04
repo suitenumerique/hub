@@ -7,6 +7,7 @@ import {
   withSyncGap,
 } from "./utils/flows";
 import { uniqueText } from "./utils/ids";
+import { READ_MARKER_REQUESTS } from "./utils/network";
 
 /** As many unread messages as the issue's example: more than one screen. */
 const UNREAD_COUNT = 26;
@@ -105,6 +106,85 @@ test.describe("Opening a conversation", () => {
       await bobChat.timeline.expectAtLatest(`${prefix} [${MORE_THAN_LOADED}]`);
       await expect(bobChat.composer.field).toBeFocused();
     });
+  });
+
+  test("waits for the page to be visible to read it", async ({
+    people,
+    hub,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const carol = await people.create("Carol");
+    const roomId = await createUnencryptedRoom(alice, [bob]);
+    await createUnencryptedRoom(carol, [bob]);
+    await alice.api.sendText(roomId, uniqueText("Already read"));
+    await markRoomRead(bob, roomId);
+
+    const bobChat = await hub.open(bob);
+    await bobChat.openConversation(carol.displayName);
+    const prefix = uniqueText("Message");
+    const eventIds = await alice.api.sendMany(roomId, prefix, UNREAD_COUNT);
+    await alice.api.sendText(roomId, uniqueText("Reply"), {
+      threadRootId: eventIds[0],
+    });
+    await bobChat.leftPanel.expectUnread(alice.displayName);
+
+    await test.step("opened in the background, it stays unread", async () => {
+      await bobChat.setPageVisible(false);
+      await bobChat.openConversation(alice.displayName);
+      await bobChat.timeline.expectOpenedOnFirstUnread(`${prefix} [1]`);
+      // Longer than reading takes once the page is visible.
+      await bobChat.page.waitForTimeout(1_500);
+      expect(await fullyRead(bob, roomId)).toBeNull();
+      expect(await bob.api.roomAccountData(roomId, HUB_VISIT)).toBeNull();
+      await bobChat.leftPanel.expectUnread(alice.displayName);
+    });
+
+    await test.step("once the page shows, it is read and its dot goes", async () => {
+      await bobChat.setPageVisible(true);
+      await bobChat.leftPanel.expectRead(alice.displayName);
+      await expect.poll(() => fullyRead(bob, roomId)).toBe(eventIds.at(-1));
+      await expect
+        .poll(() => bob.api.roomAccountData(roomId, HUB_VISIT))
+        .not.toBeNull();
+    });
+  });
+
+  test("stops retrying a failed read once the conversation is left", async ({
+    people,
+    hub,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const carol = await people.create("Carol");
+    const roomId = await createUnencryptedRoom(alice, [bob]);
+    await createUnencryptedRoom(carol, [bob]);
+    await alice.api.sendText(roomId, uniqueText("Already read"));
+    await markRoomRead(bob, roomId);
+
+    const bobChat = await hub.open(bob);
+    await bobChat.openConversation(carol.displayName);
+    await alice.api.sendText(roomId, uniqueText("Unread"));
+    await bobChat.leftPanel.expectUnread(alice.displayName);
+
+    let attempts = 0;
+    let failWrites: () => void = () => {};
+    const writesFail = new Promise<void>((resolve) => {
+      failWrites = resolve;
+    });
+    await bobChat.page.route(READ_MARKER_REQUESTS, async (route) => {
+      attempts += 1;
+      await writesFail;
+      await route.abort();
+    });
+
+    await bobChat.openConversation(alice.displayName);
+    await expect.poll(() => attempts).toBe(1);
+    await bobChat.openConversation(carol.displayName);
+    failWrites();
+    // Longer than the first retry would wait.
+    await bobChat.page.waitForTimeout(2_500);
+    expect(attempts).toBe(1);
   });
 
   test("opens at the bottom without unread messages", async ({

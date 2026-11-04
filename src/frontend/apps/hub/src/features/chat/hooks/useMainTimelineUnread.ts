@@ -43,9 +43,14 @@ export const useMainTimelineUnread = (
   const writingRef = useRef(false);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
+  const isUnmountedRef = useRef(false);
 
   const flushBoundary = useCallback(async () => {
-    if (writingRef.current || !queuedBoundaryRef.current) {
+    if (
+      isUnmountedRef.current ||
+      writingRef.current ||
+      !queuedBoundaryRef.current
+    ) {
       return;
     }
     writingRef.current = true;
@@ -67,6 +72,11 @@ export const useMainTimelineUnread = (
         setReadingThroughId(null);
       }
     } catch {
+      // A failure after leaving the conversation is not retried: nothing would
+      // ever stop the retries of one that keeps failing.
+      if (isUnmountedRef.current) {
+        return;
+      }
       const delay = Math.min(
         1_000 * 2 ** retryCountRef.current,
         READ_RETRY_MAX_MS,
@@ -87,15 +97,16 @@ export const useMainTimelineUnread = (
     }
   }, [queryClient, queryKey, ref.accountId, ref.chatId]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
       if (retryTimerRef.current !== null) {
         window.clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-    },
-    [],
-  );
+    };
+  }, []);
 
   const hasUnread = readingThroughId ? false : (query.data?.hasUnread ?? false);
   const liveEndId = query.data?.liveEndId ?? null;
