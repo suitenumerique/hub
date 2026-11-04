@@ -8,6 +8,14 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Choose how much each chat notifies from its "..." and header
+  menus: All messages, Mentions & following or Mute, stored as push rules
+  shared with Tchap and Element. A chat created or joined in the Hub starts
+  at All messages; one from elsewhere stays on Default, its global setting.
+  In a thread, only mentions and followed threads notify. Muted chats are
+  never unread unless marked so, and stay at the bottom of their list. Thread
+  replies now move a chat up and mark it unread, followed or not; a reaction
+  or a deleted message no longer moves it up. #91
 - ✨(frontend) Open a conversation with unread messages on the first one,
   below the unread line, and mark it all read as soon as it shows, threads
   aside; it then reopens at the bottom. A button, as in Element, goes back to
