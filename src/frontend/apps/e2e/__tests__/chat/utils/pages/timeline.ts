@@ -283,6 +283,13 @@ export class Timeline {
     });
   }
 
+  /** Beside a message that could not be sent: a click sends it again. */
+  retryIcon(target: MessageTarget): Locator {
+    return this.bubble(target).getByRole("button", {
+      name: "Message not sent. Click to retry",
+    });
+  }
+
   /** Bubble of an image or a file. */
   attachmentMessage(fileName: string, kind: "image" | "file"): Locator {
     // `has` looks inside each bubble: the inner locator must not start from

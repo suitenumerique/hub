@@ -40,7 +40,7 @@ export class Composer {
 
   /**
    * Types and sends with Enter, then checks the field is empty again. The
-   * field is read-only while the previous message is being sent.
+   * field is read-only only while an edit is being saved.
    */
   async send(text: string): Promise<void> {
     await expect(this.field).not.toHaveAttribute("aria-busy", "true", {

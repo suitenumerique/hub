@@ -1,8 +1,13 @@
 import { expect, test } from "./utils/fixtures";
-import { createUnencryptedRoom, signInAgain } from "./utils/flows";
+import { testPdf } from "./utils/files";
+import {
+  createUnencryptedRoom,
+  signInAgain,
+  verifyHubDevice,
+} from "./utils/flows";
 import { signInToHubBackend } from "./utils/hub-session";
-import { uniqueText } from "./utils/ids";
-import { SEND_REQUESTS } from "./utils/network";
+import { uniqueId, uniqueText } from "./utils/ids";
+import { holdRequests, SEND_REQUESTS } from "./utils/network";
 import { ChatPage } from "./utils/pages/chat-page";
 
 /** The text of every draft this browser keeps on disk. */
@@ -202,54 +207,6 @@ test.describe("Composer drafts", () => {
     });
   });
 
-  test("gives a refused message back to its conversation", async ({
-    people,
-    hub,
-  }) => {
-    const alice = await people.create("Alice");
-    const bob = await people.create("Bob");
-    const carol = await people.create("Carol");
-    const roomId = await createUnencryptedRoom(alice, [bob]);
-    await createUnencryptedRoom(alice, [carol]);
-    const text = uniqueText("Refused");
-
-    const chat = await hub.open(alice);
-    await chat.openConversation(bob.displayName);
-    // The SDK logs the failure, which opens the dev overlay above the page.
-    await chat.page.addStyleTag({
-      content: "nextjs-portal { display: none !important; }",
-    });
-    let refuse = () => {};
-    const refusal = new Promise<void>((resolve) => {
-      refuse = resolve;
-    });
-    await chat.page.route(SEND_REQUESTS, async (route) => {
-      await refusal;
-      await route.fulfill({
-        status: 403,
-        json: { errcode: "M_FORBIDDEN", error: "Refused" },
-      });
-    });
-    await chat.composer.send(text);
-
-    await test.step("it never lands in the conversation left meanwhile", async () => {
-      await chat.openConversation(carol.displayName);
-      refuse();
-      await expect(
-        chat.page.getByText("Your message could not be sent."),
-      ).toBeVisible();
-      await expect(chat.composer.field).toHaveValue("");
-    });
-
-    await test.step("it waits in its own conversation", async () => {
-      await chat.page.unroute(SEND_REQUESTS);
-      await chat.openConversation(bob.displayName);
-      await expect(chat.composer.field).toHaveValue(text);
-      await chat.composer.sendDraft();
-      await bob.api.waitForText(roomId, text);
-    });
-  });
-
   test("erases the drafts of a conversation on leaving it", async ({
     people,
     hub,
@@ -313,6 +270,140 @@ test.describe("Composer drafts", () => {
       await signInAgain(aliceBack);
       await aliceBack.openConversation(bob.displayName);
       await expect(aliceBack.composer.field).toHaveValue("");
+    });
+  });
+
+  test("leaves the text of a new conversation behind when going elsewhere", async ({
+    people,
+    hub,
+    devices,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const carol = await people.create("Carol");
+    const dave = await people.create("Dave");
+    await createUnencryptedRoom(alice, [dave]);
+    const text = uniqueText("The budget is approved");
+
+    const chat = await hub.open(alice);
+    await verifyHubDevice(chat, await devices.start(alice));
+    await chat.newChat.add(bob);
+    await chat.newChat.add(carol);
+    await chat.composer.expectUsable();
+    await chat.composer.type(text);
+
+    await test.step("it does not follow to another conversation", async () => {
+      await chat.openConversation(dave.displayName);
+      await expect(chat.composer.field).toHaveValue("");
+      expect(await draftsOnDisk(chat)).toEqual([text]);
+    });
+
+    await test.step("it waits in the new conversation", async () => {
+      await chat.leftPanel.openNewChat();
+      await expect(chat.composer.field).toHaveValue(text);
+    });
+
+    await test.step("sent there, it leaves no draft", async () => {
+      await chat.newChat.add(bob);
+      await chat.newChat.add(carol);
+      await chat.composer.expectUsable();
+      await chat.composer.sendDraft();
+      await chat.timeline.expectMessageOnce(text);
+      expect(await draftsOnDisk(chat)).toEqual([]);
+    });
+  });
+
+  test("keeps the text and the files while the people of a new conversation change", async ({
+    people,
+    hub,
+    devices,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const carol = await people.create("Carol");
+    const roomId = await createUnencryptedRoom(alice, [bob]);
+    const hello = uniqueText("Hello");
+    await alice.api.sendText(roomId, hello);
+    const text = uniqueText("For the new conversation");
+    const pdf = testPdf(`report-${uniqueId()}`);
+
+    const chat = await hub.open(alice);
+    await verifyHubDevice(chat, await devices.start(alice));
+    await chat.newChat.add(bob);
+    await chat.timeline.expectMessage(hello);
+    await chat.composer.type(text);
+    await chat.composer.attach([pdf]);
+
+    await test.step("adding someone keeps them", async () => {
+      await chat.newChat.add(carol);
+      await expect(chat.composer.field).toHaveValue(text);
+      await expect(chat.composer.attachments.getByRole("listitem")).toHaveCount(
+        1,
+      );
+    });
+
+    await test.step("removing someone keeps them, in one draft only", async () => {
+      await chat.newChat.selected(carol).click();
+      await expect(chat.composer.field).toHaveValue(text);
+      await expect(chat.composer.attachments.getByRole("listitem")).toHaveCount(
+        1,
+      );
+      expect(await draftsOnDisk(chat)).toEqual([text]);
+    });
+  });
+
+  test("gives a refused first message back to the new conversation", async ({
+    people,
+    hub,
+    devices,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const carol = await people.create("Carol");
+    const dave = await people.create("Dave");
+    await createUnencryptedRoom(alice, [dave]);
+    const stayed = uniqueText("Refused while here");
+    const left = uniqueText("Refused after leaving");
+
+    const chat = await hub.open(alice);
+    await verifyHubDevice(chat, await devices.start(alice));
+    await chat.page.addStyleTag({
+      content: "nextjs-portal { display: none !important; }",
+    });
+    await chat.newChat.add(bob);
+    await chat.composer.expectUsable();
+
+    const refuse = (route: { fulfill: (response: object) => Promise<void> }) =>
+      route.fulfill({
+        status: 403,
+        json: { errcode: "M_FORBIDDEN", error: "Refused" },
+      });
+
+    await test.step("staying there, it comes back in the field", async () => {
+      await chat.page.route(SEND_REQUESTS, refuse);
+      await chat.composer.field.fill(stayed);
+      await chat.composer.field.press("Enter");
+      await expect(chat.composer.field).toHaveValue(stayed);
+      await chat.page.unroute(SEND_REQUESTS);
+      await chat.composer.field.fill("");
+    });
+
+    await test.step("after leaving, it never lands elsewhere", async () => {
+      await chat.leftPanel.openNewChat();
+      await chat.newChat.add(carol);
+      await chat.composer.expectUsable();
+      const held = await holdRequests(chat.page, /\/createRoom/);
+      await chat.composer.field.fill(left);
+      await chat.composer.field.press("Enter");
+      await held.held;
+      await chat.openConversation(dave.displayName);
+      await expect(chat.composer.field).toHaveValue("");
+      await chat.page.route(SEND_REQUESTS, refuse);
+      await held.release();
+      await expect.poll(() => draftsOnDisk(chat)).toContain(left);
+      await expect(chat.composer.field).toHaveValue("");
+      await chat.leftPanel.openNewChat();
+      await expect(chat.composer.field).toHaveValue(left);
     });
   });
 });
