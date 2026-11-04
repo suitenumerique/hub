@@ -10,6 +10,7 @@ import { EncryptionDialog } from "./encryption-dialog";
 import { Invitation } from "./invitation";
 import { LeftPanel, type RowTarget } from "./left-panel";
 import { NewChat } from "./new-chat";
+import { NotificationMenu } from "./notification-menu";
 import { SearchDialog } from "./search-dialog";
 import { ThreadsPanel } from "./threads-panel";
 import { Timeline } from "./timeline";
@@ -29,6 +30,7 @@ export class ChatPage {
   readonly composer: Composer;
   readonly threads: ThreadsPanel;
   readonly newChat: NewChat;
+  readonly notifications: NotificationMenu;
   readonly search: SearchDialog;
   readonly encryption: EncryptionDialog;
   readonly accountMenu: AccountMenu;
@@ -51,6 +53,7 @@ export class ChatPage {
     this.composer = new Composer(main);
     this.threads = new ThreadsPanel(page);
     this.newChat = new NewChat(page);
+    this.notifications = new NotificationMenu(page);
     this.search = new SearchDialog(page);
     this.encryption = new EncryptionDialog(page);
     this.accountMenu = new AccountMenu(page);
