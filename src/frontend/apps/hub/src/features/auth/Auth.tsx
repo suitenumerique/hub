@@ -185,12 +185,12 @@ export const Auth = ({ children }: PropsWithChildren) => {
     switch (chatUnconfigured ? "unconfigured" : reason) {
       case "unconfigured":
         message = t(
-          "The chat is not configured on this Hub. Contact your administrator.",
+          "Chat is not configured on LaSuite Tchap v2. Contact your administrator.",
         );
         break;
       case "another-tab":
         message = t(
-          "Another Hub tab is using this session. Close that tab, then try again here. You can keep Element open.",
+          "Another LaSuite Tchap v2 tab is using this session. Close that tab, then try again here. You can keep Tchap open.",
         );
         break;
       case "unsupported":
@@ -252,7 +252,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
                 .catch(() => setReplacementFailed(true));
             }}
           >
-            {t("Reconnect Hub with a new device")}
+            {t("Reconnect LaSuite Tchap v2 with a new device")}
           </Button>
         )}
         {replacementFailed && (

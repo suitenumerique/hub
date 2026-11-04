@@ -13,7 +13,7 @@ export const securityFailureMessage = (
       );
     case "permission":
       return t(
-        "The server denied this action. Check your access to this conversation or account.",
+        "The server denied this action. Check your access to this chat or account.",
       );
     case "session":
       return t(
