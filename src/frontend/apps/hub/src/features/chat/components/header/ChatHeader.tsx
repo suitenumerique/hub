@@ -6,7 +6,6 @@ import {
 } from "@gouvfr-lasuite/ui-components";
 import {
   ArrowDropDown,
-  Bell,
   Edit,
   Leave,
   Shared,
@@ -18,6 +17,7 @@ import { useTranslation } from "react-i18next";
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { ChatTool } from "@/features/chat/components/tools-panel/ChatToolsPanel";
+import { useChatNotificationMenuItem } from "@/features/chat/hooks/useChatNotificationMenuItem";
 import { useChatQuickActions } from "@/features/chat/hooks/useChatQuickActions";
 import { useChatUnread } from "@/features/chat/hooks/useChatUnread";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
@@ -107,6 +107,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
   const [isLeaveOpen, setIsLeaveOpen] = useState(false);
   const unread = useChatUnread()(chat.ref);
   const quickActions = useChatQuickActions(chat, unread);
+  const notifications = useChatNotificationMenuItem(chat);
   const {
     removeFromHistory,
     isPending: isLeaving,
@@ -150,12 +151,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         icon: <Edit size={16} />,
         isDisabled: true,
       },
-      {
-        id: "notifications",
-        label: t("Notifications"),
-        icon: <Bell size={16} />,
-        isDisabled: true,
-      },
+      notifications,
       {
         id: "leave",
         label: t("Leave conversation"),
@@ -165,7 +161,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         callback: () => setIsLeaveOpen(true),
       },
     ],
-    [canLeave, isLeaving, quickActions, t],
+    [canLeave, isLeaving, notifications, quickActions, t],
   );
 
   const trigger = (

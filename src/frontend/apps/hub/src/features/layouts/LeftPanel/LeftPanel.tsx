@@ -2,6 +2,7 @@ import {
   Button,
   ContextMenu,
   DropdownMenu,
+  type DropdownMenuItem,
   Tooltip,
   useDropdownMenu,
 } from "@gouvfr-lasuite/ui-components";
@@ -37,6 +38,7 @@ import {
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
 import { ChatVisualAvatar } from "@/features/chat/components/ChatVisualAvatar";
+import { useChatNotificationMenuItem } from "@/features/chat/hooks/useChatNotificationMenuItem";
 import { useChatQuickActions } from "@/features/chat/hooks/useChatQuickActions";
 import {
   type ChatUnreadLookup,
@@ -539,6 +541,11 @@ const ChatRowWithMenus = (props: ChatRowProps) => {
   const { chat, unread, isActive } = props;
   const { t } = useTranslation();
   const options = useChatQuickActions(chat, unread);
+  const notifications = useChatNotificationMenuItem(chat);
+  const moreOptions = useMemo<DropdownMenuItem[]>(
+    () => [...options, { type: "separator" }, notifications],
+    [options, notifications],
+  );
   const menu = useDropdownMenu();
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
 
@@ -554,7 +561,7 @@ const ChatRowWithMenus = (props: ChatRowProps) => {
       </ContextMenu>
       <div className="hub__left-panel__chat__more">
         <DropdownMenu
-          options={options}
+          options={moreOptions}
           {...menu}
           onOpenChange={menu.setIsOpen}
           variant="tiny"

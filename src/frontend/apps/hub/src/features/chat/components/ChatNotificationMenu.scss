@@ -1,0 +1,5 @@
+// The current level is in bold. The menu only tells it with a check.
+[data-testid="hub-chat-notification-level"]:has(.c__dropdown-menu-item__check)
+  .c__dropdown-menu-item__label {
+  font-weight: var(--c--globals--font--weights--bold, 700);
+}
