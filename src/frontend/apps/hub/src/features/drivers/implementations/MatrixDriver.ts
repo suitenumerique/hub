@@ -1,5 +1,6 @@
 import {
   ClientEvent,
+  ConditionKind,
   EventStatus,
   EventTimeline,
   type EventTimelineSet,
@@ -13,6 +14,8 @@ import {
   MatrixEventEvent,
   MsgType,
   Preset,
+  PushRuleActionName,
+  PushRuleKind,
   ReceiptType,
   RelationType,
   type Room,
@@ -27,6 +30,7 @@ import {
   threadIdForReceipt,
   ThreepidMedium,
   TimelineWindow,
+  TweakName,
 } from "matrix-js-sdk/lib/matrix";
 import { HttpApiEvent } from "matrix-js-sdk/lib/http-api";
 import {
@@ -118,6 +122,7 @@ import {
   AccountId,
   ChatAttachment,
   ChatComposedMessage,
+  ChatEffectiveNotificationLevel,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -214,6 +219,50 @@ import {
   roomOtherMembers,
   type RoomVisit,
 } from "./matrixRoomMapping";
+import {
+  findRoomMuteRule,
+  hasInheritedLevelChanged,
+  notificationRulesSnapshot,
+  type NotificationRulesSnapshot,
+  readNotificationLevel,
+  roomsWithChangedLevel,
+} from "./matrixNotificationLevels";
+/** The requests that give a room this level, as Tchap sends them. */
+const pushRuleWrites = (
+  mx: MatrixClient,
+  roomId: string,
+  level: ChatEffectiveNotificationLevel,
+): Promise<unknown>[] => {
+  if (level === "mute") {
+    return [
+      ...(mx.getRoomPushRule("global", roomId)
+        ? [mx.deletePushRule("global", PushRuleKind.RoomSpecific, roomId)]
+        : []),
+      mx.addPushRule("global", PushRuleKind.Override, roomId, {
+        conditions: [
+          { kind: ConditionKind.EventMatch, key: "room_id", pattern: roomId },
+        ],
+        actions: [PushRuleActionName.DontNotify],
+      }),
+    ];
+  }
+  const muteRule = mx.pushRules && findRoomMuteRule(mx.pushRules, roomId);
+  return [
+    ...(muteRule
+      ? [mx.deletePushRule("global", PushRuleKind.Override, muteRule.rule_id)]
+      : []),
+    mx.addPushRule("global", PushRuleKind.RoomSpecific, roomId, {
+      actions:
+        level === "all_messages"
+          ? [
+              PushRuleActionName.Notify,
+              { set_tweak: TweakName.Sound, value: "default" },
+            ]
+          : [PushRuleActionName.DontNotify],
+    }),
+  ];
+};
+
 const isSameRoomVisit = (left: RoomVisit, right: RoomVisit | null): boolean =>
   left.threadTs === right?.threadTs &&
   left.threadNotifications === right.threadNotifications &&
@@ -504,6 +553,7 @@ export class MatrixDriver extends Driver {
   override readonly threadsKeyedByRoot: boolean = true;
   override readonly supportsConversationHistoryRemoval: boolean = true;
   override readonly supportsConversationCreation: boolean = true;
+  override readonly supportsNotificationLevels: boolean = true;
   override readonly supportsAttachments: boolean = true;
 
   private mx: MatrixClient | null = null;
@@ -521,6 +571,10 @@ export class MatrixDriver extends Driver {
   private encryptionPreparedAt = new Map<string, number>();
   /** Detaches the Matrix `/sync` listeners; set when the client is bootstrapped. */
   private detachSync: () => void = () => {};
+  /** Rooms with a level being written: their rule echoes wait for its end. */
+  private readonly notificationLevelWrites = new Set<string>();
+  /** Reports what the current push rules change, once the bridge listens. */
+  private publishPushRuleChanges: () => void = () => {};
   /** Parsed per-account config; source of truth for the fixed server and OIDC. */
   private readonly settings: MatrixDriverSettings;
   /**
@@ -682,6 +736,56 @@ export class MatrixDriver extends Driver {
       return;
     }
     await mx.deleteRoomTag(chatId, MATRIX_FAVOURITE_TAG);
+  }
+
+  async setChatNotificationLevel(
+    chatId: string,
+    level: ChatEffectiveNotificationLevel,
+  ): Promise<void> {
+    const { mx } = this.requireRoom("setChatNotificationLevel", chatId);
+    const joinedRoomIds = await this.getJoinedRoomIds(mx);
+    if (!joinedRoomIds.has(chatId)) {
+      throw new Error(
+        `MatrixDriver.setChatNotificationLevel: room "${chatId}" is not joined.`,
+      );
+    }
+    await this.writeNotificationLevel(mx, chatId, level);
+  }
+
+  /**
+   * Writes the level as Tchap's `setRoomNotifsState`, then reads the rules back:
+   * their /sync echo comes later, and any read until then would show the former
+   * level. Its echo and those of this write's steps stay silent until the end,
+   * so the level never shows a state in between.
+   */
+  private async writeNotificationLevel(
+    mx: MatrixClient,
+    roomId: string,
+    level: ChatEffectiveNotificationLevel,
+  ): Promise<void> {
+    this.notificationLevelWrites.add(roomId);
+    try {
+      await Promise.all(pushRuleWrites(mx, roomId, level));
+    } finally {
+      // Also after a failure, as some of the writes may have gone through. The
+      // /sync echo covers for a read that fails.
+      await mx.getPushRules().catch(() => {});
+      this.notificationLevelWrites.delete(roomId);
+      this.publishPushRuleChanges();
+    }
+  }
+
+  /**
+   * A conversation created or joined here starts at All messages. It stays on
+   * the inherited level when that fails, which is no reason to block it.
+   */
+  private async startAtAllMessages(
+    mx: MatrixClient,
+    roomId: string,
+  ): Promise<void> {
+    await this.writeNotificationLevel(mx, roomId, "all_messages").catch(
+      () => {},
+    );
   }
 
   /**
@@ -964,6 +1068,7 @@ export class MatrixDriver extends Driver {
         },
       ],
     });
+    await this.startAtAllMessages(mx, roomId);
 
     const room = await this.waitForRoom(mx, roomId);
     if (room) {
@@ -1111,6 +1216,7 @@ export class MatrixDriver extends Driver {
   async acceptChatInvitation(chatId: string): Promise<LocalChat> {
     const mx = this.requireClient("acceptChatInvitation");
     await mx.joinRoom(chatId);
+    await this.startAtAllMessages(mx, chatId);
     // Drop the cached joined set so the conversation's first `getChatMessages`
     // re-reads `/joined_rooms` and sees the room as joined (it isn't in the
     // stale cache captured while the room was still an invite).
@@ -3974,6 +4080,60 @@ export class MatrixDriver extends Driver {
         emitUnread(room);
       }
     };
+    let seenPushRules: NotificationRulesSnapshot | null = mx.pushRules
+      ? notificationRulesSnapshot(mx.pushRules)
+      : null;
+    /**
+     * The chat caches only change through events: compares the rules with the
+     * last ones seen and reports the rooms they change, whichever client did it.
+     * A room with a write in progress keeps its former level until the write
+     * ends, which calls this again.
+     */
+    const publishPushRuleChanges = () => {
+      const rules = mx.pushRules;
+      if (!rules) {
+        return;
+      }
+      const next = notificationRulesSnapshot(rules);
+      const previous = seenPushRules;
+      seenPushRules = next;
+      if (!previous) {
+        emitCurrent({ type: "chats:changed" });
+        return;
+      }
+      for (const roomId of roomsWithChangedLevel(previous, next)) {
+        if (this.notificationLevelWrites.has(roomId)) {
+          const former = previous.levels.get(roomId);
+          if (former) next.levels.set(roomId, former);
+          else next.levels.delete(roomId);
+          continue;
+        }
+        emitCurrent({ type: "notification-level:changed", chatId: roomId });
+        const room = mx.getRoom(roomId);
+        if (room) {
+          emitUnread(room);
+          emitThreadsRefresh(room);
+        }
+      }
+      if (hasInheritedLevelChanged(previous, next)) {
+        // The rooms showing the inherited level: their own caches too.
+        for (const room of mx.getVisibleRooms()) {
+          if (readNotificationLevel(rules, room.roomId) === "default") {
+            emitCurrent({
+              type: "notification-level:changed",
+              chatId: room.roomId,
+            });
+          }
+        }
+        emitCurrent({ type: "chats:changed" });
+      }
+    };
+    this.publishPushRuleChanges = publishPushRuleChanges;
+    const onClientAccountData = (event: MatrixEvent) => {
+      if (event.getType() === EventType.PushRules) {
+        publishPushRuleChanges();
+      }
+    };
     const onThreadNew = (thread: Thread, toStartOfTimeline: boolean) => {
       const reply = thread.replyToEvent ?? undefined;
       if (toStartOfTimeline || !reply) {
@@ -4006,12 +4166,21 @@ export class MatrixDriver extends Driver {
      */
     const onThreadUpdate = (thread: Thread) => {
       const room = thread.room;
+      // Its replies were not there to read until it loaded. Once per thread.
+      const justLoaded =
+        thread.initialEventsFetched && !loadedThreads.has(thread);
+      if (justLoaded) {
+        loadedThreads.add(thread);
+      }
       if (
         !selfUserId ||
         !room.hasEncryptionStateEvent() ||
         !isThreadFullyRead(thread, selfUserId) ||
         clearThreadNotificationCounts(room, [thread]).length === 0
       ) {
+        if (justLoaded) {
+          emitUnread(room);
+        }
         return;
       }
       emitUnread(room);
@@ -4022,6 +4191,7 @@ export class MatrixDriver extends Driver {
       });
       emitThreadRootUpdate(thread);
     };
+    const loadedThreads = new WeakSet<Thread>();
     const detachThreadListenersByRoomId = new Map<string, () => void>();
     const attachThreadListeners = (room: Room) => {
       if (detachThreadListenersByRoomId.has(room.roomId)) {
@@ -4076,6 +4246,7 @@ export class MatrixDriver extends Driver {
       }
       this.joinedRoomIds = null;
       if (!this.conversationSearch) this.retryConversationSearch();
+      publishPushRuleChanges();
       for (const room of mx.getVisibleRooms()) {
         emitCurrent({ type: "chat:changed", chatId: room.roomId });
         emitUnread(room);
@@ -4110,6 +4281,7 @@ export class MatrixDriver extends Driver {
     mx.on(RoomStateEvent.Events, onRoomAvatar);
     mx.on(RoomEvent.Tags, onTags);
     mx.on(RoomEvent.AccountData, onAccountData);
+    mx.on(ClientEvent.AccountData, onClientAccountData);
     mx.on(ClientEvent.Room, onRoom);
     mx.on(ClientEvent.Sync, onSync);
     mx.on(RoomEvent.MyMembership, onMyMembership);
@@ -4264,6 +4436,8 @@ export class MatrixDriver extends Driver {
       mx.off(RoomStateEvent.Events, onRoomAvatar);
       mx.off(RoomEvent.Tags, onTags);
       mx.off(RoomEvent.AccountData, onAccountData);
+      mx.off(ClientEvent.AccountData, onClientAccountData);
+      this.publishPushRuleChanges = () => {};
       mx.off(ClientEvent.Room, onRoom);
       mx.off(ClientEvent.Sync, onSync);
       mx.off(RoomEvent.MyMembership, onMyMembership);

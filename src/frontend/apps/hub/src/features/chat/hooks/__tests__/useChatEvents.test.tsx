@@ -388,6 +388,42 @@ describe("useChatEvents", () => {
       .getQueryData<ChatThreadDetail>(chatKeys.thread(CHAT_REF, threadId))
       ?.messages.map((m) => m.id);
 
+  it("refreshes the list on a thread reply, which moves the chat up", async () => {
+    const chatsKey = chatKeys.chatsOf(CHAT_REF.accountId);
+    queryClient.setQueryData(chatsKey, { favourites: [], all: [] });
+    mount();
+
+    emit({
+      type: "thread:reply",
+      chatId: "c1",
+      threadId: "t1",
+      message: message("r1"),
+    });
+    await endOfTask();
+
+    expect(isInvalidated(queryClient, chatsKey)).toBe(true);
+  });
+
+  it("refreshes the chat and the list on notification-level:changed", async () => {
+    const chatsKey = chatKeys.chatsOf(CHAT_REF.accountId);
+    const chatKey = chatKeys.chat(CHAT_REF);
+    const otherChatKey = chatKeys.chat({ ...CHAT_REF, chatId: "c2" });
+    const messagesKey = chatKeys.messages(CHAT_REF);
+    queryClient.setQueryData(chatsKey, { favourites: [], all: [] });
+    queryClient.setQueryData(chatKey, { id: "c1" });
+    queryClient.setQueryData(otherChatKey, { id: "c2" });
+    seedMessages(queryClient, CHAT_REF, [message("m1")], [author("a-1")]);
+    mount();
+
+    emit({ type: "notification-level:changed", chatId: "c1" });
+    await endOfTask();
+
+    expect(isInvalidated(queryClient, chatsKey)).toBe(true);
+    expect(isInvalidated(queryClient, chatKey)).toBe(true);
+    expect(isInvalidated(queryClient, otherChatKey)).toBe(false);
+    expect(isInvalidated(queryClient, messagesKey)).toBe(false);
+  });
+
   it("adds a new reply to its own thread only", () => {
     seedThread("t1", [message("t1")]);
     seedThread("t2", [message("t2")]);

@@ -31,6 +31,7 @@ import {
 import type {
   AccountId,
   ChatAttachment,
+  ChatEffectiveNotificationLevel,
   ChatMainTimelineUnread,
   ChatMessage,
   ChatMessagesPage,
@@ -114,6 +115,7 @@ export class LazyMatrixDriver extends BaseDriver {
   // the New Chat composer before the SDK lazy-loads.
   override readonly supportsConversationCreation = true;
   override readonly supportsAttachments = true;
+  override readonly supportsNotificationLevels = true;
 
   private target: Driver | null = null;
   private targetPromise: Promise<Driver> | null = null;
@@ -294,6 +296,15 @@ export class LazyMatrixDriver extends BaseDriver {
   async setChatFavourite(chatId: string, favourite: boolean): Promise<void> {
     return this.withTarget((driver) =>
       driver.setChatFavourite(chatId, favourite),
+    );
+  }
+
+  override async setChatNotificationLevel(
+    chatId: string,
+    level: ChatEffectiveNotificationLevel,
+  ): Promise<void> {
+    return this.withTarget((driver) =>
+      driver.setChatNotificationLevel(chatId, level),
     );
   }
 

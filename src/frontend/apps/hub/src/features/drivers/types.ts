@@ -82,6 +82,18 @@ export type ChatInvitation = {
   isDirect?: boolean;
 };
 
+/** How much a conversation notifies the user, once its setting is resolved. */
+export type ChatEffectiveNotificationLevel =
+  | "all_messages"
+  | "mentions_and_following"
+  | "mute";
+
+/**
+ * The setting of a conversation. `default` means it has none of its own and
+ * inherits the user's global setting, which only other clients can restore.
+ */
+export type ChatNotificationLevel = "default" | ChatEffectiveNotificationLevel;
+
 export type LocalChat = {
   encryption?: "encrypted" | "plaintext" | "unknown";
   id: string;
@@ -114,6 +126,12 @@ export type LocalChat = {
   membership?: ChatMembership;
   /** Invitation metadata; present only when `membership === "invite"`. */
   invitation?: ChatInvitation;
+  /**
+   * Absent for an invitation, and while the driver has not loaded the setting.
+   */
+  notificationLevel?: ChatNotificationLevel;
+  /** What `notificationLevel` amounts to, the inherited setting included. */
+  effectiveNotificationLevel?: ChatEffectiveNotificationLevel;
 };
 
 export type Chat = LocalChat & {

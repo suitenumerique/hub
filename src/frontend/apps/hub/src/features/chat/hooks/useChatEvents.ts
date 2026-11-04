@@ -415,6 +415,8 @@ const applyChatEvent = (
           };
         }),
       );
+      // Touches list ordering / last activity, like a new message.
+      scheduleInvalidation(queryClient, chatKeys.chatsOf(accountId));
       return;
     }
 
@@ -488,6 +490,7 @@ const applyChatEvent = (
       return;
 
     case "tags:changed":
+    case "notification-level:changed":
       scheduleInvalidation(queryClient, chatKeys.chat(ref));
       scheduleInvalidation(queryClient, chatKeys.chatsOf(accountId));
       return;

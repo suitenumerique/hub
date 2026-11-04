@@ -9,6 +9,7 @@ import {
   AccountId,
   ChatAttachment,
   ChatComposedMessage,
+  ChatEffectiveNotificationLevel,
   ChatLocalUser,
   ChatMainTimelineUnread,
   ChatMessage,
@@ -353,6 +354,7 @@ export type ChatEvent =
     }
   | { type: "members:changed"; chatId: string }
   | { type: "tags:changed"; chatId: string }
+  | { type: "notification-level:changed"; chatId: string }
   | { type: "chats:changed" };
 
 export type ChatEventListener = (event: ChatEvent) => void;
@@ -408,6 +410,8 @@ export abstract class Driver {
    * New Chat composer for a not-yet-existing conversation.
    */
   readonly supportsConversationCreation: boolean = false;
+  /** Whether each conversation can have its own notification level. */
+  readonly supportsNotificationLevels: boolean = false;
 
   constructor(accountId: AccountId = "default") {
     this.accountId = accountId;
@@ -477,6 +481,21 @@ export abstract class Driver {
 
   /** Sets the current user's favourite tag for one conversation. */
   abstract setChatFavourite(chatId: string, favourite: boolean): Promise<void>;
+
+  /**
+   * Gives one conversation a notification level of its own. It cannot go back
+   * to inheriting the global setting from here: only other clients can do it.
+   */
+  async setChatNotificationLevel(
+    _chatId: string,
+    _level: ChatEffectiveNotificationLevel,
+  ): Promise<void> {
+    void _chatId;
+    void _level;
+    throw new Error(
+      `${this.constructor.name}.setChatNotificationLevel: notification levels are not supported by this driver.`,
+    );
+  }
 
   /**
    * Flags one conversation unread for the current user, or clears the flag.
