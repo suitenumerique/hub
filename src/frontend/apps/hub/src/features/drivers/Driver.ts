@@ -330,6 +330,11 @@ export type ChatEvent =
       message: ChatMessage;
       /** Authors referenced by the reply, to merge into the thread detail. */
       authors?: ChatMessageAuthor[];
+      /**
+       * The reply is not new: it only finished decrypting, which changes its
+       * text and nothing in the conversation list.
+       */
+      decrypted?: boolean;
     }
   | {
       type: "reaction:updated";
