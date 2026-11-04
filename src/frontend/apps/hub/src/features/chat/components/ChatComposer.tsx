@@ -17,6 +17,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useAuth } from "@/features/auth/Auth";
 import { ChatSecuritySendError } from "@/features/drivers/security";
 import type {
   ChatAttachment,
@@ -25,7 +26,16 @@ import type {
 import { notify } from "@/features/ui/components/toast";
 
 import { MAX_PENDING_ATTACHMENTS } from "../attachments";
-import { EMPTY_DRAFT, joinDrafts, trimDraft } from "../composer/composerDraft";
+import {
+  type ComposerDraft,
+  EMPTY_DRAFT,
+  joinDrafts,
+  trimDraft,
+} from "../composer/composerDraft";
+import {
+  loadComposerDraft,
+  saveComposerDraft,
+} from "../composer/composerDraftStore";
 import { mentionsFromFormattedBody } from "../composer/editDraftMentions";
 import { serializeComposerDraft } from "../composer/serializeComposerDraft";
 import type { UploadChatAttachment } from "../hooks/useChatAttachmentActions";
@@ -45,10 +55,11 @@ type ChatComposerProps = {
   /** Accessible name of the input. Defaults to "Message". */
   inputLabel?: string;
   /**
-   * Identifies the conversation the draft belongs to. When it changes from one
-   * concrete conversation to another, the draft is cleared so it can never be
-   * sent to the wrong one. A transition from `undefined` to a value is NOT a
-   * switch — it is the new-chat → resolved-chat handoff — and keeps the draft.
+   * Identifies the conversation or thread the draft belongs to. Each one keeps
+   * its own draft until it is sent, so a message typed for one is still there
+   * on coming back and can never be sent to another. A transition from
+   * `undefined` to a value is NOT a switch — it is the new-chat → resolved-chat
+   * handoff — and keeps what was typed.
    */
   conversationId?: string;
   disabled?: boolean;
@@ -123,6 +134,10 @@ export const ChatComposer = ({
   const editorRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  // Drafts stay on disk: people sharing a browser never see each other's.
+  const draftKey =
+    user && conversationId ? `${user.id}:${conversationId}` : undefined;
   const {
     draft,
     draftRef,
@@ -133,10 +148,11 @@ export const ChatComposer = ({
     onPointerDown,
     onPointerUp,
     insertMention,
-  } = useComposerDraft(inputRef);
+  } = useComposerDraft(inputRef, editDraft ? undefined : draftKey);
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
-  const lastConcreteConversationId = useRef(conversationId);
+  const draftKeyRef = useRef(draftKey);
+  const wasEditingRef = useRef(false);
   const handledFocusSignalRef = useRef<number | undefined>(undefined);
   const trimmedDraft = useMemo(() => draft.text.trim(), [draft.text]);
   const {
@@ -218,31 +234,41 @@ export const ChatComposer = ({
     return () => observer.disconnect();
   }, [resizeInput]);
 
-  // Drop the draft when the conversation identity changes to a DIFFERENT
-  // concrete one, so a message typed for conversation A can never be sent to
-  // conversation B. Tracks the last concrete id and ignores `undefined`
-  // transitions, so the memory survives the new-chat draft state: a
-  // `undefined → value` step is the new-chat → resolved-chat handoff and keeps
-  // the draft, but `A → undefined → B` (e.g. previewing a DM, then adding a
-  // participant and creating a group) still clears it.
-  useEffect(() => {
-    if (!conversationId) {
+  // Show the draft of the conversation the composer now belongs to, before
+  // paint: the text of conversation A must not appear in conversation B. The
+  // draft left behind is already stored. Only a `undefined → value` step, the
+  // new-chat → resolved-chat handoff, keeps what was typed, after the draft
+  // that conversation may already hold.
+  useLayoutEffect(() => {
+    const previous = draftKeyRef.current;
+    draftKeyRef.current = draftKey;
+    if (previous === draftKey) {
       return;
     }
-    if (
-      lastConcreteConversationId.current &&
-      lastConcreteConversationId.current !== conversationId
-    ) {
-      setDraft(EMPTY_DRAFT);
+    const stored = draftKey ? loadComposerDraft(draftKey) : EMPTY_DRAFT;
+    if (previous) {
+      setDraft(stored);
       clearAttachments();
+      return;
     }
-    lastConcreteConversationId.current = conversationId;
-  }, [clearAttachments, conversationId, setDraft]);
+    setDraft((typed) => {
+      if (!typed.text.trim()) {
+        return stored;
+      }
+      return stored.text ? joinDrafts(stored, "\n", typed) : typed;
+    });
+  }, [clearAttachments, draftKey, setDraft]);
 
   useEffect(() => {
     if (!editDraft) {
+      // An edit only borrows the field: the draft set aside comes back.
+      if (wasEditingRef.current) {
+        wasEditingRef.current = false;
+        setDraft(draftKey ? loadComposerDraft(draftKey) : EMPTY_DRAFT);
+      }
       return;
     }
+    wasEditingRef.current = true;
     setDraft({
       text: editDraft.content,
       mentions: mentionsFromFormattedBody(
@@ -309,7 +335,7 @@ export const ChatComposer = ({
       // the text back below.
       const sent = trimDraft(draftRef.current);
       const text = sent.text;
-      const sentFrom = lastConcreteConversationId.current;
+      const sentFrom = draftKeyRef.current;
       if (text.length > 0) setDraft(EMPTY_DRAFT);
       let textSent = text.length === 0;
       // useChatTyping keeps typing writes ordered; the send never waits for it.
@@ -332,13 +358,16 @@ export const ChatComposer = ({
         // Give the draft back so the user can retry, ahead of anything typed
         // meanwhile, and surface the failure: the send mutations silence the
         // global error handler (noGlobalError), so without this toast a failed
-        // send would vanish with no feedback. Never into another conversation.
-        const sameConversation =
-          !sentFrom || lastConcreteConversationId.current === sentFrom;
-        if (!textSent && sameConversation) {
-          setDraft((current) =>
-            current.text.trim() ? joinDrafts(sent, "\n", current) : sent,
-          );
+        // send would vanish with no feedback. Never into another conversation:
+        // after leaving, it waits in the draft of the one it was written for.
+        const giveBack = (current: ComposerDraft) =>
+          current.text.trim() ? joinDrafts(sent, "\n", current) : sent;
+        if (!textSent) {
+          if (!sentFrom || draftKeyRef.current === sentFrom) {
+            setDraft(giveBack);
+          } else if (!editDraft) {
+            saveComposerDraft(sentFrom, giveBack(loadComposerDraft(sentFrom)));
+          }
         }
         let message =
           errorMessage ??
@@ -459,10 +488,9 @@ export const ChatComposer = ({
   const submitLabel = editDraft ? t("Save changes") : t("Send message");
 
   const cancelEdit = useCallback(() => {
-    setDraft(EMPTY_DRAFT);
     void onTypingActivity?.(false);
     onCancelEdit?.();
-  }, [onCancelEdit, onTypingActivity, setDraft]);
+  }, [onCancelEdit, onTypingActivity]);
 
   return (
     <div className="hub__chat-composer-container" ref={containerRef}>

@@ -19,6 +19,11 @@ and this project adheres to
 - ✨(frontend) Open a message's actions from a "more" button shown beside its
   bubble on hover, as well as with a right click. Its space is kept while it
   is hidden, so showing it never moves the message.
+- ✨(frontend) Keep a draft per conversation and per thread in the composer,
+  until it is sent: switching chats, closing a thread, reloading the page or
+  closing the browser no longer empties it. Editing a message sets the draft
+  aside and gives it back afterwards. Drafts stay in the browser, in plain
+  text, and are erased on logout and when leaving the conversation.
 - 💄(frontend) Show a message still being decrypted as an animated shield in
   a neutral bubble, with a "Decrypting message…" tooltip, instead of a status
   text that could be taken for the message itself.

@@ -23,6 +23,10 @@ import {
   type TextChange,
   validateMentions,
 } from "../composer/composerDraft";
+import {
+  loadComposerDraft,
+  saveComposerDraft,
+} from "../composer/composerDraftStore";
 
 /** Texts seen recently with their mentions, so undo and redo bring pills back. */
 const HISTORY_SIZE = 100;
@@ -47,22 +51,34 @@ const applyChange = (
  * moves the mentions after it and drops the ones it cuts into; a mention is
  * deleted as a whole and the caret never rests inside one. Programmatic edits
  * go through `execCommand`, which keeps the browser's undo history.
+ *
+ * `storageKey` names the stored draft this one starts from and is saved to.
+ * Without it the text is not kept, as with the message shown during an edit.
  */
 export const useComposerDraft = (
   inputRef: RefObject<HTMLTextAreaElement | null>,
+  storageKey: string | undefined,
 ) => {
-  const [draft, setDraftState] = useState<ComposerDraft>(EMPTY_DRAFT);
+  const [draft, setDraftState] = useState<ComposerDraft>(() =>
+    storageKey ? loadComposerDraft(storageKey) : EMPTY_DRAFT,
+  );
   // Handlers read the latest draft without waiting for a render.
   const draftRef = useRef(draft);
+  const storageKeyRef = useRef(storageKey);
+  storageKeyRef.current = storageKey;
   const historyRef = useRef(new Map<string, readonly ComposerMention[]>());
   const pendingMentionRef = useRef<ComposerMention | null>(null);
-  const pendingCaretRef = useRef<number | null>(null);
+  // A draft found at mount is continued from its end.
+  const pendingCaretRef = useRef<number | null>(draft.text.length || null);
   const isPointerDownRef = useRef(false);
 
   const setDraft = useCallback((next: SetStateAction<ComposerDraft>) => {
     const value = typeof next === "function" ? next(draftRef.current) : next;
     draftRef.current = value;
     setDraftState(value);
+    if (storageKeyRef.current) {
+      saveComposerDraft(storageKeyRef.current, value);
+    }
     if (value.mentions.length > 0) {
       const history = historyRef.current;
       history.delete(value.text);

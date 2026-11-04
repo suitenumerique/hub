@@ -30,6 +30,7 @@ import {
   focusJumpTarget,
 } from "../../ChatMessageJumpContext";
 import type { ThreadInitialMessage } from "../../ChatPanelContext";
+import { threadDraftKey } from "../../composer/composerDraftStore";
 import { isSameChatDay } from "../../formatTimestamp";
 import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useChatThread } from "../../hooks/useChatThread";
@@ -455,7 +456,7 @@ export const ThreadDetail = ({
             <ChatEncryptionPrompt accountId={chatRef.accountId} />
           )}
           <ChatComposer
-            conversationId={threadId}
+            conversationId={threadDraftKey(chatRef, threadId)}
             placeholder={
               isSupported
                 ? t("Answer")

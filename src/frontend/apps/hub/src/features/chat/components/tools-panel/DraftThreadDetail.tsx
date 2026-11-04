@@ -14,6 +14,7 @@ import type {
   OpenThreadOptions,
 } from "../../ChatPanelContext";
 import { chatKeys } from "../../chatKeys";
+import { threadDraftKey } from "../../composer/composerDraftStore";
 import { useCachedQueryData } from "../../hooks/useCachedQueryData";
 import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useStartChatThread } from "../../hooks/useStartChatThread";
@@ -152,7 +153,7 @@ export const DraftThreadDetail = ({
             <ChatEncryptionPrompt accountId={chatRef.accountId} />
           )}
           <ChatComposer
-            conversationId={root.message.id}
+            conversationId={threadDraftKey(chatRef, root.message.id)}
             placeholder={
               isSupported
                 ? t("Answer")
