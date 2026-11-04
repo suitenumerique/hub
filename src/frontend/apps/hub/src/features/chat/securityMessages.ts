@@ -1,6 +1,31 @@
 import type { TFunction } from "i18next";
 
-import type { ChatSecurityFailureReason } from "@/features/drivers/security";
+import {
+  type ChatSecurityFailureReason,
+  ChatSecuritySendError,
+} from "@/features/drivers/security";
+
+/** Why a message could not be sent, or `fallback` for an ordinary failure. */
+export const sendFailureMessage = (
+  error: unknown,
+  t: TFunction,
+  fallback: string,
+): string => {
+  if (!(error instanceof ChatSecuritySendError)) {
+    return fallback;
+  }
+  if (error.reason === "not-ready") {
+    return t(
+      "Verify this device and wait for its keys before sending messages.",
+    );
+  }
+  if (error.reason === "send-failed") {
+    return t(
+      "The encrypted message was rejected or interrupted. Check your connection and device security, then try again.",
+    );
+  }
+  return securityFailureMessage(error.reason, t);
+};
 
 export const securityFailureMessage = (
   reason: ChatSecurityFailureReason,

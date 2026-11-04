@@ -4,6 +4,7 @@ import {
   Edit,
   EmojiAdd,
   Reply,
+  Retry,
   Trash,
 } from "@gouvfr-lasuite/ui-components/icons";
 import {
@@ -22,10 +23,15 @@ import { EmojiPickerPopover, preloadEmojiPicker } from "./EmojiPickerPopover";
 import { FluentEmoji } from "./FluentEmoji";
 
 type MessageHoverToolbarProps = {
-  /** Toggles the current user's reaction with the given emoji. */
-  onReact: (emoji: string) => void;
+  /**
+   * Toggles the current user's reaction with the given emoji. Omitted for a
+   * message the server does not have: the reactions then leave the menu.
+   */
+  onReact?: (emoji: string) => void;
   /** Opens a reply flow for this message. Omitted when reply is unavailable. */
   onReply?: () => void;
+  /** Sends again a message that could not be sent. */
+  onRetry?: () => void;
   /** Omitted for a file without caption: there is no text to copy. */
   onCopy?: () => void | Promise<void>;
   /** Saves the file carried by the message. */
@@ -72,6 +78,7 @@ type Action = {
 export const MessageHoverToolbar = ({
   onReact,
   onReply,
+  onRetry,
   onCopy,
   onDownload,
   onEdit,
@@ -136,7 +143,7 @@ export const MessageHoverToolbar = ({
 
   const handlePick = useCallback(
     (emoji: string) => {
-      onReact(emoji);
+      onReact?.(emoji);
       finish();
     },
     [finish, onReact],
@@ -165,6 +172,9 @@ export const MessageHoverToolbar = ({
         : []),
     ],
     [
+      ...(onRetry
+        ? [{ icon: <Retry size={16} />, label: t("Retry"), run: onRetry }]
+        : []),
       ...(onEdit
         ? [{ icon: <Edit size={16} />, label: t("Edit"), run: onEdit }]
         : []),
@@ -176,43 +186,47 @@ export const MessageHoverToolbar = ({
 
   return (
     <div ref={rootRef} className="hub__message-toolbar">
-      <div className="hub__message-toolbar__reactions">
-        {quickReactions.map(({ emoji, label }) => (
+      {onReact && (
+        <div className="hub__message-toolbar__reactions">
+          {quickReactions.map(({ emoji, label }) => (
+            <button
+              key={emoji}
+              type="button"
+              className="hub__message-toolbar__button"
+              aria-label={label}
+              onClick={() => {
+                onReact(emoji);
+                finish();
+              }}
+            >
+              <FluentEmoji emoji={emoji} emojiStyle="flat" decorative />
+            </button>
+          ))}
+
           <button
-            key={emoji}
+            ref={addButtonRef}
             type="button"
             className="hub__message-toolbar__button"
-            aria-label={label}
-            onClick={() => {
-              onReact(emoji);
-              finish();
-            }}
+            aria-label={t("Add a reaction")}
+            aria-haspopup="dialog"
+            aria-expanded={isPickerOpen}
+            onPointerEnter={preloadPicker}
+            onFocus={preloadPicker}
+            onClick={() => setIsPickerOpen((open) => !open)}
           >
-            <FluentEmoji emoji={emoji} emojiStyle="flat" decorative />
+            <EmojiAdd size={16} />
           </button>
-        ))}
+        </div>
+      )}
 
-        <button
-          ref={addButtonRef}
-          type="button"
-          className="hub__message-toolbar__button"
-          aria-label={t("Add a reaction")}
-          aria-haspopup="dialog"
-          aria-expanded={isPickerOpen}
-          onPointerEnter={preloadPicker}
-          onFocus={preloadPicker}
-          onClick={() => setIsPickerOpen((open) => !open)}
-        >
-          <EmojiAdd size={16} />
-        </button>
-      </div>
-
-      {groups.map((group) => (
+      {groups.map((group, index) => (
         <Fragment key={group[0].label}>
-          <span
-            className="hub__message-toolbar__separator"
-            aria-hidden="true"
-          />
+          {(onReact || index > 0) && (
+            <span
+              className="hub__message-toolbar__separator"
+              aria-hidden="true"
+            />
+          )}
           {group.map(({ icon, label, run }) => (
             <button
               key={label}

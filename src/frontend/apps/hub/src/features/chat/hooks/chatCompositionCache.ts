@@ -30,6 +30,8 @@ export const createCurrentUserThreadAuthor = (
 });
 
 let optimisticId = 0;
+// A failed message keeps its id across reloads, which restart the counter.
+const optimisticSession = Date.now().toString(36);
 
 export const OPTIMISTIC_THREAD_ID_PREFIX = "optimistic-thread-";
 
@@ -43,6 +45,11 @@ type MarkedThreadSummary = ChatThreadSummary & {
 
 export const isOptimisticThreadId = (threadId: string): boolean =>
   threadId.startsWith(OPTIMISTIC_THREAD_ID_PREFIX);
+
+export const OPTIMISTIC_THREAD_REPLY_PREFIX = "optimistic-thread-reply";
+
+export const isOptimisticThreadReplyId = (messageId: string): boolean =>
+  messageId.startsWith(OPTIMISTIC_THREAD_REPLY_PREFIX);
 
 export const markOptimisticRootThreadSummary = (
   summary: ChatThreadSummary,
@@ -60,7 +67,7 @@ export const createOptimisticMessage = (
 ): ChatMessage => {
   optimisticId += 1;
   return {
-    id: `${prefix}-${optimisticId}`,
+    id: `${prefix}-${optimisticSession}-${optimisticId}`,
     authorId: "me",
     content,
     ...(htmlContent ? { htmlContent } : {}),

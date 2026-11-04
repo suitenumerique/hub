@@ -26,6 +26,7 @@ import {
   type PreviewedAttachment,
 } from "../ChatAttachmentPreviewContext";
 import { chatKeys } from "../chatKeys";
+import { NEW_CHAT_DRAFT_ID } from "../composer/composerDraftStore";
 import { isInvitationChat } from "../chatMembership";
 import {
   ChatMessageEditProvider,
@@ -82,9 +83,9 @@ type ChatViewProps = {
   /** Rendered in the main area when there is no conversation yet. */
   renderEmpty?: () => ReactNode;
   /**
-   * Called after a message is successfully sent. Lets the new-chat host commit
-   * the URL to the resolved (or freshly created) conversation once the user
-   * actually sends.
+   * Called once a message is queued, without waiting for it to be sent. Lets
+   * the new-chat host commit the URL to the resolved (or freshly created)
+   * conversation once the user actually sends.
    */
   onSent?: (ref: ChatRef) => void;
   /** Bumped by the host to move focus into the composer. */
@@ -126,6 +127,8 @@ export const ChatView = ({
   onSubmitDraft,
 }: ChatViewProps) => {
   const { t } = useTranslation();
+  // On `/chat/new`: what is typed has no conversation yet.
+  const isNewChat = draftParticipants !== undefined;
   const mentionSource = useMemo<ComposerMentionSource | undefined>(() => {
     if (chatRef) {
       return { accountId: chatRef.accountId, chatRef };
@@ -154,7 +157,8 @@ export const ChatView = ({
   const {
     sendMessage,
     sendAttachment,
-    isSending: isSendingMessage,
+    retryFailedMessage,
+    discardFailedMessage,
     isSupported: isCompositionSupported,
   } = useSendChatMessage(chatRef);
   // Before a New Chat draft has a conversation, files go to its account only.
@@ -192,9 +196,10 @@ export const ChatView = ({
         }
         return onSubmitDraft(composed);
       }
-      const message = await sendMessage(composed);
+      // As in Element, typing goes on during the send. Messages leave in order,
+      // and one that fails stays in the conversation, where it is reported.
+      void sendMessage(composed).catch(() => {});
       onSent?.(chatRef);
-      return message;
     },
     [chatRef, editMessage, editingMessage, onSent, onSubmitDraft, sendMessage],
   );
@@ -207,9 +212,8 @@ export const ChatView = ({
         }
         return onSubmitDraft({ content: "" }, attachment);
       }
-      const message = await sendAttachment(attachment);
+      void sendAttachment(attachment).catch(() => {});
       onSent?.(chatRef);
-      return message;
     },
     [chatRef, onSent, onSubmitDraft, sendAttachment],
   );
@@ -343,7 +347,22 @@ export const ChatView = ({
     }),
     [jumpToConversationMessage, openDraftThread, openThread, openThreadList],
   );
-  const editContext = useMemo(() => ({ startEditing: setEditingMessage }), []);
+  // Their button leaves with the row: the focus goes on to the composer.
+  const [refocusSignal, setRefocusSignal] = useState(0);
+  const editContext = useMemo(
+    () => ({
+      startEditing: setEditingMessage,
+      retryFailedMessage: (id: string) => {
+        retryFailedMessage(id);
+        setRefocusSignal((signal) => signal + 1);
+      },
+      discardFailedMessage: (id: string) => {
+        discardFailedMessage(id);
+        setRefocusSignal((signal) => signal + 1);
+      },
+    }),
+    [discardFailedMessage, retryFailedMessage],
+  );
 
   const renderConversation = () => {
     if (invitationChat && chatRef) {
@@ -424,14 +443,17 @@ export const ChatView = ({
                         </div>
                       </ComposerFloatingArea>
                       <ChatComposer
-                        conversationId={chatKey ?? undefined}
+                        conversationId={
+                          chatKey ?? (isNewChat ? NEW_CHAT_DRAFT_ID : undefined)
+                        }
+                        followsSelection={isNewChat}
                         placeholder={composerPlaceholder}
                         disabled={
                           securityBlocked ||
                           (chatRef ? !isCompositionSupported : !canComposeDraft)
                         }
-                        isSubmitting={isSendingMessage || isEditing}
-                        focusSignal={composerFocusSignal}
+                        isSubmitting={isEditing}
+                        focusSignal={(composerFocusSignal ?? 0) + refocusSignal}
                         errorMessage={
                           editingMessage
                             ? t(

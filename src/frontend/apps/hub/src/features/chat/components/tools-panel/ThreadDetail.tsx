@@ -36,6 +36,7 @@ import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useChatThread } from "../../hooks/useChatThread";
 import { useChatThreadActions } from "../../hooks/useChatThreadActions";
 import { useEditChatMessage } from "../../hooks/useEditChatMessage";
+import { useMessagesWithFailed } from "../../hooks/useFailedMessages";
 import { useListEdgeReturn } from "../../hooks/useListEdgeReturn";
 import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
 import { useChatSendState } from "../../hooks/useChatSecurity";
@@ -129,7 +130,7 @@ export const ThreadDetail = ({
   );
   const {
     thread,
-    messages,
+    messages: loadedMessages,
     firstItemIndex,
     isFetchingOlder,
     isFetchOlderError,
@@ -137,14 +138,13 @@ export const ThreadDetail = ({
     refetch,
     fetchOlder,
   } = useChatThread(chatRef, threadId);
+  const messages = useMessagesWithFailed(chatRef, threadId, loadedMessages);
   // Coming back to the top asks again, after a failure too: Virtuoso reports
   // `startReached` only for a new first row.
   const topReturn = useListEdgeReturn(fetchOlder, threadId);
   const { markThreadRead } = useChatThreadActions(chatRef);
-  const { sendReply, isSending, isSupported } = useSendChatThreadReply(
-    chatRef,
-    threadId,
-  );
+  const { sendReply, retryFailedReply, discardFailedReply, isSupported } =
+    useSendChatThreadReply(chatRef, threadId);
   const { editMessage, isEditing } = useEditChatMessage(chatRef, threadId);
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
@@ -175,16 +175,35 @@ export const ThreadDetail = ({
         setEditingMessage(null);
         return message;
       }
-      return sendReply(composed);
+      // As in Element, typing goes on during the send. Replies leave in order,
+      // and one that fails stays in the thread, where it is reported.
+      void sendReply(composed).catch(() => {});
     },
     [editMessage, editingMessage, sendReply],
   );
   const handleSendAttachment = useCallback(
-    (attachment: ChatAttachment) => sendReply({ content: "" }, attachment),
+    async (attachment: ChatAttachment) => {
+      void sendReply({ content: "" }, attachment).catch(() => {});
+    },
     [sendReply],
   );
   const uploadAttachment = useUploadChatAttachment(chatRef);
-  const editContext = useMemo(() => ({ startEditing: setEditingMessage }), []);
+  // Their button leaves with the row: the focus goes on to the composer.
+  const [refocusSignal, setRefocusSignal] = useState(0);
+  const editContext = useMemo(
+    () => ({
+      startEditing: setEditingMessage,
+      retryFailedMessage: (id: string) => {
+        retryFailedReply(id);
+        setRefocusSignal((signal) => signal + 1);
+      },
+      discardFailedMessage: (id: string) => {
+        discardFailedReply(id);
+        setRefocusSignal((signal) => signal + 1);
+      },
+    }),
+    [discardFailedReply, retryFailedReply],
+  );
 
   // A quote inside the thread goes to the replies it holds, without loading
   // older ones around it.
@@ -417,6 +436,7 @@ export const ThreadDetail = ({
                         availability={message.availability}
                         canEdit={message.canEdit}
                         canDelete={message.canDelete}
+                        sendFailed={message.sendFailed}
                         threadId={threadId}
                         showTimestamp={isLastOfGroup}
                       />
@@ -464,8 +484,10 @@ export const ThreadDetail = ({
             }
             inputLabel={t("Answer")}
             disabled={!isSupported || sendState === "blocked"}
-            isSubmitting={isSending || isEditing}
-            focusSignal={isOpen ? composerFocusSignal : undefined}
+            isSubmitting={isEditing}
+            focusSignal={
+              isOpen ? (composerFocusSignal ?? 0) + refocusSignal : undefined
+            }
             errorMessage={
               editingMessage
                 ? t("Your message could not be edited. Please try again.")

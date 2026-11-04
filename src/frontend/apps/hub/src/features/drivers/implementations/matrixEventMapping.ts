@@ -944,6 +944,7 @@ export const matrixEventToChatMessage = (
     event.getSender() === selfUserId &&
     room.currentState.maySendRedactionForEvent(event, selfUserId),
   );
+  const transactionId = event.getUnsigned().transaction_id;
   const message: ChatMessage = {
     id: eventId,
     availability,
@@ -960,6 +961,7 @@ export const matrixEventToChatMessage = (
     canEdit,
     canDelete,
     ...(replyToId ? { replyToId } : {}),
+    ...(transactionId ? { transactionId } : {}),
   };
   const thread = room.getThread(eventId);
   if (thread) {

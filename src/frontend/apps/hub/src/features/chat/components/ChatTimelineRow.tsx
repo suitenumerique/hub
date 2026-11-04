@@ -63,6 +63,7 @@ export const ChatTimelineRow = memo(function ChatTimelineRow({
           availability={message.availability}
           canEdit={message.canEdit}
           canDelete={message.canDelete}
+          sendFailed={message.sendFailed}
           thread={message.thread}
           showTimestamp={isLastOfGroup}
         />

@@ -1,5 +1,6 @@
 import {
   ClientEvent,
+  EventStatus,
   EventTimeline,
   type EventTimelineSet,
   EventType,
@@ -2531,6 +2532,7 @@ export class MatrixDriver extends Driver {
   async sendChatMessage({
     chatId,
     attachment,
+    transactionId,
     ...message
   }: SendChatMessageParams): Promise<ChatMessage> {
     const { mx, room } = this.requireRoom("sendChatMessage", chatId);
@@ -2540,6 +2542,7 @@ export class MatrixDriver extends Driver {
       null,
       message,
       attachment,
+      transactionId,
     );
     return sendResponseToChatMessage(eventId, message, attachment);
   }
@@ -2551,31 +2554,38 @@ export class MatrixDriver extends Driver {
     threadId: string | null,
     message: ChatComposedMessage,
     attachment: ChatAttachment | undefined,
+    transactionId?: string,
   ): Promise<string> {
     const chatId = room.roomId;
-    if (!attachment) {
+    if (attachment) {
+      // A file uploaded in clear for an unencrypted room must never be posted
+      // once the room turned encrypted (or was resolved as such afterwards).
+      const source = attachment.source as MatrixAttachmentSource;
+      if (!source.file && (await this.isRoomEncrypted(mx, chatId))) {
+        throw new Error(
+          "MatrixDriver: this conversation is encrypted; the file was uploaded unencrypted.",
+        );
+      }
+    }
+    // Sent again in this session: as in Element, the SDK sends its failed event
+    // again, as it refuses a new one with the same transaction id. After a
+    // reload that event is gone, and the id alone keeps the server from
+    // recording the message twice.
+    const failedEcho = transactionId && room.getEventForTxnId(transactionId);
+    if (failedEcho && failedEcho.status === EventStatus.NOT_SENT) {
       const { event_id: eventId } = await this.sendContent(mx, room, () =>
-        mx.sendMessage(
-          chatId,
-          threadId,
-          matrixTextContent(message, mx.getUserId()),
-        ),
+        mx.resendEvent(failedEcho, room),
       );
       return eventId;
     }
-    // A file uploaded in clear for an unencrypted room must never be posted
-    // once the room turned encrypted (or was resolved as such afterwards).
-    const source = attachment.source as MatrixAttachmentSource;
-    if (!source.file && (await this.isRoomEncrypted(mx, chatId))) {
-      throw new Error(
-        "MatrixDriver: this conversation is encrypted; the file was uploaded unencrypted.",
-      );
-    }
+    const content = attachment
+      ? ({
+          ...matrixAttachmentContent(attachment, message.content),
+          ...matrixCaptionContent(message, mx.getUserId()),
+        } as RoomMessageEventContent)
+      : matrixTextContent(message, mx.getUserId());
     const { event_id: eventId } = await this.sendContent(mx, room, () =>
-      mx.sendMessage(chatId, threadId, {
-        ...matrixAttachmentContent(attachment, message.content),
-        ...matrixCaptionContent(message, mx.getUserId()),
-      } as RoomMessageEventContent),
+      mx.sendMessage(chatId, threadId, content, transactionId),
     );
     return eventId;
   }
@@ -2899,6 +2909,7 @@ export class MatrixDriver extends Driver {
     chatId,
     threadId,
     attachment,
+    transactionId,
     ...message
   }: SendChatThreadReplyParams): Promise<ChatThreadMutationResult> {
     const { mx, room } = this.requireRoom("sendChatThreadReply", chatId);
@@ -2913,6 +2924,7 @@ export class MatrixDriver extends Driver {
       threadId,
       message,
       attachment,
+      transactionId,
     );
     this.sentThreadReplyEventIds.add(eventId);
     return this.buildThreadMutationResult(

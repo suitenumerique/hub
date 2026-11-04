@@ -206,6 +206,13 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Stop losing what is typed while a message is being sent, in any
+  conversation: the field stays free and messages leave in order, as in
+  Element. A message that could not be sent no longer comes back in the field:
+  it stays in the conversation or thread with an error icon to send it again,
+  through a reload or a closed tab too, and can be deleted from its menu. It
+  stays on this browser as plain text, an encrypted file's key included, until
+  it is sent, deleted, its conversation left or the session logged out.
 - 👷(ci) Run the CI again on the Ubuntu 26.04 runners.
 - 🐛(frontend) Open the thread list and a thread without loading older pages
   on a slow device: the list's edge reports count only once it is scrolled.

@@ -68,6 +68,14 @@
     padding-left: var(--hub-chat-bubble-more-space);
   }
 
+  // Beside a message that could not be sent, between its "more" button's space
+  // and the bubble.
+  & &__retry {
+    flex: 0 0 auto;
+    align-self: center;
+    margin-right: var(--c--globals--spacings--xxs, 6px);
+  }
+
   // Above the design system's button rules.
   & &__more {
     position: absolute;
