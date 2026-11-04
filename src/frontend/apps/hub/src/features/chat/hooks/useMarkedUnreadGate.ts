@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ChatRef, ChatUnread } from "@/features/drivers/types";
 
@@ -9,7 +9,7 @@ import { useClearChatMarkedUnread } from "./useClearChatMarkedUnread";
 export type MarkedUnreadGate = {
   isMarkedUnread: boolean;
   /** Whether reading the timeline may clear the flag now. */
-  canClear: () => boolean;
+  canClear: boolean;
   /** Called on a user interaction with the timeline, such as a scroll. */
   allowClear: () => void;
   /** Clears the flag after a read, unless it was marked unread meanwhile. */
@@ -28,7 +28,7 @@ export const useMarkedUnreadGate = (ref: ChatRef): MarkedUnreadGate => {
   );
   const isMarkedUnread = accountUnread?.[ref.chatId]?.markedUnread ?? false;
   const clear = useClearChatMarkedUnread(ref);
-  const canClearRef = useRef(true);
+  const [canClear, setCanClear] = useState(true);
   // `null` until the read state is loaded: the first known flag is the one
   // the conversation was opened with.
   const wasMarkedUnreadRef = useRef<boolean | null>(null);
@@ -38,20 +38,17 @@ export const useMarkedUnreadGate = (ref: ChatRef): MarkedUnreadGate => {
       return;
     }
     if (isMarkedUnread && wasMarkedUnreadRef.current === false) {
-      canClearRef.current = false;
+      setCanClear(false);
     }
     wasMarkedUnreadRef.current = isMarkedUnread;
   }, [accountUnread, isMarkedUnread]);
 
-  const canClear = useCallback(() => canClearRef.current, []);
-  const allowClear = useCallback(() => {
-    canClearRef.current = true;
-  }, []);
+  const allowClear = useCallback(() => setCanClear(true), []);
   const clearIfAllowed = useCallback(() => {
-    if (canClearRef.current) {
+    if (canClear) {
       clear();
     }
-  }, [clear]);
+  }, [canClear, clear]);
 
   return useMemo(
     () => ({ isMarkedUnread, canClear, allowClear, clearIfAllowed }),

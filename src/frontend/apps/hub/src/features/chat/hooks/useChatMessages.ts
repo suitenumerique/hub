@@ -62,13 +62,18 @@ export type UseChatMessagesResult = {
   fetchOlder: () => void;
   fetchNewer: () => void;
   /**
-   * Opens the window around an event. Resolves with the message it is built
-   * around, which differs when the event is not shown, or `null` when a later
-   * request replaced it.
+   * Opens the window around an event. Resolves with its messages and the one
+   * it is built around, which differs when the event is not shown, or `null`
+   * when a later request replaced it.
    */
-  openAround: (eventId: string) => Promise<string | null>;
+  openAround: (eventId: string) => Promise<OpenedWindow | null>;
   /** Replaces a window away from the live end with the latest messages. */
-  openLatest: () => void;
+  openLatest: () => Promise<void>;
+};
+
+export type OpenedWindow = {
+  anchorId: string;
+  messages: ChatMessage[];
 };
 
 /**
@@ -268,7 +273,7 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
         eventId: anchorId,
       });
       setWindowVersion((version) => version + 1);
-      return anchorId;
+      return { anchorId, messages: page.messages };
     },
     [queryClient, queryKey, ref.accountId, ref.chatId],
   );
@@ -279,7 +284,7 @@ export const useChatMessages = (ref: ChatRef): UseChatMessagesResult => {
     contextRequestRef.current = null;
     setWindowAnchor(null);
     setWindowVersion((version) => version + 1);
-    void queryClient.resetQueries({ queryKey, exact: true });
+    return queryClient.resetQueries({ queryKey, exact: true });
   }, [queryClient, queryKey]);
 
   // Virtuoso indexes are derived from Matrix identities. When older messages

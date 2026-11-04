@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type BubbleVariant = "sent" | "received";
@@ -12,12 +13,7 @@ type SkeletonRow = {
   height: BubbleHeight;
 };
 
-type ChatConversationSkeletonProps = {
-  /** When `true`, the skeleton fades out (CSS opacity transition). */
-  leaving?: boolean;
-  /** Fires once the leave transition finishes — caller can unmount the node. */
-  onLeaveEnd?: () => void;
-};
+type SkeletonState = "visible" | "leaving" | "hidden";
 
 // Deterministic — alternates variants and varies widths/heights so the
 // skeleton looks like a real conversation without shifting layout on
@@ -61,14 +57,34 @@ const SKELETON_ROWS: SkeletonRow[] = [
  * Loading state for the conversation list. Rendered as an absolute overlay
  * inside `.hub__chat-conversation__list` by `ChatVirtualList`, so the actual
  * Virtuoso list can mount and paint behind it without any "blank" frame
- * between the skeleton and the real bubbles — the skeleton then fades out via
- * the `leaving` prop once Virtuoso has had a frame to lay out its items.
+ * between the skeleton and the real bubbles — the skeleton then fades out once
+ * Virtuoso has had a frame to lay out its items.
  */
 export const ChatConversationSkeleton = ({
-  leaving = false,
-  onLeaveEnd,
-}: ChatConversationSkeletonProps) => {
+  isLoading,
+}: {
+  isLoading: boolean;
+}) => {
   const { t } = useTranslation();
+  const [state, setState] = useState<SkeletonState>(
+    isLoading ? "visible" : "hidden",
+  );
+
+  useEffect(() => {
+    if (isLoading) {
+      setState("visible");
+      return;
+    }
+    const raf = requestAnimationFrame(() => {
+      setState((current) => (current === "visible" ? "leaving" : current));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isLoading]);
+
+  if (state === "hidden") {
+    return null;
+  }
+  const leaving = state === "leaving";
 
   return (
     <div
@@ -88,7 +104,7 @@ export const ChatConversationSkeleton = ({
           event.propertyName === "opacity" &&
           leaving
         ) {
-          onLeaveEnd?.();
+          setState("hidden");
         }
       }}
     >

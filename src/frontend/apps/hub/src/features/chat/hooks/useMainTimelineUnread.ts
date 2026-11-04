@@ -2,72 +2,27 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getRegistry } from "@/features/drivers/DriverRegistry";
-import type {
-  ChatMainTimelineUnread,
-  ChatMessage,
-  ChatRef,
-} from "@/features/drivers/types";
+import type { ChatMainTimelineUnread, ChatRef } from "@/features/drivers/types";
 
 import { chatKeys } from "../chatKeys";
 
 const READ_RETRY_MAX_MS = 8_000;
 
-type Projection = Pick<
-  ChatMainTimelineUnread,
-  "hasUnread" | "firstUnreadId" | "readUpToId"
-> & {
-  throughId: string;
-};
-
-const isEligibleUnreadMessage = (message: ChatMessage): boolean =>
-  message.authorId !== "me" && message.isDeleted !== true;
-
-/**
- * The driver knows the first unread message only when the read marker was in
- * memory. Otherwise it appears once the marker is loaded, like Element's read
- * marker line: when the conversation opens the window around it.
- */
-const resolveFirstUnreadId = (
-  state:
-    | Pick<Projection, "hasUnread" | "firstUnreadId" | "readUpToId">
-    | null
-    | undefined,
-  messages: ChatMessage[],
-): string | null => {
-  if (!state?.hasUnread) {
-    return null;
-  }
-  if (state.firstUnreadId) {
-    return state.firstUnreadId;
-  }
-  const markerIndex = state.readUpToId
-    ? messages.findIndex((message) => message.id === state.readUpToId)
-    : -1;
-  if (markerIndex < 0) {
-    return null;
-  }
-  return (
-    messages.slice(markerIndex + 1).find(isEligibleUnreadMessage)?.id ?? null
-  );
-};
-
 export type UseMainTimelineUnreadResult = ChatMainTimelineUnread & {
   isLoading: boolean;
-  markVisibleMessages: (
-    visibleIds: ReadonlySet<string>,
-    hasNewer: boolean,
-  ) => void;
-  markAllRead: () => void;
+  /**
+   * Reads the conversation through its latest message, or through
+   * `lastLoadedId` when the latest messages hold none.
+   */
+  markAllRead: (lastLoadedId?: string) => void;
 };
 
 /**
- * Owns the monotonic local projection and serialised Matrix writes for the
- * main timeline. Opening reads it all with `markAllRead`; afterwards, rows are
- * read only through identities measured in a stable, focused scroll viewport.
+ * Unread state of the main timeline and its serialised Matrix writes. While a
+ * read is being written, the conversation already shows as read.
  */
 export const useMainTimelineUnread = (
   ref: ChatRef,
-  messages: ChatMessage[],
 ): UseMainTimelineUnreadResult => {
   const queryClient = useQueryClient();
   const queryKey = useMemo(
@@ -81,23 +36,13 @@ export const useMainTimelineUnread = (
     staleTime: Infinity,
     meta: { noGlobalError: true },
   });
-  const [projection, setProjection] = useState<Projection | null>(null);
-  const projectionRef = useRef<Projection | null>(null);
-  // Latest boundary wins while a write is running. This coalesces rapid scroll
-  // measurements without allowing an older queued write to move the marker
-  // backwards afterwards.
+  const [readingThroughId, setReadingThroughId] = useState<string | null>(null);
+  // Latest boundary wins while a write is running, without an older queued
+  // write moving the marker backwards afterwards.
   const queuedBoundaryRef = useRef<string | null>(null);
   const writingRef = useRef(false);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
-  const mountedRef = useRef(true);
-
-  const updateProjection = useCallback((next: Projection | null) => {
-    projectionRef.current = next;
-    if (mountedRef.current) {
-      setProjection(next);
-    }
-  }, []);
 
   const flushBoundary = useCallback(async () => {
     if (writingRef.current || !queuedBoundaryRef.current) {
@@ -116,15 +61,10 @@ export const useMainTimelineUnread = (
         }
       }
       await queryClient.invalidateQueries({ queryKey, exact: true });
-      const confirmed =
-        queryClient.getQueryData<ChatMainTimelineUnread>(queryKey);
-      const local = projectionRef.current;
-      if (
-        local &&
-        confirmed?.readUpToId === local.throughId &&
-        !queuedBoundaryRef.current
-      ) {
-        updateProjection(null);
+      // The driver keeps a written boundary until `/sync` echoes it back: a
+      // stale echo cannot bring older state back from here on.
+      if (!queuedBoundaryRef.current) {
+        setReadingThroughId(null);
       }
     } catch {
       const delay = Math.min(
@@ -145,170 +85,53 @@ export const useMainTimelineUnread = (
         void flushBoundary();
       }
     }
-  }, [queryClient, queryKey, ref.accountId, ref.chatId, updateProjection]);
+  }, [queryClient, queryKey, ref.accountId, ref.chatId]);
 
-  const queueBoundary = useCallback(
-    (eventId: string) => {
-      queuedBoundaryRef.current = eventId;
-      void flushBoundary();
-    },
-    [flushBoundary],
-  );
-
-  useEffect(() => {
-    mountedRef.current = true;
-    updateProjection(null);
-    queuedBoundaryRef.current = null;
-    retryCountRef.current = 0;
-    return () => {
-      mountedRef.current = false;
+  useEffect(
+    () => () => {
       if (retryTimerRef.current !== null) {
         window.clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-    };
-  }, [ref.accountId, ref.chatId, updateProjection]);
-
-  useEffect(() => {
-    const local = projectionRef.current;
-    // Keep the optimistic projection authoritative until Matrix exposes the
-    // exact boundary we wrote. A stale /sync echo must not flash older state.
-    if (
-      local &&
-      query.data?.readUpToId === local.throughId &&
-      !queuedBoundaryRef.current &&
-      !writingRef.current
-    ) {
-      updateProjection(null);
-    }
-  }, [query.data, updateProjection]);
-
-  const current = projection ?? query.data;
-
-  /**
-   * Without a read boundary among the loaded messages, Element
-   * (`TimelinePanel.sendReadReceipts`) reads through the last displayed
-   * message from someone else. It does not when older history away from the
-   * live end is shown: the receipt it has may be newer than what is visible.
-   */
-  const markThroughLastDisplayed = useCallback(
-    (
-      state: Pick<Projection, "readUpToId">,
-      visibleIds: ReadonlySet<string>,
-      hasNewer: boolean,
-    ) => {
-      if (state.readUpToId && hasNewer) {
-        return;
-      }
-      const lastDisplayed = messages.findLast(
-        (message) => message.authorId !== "me" && visibleIds.has(message.id),
-      );
-      if (!lastDisplayed) {
-        return;
-      }
-      const nextFirstUnreadId =
-        messages
-          .slice(messages.indexOf(lastDisplayed) + 1)
-          .find(isEligibleUnreadMessage)?.id ?? null;
-      const hasUnread = nextFirstUnreadId !== null || hasNewer;
-      updateProjection({
-        hasUnread,
-        readUpToId: lastDisplayed.id,
-        firstUnreadId: hasUnread ? nextFirstUnreadId : null,
-        throughId: lastDisplayed.id,
-      });
-      queueBoundary(lastDisplayed.id);
     },
-    [messages, queueBoundary, updateProjection],
+    [],
   );
 
-  const markVisibleMessages = useCallback(
-    (visibleIds: ReadonlySet<string>, hasNewer: boolean) => {
-      const state = projectionRef.current ?? query.data;
-      if (!state?.hasUnread) {
-        return;
-      }
-      const firstUnreadId = resolveFirstUnreadId(state, messages);
-      if (!firstUnreadId) {
-        markThroughLastDisplayed(state, visibleIds, hasNewer);
-        return;
-      }
-      const firstUnreadIndex = messages.findIndex(
-        (message) => message.id === firstUnreadId,
-      );
-      if (firstUnreadIndex < 0) {
-        return;
-      }
+  const hasUnread = readingThroughId ? false : (query.data?.hasUnread ?? false);
+  const liveEndId = query.data?.liveEndId ?? null;
 
-      let throughId: string | null = null;
-      let nextFirstUnreadId: string | null = null;
-      // Progress only through the contiguous visible prefix of eligible unread
-      // events. A later visible row cannot skip an unread gap above it.
-      for (let index = firstUnreadIndex; index < messages.length; index += 1) {
-        const message = messages[index];
-        if (!isEligibleUnreadMessage(message)) {
-          continue;
-        }
-        if (!visibleIds.has(message.id)) {
-          nextFirstUnreadId = message.id;
-          break;
-        }
-        throughId = message.id;
-      }
-      if (!throughId) {
+  const markAllRead = useCallback(
+    (lastLoadedId?: string) => {
+      const eventId = liveEndId ?? lastLoadedId;
+      if (!hasUnread || !eventId) {
         return;
       }
-
-      const hasUnread = nextFirstUnreadId !== null || hasNewer;
-      updateProjection({
-        hasUnread,
-        readUpToId: throughId,
-        firstUnreadId: hasUnread ? nextFirstUnreadId : null,
-        throughId,
-      });
-      queueBoundary(throughId);
+      setReadingThroughId(eventId);
+      queuedBoundaryRef.current = eventId;
+      void flushBoundary();
     },
-    [
-      markThroughLastDisplayed,
-      messages,
-      query.data,
-      queueBoundary,
-      updateProjection,
-    ],
+    [flushBoundary, hasUnread, liveEndId],
   );
-
-  const markAllRead = useCallback(() => {
-    const state = projectionRef.current ?? query.data;
-    const liveEndId = query.data?.liveEndId;
-    if (!state?.hasUnread || !liveEndId) {
-      return;
-    }
-    updateProjection({
-      hasUnread: false,
-      readUpToId: liveEndId,
-      firstUnreadId: null,
-      throughId: liveEndId,
-    });
-    queueBoundary(liveEndId);
-  }, [query.data, queueBoundary, updateProjection]);
 
   return useMemo(
     () => ({
-      hasUnread: current?.hasUnread ?? false,
-      readUpToId: current?.readUpToId ?? null,
-      firstUnreadId: resolveFirstUnreadId(current, messages),
-      liveEndId: query.data?.liveEndId ?? null,
+      hasUnread,
+      readUpToId: readingThroughId ?? query.data?.readUpToId ?? null,
+      firstUnreadId: readingThroughId
+        ? null
+        : (query.data?.firstUnreadId ?? null),
+      liveEndId,
       isLoading: query.isPending,
-      markVisibleMessages,
       markAllRead,
     }),
     [
-      current,
+      hasUnread,
+      liveEndId,
       markAllRead,
-      markVisibleMessages,
-      messages,
-      query.data?.liveEndId,
+      query.data?.firstUnreadId,
+      query.data?.readUpToId,
       query.isPending,
+      readingThroughId,
     ],
   );
 };
