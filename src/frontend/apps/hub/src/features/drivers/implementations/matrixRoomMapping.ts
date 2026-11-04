@@ -8,6 +8,7 @@ import {
   EventType,
   KnownMembership,
   type MatrixEvent,
+  RelationType,
   type Room,
   type RoomMember,
 } from "matrix-js-sdk/lib/matrix";
@@ -16,6 +17,7 @@ import i18n from "@/i18n/initI18n";
 
 import { ChatInvitation, LocalChat } from "../types";
 import { mxcUrl, withoutOrganization } from "./matrixIdentity";
+import { isRoomMuted, notificationLevelsOf } from "./matrixNotificationLevels";
 import { roomSecurity } from "@/features/matrix/roomSecurity";
 
 export const MATRIX_FAVOURITE_TAG = "m.favourite";
@@ -64,6 +66,58 @@ export const lastRoomVisit = (room: Room): RoomVisit | null => {
     threadNotifications: content.thread_notifications ?? 0,
     threadHighlights: content.thread_highlights ?? 0,
   };
+};
+
+/** Whether the current user muted this room. */
+export const isMutedRoom = (room: Room): boolean => {
+  const rules = room.client.pushRules;
+  return rules ? isRoomMuted(rules, room.roomId) : false;
+};
+
+/** The room's notification levels, once the client has loaded its rules. */
+const roomNotificationLevels = (
+  room: Room,
+): Pick<LocalChat, "notificationLevel" | "effectiveNotificationLevel"> => {
+  const rules = room.client.pushRules;
+  return rules
+    ? notificationLevelsOf(
+        rules,
+        room.roomId,
+        room.getJoinedMemberCount() === 2,
+      )
+    : {};
+};
+
+/**
+ * A reaction or a redaction says nothing new: it moves nothing in the list. A
+ * redacted event loses its relation, so a removed reaction can only be told
+ * apart by that: as in Tchap, nothing redacted counts.
+ */
+const isListActivity = (event: MatrixEvent): boolean =>
+  event.getType() !== EventType.RoomRedaction &&
+  !event.isRedacted() &&
+  event.getRelation()?.rel_type !== RelationType.Annotation;
+
+/**
+ * When the conversation was last active, as Tchap's `getLastTimestamp`: its
+ * latest event that is not a reaction or a redaction, or the latest reply of
+ * its threads when more recent.
+ */
+const lastActivityTimestamp = (room: Room): number => {
+  const events = room.getLiveTimeline().getEvents();
+  // Without any other event, the oldest is better than none at all.
+  const mainTimelineTs =
+    (events.findLast(isListActivity) ?? events[0])?.getTs() ?? 0;
+  return room
+    .getThreads()
+    .reduce(
+      (latest, thread) =>
+        Math.max(
+          latest,
+          (thread.replyToEvent ?? thread.rootEvent)?.getTs() ?? 0,
+        ),
+      mainTimelineTs,
+    );
 };
 
 /**
@@ -239,7 +293,7 @@ export const matrixJoinedRoomToLocalChat = (
   );
   const isEmptyDirect =
     isDirect && counterpartId === undefined && activeOthers.length === 0;
-  const timestamp = room.getLastActiveTimestamp();
+  const timestamp = lastActivityTimestamp(room);
 
   // A 1:1 is identified by the other person. Once its counterpart leaves,
   // reuse the client's localized empty-room label so the historical identity
@@ -282,6 +336,7 @@ export const matrixJoinedRoomToLocalChat = (
       ? roomAvatarUrl(room, displayedOthers[0], counterpartId)
       : mxcUrl(room.getMxcAvatarUrl()),
     membership: "join",
+    ...roomNotificationLevels(room),
   };
 };
 

@@ -7,7 +7,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  isFollowedThread,
   receiptThreadIds,
+  roomUnread,
   timelineEventToChatEvent,
 } from "../matrixEventMapping";
 
@@ -388,5 +390,120 @@ describe("receiptThreadIds", () => {
     expect(
       receiptThreadIds(receipt({ $a: { [SELF_ID]: { ts: 1 } } }), SELF_ID),
     ).toBe("all");
+  });
+});
+
+describe("following a thread", () => {
+  const THREAD_ID = "$root";
+  const threadEvent = (sender: string, relType: string): MatrixEvent =>
+    new MatrixEvent({
+      event_id: `$${sender}-${relType}`,
+      room_id: ROOM_ID,
+      sender,
+      type:
+        relType === "m.annotation" ? EventType.Reaction : EventType.RoomMessage,
+      origin_server_ts: 1,
+      content: { "m.relates_to": { rel_type: relType, event_id: THREAD_ID } },
+    });
+  const thread = (overrides: Partial<Thread> = {}) =>
+    ({
+      id: THREAD_ID,
+      hasCurrentUserParticipated: false,
+      rootEvent: { getSender: () => OTHER_ID },
+      events: [],
+      ...overrides,
+    }) as unknown as Thread;
+  const room = (joined: number) =>
+    ({ getJoinedMemberCount: () => joined }) as unknown as Room;
+
+  it("does not follow someone else's thread in a group", () => {
+    expect(isFollowedThread(room(3), thread(), SELF_ID)).toBe(false);
+  });
+
+  it("follows every thread of a two-person chat", () => {
+    expect(isFollowedThread(room(2), thread(), SELF_ID)).toBe(true);
+  });
+
+  it("follows a thread the user started", () => {
+    const rootEvent = { getSender: () => SELF_ID } as unknown as MatrixEvent;
+    expect(isFollowedThread(room(3), thread({ rootEvent }), SELF_ID)).toBe(
+      true,
+    );
+  });
+
+  it("follows a thread the server says the user took part in", () => {
+    expect(
+      isFollowedThread(
+        room(3),
+        thread({ hasCurrentUserParticipated: true }),
+        SELF_ID,
+      ),
+    ).toBe(true);
+  });
+
+  it("follows a thread with a reply of the user loaded since", () => {
+    expect(
+      isFollowedThread(
+        room(3),
+        thread({ events: [threadEvent(SELF_ID, "m.thread")] } as never),
+        SELF_ID,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not follow a thread for a reaction", () => {
+    expect(
+      isFollowedThread(
+        room(3),
+        thread({ events: [threadEvent(SELF_ID, "m.annotation")] } as never),
+        SELF_ID,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("roomUnread of a muted room", () => {
+  const room = (markedUnread: boolean) =>
+    ({
+      roomId: ROOM_ID,
+      client: {
+        pushRules: {
+          global: {
+            override: [
+              {
+                rule_id: ROOM_ID,
+                enabled: true,
+                actions: ["dont_notify"],
+                conditions: [
+                  { kind: "event_match", key: "room_id", pattern: ROOM_ID },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      getAccountData: (type: string) =>
+        type === EventType.MarkedUnread
+          ? { getContent: () => ({ unread: markedUnread }) }
+          : undefined,
+      getRoomUnreadNotificationCount: () => 3,
+      getUnreadNotificationCount: () => 3,
+      getThreads: () => [],
+    }) as unknown as Room;
+
+  it("shows nothing, whatever the counts", () => {
+    expect(roomUnread(room(false), SELF_ID, null)).toEqual({
+      unread: false,
+      highlight: false,
+      markedUnread: false,
+    });
+  });
+
+  it("keeps the mark set by hand", () => {
+    expect(roomUnread(room(true), SELF_ID, null)).toEqual({
+      unread: true,
+      highlight: false,
+      markedUnread: true,
+    });
   });
 });

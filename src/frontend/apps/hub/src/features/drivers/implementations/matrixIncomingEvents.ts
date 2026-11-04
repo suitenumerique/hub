@@ -10,11 +10,18 @@ import {
   RoomEvent,
   SyncState,
   type SyncStateData,
+  type Thread,
+  ThreadEvent,
 } from "matrix-js-sdk/lib/matrix";
 
 import type { ChatEventListener } from "../Driver";
 
-import { isOwnEcho } from "./matrixEventMapping";
+import {
+  isFollowedThread,
+  isOwnEcho,
+  isThreadReplyMessage,
+} from "./matrixEventMapping";
+import { isGlobalMuteEnabled, isRoomMuted } from "./matrixNotificationLevels";
 import { matrixRoomToLocalChat } from "./matrixRoomMapping";
 
 /** Attach only AFTER the initial network sync; cache/history is never delivery. */
@@ -39,6 +46,51 @@ export const subscribeToIncomingMatrixEvents = (
     string,
     { event: MatrixEvent; at: number }
   >();
+  const threadWaits = new Set<() => void>();
+
+  /**
+   * Notifies what Matrix push rules say, for a message. In a thread, Hub filters
+   * further, so Tchap and Element still notify replies it stays silent about:
+   * only mentions and replies in a followed thread notify, at any level.
+   */
+  const shouldNotify = (event: MatrixEvent, room: Room): boolean => {
+    const actions = mx.getPushActionsForEvent(event, true);
+    if (!isThreadReplyMessage(event)) {
+      return actions?.notify === true;
+    }
+    const rules = mx.pushRules;
+    if (
+      !rules ||
+      isRoomMuted(rules, room.roomId) ||
+      isGlobalMuteEnabled(rules)
+    ) {
+      return false;
+    }
+    if (actions?.notify && actions.tweaks.highlight) {
+      return true;
+    }
+    const thread = room.getThread(event.threadRootId!);
+    return thread ? isFollowedThread(room, thread, self ?? undefined) : false;
+  };
+
+  /**
+   * A thread new to the client (its root is older than what it synced) only
+   * tells who takes part in it once it has loaded.
+   */
+  const publishOnceThreadLoaded = (event: MatrixEvent, thread: Thread) => {
+    const at = Date.now();
+    const stop = () => {
+      thread.off(ThreadEvent.Update, onUpdate);
+      threadWaits.delete(stop);
+    };
+    const onUpdate = () => {
+      if (!thread.initialEventsFetched) return;
+      stop();
+      if (acceptingLive && Date.now() - at < 60_000) publishMessage(event);
+    };
+    thread.on(ThreadEvent.Update, onUpdate);
+    threadWaits.add(stop);
+  };
 
   const publishMessage = (event: MatrixEvent) => {
     const id = event.getId();
@@ -61,6 +113,14 @@ export const subscribeToIncomingMatrixEvents = (
       room.getMyMembership() !== KnownMembership.Join
     )
       return;
+    const thread = isThreadReplyMessage(event)
+      ? room.getThread(event.threadRootId!)
+      : null;
+    if (thread && !thread.initialEventsFetched) {
+      publishOnceThreadLoaded(event, thread);
+      return;
+    }
+    if (!shouldNotify(event, room)) return;
     seen.add(id);
     if (seen.size > 2048) seen.delete(seen.values().next().value!);
     const content = event.getContent<{ body?: string }>();
@@ -183,6 +243,7 @@ export const subscribeToIncomingMatrixEvents = (
     mx.off(MatrixEventEvent.Decrypted, onDecrypted);
     mx.off(RoomEvent.MyMembership, onMembership);
     mx.off(ClientEvent.Sync, onSync);
+    threadWaits.forEach((stop) => stop());
     pendingInvitations.clear();
     pendingEncrypted.clear();
     currentBatch.clear();
