@@ -5,6 +5,7 @@ import type { ChatMessage } from "@/features/drivers/types";
 import type { UseChatMessagesResult } from "./useChatMessages";
 import type { UseMainTimelineUnreadResult } from "./useMainTimelineUnread";
 import type { MarkedUnreadGate } from "./useMarkedUnreadGate";
+import { usePageVisible } from "./usePageVisible";
 
 type UseConversationOpeningParams = Pick<
   UseChatMessagesResult,
@@ -39,7 +40,8 @@ const firstUnreadAfter = (
  * the bottom and then jumps. Otherwise it opens on the latest messages.
  *
  * Once it shows, it is read as a whole, not only the messages in view; threads
- * keep their own unread replies.
+ * keep their own unread replies. A tab in the background shows nothing: reading
+ * waits for the page to be visible, not for it to have the focus.
  */
 export const useConversationOpening = ({
   messages,
@@ -106,9 +108,10 @@ export const useConversationOpening = ({
 
   // Before paint, so that the jump to the latest messages does not flash its
   // new-message dot.
+  const isPageVisible = usePageVisible();
   const isReadRef = useRef(false);
   useLayoutEffect(() => {
-    if (!isOpened || isReadRef.current) {
+    if (!isOpened || !isPageVisible || isReadRef.current) {
       return;
     }
     isReadRef.current = true;
@@ -116,7 +119,7 @@ export const useConversationOpening = ({
     if (markedUnread.isMarkedUnread) {
       markedUnread.clearIfAllowed();
     }
-  }, [isOpened, markedUnread, messages, unread]);
+  }, [isOpened, isPageVisible, markedUnread, messages, unread]);
 
   return {
     isOpened,

@@ -7,6 +7,10 @@ export const ROOM_HISTORY_REQUESTS =
 /** Event sends (`/rooms/{roomId}/send/…`) of the client API. */
 export const SEND_REQUESTS = /\/_matrix\/client\/v3\/rooms\/[^/]+\/send\//;
 
+/** Read marker writes (`/rooms/{roomId}/read_markers`) of the client API. */
+export const READ_MARKER_REQUESTS =
+  /\/_matrix\/client\/v3\/rooms\/[^/]+\/read_markers/;
+
 /** The `/sync` long-poll of the client API. */
 export const SYNC_REQUESTS = /\/_matrix\/client\/v3\/sync\b/;
 

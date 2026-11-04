@@ -707,9 +707,9 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * The conversation opens: its thread replies no longer show it unread in
-   * the list, those it has and those received until it closes. The threads
-   * keep them unread.
+   * The conversation shows: its thread replies no longer show it unread in
+   * the list, those it has and those received until it stops showing. The
+   * threads keep them unread.
    */
   async startChatVisit(chatId: string): Promise<void> {
     const { mx, room } = this.requireRoom("startChatVisit", chatId);

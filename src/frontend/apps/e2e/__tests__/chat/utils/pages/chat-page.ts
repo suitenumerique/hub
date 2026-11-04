@@ -104,6 +104,17 @@ export class ChatPage {
     await this.page.bringToFront();
   }
 
+  /** Makes the page report itself as a tab in the background, or not. */
+  async setPageVisible(isVisible: boolean): Promise<void> {
+    await this.page.evaluate((visible) => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => (visible ? "visible" : "hidden"),
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, isVisible);
+  }
+
   /** The person reads the open conversation, which then shows as read. */
   async readOpenConversation(target: RowTarget): Promise<void> {
     await this.focus();
