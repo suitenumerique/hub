@@ -37,6 +37,7 @@ import {
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
+import { BellOff } from "@/features/chat/components/BellOff";
 import { ChatVisualAvatar } from "@/features/chat/components/ChatVisualAvatar";
 import { useChatNotificationMenuItem } from "@/features/chat/hooks/useChatNotificationMenuItem";
 import { useChatQuickActions } from "@/features/chat/hooks/useChatQuickActions";
@@ -628,14 +629,19 @@ const ChatRowLink = ({
       <span className="hub__left-panel__chat__content">
         <ChatVisualAvatar chat={chat} />
         <span className="hub__left-panel__chat__text">
-          <span
-            className={clsx(
-              "hub__left-panel__chat__name",
-              (unread.unread || isActive) &&
-                "hub__left-panel__chat__name--strong",
+          <span className="hub__left-panel__chat__title">
+            <span
+              className={clsx(
+                "hub__left-panel__chat__name",
+                (unread.unread || isActive) &&
+                  "hub__left-panel__chat__name--strong",
+              )}
+            >
+              {chat.name}
+            </span>
+            {chat.notificationLevel === "mute" && (
+              <BellOff className="hub__left-panel__chat__muted" />
             )}
-          >
-            {chat.name}
           </span>
           {showAccountLabel && accountLabel && (
             <span className="hub__left-panel__chat__account">
