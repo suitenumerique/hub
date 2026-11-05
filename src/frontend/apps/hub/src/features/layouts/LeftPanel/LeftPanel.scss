@@ -402,6 +402,13 @@
       gap: 1px;
     }
 
+    &__title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
     &__name {
       font-size: 14px;
       font-weight: 500;
@@ -413,6 +420,16 @@
       &--strong {
         font-weight: 700;
       }
+    }
+
+    &__muted {
+      flex: 0 0 auto;
+      color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+    }
+
+    // The tertiary color does not show on the open chat's brand background.
+    &--active &__muted {
+      color: inherit;
     }
 
     &__account {
