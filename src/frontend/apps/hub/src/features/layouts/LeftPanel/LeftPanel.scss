@@ -424,7 +424,10 @@
 
     &__muted {
       flex: 0 0 auto;
-      color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+      color: var(
+        --c--contextuals--content--semantic--neutral--tertiary,
+        #626a80
+      );
     }
 
     // The tertiary color does not show on the open chat's brand background.
