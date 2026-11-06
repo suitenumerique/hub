@@ -29,11 +29,9 @@ export class ChatHeader {
   /** Leaves through the menu and its confirmation dialog. */
   async leave(name: string): Promise<void> {
     const menu = await this.openMenu(name);
-    await menu.getByRole("menuitem", { name: "Leave conversation" }).click();
-    const dialog = this.page.getByRole("dialog", {
-      name: "Leave conversation?",
-    });
-    await dialog.getByRole("button", { name: "Leave conversation" }).click();
+    await menu.getByRole("menuitem", { name: "Leave chat" }).click();
+    const dialog = this.page.getByRole("dialog", { name: "Leave chat?" });
+    await dialog.getByRole("button", { name: "Leave chat" }).click();
     await expect(dialog).toBeHidden({ timeout: SYNC_TIMEOUT });
   }
 }

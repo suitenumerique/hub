@@ -56,7 +56,7 @@ export const useChatReadState = (ref: ChatRef): UseChatReadStateResult => {
         queryKey: chatKeys.unreadOf(ref.accountId),
       });
       notify.error(
-        t("The conversation could not be marked as unread. Please try again."),
+        t("The chat could not be marked as unread. Please try again."),
       );
     },
     meta: { noGlobalError: true },
@@ -76,7 +76,7 @@ export const useChatReadState = (ref: ChatRef): UseChatReadStateResult => {
     },
     onError: () => {
       notify.error(
-        t("The conversation could not be marked as read. Please try again."),
+        t("The chat could not be marked as read. Please try again."),
       );
     },
     meta: { noGlobalError: true },
