@@ -38,6 +38,7 @@ import {
   type RoomMessageEventContent,
 } from "matrix-js-sdk/lib/types";
 
+import { isAnalyticsEnabled } from "@/features/analytics/analytics";
 import { emojiToCodepoints } from "@/features/chat/fluentEmoji";
 import { toggleReaction } from "@/features/chat/reactions";
 import {
@@ -179,6 +180,7 @@ import {
   threadToChatThreadDetail,
   timelineEventToChatEvent,
 } from "./matrixEventMapping";
+import { MatrixDecryptionTracker } from "./matrixDecryptionTracker";
 import {
   matrixDirectoryUserToChatUser,
   mxcUrl,
@@ -450,6 +452,7 @@ export class MatrixDriver extends Driver {
   private conversationSearchDatabase: string | null = null;
   private clientGeneration = 0;
   private security: MatrixSecurity | null = null;
+  private decryptionTracker: MatrixDecryptionTracker | null = null;
   private securitySnapshot: ChatSecuritySnapshot = {
     ...EMPTY_SECURITY,
     supported: true,
@@ -1571,6 +1574,13 @@ export class MatrixDriver extends Driver {
    * client-level relay misses the event (the SDK skips it for some events of a
    * batch) or a load of the page wrote an older copy over the readable one.
    */
+  override noteMessageShown(chatId: string, messageId: string): void {
+    const tracker = this.decryptionTracker;
+    if (!tracker || !isAnalyticsEnabled()) return;
+    const event = this.mx?.getRoom(chatId)?.findEventById(messageId);
+    if (event) tracker.noteShown(event);
+  }
+
   override ensureMessageDecrypted(chatId: string, messageId: string): void {
     const mx = this.mx;
     const room = mx?.getRoom(chatId);
@@ -3505,6 +3515,11 @@ export class MatrixDriver extends Driver {
             this.securityListeners.forEach((listener) => listener());
           },
         );
+        // Before the first decryption, which the sync store can start.
+        this.decryptionTracker = new MatrixDecryptionTracker(
+          client,
+          () => this.securitySnapshot.trust === "verified",
+        );
         this.conversationSearchDatabase = this.searchStoreDbName(user);
         await this.startConversationSearch(client);
       },
@@ -4550,6 +4565,8 @@ export class MatrixDriver extends Driver {
     this.clientGeneration++;
     if (this.security) void this.track(this.security.stop());
     this.security = null;
+    this.decryptionTracker?.stop();
+    this.decryptionTracker = null;
     this.securitySnapshot = { ...EMPTY_SECURITY, supported: true };
     this.securityListeners.forEach((listener) => listener());
     this.conversationSearch?.close();
