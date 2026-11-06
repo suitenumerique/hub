@@ -2,6 +2,7 @@ import type { InfiniteData } from "@tanstack/react-query";
 import { Fragment, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { chatTypeOf, trackEvent } from "@/features/analytics/analytics";
 import type {
   ChatAttachment,
   ChatComposedMessage,
@@ -18,6 +19,7 @@ import { threadDraftKey } from "../../composer/composerDraftStore";
 import { useCachedQueryData } from "../../hooks/useCachedQueryData";
 import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useStartChatThread } from "../../hooks/useStartChatThread";
+import { useChat } from "../../hooks/useChat";
 import { useChatSendState } from "../../hooks/useChatSecurity";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
@@ -46,6 +48,7 @@ export const DraftThreadDetail = ({
 }: DraftThreadDetailProps) => {
   const { t } = useTranslation();
   const sendState = useChatSendState(chatRef);
+  const { chat } = useChat(chatRef);
   const mentionSource = useMemo(
     () => ({ accountId: chatRef.accountId, chatRef }),
     [chatRef],
@@ -167,6 +170,9 @@ export const DraftThreadDetail = ({
               sendState === "checking"
                 ? undefined
                 : (composed) => send(composed)
+            }
+            onMessageSent={() =>
+              trackEvent("thread:started", { chat_type: chatTypeOf(chat) })
             }
             onSendAttachment={(attachment) => send({ content: "" }, attachment)}
             onUploadAttachment={isSupported ? uploadAttachment : undefined}

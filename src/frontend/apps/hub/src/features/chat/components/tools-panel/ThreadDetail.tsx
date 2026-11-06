@@ -1,3 +1,4 @@
+import { chatTypeOf, trackEvent } from "@/features/analytics/analytics";
 import {
   useCallback,
   useEffect,
@@ -39,6 +40,7 @@ import { useEditChatMessage } from "../../hooks/useEditChatMessage";
 import { useMessagesWithFailed } from "../../hooks/useFailedMessages";
 import { useListEdgeReturn } from "../../hooks/useListEdgeReturn";
 import { useSendChatThreadReply } from "../../hooks/useSendChatThreadReply";
+import { useChat } from "../../hooks/useChat";
 import { useChatSendState } from "../../hooks/useChatSecurity";
 import { ChatBubble } from "../ChatBubble";
 import { ChatComposer } from "../ChatComposer";
@@ -124,6 +126,7 @@ export const ThreadDetail = ({
 }: ThreadDetailProps) => {
   const { t } = useTranslation();
   const sendState = useChatSendState(chatRef);
+  const { chat } = useChat(chatRef);
   const mentionSource = useMemo(
     () => ({ accountId: chatRef.accountId, chatRef }),
     [chatRef],
@@ -496,6 +499,16 @@ export const ThreadDetail = ({
             editDraft={editingMessage}
             onCancelEdit={() => setEditingMessage(null)}
             onSubmit={sendState === "checking" ? undefined : handleSubmit}
+            onMessageSent={() =>
+              // The thread opens in memory from Reply: holding only its root,
+              // what is sent now creates it.
+              trackEvent(
+                thread?.messages.every(({ id }) => id === thread.rootMessageId)
+                  ? "thread:started"
+                  : "thread:replied",
+                { chat_type: chatTypeOf(chat) },
+              )
+            }
             onSendAttachment={handleSendAttachment}
             onUploadAttachment={isSupported ? uploadAttachment : undefined}
             dropTargetRef={detailRef}

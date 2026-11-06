@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
+import { trackEvent } from "@/features/analytics/analytics";
 import { decorateChat } from "@/features/chat/chatRefs";
 import { getRegistry } from "@/features/drivers/DriverRegistry";
 import type { AccountId, Chat, ChatRef } from "@/features/drivers/types";
@@ -50,6 +51,10 @@ export const useCreateChatForUsers = (
         .get(accountId)
         .createChatForUsers(normalizedParticipantIds);
       const chat: Chat = decorateChat(accountId, localChat);
+      // The current user is implicit in the ids: a direct message has two.
+      trackEvent("chat:created", {
+        participant_count: normalizedParticipantIds.length + 1,
+      });
 
       queryClient.setQueryData(chatKeys.chat(chat.ref), chat);
       queryClient.setQueryData(
