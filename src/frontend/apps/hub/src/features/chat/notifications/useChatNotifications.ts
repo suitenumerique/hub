@@ -1,11 +1,14 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/router";
 import { type RefObject, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { chatTypeOf, trackEvent } from "@/features/analytics/analytics";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { ChatRef } from "@/features/drivers/types";
 
 import { chatHref, sameChatRef } from "../chatRefs";
+import { findListedChat } from "../hooks/useChat";
 
 import { NotificationSound } from "./NotificationSound";
 import { NotificationPermission } from "./notificationPermission";
@@ -33,10 +36,11 @@ export const useChatNotifications = (
   const hasAccounts = entries.length > 0;
   const router = useRouter();
   const { t } = useTranslation();
-  const latest = useRef({ router, t });
+  const queryClient = useQueryClient();
+  const latest = useRef({ router, t, queryClient });
   useEffect(() => {
-    latest.current = { router, t };
-  }, [router, t]);
+    latest.current = { router, t, queryClient };
+  }, [router, t, queryClient]);
 
   const session = useRef<NotificationSession | null>(null);
   useEffect(() => {
@@ -124,6 +128,12 @@ export const useChatNotifications = (
                 current.notifications.has(notification)
               ) {
                 window.focus();
+                trackEvent("chat:opened", {
+                  source: "notification",
+                  chat_type: chatTypeOf(
+                    findListedChat(latest.current.queryClient, ref),
+                  ),
+                });
                 void latest.current.router.push(chatHref(ref)).catch(() => {});
               }
               notification.close();

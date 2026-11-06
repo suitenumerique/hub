@@ -8,6 +8,7 @@ import { useRouter } from "next/router";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
+import { chatTypeOf, trackEvent } from "@/features/analytics/analytics";
 import type { Chat } from "@/features/drivers/types";
 
 import { chatHref } from "../chatRefs";
@@ -40,6 +41,10 @@ export const ConversationSearchModal = ({
 
   const open = (chat: Chat) => {
     onClose();
+    trackEvent("chat:opened", {
+      source: "search",
+      chat_type: chatTypeOf(chat),
+    });
     void router.push(chatHref(chat.ref), undefined, { shallow: true });
   };
 

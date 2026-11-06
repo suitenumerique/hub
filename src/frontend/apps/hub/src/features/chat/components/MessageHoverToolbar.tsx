@@ -27,7 +27,7 @@ type MessageHoverToolbarProps = {
    * Toggles the current user's reaction with the given emoji. Omitted for a
    * message the server does not have: the reactions then leave the menu.
    */
-  onReact?: (emoji: string) => void;
+  onReact?: (emoji: string, source: "react_quick" | "react_picker") => void;
   /** Opens a reply flow for this message. Omitted when reply is unavailable. */
   onReply?: () => void;
   /** Sends again a message that could not be sent. */
@@ -147,7 +147,7 @@ export const MessageHoverToolbar = ({
 
   const handlePick = useCallback(
     (emoji: string) => {
-      onReact?.(emoji);
+      onReact?.(emoji, "react_picker");
       finish();
     },
     [finish, onReact],
@@ -199,7 +199,7 @@ export const MessageHoverToolbar = ({
               className="hub__message-toolbar__button"
               aria-label={label}
               onClick={() => {
-                onReact(emoji);
+                onReact(emoji, "react_quick");
                 finish();
               }}
             >

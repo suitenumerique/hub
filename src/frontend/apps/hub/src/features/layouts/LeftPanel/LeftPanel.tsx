@@ -35,6 +35,7 @@ import {
   Virtuoso,
 } from "react-virtuoso";
 
+import { chatTypeOf, trackEvent } from "@/features/analytics/analytics";
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
 import { BellOff } from "@/features/chat/components/BellOff";
@@ -541,11 +542,19 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps) {
 const ChatRowWithMenus = (props: ChatRowProps) => {
   const { chat, unread, isActive } = props;
   const { t } = useTranslation();
-  const options = useChatQuickActions(chat, unread);
+  const quickActionsFor = useChatQuickActions(chat, unread);
   const notifications = useChatNotificationMenuItem(chat);
+  const options = useMemo(
+    () => quickActionsFor("chat_list_right_click"),
+    [quickActionsFor],
+  );
   const moreOptions = useMemo<DropdownMenuItem[]>(
-    () => [...options, { type: "separator" }, notifications],
-    [options, notifications],
+    () => [
+      ...quickActionsFor("chat_list_more_button"),
+      { type: "separator" },
+      notifications,
+    ],
+    [quickActionsFor, notifications],
   );
   const menu = useDropdownMenu();
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
@@ -617,6 +626,14 @@ const ChatRowLink = ({
         isMenuOpen && "hub__left-panel__chat--menu-open",
       )}
       onContextMenu={onContextMenu}
+      onClick={() => {
+        if (!isActive) {
+          trackEvent("chat:opened", {
+            source: "chat_list",
+            chat_type: chatTypeOf(chat),
+          });
+        }
+      }}
     >
       <span
         className={clsx(
