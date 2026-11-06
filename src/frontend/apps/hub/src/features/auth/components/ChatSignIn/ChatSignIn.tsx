@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { trackEvent } from "@/features/analytics/analytics";
 import { ChatSignInError } from "@/features/drivers/Driver";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { AccountId, User } from "@/features/drivers/types";
@@ -49,6 +50,12 @@ export const ChatSignIn = ({ user, accountId }: ChatSignInProps) => {
       if (result.status === "redirect") window.location.assign(result.url);
       else setExternalEmail(address);
     },
+    onError: (failure) => {
+      trackEvent("chat-account:sign-in-failed", {
+        reason:
+          failure instanceof ChatSignInError ? failure.reason : "unavailable",
+      });
+    },
     meta: { noGlobalError: true },
   });
   // Still signing in while the browser leaves for the server's sign-in page.
@@ -60,6 +67,7 @@ export const ChatSignIn = ({ user, accountId }: ChatSignInProps) => {
     const field = event.currentTarget.elements.namedItem("email");
     if (!(field instanceof HTMLInputElement) || !field.validity.valid) {
       setInvalidEmail(true);
+      trackEvent("chat-account:sign-in-failed", { reason: "invalid-email" });
       return;
     }
     signIn.mutate({ address: email.trim() });
