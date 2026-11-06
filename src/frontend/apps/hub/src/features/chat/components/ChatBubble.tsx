@@ -38,6 +38,7 @@ import { useDownloadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
 import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
 import { useEnsureMessageDecrypted } from "../hooks/useEnsureMessageDecrypted";
+import { useReportMessageShown } from "../hooks/useReportMessageShown";
 import { useToggleReaction } from "../hooks/useToggleReaction";
 import { notify } from "@/features/ui/components/toast";
 
@@ -283,6 +284,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     threadId,
   } = props;
   useEnsureMessageDecrypted(chatRef, messageId, props.availability);
+  useReportMessageShown(chatRef, messageId);
   const { openThread, openDraftThread } = useChatPanel();
   const { startEditing, retryFailedMessage, discardFailedMessage } =
     useChatMessageEdit();

@@ -8,6 +8,10 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Send a first set of product events to PostHog when the
+  environment configures it: activation, writing, chat management and
+  decryption. They carry neither message content, file names nor Matrix ids,
+  and people are known by their Hub user id. #78
 - ✨(frontend) Resize the side panel from its left edge, with the mouse or
   the keyboard, from 350px up to the width of the chat; the width is kept in
   the browser. When the window gets too narrow for both, the panel closes and
