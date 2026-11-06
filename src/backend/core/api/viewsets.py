@@ -239,7 +239,7 @@ class UserViewSet(
         """
         context = {"request": request}
         return drf.response.Response(
-            self.serializer_class(request.user, context=context).data
+            serializers.UserMeSerializer(request.user, context=context).data
         )
 
 
@@ -268,6 +268,7 @@ class ConfigView(drf.views.APIView):
             "POSTHOG_KEY",
             "LANGUAGES",
             "LANGUAGE_CODE",
+            "RELEASE",
             "SENTRY_DSN",
         ]
         dict_settings = {}
