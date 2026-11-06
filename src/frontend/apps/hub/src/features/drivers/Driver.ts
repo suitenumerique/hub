@@ -633,6 +633,12 @@ export abstract class Driver {
     void _messageId;
   }
 
+  /** A message is displayed, for the decryption measures of a driver. */
+  noteMessageShown(_chatId: string, _messageId: string): void {
+    void _chatId;
+    void _messageId;
+  }
+
   /**
    * Subscribes to the current typers of one conversation. This deliberately
    * stays outside React Query: typing is ephemeral and must never enter an

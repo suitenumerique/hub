@@ -383,6 +383,10 @@ export class LazyMatrixDriver extends BaseDriver {
     this.target?.ensureMessageDecrypted(chatId, messageId);
   }
 
+  override noteMessageShown(chatId: string, messageId: string): void {
+    this.target?.noteMessageShown(chatId, messageId);
+  }
+
   async sendChatThreadReply(
     params: SendChatThreadReplyParams,
   ): Promise<ChatThreadMutationResult> {
