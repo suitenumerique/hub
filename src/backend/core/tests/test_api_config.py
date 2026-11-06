@@ -28,6 +28,7 @@ pytestmark = pytest.mark.django_db
     FRONTEND_THEME="test-theme",
     MEDIA_BASE_URL="http://testserver/",
     POSTHOG_KEY={"id": "132456", "host": "https://eu.i.posthog-test.com"},
+    RELEASE="1.2.3",
     SENTRY_DSN="https://sentry.test/123",
     THEME_CUSTOMIZATION_FILE_PATH="",
 )
@@ -59,6 +60,7 @@ def test_api_config(is_authenticated):
         "LANGUAGE_CODE": "en-us",
         "MEDIA_BASE_URL": "http://testserver/",
         "POSTHOG_KEY": {"id": "132456", "host": "https://eu.i.posthog-test.com"},
+        "RELEASE": "1.2.3",
         "SENTRY_DSN": "https://sentry.test/123",
         "theme_customization": {},
     }

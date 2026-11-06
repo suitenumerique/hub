@@ -35,6 +35,14 @@ class UserSerializer(serializers.ModelSerializer):
         return instance.short_name
 
 
+class UserMeSerializer(UserSerializer):
+    """Serialize the current user, with what only they may read about themselves."""
+
+    class Meta(UserSerializer.Meta):
+        fields = [*UserSerializer.Meta.fields, "sub"]
+        read_only_fields = [*UserSerializer.Meta.read_only_fields, "sub"]
+
+
 class UserLightSerializer(UserSerializer):
     """Serialize users with limited fields."""
 
