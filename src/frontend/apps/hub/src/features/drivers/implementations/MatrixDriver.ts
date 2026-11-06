@@ -3279,7 +3279,11 @@ export class MatrixDriver extends Driver {
         this.clearCallbackParams();
       }
       await this.bootstrapClient(matrixUser);
-      return { status: "connected", chatUser: toChatUser(matrixUser) };
+      return {
+        status: "connected",
+        chatUser: toChatUser(matrixUser),
+        justSignedIn: true,
+      };
     }
 
     // 3. Nothing to go on yet — wait until the Hub user is known before
