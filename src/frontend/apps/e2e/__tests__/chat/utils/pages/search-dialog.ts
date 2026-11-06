@@ -4,7 +4,7 @@ import { SYNC_TIMEOUT } from "../env";
 import { exactly } from "../text";
 
 const INCOMPLETE_PREPARATION =
-  /Searching…|No matches yet|Preparation paused|Participants ready|Waiting for conversation details|awaiting retry/;
+  /Searching…|No matches yet|Preparation paused|Participants ready|Waiting for chat details|awaiting retry/;
 
 /** Conversation search, opened from "Search" or with ⌘K / Ctrl+K. */
 export class SearchDialog {
