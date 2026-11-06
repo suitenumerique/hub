@@ -19,6 +19,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { type EventProperty, trackEvent } from "@/features/analytics/analytics";
 import type {
   ChatAttachment,
   ChatRef,
@@ -37,6 +38,7 @@ import { useDownloadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
 import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
 import { useEnsureMessageDecrypted } from "../hooks/useEnsureMessageDecrypted";
+import { useReportMessageShown } from "../hooks/useReportMessageShown";
 import { useToggleReaction } from "../hooks/useToggleReaction";
 import { notify } from "@/features/ui/components/toast";
 
@@ -282,6 +284,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     threadId,
   } = props;
   useEnsureMessageDecrypted(chatRef, messageId, props.availability);
+  useReportMessageShown(chatRef, messageId);
   const { openThread, openDraftThread } = useChatPanel();
   const { startEditing, retryFailedMessage, discardFailedMessage } =
     useChatMessageEdit();
@@ -299,6 +302,8 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   // The actions menu shows at the pointer after a right click on the bubble,
   // or under the "more" button beside it.
   const [isToolbarOpen, setIsToolbarOpen] = useState(false);
+  const toolbarTrigger =
+    useRef<EventProperty<"message:action-used", "trigger">>("hover_button");
   const bodyRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<ButtonElement>(null);
   // Set when the "more" button opens the menu from the keyboard.
@@ -321,6 +326,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       if (!body || !placeToolbarUnder(body, event.currentTarget)) return;
       // A click from the keyboard has no pointer press.
       focusesToolbarOnOpen.current = event.detail === 0;
+      toolbarTrigger.current = "hover_button";
       setIsToolbarOpen(true);
     },
     [closeToolbar, isToolbarOpen],
@@ -353,6 +359,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     // A deleted message has no menu: the browser's own one stays.
     if (!isPlaced) return;
     event.preventDefault();
+    toolbarTrigger.current = "right_click";
     setIsToolbarOpen(true);
   }, []);
   const onReact = useCallback(
@@ -363,6 +370,24 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   // while Copy / Edit / Delete remain available on every reply.
   const compactToolbar =
     threadId !== undefined || props.compactToolbar === true;
+  const trackAction = (
+    action: EventProperty<"message:action-used", "action">,
+  ) =>
+    trackEvent("message:action-used", {
+      action,
+      trigger: toolbarTrigger.current,
+      is_own_message: props.variant === "sent",
+      surface: compactToolbar ? "thread" : "main",
+    });
+  const measured =
+    <Result,>(
+      action: EventProperty<"message:action-used", "action">,
+      run: () => Result,
+    ) =>
+    () => {
+      trackAction(action);
+      return run();
+    };
   const rootAuthor = props.variant === "received" ? props.author : undefined;
   const rootAuthorId = props.variant === "sent" ? "me" : props.author.id;
   const messageForAction = useMemo<ChatMessage>(
@@ -508,13 +533,20 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         <span className="hub__chat-bubble__edited">{t("edited")}</span>
       )}
       <MessageHoverToolbar
-        onReact={sendFailed ? undefined : onReact}
-        onReply={canReply ? onReply : undefined}
+        onReact={
+          sendFailed
+            ? undefined
+            : (emoji, source) => {
+                trackAction(source);
+                onReact(emoji);
+              }
+        }
+        onReply={canReply ? measured("reply", onReply) : undefined}
         onRetry={sendFailed ? onRetry : undefined}
-        onCopy={props.content ? onCopy : undefined}
+        onCopy={props.content ? measured("copy", onCopy) : undefined}
         onDownload={attachment ? onDownload : undefined}
-        onEdit={props.canEdit ? onEdit : undefined}
-        onDelete={deleteAction}
+        onEdit={props.canEdit ? measured("edit", onEdit) : undefined}
+        onDelete={deleteAction && measured("delete", deleteAction)}
         compact={compactToolbar || sendFailed}
         isOpen={isToolbarOpen}
         onClose={closeToolbar}

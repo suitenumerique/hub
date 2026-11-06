@@ -167,8 +167,10 @@ export interface ThemeCustomization {
 }
 
 export type ApiConfig = {
-  POSTHOG_KEY?: string;
-  POSTHOG_HOST?: string;
+  /** Empty when PostHog is not configured for the environment. */
+  POSTHOG_KEY?: { id?: string; host?: string };
+  ENVIRONMENT?: string;
+  RELEASE?: string;
   FRONTEND_THEME?: string;
   /** Chat environment: `local`, `tchap-preprod` or `tchap-prod`. */
   FRONTEND_CHAT_ENVIRONMENT?: string;

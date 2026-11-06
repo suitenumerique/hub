@@ -106,7 +106,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
   const [isMembersOpen, setIsMembersOpen] = useState(false);
   const [isLeaveOpen, setIsLeaveOpen] = useState(false);
   const unread = useChatUnread()(chat.ref);
-  const quickActions = useChatQuickActions(chat, unread);
+  const quickActionsFor = useChatQuickActions(chat, unread);
   const notifications = useChatNotificationMenuItem(chat);
   const {
     removeFromHistory,
@@ -143,7 +143,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         icon: <Shared size={16} />,
         callback: () => setIsMembersOpen(true),
       },
-      ...quickActions,
+      ...quickActionsFor("chat_header_menu"),
       { type: "separator" },
       {
         id: "rename",
@@ -161,7 +161,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         callback: () => setIsLeaveOpen(true),
       },
     ],
-    [canLeave, isLeaving, notifications, quickActions, t],
+    [canLeave, isLeaving, notifications, quickActionsFor, t],
   );
 
   const trigger = (

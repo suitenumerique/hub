@@ -3,6 +3,7 @@ import { Bell, Mute } from "@gouvfr-lasuite/ui-components/icons";
 import { type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+import { trackEvent } from "@/features/analytics/analytics";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type {
   Chat,
@@ -44,7 +45,16 @@ export const useChatNotificationMenuItem = (chat: Chat): DropdownMenuOption => {
       icon: LEVEL_ICONS[option],
       testId: "hub-chat-notification-level",
       isChecked: option === level,
-      callback: option === level ? undefined : () => setLevel(option),
+      callback:
+        option === level
+          ? undefined
+          : () => {
+              trackEvent("chat_notification_level_changed", {
+                previous_level: level,
+                level: option,
+              });
+              setLevel(option);
+            },
     });
     return {
       id: "notifications",

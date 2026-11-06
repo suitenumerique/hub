@@ -1,3 +1,4 @@
+import { chatTypeOf, trackEvent } from "@/features/analytics/analytics";
 import {
   ReactNode,
   useCallback,
@@ -468,6 +469,22 @@ export const ChatView = ({
                           (chatRef || canComposeDraft) && !securityChecking
                             ? handleSubmit
                             : undefined
+                        }
+                        onMessageSent={({ trigger, hasAttachment }) =>
+                          trackEvent("message:sent", {
+                            trigger,
+                            has_attachment: hasAttachment,
+                            // A new conversation has no chat yet: its people
+                            // tell what it will be.
+                            chat_type: chatTypeOf(
+                              chat ?? {
+                                kind:
+                                  (draftParticipants?.length ?? 0) > 1
+                                    ? "group"
+                                    : "direct",
+                              },
+                            ),
+                          })
                         }
                         onSendAttachment={handleSendAttachment}
                         onUploadAttachment={

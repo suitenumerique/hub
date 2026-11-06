@@ -272,6 +272,8 @@ export type ChatConnectionState = {
     | "account-expired";
   /** Server-provided explanation shown as is, e.g. an OAuth error description. */
   detail?: string;
+  /** Connected by a sign-in just completed, not from a saved session. */
+  justSignedIn?: boolean;
 };
 
 /**
@@ -627,6 +629,12 @@ export abstract class Driver {
    * publish it again once readable. Best effort.
    */
   ensureMessageDecrypted(_chatId: string, _messageId: string): void {
+    void _chatId;
+    void _messageId;
+  }
+
+  /** A message is displayed, for the decryption measures of a driver. */
+  noteMessageShown(_chatId: string, _messageId: string): void {
     void _chatId;
     void _messageId;
   }

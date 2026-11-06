@@ -8,6 +8,10 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Send a first set of product events to PostHog when the
+  environment configures it: activation, writing, chat management and
+  decryption. They carry neither message content, file names nor Matrix ids,
+  and people are known by their Hub user id. #78
 - ✨(frontend) Choose how much each chat notifies from its "..." and header
   menus: All messages, Mentions & following or Mute, stored as push rules
   shared with Tchap and Element. A chat created or joined in the Hub starts

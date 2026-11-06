@@ -119,6 +119,7 @@ export const useChatConnections = (
         chatUser:
           results.find((result) => result.data?.chatUser)?.data?.chatUser ??
           null,
+        justSignedIn: results.some((result) => result.data?.justSignedIn),
       };
     },
   });

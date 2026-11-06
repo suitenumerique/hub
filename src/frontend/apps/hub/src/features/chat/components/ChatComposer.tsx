@@ -1,4 +1,5 @@
 import { Button, Tooltip } from "@gouvfr-lasuite/ui-components";
+import { type EventProperty, trackEvent } from "@/features/analytics/analytics";
 import {
   ArrowUp,
   AttachFile,
@@ -100,6 +101,11 @@ type ChatComposerProps = {
    * composer mid-way, such as opening a newly created thread.
    */
   onSubmitted?: () => void;
+  /** Same moment as `onSubmitted`, for a surface to tell what was sent and how. */
+  onMessageSent?: (details: {
+    trigger: EventProperty<"message:sent", "trigger">;
+    hasAttachment: boolean;
+  }) => void;
   /**
    * Area where dropped files are added to this composer, such as the whole
    * conversation or thread. Defaults to the composer itself.
@@ -129,6 +135,7 @@ export const ChatComposer = ({
   onSendAttachment,
   onUploadAttachment,
   onSubmitted,
+  onMessageSent,
   dropTargetRef,
   mentions,
 }: ChatComposerProps) => {
@@ -341,6 +348,10 @@ export const ChatComposer = ({
       }
 
       setIsSubmittingDraft(true);
+      // Enter submits through `requestSubmit()`, which has no submitter.
+      const trigger = (event.nativeEvent as SubmitEvent).submitter
+        ? "send_button"
+        : "enter";
       // Like Element, empty the field at once: the message already shows as an
       // optimistic bubble, and a conversation keeps what fails to send. Only
       // what has nowhere else to go comes back below: a New Chat message without
@@ -366,6 +377,10 @@ export const ChatComposer = ({
             await onSendAttachment?.(item.attachment);
             removeAttachment(item.id);
           }
+          onMessageSent?.({
+            trigger,
+            hasAttachment: readyAttachments.length > 0,
+          });
           onSubmitted?.();
         }
       } catch (error) {
@@ -399,6 +414,7 @@ export const ChatComposer = ({
       canSubmit,
       editDraft,
       errorMessage,
+      onMessageSent,
       onSendAttachment,
       onSubmit,
       onSubmitted,
@@ -412,11 +428,17 @@ export const ChatComposer = ({
   );
 
   const addFiles = useCallback(
-    (files: FileList | File[] | null | undefined) => {
+    (
+      files: FileList | File[] | null | undefined,
+      method: EventProperty<"attachment:added", "method">,
+    ) => {
       if (!canAttach || !files || files.length === 0) {
         return;
       }
-      queueFiles(files);
+      const accepted = queueFiles(files);
+      for (let index = 0; index < accepted; index += 1) {
+        trackEvent("attachment:added", { method });
+      }
       inputRef.current?.focus();
     },
     [canAttach, queueFiles],
@@ -467,7 +489,7 @@ export const ChatComposer = ({
       event.preventDefault();
       depth = 0;
       setIsDraggingFiles(false);
-      addFilesRef.current(event.dataTransfer?.files);
+      addFilesRef.current(event.dataTransfer?.files, "drag_and_drop");
     };
     target.addEventListener("dragenter", onDragEnter);
     target.addEventListener("dragover", onDragOver);
@@ -618,7 +640,7 @@ export const ChatComposer = ({
                     !types.includes("text/plain")
                   ) {
                     event.preventDefault();
-                    addFiles(files);
+                    addFiles(files, "paste");
                   }
                 }}
               />
@@ -636,7 +658,10 @@ export const ChatComposer = ({
                 hidden
                 tabIndex={-1}
                 onChange={(event) => {
-                  addFiles(Array.from(event.currentTarget.files ?? []));
+                  addFiles(
+                    Array.from(event.currentTarget.files ?? []),
+                    "attach_button",
+                  );
                   // Allows picking the same file again after removing it.
                   event.currentTarget.value = "";
                 }}
