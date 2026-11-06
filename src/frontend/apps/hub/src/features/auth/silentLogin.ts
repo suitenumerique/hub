@@ -1,3 +1,4 @@
+import { markLoginStarted } from "../analytics/analytics";
 import { authUrl } from "./authUrl";
 
 const SILENT_LOGIN_RETRY_KEY = "silent-login-retry";
@@ -18,6 +19,7 @@ const setNextRetryTime = (retryIntervalInSeconds: number) => {
 };
 
 const initiateSilentLogin = () => {
+  markLoginStarted();
   window.location.href = authUrl({ silent: true }).href;
 };
 

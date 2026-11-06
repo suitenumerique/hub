@@ -1,10 +1,18 @@
 import { Button } from "@gouvfr-lasuite/ui-components";
 import { useTranslation } from "react-i18next";
-import { posthog } from "posthog-js";
 import React, { PropsWithChildren, useEffect, useRef, useState } from "react";
 
 import { fetchAPI } from "@/features/api/fetchApi";
 import { User } from "@/features/auth/types";
+import {
+  clearAnalyticsStorage,
+  identifyUser,
+  markLoginStarted,
+  resetAnalyticsIdentity,
+  trackEvent,
+  trackLoginCompleted,
+} from "../analytics/analytics";
+import { useSecurityAnalytics } from "../analytics/useSecurityAnalytics";
 import { APIError } from "../api/APIError";
 import { baseApiUrl } from "../api/utils";
 import { useChatAccountsBootstrap } from "../chat/hooks/useChatAccounts";
@@ -30,8 +38,9 @@ export const logout = async () => {
   // Last: a send interrupted by the cleanup above keeps its text on disk.
   clearComposerDrafts();
   clearFailedMessages();
+  clearAnalyticsStorage();
   window.location.replace(new URL("logout/", baseApiUrl()).href);
-  posthog.reset();
+  resetAnalyticsIdentity();
 };
 
 const fetchCurrentUser = () =>
@@ -55,6 +64,7 @@ export const prefetchCurrentUser = () => {
 };
 
 export const login = (returnTo?: string) => {
+  markLoginStarted();
   const url = authUrl({ returnTo });
   window.location.replace(url.href);
 };
@@ -69,6 +79,14 @@ interface AuthContextInterface {
 export const AuthContext = React.createContext<AuthContextInterface>({});
 
 export const useAuth = () => React.useContext(AuthContext);
+
+/** Reports the full-screen error while it shows. */
+const ConnectionErrorShown = ({ reason }: { reason: string }) => {
+  useEffect(() => {
+    trackEvent("connection:error-shown", { reason });
+  }, [reason]);
+  return null;
+};
 
 export const Auth = ({ children }: PropsWithChildren) => {
   const { t, i18n } = useTranslation();
@@ -89,7 +107,9 @@ export const Auth = ({ children }: PropsWithChildren) => {
     reason,
     detail,
     accountId: chatAccountId,
+    justSignedIn,
   } = useChatConnections(user);
+  useSecurityAnalytics();
 
   const init = async () => {
     try {
@@ -136,11 +156,16 @@ export const Auth = ({ children }: PropsWithChildren) => {
 
   useEffect(() => {
     if (user) {
-      posthog.identify(user.email, {
-        email: user.email,
-      });
+      identifyUser(user);
+      trackLoginCompleted();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (chatStatus === "connected" && justSignedIn) {
+      trackEvent("chat-account:connected", {});
+    }
+  }, [chatStatus, justSignedIn]);
 
   // Apply the language saved on the profile once logged in, or save the
   // detected one when the profile has none yet. Visitors get the detected
@@ -230,6 +255,9 @@ export const Auth = ({ children }: PropsWithChildren) => {
     }
     return (
       <main className="hub__connection-error">
+        <ConnectionErrorShown
+          reason={chatUnconfigured ? "unconfigured" : (reason ?? "unavailable")}
+        />
         <h1>{t("Chat connection interrupted")}</h1>
         <p role="alert">{message}</p>
         {detail && <p>{detail}</p>}

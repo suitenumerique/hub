@@ -272,6 +272,8 @@ export type ChatConnectionState = {
     | "account-expired";
   /** Server-provided explanation shown as is, e.g. an OAuth error description. */
   detail?: string;
+  /** Connected by a sign-in just completed, not from a saved session. */
+  justSignedIn?: boolean;
 };
 
 /**
