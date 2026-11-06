@@ -39,8 +39,11 @@ let pendingAttachmentId = 0;
 
 export type UsePendingAttachmentsResult = {
   items: PendingAttachment[];
-  /** Queues files up to `MAX_PENDING_ATTACHMENTS`; the rest are refused. */
-  addFiles: (files: Iterable<File>) => void;
+  /**
+   * Queues files up to `MAX_PENDING_ATTACHMENTS`; the rest are refused. Returns
+   * how many were accepted.
+   */
+  addFiles: (files: Iterable<File>) => number;
   /** Drops one file, cancelling its upload when still in flight. */
   remove: (id: string) => void;
   /** Uploads a failed file again. */
@@ -177,7 +180,7 @@ export const usePendingAttachments = (
   const addFiles = useCallback(
     (files: Iterable<File>) => {
       if (!upload) {
-        return;
+        return 0;
       }
       const added = Array.from(files);
       const accepted = added.slice(
@@ -198,6 +201,7 @@ export const usePendingAttachments = (
         ]);
         startUpload(item);
       }
+      return accepted.length;
     },
     [items.length, startUpload, upload],
   );
