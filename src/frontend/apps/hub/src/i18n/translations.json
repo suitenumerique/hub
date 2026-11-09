@@ -4,13 +4,11 @@
       "401 Unauthorized": "401 Unauthorized",
       "Uploading {{count}} files_one": "Uploading {{count}} file",
       "You can attach up to {{count}} files per message._one": "You can attach up to {{count}} file per message.",
-      "You have been invited to join this chat.": "You have been invited to join this conversation.",
       "{{count}} files could not be uploaded_one": "{{count}} file could not be uploaded",
       "{{count}} files maximum per message_one": "{{count}} file maximum per message",
       "{{count}} replies_one": "{{count}} reply",
       "{{count}} unread messages_one": "{{count}} unread message",
-      "{{count}} unread threads_one": "{{count}} unread thread",
-      "{{name}} invites you to join this chat.": "{{name}} invites you to join this conversation."
+      "{{count}} unread threads_one": "{{count}} unread thread"
     }
   },
   "fr": {
@@ -135,7 +133,7 @@
       "Messages in this chat are not end-to-end encrypted.": "Les messages de cette discussion ne sont pas chiffrés de bout en bout.",
       "More actions": "Plus d'actions",
       "More options for {{name}}": "Plus d'options pour {{name}}",
-      "Mute": "Ignorer",
+      "Mute": "Aucune",
       "Name": "Nom",
       "Needs attention": "Action nécessaire",
       "New": "Nouveau",
@@ -158,6 +156,9 @@
       "Open {{client}}": "Ouvrir {{client}}",
       "Open {{client}} with the same account and accept the verification. If no device is available, cancel and recover your account in that app.": "Ouvrez {{client}} avec le même compte, puis acceptez la vérification. Si aucun appareil n’est disponible, annulez et récupérez votre compte dans ce client.",
       "Open {{name}}": "Ouvrir {{name}}",
+      "Panel width: medium": "Largeur du panneau : moyenne",
+      "Panel width: narrow": "Largeur du panneau : étroite",
+      "Panel width: wide": "Largeur du panneau : large",
       "Participants ready: {{ready}} / {{eligible}}": "Participants prêts : {{ready}} / {{eligible}}",
       "Pending verification": "Après vérification",
       "Preparation paused. Results may be incomplete or outdated.": "Préparation en pause. Les résultats peuvent être incomplets ou obsolètes.",
@@ -178,6 +179,7 @@
       "Rename chat": "Renommer la discussion",
       "Reply": "Répondre",
       "Replying isn't available on this account yet.": "La réponse n'est pas encore disponible sur ce compte.",
+      "Resize panel": "Redimensionner le panneau",
       "Retry": "Réessayer",
       "Retry preparation": "Relancer la préparation",
       "Retry recovery": "Réessayer la récupération",
