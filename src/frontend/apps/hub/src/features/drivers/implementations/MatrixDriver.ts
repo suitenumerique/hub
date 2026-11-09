@@ -186,6 +186,7 @@ import {
   withoutOrganization,
 } from "./matrixIdentity";
 import { subscribeToIncomingMatrixEvents } from "./matrixIncomingEvents";
+import { isListActivity } from "./matrixLastActivity";
 import {
   createEncryptedThumbnail,
   encryptAttachment,
@@ -3726,6 +3727,21 @@ export class MatrixDriver extends Driver {
         data.timeline !== data.timeline.getTimelineSet().getLiveTimeline()
       ) {
         return;
+      }
+      // What moves a conversation up, as in Element, rereads the list: a room
+      // setting, a poll, a call, or a reaction or an edit of the user. A new
+      // message and a membership already do, through their own events.
+      const isNewMessage =
+        (event.getType() === EventType.RoomMessage ||
+          event.getType() === EventType.RoomMessageEncrypted) &&
+        !event.isRelation(RelationType.Replace);
+      if (
+        data.liveEvent === true &&
+        !isNewMessage &&
+        event.getType() !== EventType.RoomMember &&
+        isListActivity(room, event, selfUserId)
+      ) {
+        emitCurrent({ type: "chats:changed" });
       }
       if (event.getType() === EventType.Reaction) {
         // The optimistic mutation owns this session's local/remote echo. Other
