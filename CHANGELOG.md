@@ -223,6 +223,10 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Move chats up the list for the same events as Element and
+  Tchap: someone changing their name or avatar, joining or leaving, editing a
+  message, voting, answering or ending a call, or changing rights no longer
+  moves a chat up. Your own reactions, edits and deletions now do, as there.
 - 🐛(frontend) Stop losing what is typed while a message is being sent, in any
   conversation: the field stays free and messages leave in order, as in
   Element. A message that could not be sent no longer comes back in the field:
