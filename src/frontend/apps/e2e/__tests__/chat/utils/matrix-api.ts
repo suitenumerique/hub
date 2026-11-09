@@ -250,6 +250,32 @@ export class MatrixApi {
     return Object.keys(sync.rooms?.invite ?? {});
   }
 
+  // --- Profile ---------------------------------------------------------
+
+  /**
+   * Changes the global profile, as Tchap's settings do: the server repeats it
+   * in a membership event in every room of this person.
+   */
+  async setProfile({
+    displayName,
+    avatarUrl,
+  }: {
+    displayName?: string;
+    avatarUrl?: string;
+  }): Promise<void> {
+    const path = `/_matrix/client/v3/profile/${encodeURIComponent(this.userId)}`;
+    if (avatarUrl !== undefined) {
+      await this.request("PUT", `${path}/avatar_url`, {
+        body: { avatar_url: avatarUrl },
+      });
+    }
+    if (displayName !== undefined) {
+      await this.request("PUT", `${path}/displayname`, {
+        body: { displayname: displayName },
+      });
+    }
+  }
+
   // --- Messages --------------------------------------------------------
 
   async sendEvent(
