@@ -1,7 +1,15 @@
 .hub__chat-view {
-  // The tools panel column with its 12px gutters: 450px wide when there is
+  // The width picked with the resize handle (toolsPanelWidth.ts).
+  --hub-chat-panel-width: 450px;
+  // The tools panel column with its 12px gutters: that width when there is
   // room, narrower down to 350px so it is never wider than the conversation.
-  --hub-chat-panel-column: clamp(374px, 50%, 474px);
+  --hub-chat-panel-column: clamp(
+    374px,
+    calc(var(--hub-chat-panel-width) + 24px),
+    50%
+  );
+  // The tools panel and its resize handle start below the header.
+  --hub-chat-panel-top: 64px;
 
   flex: 1 1 auto;
   min-height: 0;
@@ -13,8 +21,20 @@
   overflow: clip;
   transition: grid-template-columns 220ms ease;
 
-  &[data-panel-open="true"] {
+  &[data-panel-layout="inline"][data-panel-open="true"] {
     grid-template-columns: 1fr var(--hub-chat-panel-column);
+  }
+
+  &[data-panel-resizing="true"] {
+    cursor: col-resize;
+    user-select: none;
+    // The column follows the pointer at once.
+    transition: none;
+  }
+
+  // Only there to shut the header behind the backdrop (ChatView.tsx).
+  &__header {
+    display: contents;
   }
 
   &__main {
@@ -59,12 +79,84 @@
     min-width: 0;
     min-height: 0;
 
-    > * {
+    > .hub__chat-tools-panel {
       position: absolute;
-      top: 64px;
+      top: var(--hub-chat-panel-top);
       bottom: var(--c--globals--spacings--sm, 12px);
       width: calc(var(--hub-chat-panel-column) - 24px);
       margin-left: var(--c--globals--spacings--sm, 12px);
+
+      // Focused as a whole when it opens over the conversation: no outline.
+      &:focus {
+        outline: none;
+      }
+    }
+  }
+
+  // Too narrow for the panel beside the conversation: it opens over it, at
+  // its narrowest, below the header, and a backdrop shuts the conversation
+  // and its header behind it.
+  &__backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    background: var(--c--globals--colors--black-200, rgba(24, 27, 36, 0.2));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+
+  &[data-panel-open="true"] &__backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  &[data-panel-layout="overlay"] &__panel > .hub__chat-tools-panel {
+    right: var(--c--globals--spacings--sm, 12px);
+    z-index: 7;
+    margin-left: 0;
+    transform: translateX(calc(100% + var(--c--globals--spacings--sm, 12px)));
+    transition: transform 220ms ease;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+
+  &[data-panel-layout="overlay"][data-panel-open="true"]
+    &__panel
+    > .hub__chat-tools-panel {
+    transform: none;
+  }
+
+  // When the window becomes too narrow or wide enough again, the panel changes
+  // place at once.
+  &[data-panel-snapping="true"] {
+    &,
+    .hub__chat-view__panel > .hub__chat-tools-panel {
+      transition: none;
+    }
+  }
+
+  // The gutter on the panel's left: invisible, only the cursor shows it can
+  // be dragged. Keyboard focus still outlines it.
+  &__resize-handle {
+    position: absolute;
+    top: var(--hub-chat-panel-top);
+    bottom: var(--c--globals--spacings--sm, 12px);
+    width: var(--c--globals--spacings--sm, 12px);
+    border-radius: 4px;
+    cursor: col-resize;
+    touch-action: none;
+
+    &:focus-visible {
+      outline: 2px solid
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+      outline-offset: -2px;
     }
   }
 }

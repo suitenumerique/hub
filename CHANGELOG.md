@@ -8,6 +8,11 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Resize the side panel from its left edge, with the mouse or
+  the keyboard, from 350px up to the width of the chat; the width is kept in
+  the browser. When the window gets too narrow for both, the panel closes and
+  opens over the chat instead, behind a darker backdrop that shuts the chat
+  until a click on it or Escape closes the panel. #97
 - ✨(frontend) Choose how much each chat notifies from its "..." and header
   menus: All messages, Mentions & following or Mute, stored as push rules
   shared with Tchap and Element. A chat created or joined in the Hub starts

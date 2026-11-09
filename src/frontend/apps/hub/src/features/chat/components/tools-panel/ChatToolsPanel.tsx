@@ -18,6 +18,8 @@ const CONTENT_SCROLLERS =
   "[data-virtuoso-scroller], .hub__chat-tools-panel__content";
 
 type ChatToolsPanelProps = {
+  /** Lets the resize handle name the panel it controls. */
+  id: string;
   tool: ChatTool | null;
   isOpen: boolean;
   chatRef: ChatRef;
@@ -35,6 +37,7 @@ type ChatToolsPanelProps = {
 };
 
 export const ChatToolsPanel = ({
+  id,
   tool,
   isOpen,
   chatRef,
@@ -54,7 +57,10 @@ export const ChatToolsPanel = ({
 
   return (
     <aside
+      id={id}
       className="hub__chat-tools-panel"
+      // Takes the focus when it opens over the conversation.
+      tabIndex={-1}
       aria-label={t("Tools panel")}
       aria-hidden={!isOpen}
       // A closed panel stays mounted: keep its content out of keyboard reach.

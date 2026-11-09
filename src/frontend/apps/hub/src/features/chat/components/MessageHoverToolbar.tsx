@@ -115,7 +115,11 @@ export const MessageHoverToolbar = ({
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") finish();
+      if (event.key === "Escape") {
+        // Handled: the tools panel over the conversation stays open.
+        event.preventDefault();
+        finish();
+      }
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
