@@ -2,6 +2,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -68,6 +69,8 @@ import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
 import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
+import { ToolsPanelResizeHandle } from "./tools-panel/ToolsPanelResizeHandle";
+import { useToolsPanelFits } from "./tools-panel/useToolsPanelFits";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 import { TypingIndicator } from "./TypingIndicator";
 
@@ -278,6 +281,24 @@ export const ChatView = ({
 
   const closePanel = () => setActiveTool(null);
 
+  // Too narrow for the panel beside the conversation, it opens over it.
+  const viewRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
+  const panelFits = useToolsPanelFits(viewRef);
+  // Adjusted while rendering, not in an effect: no render ever shows the
+  // panel open over the conversation in between, which would make it inert
+  // and take the focus from its composer.
+  const [panelFitted, setPanelFitted] = useState(panelFits);
+  if (panelFitted !== panelFits) {
+    setPanelFitted(panelFits);
+    // The window became too narrow while the panel was beside the
+    // conversation: it closes rather than leave the conversation narrower.
+    if (!panelFits) {
+      setActiveTool(null);
+    }
+  }
+
   const openThread = useCallback(
     (threadId: string, options?: OpenThreadOptions) => {
       setActiveTool("threads");
@@ -364,6 +385,46 @@ export const ChatView = ({
     [discardFailedMessage, retryFailedMessage],
   );
 
+  // Over the conversation, the panel shuts it behind a backdrop, out of reach
+  // of the pointer and the keyboard: the focus goes into the panel, unless
+  // something in it took it already.
+  const panelOverlays =
+    !panelFits && activeTool !== null && chatRef !== null && !isInvitation;
+  useEffect(() => {
+    if (!panelOverlays) {
+      return;
+    }
+    const panel = document.getElementById(panelId);
+    if (panel && !panel.contains(document.activeElement)) {
+      panel.focus();
+    }
+  }, [panelId, panelOverlays]);
+
+  // A click on the backdrop closes it, and so does Escape, once what is open
+  // inside it (a menu, an edit) has had it, also when the focus fell back on
+  // the page. The focus goes back to the conversation's composer.
+  const closeOverlay = useCallback(() => {
+    setActiveTool(null);
+    setRefocusSignal((signal) => signal + 1);
+  }, []);
+  useEffect(() => {
+    if (!panelOverlays) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        (panelRef.current?.contains(event.target as Node) ||
+          event.target === document.body)
+      ) {
+        closeOverlay();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [closeOverlay, panelOverlays]);
+
   const renderConversation = () => {
     if (invitationChat && chatRef) {
       return <ChatInvitationView chatRef={chatRef} chat={invitationChat} />;
@@ -393,30 +454,34 @@ export const ChatView = ({
       <ChatAttachmentPreviewProvider value={attachmentPreviewContext}>
         <ChatPanelProvider value={panelContext}>
           <div
+            ref={viewRef}
             className="hub__chat-view"
             data-panel-open={activeTool !== null}
+            data-panel-layout={panelFits ? "inline" : "overlay"}
             data-header-variant={renderHeader ? "search" : "chat"}
           >
-            {renderHeader ? (
-              <>
-                {renderHeader({
+            <div className="hub__chat-view__header" inert={panelOverlays}>
+              {renderHeader ? (
+                renderHeader({
                   chat,
                   activeTool,
                   onToggleTool: toggleTool,
-                })}
-              </>
-            ) : (
-              <>
+                })
+              ) : (
                 <ChatHeader
                   chat={chat}
                   activeTool={activeTool}
                   onToggleTool={toggleTool}
                   showTools={!isInvitation}
                 />
-              </>
-            )}
+              )}
+            </div>
 
-            <div className="hub__chat-view__main" ref={mainRef}>
+            <div
+              className="hub__chat-view__main"
+              ref={mainRef}
+              inert={panelOverlays}
+            >
               <div className="hub__chat-view__content">
                 {renderConversation()}
               </div>
@@ -481,9 +546,20 @@ export const ChatView = ({
                 </div>
               )}
             </div>
-            <div className="hub__chat-view__panel">
+            {!panelFits && chatRef && !isInvitation && (
+              <div
+                className="hub__chat-view__backdrop"
+                aria-hidden="true"
+                onClick={closeOverlay}
+              />
+            )}
+            <div className="hub__chat-view__panel" ref={panelRef}>
+              {chatRef && !isInvitation && activeTool !== null && panelFits && (
+                <ToolsPanelResizeHandle viewRef={viewRef} panelId={panelId} />
+              )}
               {chatRef && !isInvitation && (
                 <ChatToolsPanel
+                  id={panelId}
                   tool={activeTool ?? displayedTool}
                   isOpen={activeTool !== null}
                   chatRef={chatRef}
@@ -491,7 +567,7 @@ export const ChatView = ({
                   threadComposerFocusSignal={threadComposerFocusSignal}
                   threadInitialMessage={threadInitialMessage}
                   draftThreadRoot={draftThreadRoot}
-                  onClose={closePanel}
+                  onClose={panelOverlays ? closeOverlay : closePanel}
                   onOpenThread={openThread}
                   onCloseThread={closeThread}
                 />

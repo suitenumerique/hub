@@ -119,6 +119,8 @@ export const ChatAttachmentPreview = ({
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // Handled: the tools panel over the conversation stays open.
+        event.preventDefault();
         onClose();
       }
     };
