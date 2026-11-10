@@ -22,7 +22,10 @@ import {
   isThreadReplyMessage,
 } from "./matrixEventMapping";
 import { isGlobalMuteEnabled, isRoomMuted } from "./matrixNotificationLevels";
-import { matrixRoomToLocalChat } from "./matrixRoomMapping";
+import {
+  matrixRoomToLocalChat,
+  roomEffectiveNotificationLevel,
+} from "./matrixRoomMapping";
 
 /** Attach only AFTER the initial network sync; cache/history is never delivery. */
 export const subscribeToIncomingMatrixEvents = (
@@ -49,9 +52,10 @@ export const subscribeToIncomingMatrixEvents = (
   const threadWaits = new Set<() => void>();
 
   /**
-   * Notifies what Matrix push rules say, for a message. In a thread, Hub filters
-   * further, so Tchap and Element still notify replies it stays silent about:
-   * only mentions and replies in a followed thread notify, at any level.
+   * Notifies what Matrix push rules say, for a message. In a thread, Hub
+   * filters further below All messages, so Tchap and Element still notify
+   * replies it stays silent about: only mentions and replies in a followed
+   * thread notify. At All messages, every reply does, as everywhere else.
    */
   const shouldNotify = (event: MatrixEvent, room: Room): boolean => {
     const actions = mx.getPushActionsForEvent(event, true);
@@ -66,7 +70,11 @@ export const subscribeToIncomingMatrixEvents = (
     ) {
       return false;
     }
-    if (actions?.notify && actions.tweaks.highlight) {
+    if (
+      actions?.notify &&
+      (actions.tweaks.highlight ||
+        roomEffectiveNotificationLevel(room) === "all_messages")
+    ) {
       return true;
     }
     const thread = room.getThread(event.threadRootId!);
