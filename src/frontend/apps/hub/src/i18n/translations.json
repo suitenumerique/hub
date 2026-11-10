@@ -13,6 +13,7 @@
   },
   "fr": {
     "translation": {
+      "(new window)": "(nouvelle fenêtre)",
       "401 Unauthorized": "401 Non autorisé",
       "403 Forbidden": "403 Interdit",
       "Accept": "Accepter",
@@ -86,6 +87,7 @@
       "File details": "Détails du fichier",
       "Files": "Fichiers",
       "First sign in to {{client}} with the same account and set up encryption there.": "Connectez-vous d’abord à {{client}} avec le même compte et configurez-y le chiffrement.",
+      "Give feedback": "Faire un retour",
       "Go to the original message": "Aller au message d'origine",
       "Help": "Aide",
       "History unavailable": "Historique indisponible",
