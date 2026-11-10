@@ -14,7 +14,11 @@ import {
 
 import i18n from "@/i18n/initI18n";
 
-import { ChatInvitation, LocalChat } from "../types";
+import {
+  ChatEffectiveNotificationLevel,
+  ChatInvitation,
+  LocalChat,
+} from "../types";
 import { mxcUrl, withoutOrganization } from "./matrixIdentity";
 import { lastActivityTimestamp } from "./matrixLastActivity";
 import { isRoomMuted, notificationLevelsOf } from "./matrixNotificationLevels";
@@ -87,6 +91,12 @@ const roomNotificationLevels = (
       )
     : {};
 };
+
+/** The level that applies to this room, its own or the inherited one. */
+export const roomEffectiveNotificationLevel = (
+  room: Room,
+): ChatEffectiveNotificationLevel | undefined =>
+  roomNotificationLevels(room).effectiveNotificationLevel;
 
 /**
  * Whether the current user marked this room unread. Like Element and Tchap,
