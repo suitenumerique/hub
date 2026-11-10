@@ -7,7 +7,9 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
+  beginThreadReplySend,
   confirmThreadReply,
+  endThreadReplySend,
   holdThreadReply,
   releaseThreadReply,
 } from "@/features/chat/pendingThreadReplies";
@@ -189,6 +191,7 @@ export const useSendChatThreadReply = (
           : old,
       );
     }
+    beginThreadReplySend(targetRef, targetThreadId);
     replyCount.patch = {
       previousThreads,
       optimisticThreads: queryClient.getQueryData<ChatThread[]>(threadsKey),
@@ -390,7 +393,15 @@ export const useSendChatThreadReply = (
       void queryClient.invalidateQueries({ queryKey: context.threadsKey });
       void queryClient.invalidateQueries({ queryKey: context.messagesKey });
     },
-    onSettled: (_data, _error, { slot }) => slot.release(),
+    onSettled: (
+      _data,
+      _error,
+      { ref: targetRef, threadId: targetThreadId, slot, replyCount },
+    ) => {
+      // Raised only once its turn came: a reply refused before it never was.
+      if (replyCount.patch) endThreadReplySend(targetRef, targetThreadId);
+      slot.release();
+    },
     meta: { noGlobalError: true },
   });
 

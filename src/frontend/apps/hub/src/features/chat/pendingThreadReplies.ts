@@ -108,3 +108,29 @@ export const withHeldThreadReplies = (
 
 /** Forgets every held reply, as a fresh session starts without any. */
 export const clearHeldThreadReplies = (): void => held.clear();
+
+/**
+ * Threads with a reply of this session on its way, from the moment it counts
+ * until the send answers. The driver does not count that reply meanwhile, so
+ * the root's raised count stands, as reaction chips do while a toggle is in
+ * flight.
+ */
+const sending = new Map<string, number>();
+
+export const beginThreadReplySend = (ref: ChatRef, threadId: string): void => {
+  const key = keyOf(ref, threadId);
+  sending.set(key, (sending.get(key) ?? 0) + 1);
+};
+
+export const endThreadReplySend = (ref: ChatRef, threadId: string): void => {
+  const key = keyOf(ref, threadId);
+  const count = (sending.get(key) ?? 1) - 1;
+  if (count > 0) {
+    sending.set(key, count);
+  } else {
+    sending.delete(key);
+  }
+};
+
+export const isThreadReplySending = (ref: ChatRef, threadId: string): boolean =>
+  sending.has(keyOf(ref, threadId));
