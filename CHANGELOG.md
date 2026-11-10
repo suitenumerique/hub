@@ -8,6 +8,8 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Replace the help button at the bottom of the left panel with a
+  "Give feedback" button that opens the feedback form in a new tab. #122
 - ✨(frontend) Send a first set of product events to PostHog when the
   environment configures it: activation, writing, chat management and
   decryption. They carry neither message content, file names nor Matrix ids,
