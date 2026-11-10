@@ -227,16 +227,16 @@ test.describe("Notification levels", () => {
     const menu = await chat.header.openMenu(roomName);
     await chat.notifications.openLevels(menu);
     await chat.notifications.expectLevels(
-      ["Par défaut", "Tous les messages", "Mentions & suivis", "Ignorer"],
+      ["Par défaut", "Tous les messages", "Mentions & suivis", "Aucune"],
       "Par défaut",
     );
-    await chat.notifications.choose("Ignorer");
+    await chat.notifications.choose("Aucune");
 
     const again = await chat.header.openMenu(roomName);
     await chat.notifications.openLevels(again);
     await chat.notifications.expectLevels(
-      ["Tous les messages", "Mentions & suivis", "Ignorer"],
-      "Ignorer",
+      ["Tous les messages", "Mentions & suivis", "Aucune"],
+      "Aucune",
     );
     await chat.notifications.close();
   });
