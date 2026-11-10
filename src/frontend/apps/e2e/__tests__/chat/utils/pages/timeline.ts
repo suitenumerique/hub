@@ -375,8 +375,9 @@ export class Timeline {
   }
 
   /**
-   * The conversation opened on its first unread message: the separator and
-   * that message at the top of the timeline, not at its bottom.
+   * The conversation opened on its first unread message: the separator about
+   * a third of the way down the timeline, as Element opens on its read
+   * marker, well below the header and with the unread messages under it.
    */
   async expectOpenedOnFirstUnread(text: string): Promise<void> {
     await this.expectUnreadSeparatorBefore(text);
@@ -385,7 +386,9 @@ export class Timeline {
       .locator("[data-virtuoso-scroller]")
       .boundingBox();
     const separator = await this.separatorBefore(text).boundingBox();
-    expect(separator!.y - scroller!.y).toBeLessThan(scroller!.height / 3);
+    const offset = separator!.y - scroller!.y;
+    expect(offset).toBeGreaterThan(scroller!.height / 4);
+    expect(offset).toBeLessThan(scroller!.height / 2);
   }
 
   /** The timeline shows its latest message, without the jump to it. */
