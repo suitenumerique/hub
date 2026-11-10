@@ -7,9 +7,12 @@ import {
 } from "@gouvfr-lasuite/ui-components/icons";
 import {
   FormEvent,
+  type KeyboardEvent,
+  type Ref,
   type RefObject,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -22,6 +25,7 @@ import type {
   ChatAttachment,
   ChatComposedMessage,
 } from "@/features/drivers/types";
+import { matchesShortcut } from "@/features/shortcuts/keyboardShortcuts";
 import { notify } from "@/features/ui/components/toast";
 
 import { MAX_PENDING_ATTACHMENTS } from "../attachments";
@@ -36,6 +40,10 @@ import {
   saveComposerDraft,
 } from "../composer/composerDraftStore";
 import { mentionsFromFormattedBody } from "../composer/editDraftMentions";
+import {
+  type Formatting,
+  formatSelection,
+} from "../composer/markdownFormatting";
 import { serializeComposerDraft } from "../composer/serializeComposerDraft";
 import type { UploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useComposerDraft } from "../hooks/useComposerDraft";
@@ -107,7 +115,30 @@ type ChatComposerProps = {
   dropTargetRef?: RefObject<HTMLElement | null>;
   /** People `@` offers to mention; without it, `@` is plain text. */
   mentions?: ComposerMentionSource;
+  /**
+   * Starts editing the user's message before or after `fromId`, or the latest
+   * one without it, as ↑ and ↓ do in Element. Returns false when there is none.
+   */
+  onEditAdjacent?: (
+    direction: "previous" | "next",
+    fromId: string | null,
+  ) => boolean;
+  /** What the surface around can ask of the composer. */
+  actionsRef?: Ref<ChatComposerActions>;
 };
+
+export type ChatComposerActions = {
+  /** Opens the file picker. Returns false when files cannot be attached. */
+  pickFiles: () => boolean;
+};
+
+const FORMATTINGS: readonly Formatting[] = [
+  "bold",
+  "italic",
+  "code",
+  "quote",
+  "link",
+];
 
 const hasDraggedFiles = (event: DragEvent) =>
   event.dataTransfer?.types.includes("Files") ?? false;
@@ -131,6 +162,8 @@ export const ChatComposer = ({
   onSubmitted,
   dropTargetRef,
   mentions,
+  onEditAdjacent,
+  actionsRef,
 }: ChatComposerProps) => {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -152,6 +185,7 @@ export const ChatComposer = ({
     onPointerDown,
     onPointerUp,
     insertMention,
+    applyEdits,
   } = useComposerDraft(inputRef, editDraft ? undefined : draftKey);
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -497,6 +531,79 @@ export const ChatComposer = ({
     onCancelEdit?.();
   }, [onCancelEdit, onTypingActivity]);
 
+  const pickFiles = useCallback(() => {
+    if (!canAttach || isAttachmentQueueFull) {
+      return false;
+    }
+    fileInputRef.current?.click();
+    return true;
+  }, [canAttach, isAttachmentQueueFull]);
+  useImperativeHandle(actionsRef, () => ({ pickFiles }), [pickFiles]);
+
+  /** The composer's own shortcuts. Returns true when the key was handled. */
+  const onShortcutKeyDown = (
+    event: KeyboardEvent<HTMLTextAreaElement>,
+  ): boolean => {
+    const input = event.currentTarget;
+    const formatting = FORMATTINGS.find((name) => matchesShortcut(event, name));
+    if (formatting) {
+      event.preventDefault();
+      const formatted = formatSelection(
+        input.value,
+        input.selectionStart,
+        input.selectionEnd,
+        formatting,
+      );
+      if (formatted) {
+        applyEdits(formatted.edits, formatted.selection);
+      }
+      return true;
+    }
+    if (matchesShortcut(event, "attachFile")) {
+      // Handled here even when files cannot be attached: the key belongs to
+      // this composer, not to the conversation's one.
+      event.preventDefault();
+      pickFiles();
+      return true;
+    }
+    if (matchesShortcut(event, "cancelEdit") && editDraft) {
+      event.preventDefault();
+      cancelEdit();
+      return true;
+    }
+    // As in Element: from the start of the field, ↑ edits the last message;
+    // while editing, an unchanged message gives way to the one before it, or
+    // with ↓ from its end, to the one after it or back to the draft.
+    const caret = input.selectionStart;
+    if (!onEditAdjacent || isSubmitting || caret !== input.selectionEnd) {
+      return false;
+    }
+    const isUnchanged =
+      !editDraft || draftRef.current.text === editDraft.content;
+    if (
+      matchesShortcut(event, "editPreviousMessage") &&
+      caret === 0 &&
+      isUnchanged &&
+      onEditAdjacent("previous", editDraft?.id ?? null)
+    ) {
+      event.preventDefault();
+      return true;
+    }
+    if (
+      matchesShortcut(event, "editNextMessage") &&
+      editDraft &&
+      caret === input.value.length &&
+      isUnchanged
+    ) {
+      event.preventDefault();
+      if (!onEditAdjacent("next", editDraft.id)) {
+        cancelEdit();
+      }
+      return true;
+    }
+    return false;
+  };
+
   return (
     <div className="hub__chat-composer-container" ref={containerRef}>
       {autocomplete.isOpen && mentions && (
@@ -595,12 +702,11 @@ export const ChatComposer = ({
                   if (event.nativeEvent.isComposing || event.keyCode === 229) {
                     return;
                   }
-                  if (autocomplete.onKeyDown(event) || onDraftKeyDown(event)) {
-                    return;
-                  }
-                  if (event.key === "Escape" && editDraft) {
-                    event.preventDefault();
-                    cancelEdit();
+                  if (
+                    autocomplete.onKeyDown(event) ||
+                    onDraftKeyDown(event) ||
+                    onShortcutKeyDown(event)
+                  ) {
                     return;
                   }
                   if (event.key === "Enter" && !event.shiftKey) {

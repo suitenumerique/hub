@@ -41,6 +41,7 @@
 @use "./../features/chat/search/ConversationSearchModal.scss";
 @use "./../features/chat/components/tools-panel/ChatToolsPanel.scss";
 @use "./../features/chat/components/tools-panel/ThreadsTool.scss";
+@use "./../features/shortcuts/KeyboardShortcutsModal.scss";
 @use "./toast.scss";
 
 body {

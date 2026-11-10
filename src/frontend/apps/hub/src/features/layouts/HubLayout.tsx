@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
@@ -9,6 +9,8 @@ import { useChatNotifications } from "@/features/chat/notifications/useChatNotif
 import { ConversationSearchModal } from "@/features/chat/search/ConversationSearchModal";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { ChatRef } from "@/features/drivers/types";
+import { KeyboardShortcutsModal } from "@/features/shortcuts/KeyboardShortcutsModal";
+import { useShortcut } from "@/features/shortcuts/useShortcut";
 
 import { LeftPanel } from "./LeftPanel/LeftPanel";
 import { ChatSecurity } from "@/features/chat/components/ChatSecurity";
@@ -29,29 +31,27 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
   const entries = useDriverEntries();
   const activeChatRef = useRef<ChatRef | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const canSearch =
     !!user && entries.some(({ driver }) => driver.supportsConversationSearch);
 
-  useEffect(() => {
-    if (!canSearch) return;
-    const openSearch = (event: KeyboardEvent) => {
-      if (
-        event.isComposing ||
-        event.altKey ||
-        event.shiftKey ||
-        !(event.metaKey || event.ctrlKey) ||
-        event.key.toLowerCase() !== "k"
-      ) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
+  // Captured before editors and comboboxes consume their keyboard events.
+  useShortcut(
+    "searchChats",
+    () => {
+      setShortcutsOpen(false);
       setSearchOpen(true);
-    };
-    // Capture before editors and comboboxes consume their keyboard events.
-    window.addEventListener("keydown", openSearch, true);
-    return () => window.removeEventListener("keydown", openSearch, true);
-  }, [canSearch]);
+    },
+    { enabled: canSearch, capture: true, overModals: true },
+  );
+  useShortcut(
+    "showShortcuts",
+    () => {
+      setSearchOpen(false);
+      setShortcutsOpen((open) => !open);
+    },
+    { enabled: !!user, capture: true, overModals: true },
+  );
 
   // Single, app-wide real-time subscription for the whole messaging shell:
   // reflects activity in any conversation (not just the open one) into the
@@ -72,6 +72,9 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
         {user && <LeftPanel onSearch={() => setSearchOpen(true)} />}
         {user && searchOpen && (
           <ConversationSearchModal onClose={() => setSearchOpen(false)} />
+        )}
+        {user && shortcutsOpen && (
+          <KeyboardShortcutsModal onClose={() => setShortcutsOpen(false)} />
         )}
 
         <main

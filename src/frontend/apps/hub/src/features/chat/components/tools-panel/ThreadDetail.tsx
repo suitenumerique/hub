@@ -31,6 +31,7 @@ import {
 } from "../../ChatMessageJumpContext";
 import type { ThreadInitialMessage } from "../../ChatPanelContext";
 import { threadDraftKey } from "../../composer/composerDraftStore";
+import { findEditableMessage } from "../../editableMessages";
 import { isSameChatDay } from "../../formatTimestamp";
 import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useChatThread } from "../../hooks/useChatThread";
@@ -209,6 +210,21 @@ export const ThreadDetail = ({
   // older ones around it.
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  // ↑ and ↓ in the composer go through the loaded messages of the thread.
+  const editAdjacentMessage = useCallback(
+    (direction: "previous" | "next", fromId: string | null) => {
+      const message = findEditableMessage(
+        messagesRef.current,
+        fromId,
+        direction,
+      );
+      if (message) {
+        setEditingMessage(message);
+      }
+      return message !== null;
+    },
+    [],
+  );
   const jumpScrollRafRef = useRef<number | null>(null);
   const cancelJumpFocusRef = useRef<(() => void) | null>(null);
   useEffect(
@@ -500,6 +516,7 @@ export const ThreadDetail = ({
             onUploadAttachment={isSupported ? uploadAttachment : undefined}
             dropTargetRef={detailRef}
             mentions={mentionSource}
+            onEditAdjacent={editAdjacentMessage}
           />
         </div>
       </div>

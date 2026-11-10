@@ -27,6 +27,7 @@ import {
   loadComposerDraft,
   saveComposerDraft,
 } from "../composer/composerDraftStore";
+import type { TextEdit } from "../composer/markdownFormatting";
 
 /** Texts seen recently with their mentions, so undo and redo bring pills back. */
 const HISTORY_SIZE = 100;
@@ -68,8 +69,14 @@ export const useComposerDraft = (
   storageKeyRef.current = storageKey;
   const historyRef = useRef(new Map<string, readonly ComposerMention[]>());
   const pendingMentionRef = useRef<ComposerMention | null>(null);
+  // The draft several edits made at once lead to, with their mentions moved.
+  const pendingDraftRef = useRef<ComposerDraft | null>(null);
   // A draft found at mount is continued from its end.
-  const pendingCaretRef = useRef<number | null>(draft.text.length || null);
+  const pendingSelectionRef = useRef<{ start: number; end: number } | null>(
+    draft.text.length
+      ? { start: draft.text.length, end: draft.text.length }
+      : null,
+  );
   const isPointerDownRef = useRef(false);
 
   const setDraft = useCallback((next: SetStateAction<ComposerDraft>) => {
@@ -91,10 +98,10 @@ export const useComposerDraft = (
 
   // Fallback edits set the value directly: put the caret back where it goes.
   useLayoutEffect(() => {
-    const caret = pendingCaretRef.current;
-    if (caret !== null) {
-      pendingCaretRef.current = null;
-      inputRef.current?.setSelectionRange(caret, caret);
+    const selection = pendingSelectionRef.current;
+    if (selection !== null) {
+      pendingSelectionRef.current = null;
+      inputRef.current?.setSelectionRange(selection.start, selection.end);
     }
   }, [draft, inputRef]);
 
@@ -108,8 +115,12 @@ export const useComposerDraft = (
       const remembered = inputType.startsWith("history")
         ? historyRef.current.get(text)
         : undefined;
+      const pendingDraft = pendingDraftRef.current;
+      pendingDraftRef.current = null;
       if (remembered) {
         mentions = [...remembered];
+      } else if (pendingDraft?.text === text) {
+        mentions = [...pendingDraft.mentions];
       } else {
         const change =
           diffAtCaret(previous.text, text, input.selectionEnd ?? text.length) ??
@@ -151,12 +162,66 @@ export const useComposerDraft = (
         { at: start, removed: end - start, added: replacement.length },
         replacement,
       );
-      pendingCaretRef.current = start + replacement.length;
+      const caret = start + replacement.length;
+      pendingSelectionRef.current = { start: caret, end: caret };
       setDraft(
         pending
           ? { ...next, mentions: withMention(next.mentions, pending) }
           : next,
       );
+    },
+    [inputRef, setDraft],
+  );
+
+  /**
+   * Applies `edits` (sorted, apart from each other) as a single change that
+   * undo takes back at once, then selects `selection`. The mentions outside
+   * the edits keep their pill, even between two of them.
+   */
+  const applyEdits = useCallback(
+    (edits: readonly TextEdit[], selection: { start: number; end: number }) => {
+      const input = inputRef.current;
+      const first = edits[0];
+      const last = edits[edits.length - 1];
+      if (!input || !first || !last) {
+        return;
+      }
+      const current = draftRef.current;
+      // From the end, so that the earlier positions still hold.
+      const edited = edits.reduceRight(
+        (draft, edit) =>
+          applyChange(
+            draft,
+            {
+              at: edit.start,
+              removed: edit.end - edit.start,
+              added: edit.text.length,
+            },
+            edit.text,
+          ),
+        current,
+      );
+      const next = {
+        text: edited.text,
+        mentions: validateMentions(edited.mentions, edited.text),
+      };
+      // One replacement from the first edit to the last.
+      const replacedEnd = last.end + next.text.length - current.text.length;
+      const replacement = next.text.slice(first.start, replacedEnd);
+      pendingDraftRef.current = next;
+      input.focus();
+      input.setSelectionRange(first.start, last.end);
+      const handled = replacement
+        ? document.execCommand("insertText", false, replacement)
+        : document.execCommand("delete");
+      pendingDraftRef.current = null;
+      if (handled && draftRef.current.text === input.value) {
+        input.setSelectionRange(selection.start, selection.end);
+        return;
+      }
+      // No `execCommand`: edit the value ourselves, without undo history.
+      pendingSelectionRef.current = selection;
+      setDraft(next);
     },
     [inputRef, setDraft],
   );
@@ -282,5 +347,6 @@ export const useComposerDraft = (
     onPointerDown,
     onPointerUp,
     insertMention,
+    applyEdits,
   };
 };

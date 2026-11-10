@@ -20,6 +20,7 @@ import type {
   ChatThreadDetail,
   ChatUser,
 } from "@/features/drivers/types";
+import { useShortcut } from "@/features/shortcuts/useShortcut";
 
 import {
   ChatAttachmentPreviewProvider,
@@ -34,6 +35,7 @@ import {
   type EditingChatMessage,
 } from "../ChatMessageEditContext";
 import type { ChatMessageJump } from "../ChatMessageJumpContext";
+import { findEditableMessage } from "../editableMessages";
 import {
   ChatPanelProvider,
   type DraftThreadRoot,
@@ -63,7 +65,7 @@ import { useChatUnreadThreads } from "../hooks/useChatUnreadThreads";
 import { useSendChatMessage } from "../hooks/useSendChatMessage";
 
 import { ChatAttachmentPreview } from "./ChatAttachmentPreview";
-import { ChatComposer } from "./ChatComposer";
+import { ChatComposer, type ChatComposerActions } from "./ChatComposer";
 import { ChatEncryptionPrompt } from "./ChatEncryptionPrompt";
 import { ChatConversation } from "./ChatConversation";
 import { ChatInvitationView } from "./ChatInvitationView";
@@ -384,6 +386,28 @@ export const ChatView = ({
     }),
     [discardFailedMessage, retryFailedMessage],
   );
+  // ↑ and ↓ in the composer go through the messages loaded in the timeline.
+  const editAdjacentMessage = useCallback(
+    (direction: "previous" | "next", fromId: string | null) => {
+      if (!chatRef) {
+        return false;
+      }
+      const pages = queryClient.getQueryData<ChatMessagesData>(
+        chatKeys.messages(chatRef),
+      )?.pages;
+      // The newest page comes first, its messages from the oldest.
+      const messages = [...(pages ?? [])]
+        .reverse()
+        .flatMap((page) => page.messages);
+      const message = findEditableMessage(messages, fromId, direction);
+      if (message) {
+        setEditingMessage(message);
+      }
+      return message !== null;
+    },
+    [chatRef, queryClient],
+  );
+  const composerRef = useRef<ChatComposerActions>(null);
 
   // Over the conversation, the panel shuts it behind a backdrop, out of reach
   // of the pointer and the keyboard: the focus goes into the panel, unless
@@ -424,6 +448,27 @@ export const ChatView = ({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeOverlay, panelOverlays]);
+
+  const hasTools = chatRef !== null && !isInvitation;
+  // As Element's right panel: opens again on the tool shown last.
+  useShortcut(
+    "toggleToolsPanel",
+    () => {
+      if (activeTool === null) {
+        toggleTool(displayedTool ?? "threads");
+      } else if (panelOverlays) {
+        closeOverlay();
+      } else {
+        closePanel();
+      }
+    },
+    { enabled: hasTools },
+  );
+  // A composer with the focus has handled it for itself. Under the panel open
+  // over it, the conversation's one is out of reach.
+  useShortcut("attachFile", () => composerRef.current?.pickFiles() ?? false, {
+    enabled: !isInvitation && !panelOverlays,
+  });
 
   const renderConversation = () => {
     if (invitationChat && chatRef) {
@@ -540,6 +585,8 @@ export const ChatView = ({
                         }
                         dropTargetRef={mainRef}
                         mentions={mentionSource}
+                        onEditAdjacent={editAdjacentMessage}
+                        actionsRef={composerRef}
                       />
                     </div>
                   </div>

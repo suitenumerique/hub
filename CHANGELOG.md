@@ -8,6 +8,12 @@ and this project adheres to
 
 ### Added
 
+- ✨(frontend) Keyboard shortcuts from Element: ↑ from the start of the
+  composer edits your last message (↑/↓ go through your messages while
+  editing), Ctrl/⌘ + B, I, E, > and Shift + L format the selection in
+  Markdown, Alt + ↑/↓ open the previous or next chat (with Shift, the next
+  unread one), Ctrl/⌘ + Shift + U attaches a file, Ctrl/⌘ + . opens or closes
+  the side panel and Ctrl/⌘ + / lists every shortcut.
 - ✨(frontend) Resize the side panel from its left edge, with the mouse or
   the keyboard, from 350px up to the width of the chat; the width is kept in
   the browser. When the window gets too narrow for both, the panel closes and

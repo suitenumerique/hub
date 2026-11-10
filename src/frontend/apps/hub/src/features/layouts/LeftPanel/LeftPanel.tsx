@@ -40,6 +40,7 @@ import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
 import { BellOff } from "@/features/chat/components/BellOff";
 import { ChatVisualAvatar } from "@/features/chat/components/ChatVisualAvatar";
 import { useChatNotificationMenuItem } from "@/features/chat/hooks/useChatNotificationMenuItem";
+import { useChatNavigationShortcuts } from "@/features/chat/hooks/useChatNavigationShortcuts";
 import { useChatQuickActions } from "@/features/chat/hooks/useChatQuickActions";
 import {
   type ChatUnreadLookup,
@@ -50,6 +51,11 @@ import { APP_VERSION } from "@/features/config/appVersion";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatRef, ChatUnread } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
+import {
+  ariaKeyShortcuts,
+  isMac,
+} from "@/features/shortcuts/keyboardShortcuts";
+import { useShortcutKeys } from "@/features/shortcuts/ShortcutKeys";
 
 import { TchapLogo } from "./TchapLogo";
 
@@ -75,9 +81,10 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   // Draws the separator under the top actions once the list scrolls under it.
   const [isScrolled, setIsScrolled] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
-  const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
-    ? "⌘K"
-    : "Ctrl K";
+  const searchShortcut = useShortcutKeys("searchChats").join(
+    isMac() ? "" : " ",
+  );
+  useChatNavigationShortcuts(chats, unreadLookup);
 
   const accountLabels = useMemo(
     () => new Map(entries.map((entry) => [entry.accountId, entry.label])),
@@ -116,7 +123,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
       id: "search",
       icon: <Zoom size={16} />,
       label: t("Search"),
-      keyShortcuts: "Meta+K Control+K",
+      keyShortcuts: ariaKeyShortcuts("searchChats"),
       shortcutLabel: searchShortcut,
       onClick: onSearch,
     });
