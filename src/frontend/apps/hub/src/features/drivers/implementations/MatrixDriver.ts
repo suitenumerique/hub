@@ -284,6 +284,11 @@ const INITIAL_THREAD_REPLIES = 30;
  */
 const THREAD_INIT_TIMEOUT_MS = 10_000;
 /**
+ * A thread replied to here is held once every reply sent to it has its echo.
+ * Past this delay, such as after a failed send, it is left to the next reply.
+ */
+const REPLIED_THREAD_HOLD_TIMEOUT_MS = 60_000;
+/**
  * Events asked per backfill round trip, Element's `PAGINATE_SIZE`: an older
  * page shows as soon as one request brings a message, and the list asks for
  * the next one while its viewport is not full. Contextual and newer pages ask
@@ -3044,6 +3049,7 @@ export class MatrixDriver extends Driver {
       transactionId,
     );
     this.sentThreadReplyEventIds.add(eventId);
+    this.holdRepliedThread(room, threadId);
     return this.buildThreadMutationResult(
       mx,
       room,
@@ -3079,6 +3085,7 @@ export class MatrixDriver extends Driver {
       attachment,
     );
     this.sentThreadReplyEventIds.add(eventId);
+    this.holdRepliedThread(room, rootMessageId);
     return this.buildThreadMutationResult(
       mx,
       room,
@@ -3087,6 +3094,47 @@ export class MatrixDriver extends Driver {
       message,
       attachment,
     );
+  }
+
+  /**
+   * Makes the SDK hold the thread a reply was just sent to, as Element's
+   * thread view does. The SDK files its own echoes only into a thread it
+   * already holds: without this, the replies of a thread started in this
+   * session belong to no thread, and the root loses its summary as soon as it
+   * is mapped again, on an edit for instance. Created once every reply sent
+   * to it has its echo: the SDK would count one still on its way twice, among
+   * the thread's events and as pending. It then loads the replies itself.
+   */
+  private holdRepliedThread(room: Room, threadId: string): void {
+    const hold = (): boolean => {
+      if (room.getThread(threadId)) {
+        return true;
+      }
+      const sending = room.relations
+        .getAllChildEventsForEvent(threadId)
+        .some(
+          (event) =>
+            event.status !== null &&
+            event.getRelation()?.rel_type === RelationType.Thread,
+        );
+      if (sending) {
+        return false;
+      }
+      room.createThread(threadId, room.findEventById(threadId), [], true);
+      return true;
+    };
+    if (hold()) {
+      return;
+    }
+    const stop = () => {
+      room.off(RoomEvent.LocalEchoUpdated, onEcho);
+      clearTimeout(timeout);
+    };
+    const onEcho = () => {
+      if (hold()) stop();
+    };
+    const timeout = setTimeout(stop, REPLIED_THREAD_HOLD_TIMEOUT_MS);
+    room.on(RoomEvent.LocalEchoUpdated, onEcho);
   }
 
   /** Builds the exact cache payload expected by the optimistic thread hooks. */
