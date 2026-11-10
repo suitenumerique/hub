@@ -10,6 +10,7 @@ import { useEffect } from "react";
 
 import { chatKeys } from "@/features/chat/chatKeys";
 import { isReactionTogglePending } from "@/features/chat/pendingReactionToggles";
+import { isThreadReplySending } from "@/features/chat/pendingThreadReplies";
 import { keepReactionOrder } from "@/features/chat/reactions";
 import { appendThreadMessage } from "@/features/chat/hooks/chatCompositionCache";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
@@ -89,6 +90,32 @@ const withCachedReactions = (
     ? cached.reactions
     : keepReactionOrder(cached.reactions, next.reactions),
 });
+
+/**
+ * A fresh copy of a cached main-timeline message. While this session's reply
+ * to its thread is on its way, the driver does not count that reply yet: the
+ * count raised for it stands until the send answers.
+ */
+const withCachedState = (
+  ref: ChatRef,
+  cached: ChatMessage,
+  next: ChatMessage,
+): ChatMessage => {
+  const fresh = withCachedReactions(ref, cached, next);
+  const sent = cached.thread;
+  if (!sent || !isThreadReplySending(ref, sent.id)) {
+    return fresh;
+  }
+  return {
+    ...fresh,
+    thread: next.thread
+      ? {
+          ...next.thread,
+          replyCount: Math.max(sent.replyCount, next.thread.replyCount),
+        }
+      : sent,
+  };
+};
 
 /**
  * Applies a patch to a cache now and, when a load of that cache is in flight,
@@ -304,7 +331,7 @@ const applyChatEvent = (
           const reconciled = event.message;
           return reconciled
             ? replaceMessage(data, event.messageId, (cached) =>
-                withCachedReactions(ref, cached, reconciled),
+                withCachedState(ref, cached, reconciled),
               )
             : {
                 ...data,
@@ -363,7 +390,7 @@ const applyChatEvent = (
         queryClient.setQueryData<ChatMessagesData>(messagesKey, (data) =>
           data && (!event.threadId || event.message.id === event.threadId)
             ? replaceMessage(data, event.message.id, (cached) =>
-                withCachedReactions(ref, cached, event.message),
+                withCachedState(ref, cached, event.message),
               )
             : data,
         ),
