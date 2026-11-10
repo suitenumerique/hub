@@ -48,9 +48,12 @@ const DEFAULT_ITEM_HEIGHT = 72;
 // ones: it is then inserted off screen, where Virtuoso's estimated heights
 // cannot move the messages being read.
 const OLDER_PREFETCH_ROWS = 50;
-// The first unread message opens below the 56px floating header, with the
-// 8px gap `__top-spacer` also keeps.
+// The first unread message never opens higher than below the 56px floating
+// header, with the 8px gap `__top-spacer` also keeps.
 const OPENING_TOP_OFFSET = 64;
+// Otherwise it opens a third of the way down the list, as Element opens on its
+// read marker (`TimelinePanel`'s `offsetBase`).
+const OPENING_HEIGHT_RATIO = 1 / 3;
 
 export const ChatVirtualList = ({
   chatRef,
@@ -102,6 +105,7 @@ export const ChatVirtualList = ({
   const lastMessage = loadedMessages[loadedMessages.length - 1];
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
   const messagesRef = useRef(messages);
   const previousAppendState = useRef({
@@ -379,10 +383,16 @@ export const ChatVirtualList = ({
     messages.length - 1,
   );
   if (openingIndex >= 0) {
+    // Read when the list mounts, the only time Virtuoso uses it: the list
+    // container is there since the loading state.
+    const listHeight = listRef.current?.clientHeight ?? 0;
     initialTopMostItemIndex = {
       index: openingIndex,
       align: "start",
-      offset: -OPENING_TOP_OFFSET,
+      offset: -Math.max(
+        OPENING_TOP_OFFSET,
+        Math.round(listHeight * OPENING_HEIGHT_RATIO),
+      ),
     };
   } else if (windowAnchorIndex >= 0) {
     initialTopMostItemIndex = { index: windowAnchorIndex, align: "center" };
@@ -390,7 +400,7 @@ export const ChatVirtualList = ({
 
   return (
     <ChatMessageJumpProvider value={messageJump}>
-      <div className="hub__chat-conversation__list">
+      <div ref={listRef} className="hub__chat-conversation__list">
         {!isListLoading && (
           <Virtuoso
             key={`${chatKey}:${windowVersion}`}
