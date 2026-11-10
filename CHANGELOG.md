@@ -236,6 +236,9 @@ and this project adheres to
 
 ### Fixed
 
+- 🐛(frontend) Keep the reply count under a message whose thread was started
+  in the session when the message is edited, and stop that count jumping
+  while a reply is being sent. #121
 - 🐛(frontend) Move chats up the list for the same events as Element and
   Tchap: someone changing their name or avatar, joining or leaving, editing a
   message, voting, answering or ending a call, or changing rights no longer
