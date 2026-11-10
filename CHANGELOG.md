@@ -20,19 +20,22 @@ and this project adheres to
 - ✨(frontend) Choose how much each chat notifies from its "..." and header
   menus: All messages, Mentions & following or Mute, stored as push rules
   shared with Tchap and Element. A chat created or joined in the Hub starts
-  at All messages; one from elsewhere stays on Default, its global setting.
-  In a thread, only mentions and followed threads notify. Muted chats are
-  never unread unless marked so, and stay at the bottom of their list. Thread
-  replies now move a chat up and mark it unread, followed or not; a reaction
+  at All messages; one from elsewhere keeps its global setting, shown as the
+  checked level. At All messages every thread reply notifies; at Mentions &
+  following, only mentions and replies in followed threads notify and show
+  the chat unread. A thread shows its unread replies whether the person
+  follows it or not. Muted chats are never unread unless marked so, and stay
+  at the bottom of their list. Thread replies now move a chat up; a reaction
   or a deleted message no longer moves it up. #91
 - ✨(frontend) Open a conversation with unread messages on the first one,
-  below the unread line, and mark it all read as soon as it shows, threads
-  aside; it then reopens at the bottom. A button, as in Element, goes back to
-  the latest messages, with a dot when new ones arrived. The unread messages
-  banner and its count are gone. Specific to the Hub, thread replies show the
-  unread dot of the conversation until it is opened: they stay unread in the
-  threads, a new reply received while it is closed brings the dot back, and
-  the visit follows the person across Hub sessions.
+  below the unread line a third of the way down, and mark it all read as
+  soon as it shows, threads aside; it then reopens at the bottom. A button,
+  as in Element, goes back to the latest messages, with a dot when new ones
+  arrived. The unread messages banner and its count are gone. Specific to
+  the Hub, thread replies that notify show the unread dot of the
+  conversation until it is opened: they stay unread in the threads, a new
+  reply received while it is closed brings the dot back, and the visit
+  follows the person across Hub sessions.
 - ✨(frontend) Open a message's actions from a "more" button shown beside its
   bubble on hover, as well as with a right click. Its space is kept while it
   is hidden, so showing it never moves the message.
