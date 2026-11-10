@@ -1,4 +1,5 @@
 import type { ChatPage } from "./utils/pages/chat-page";
+import { SYNC_TIMEOUT } from "./utils/env";
 import { expect, test, type Person } from "./utils/fixtures";
 import { createUnencryptedRoom, verifyHubDevice } from "./utils/flows";
 import { uniqueText } from "./utils/ids";
@@ -7,10 +8,15 @@ import { ALL_MESSAGES_ACTIONS, MENTIONS_ACTIONS } from "./utils/matrix-api";
 const ALL = "All messages";
 const MENTIONS = "Mentions & following";
 const MUTE = "Mute";
-const DEFAULT = "Default";
 
-/** Every level as the menu lists it once the chat has a level of its own. */
+/**
+ * Every level as the menu lists it. A chat without a level of its own checks
+ * the one it inherits: All messages with Tchap's default global setting.
+ */
 const LEVELS = [ALL, MENTIONS, MUTE];
+
+/** Tchap's global setting for groups, which a chat without a level inherits. */
+const GROUP_MESSAGE_RULES = [".m.rule.message", ".m.rule.encrypted"];
 
 /** Time left to a notification that should not come before saying it did not. */
 const SILENCE_MS = 1_500;
@@ -99,35 +105,8 @@ test.describe("Notification levels", () => {
     const chat = await hub.open(bob);
     await chat.leftPanel.expectConversation(roomName);
 
-    await test.step("a chat from elsewhere shows Default, on top", async () => {
-      const menu = await chat.leftPanel.openMoreMenu(roomName);
-      await expect(
-        menu.getByRole("menuitem", { name: "Notifications" }),
-      ).toBeEnabled();
-      await chat.notifications.openLevels(menu);
-      await chat.notifications.expectLevels([DEFAULT, ...LEVELS], DEFAULT);
-      await chat.notifications.close();
-      expect(await bob.api.pushRule("room", roomId)).toBeNull();
-      expect(await bob.api.pushRule("override", roomId)).toBeNull();
-    });
-
-    await test.step("Mentions & following writes a dont_notify room rule", async () => {
-      const menu = await chat.leftPanel.openMoreMenu(roomName);
-      await chat.notifications.openLevels(menu);
-      await chat.notifications.choose(MENTIONS);
-      await expect
-        .poll(async () => (await bob.api.pushRule("room", roomId))?.actions)
-        .toEqual(MENTIONS_ACTIONS);
-    });
-
-    await test.step("Default is gone", async () => {
-      const menu = await chat.leftPanel.openMoreMenu(roomName);
-      await chat.notifications.openLevels(menu);
-      await chat.notifications.expectLevels(LEVELS, MENTIONS);
-      await chat.notifications.close();
-    });
-
-    await test.step("choosing the current level writes nothing", async () => {
+    /** The push rule writes made while choosing this level in the menu. */
+    const writesWhileChoosing = async (level: string): Promise<string[]> => {
       const writes: string[] = [];
       const onRequest = (request: {
         url: () => string;
@@ -140,10 +119,47 @@ test.describe("Notification levels", () => {
       chat.page.on("request", onRequest);
       const menu = await chat.leftPanel.openMoreMenu(roomName);
       await chat.notifications.openLevels(menu);
-      await chat.notifications.choose(MENTIONS);
+      await chat.notifications.choose(level);
       await chat.page.waitForTimeout(500);
       chat.page.off("request", onRequest);
-      expect(writes).toEqual([]);
+      return writes;
+    };
+
+    await test.step("a chat from elsewhere checks the level it inherits, without Default", async () => {
+      const menu = await chat.leftPanel.openMoreMenu(roomName);
+      await expect(
+        menu.getByRole("menuitem", { name: "Notifications" }),
+      ).toBeEnabled();
+      await chat.notifications.openLevels(menu);
+      await chat.notifications.expectLevels(LEVELS, ALL);
+      await chat.notifications.close();
+      expect(await bob.api.pushRule("room", roomId)).toBeNull();
+      expect(await bob.api.pushRule("override", roomId)).toBeNull();
+    });
+
+    await test.step("choosing the inherited level writes nothing", async () => {
+      expect(await writesWhileChoosing(ALL)).toEqual([]);
+      expect(await bob.api.pushRule("room", roomId)).toBeNull();
+    });
+
+    await test.step("Mentions & following writes a dont_notify room rule", async () => {
+      const menu = await chat.leftPanel.openMoreMenu(roomName);
+      await chat.notifications.openLevels(menu);
+      await chat.notifications.choose(MENTIONS);
+      await expect
+        .poll(async () => (await bob.api.pushRule("room", roomId))?.actions)
+        .toEqual(MENTIONS_ACTIONS);
+    });
+
+    await test.step("the chosen level is checked", async () => {
+      const menu = await chat.leftPanel.openMoreMenu(roomName);
+      await chat.notifications.openLevels(menu);
+      await chat.notifications.expectLevels(LEVELS, MENTIONS);
+      await chat.notifications.close();
+    });
+
+    await test.step("choosing the current level writes nothing", async () => {
+      expect(await writesWhileChoosing(MENTIONS)).toEqual([]);
     });
 
     await test.step("All messages writes notify with the default sound", async () => {
@@ -227,8 +243,8 @@ test.describe("Notification levels", () => {
     const menu = await chat.header.openMenu(roomName);
     await chat.notifications.openLevels(menu);
     await chat.notifications.expectLevels(
-      ["Par défaut", "Tous les messages", "Mentions & suivis", "Aucune"],
-      "Par défaut",
+      ["Tous les messages", "Mentions & suivis", "Aucune"],
+      "Tous les messages",
     );
     await chat.notifications.choose("Aucune");
 
@@ -274,15 +290,29 @@ test.describe("Notification levels", () => {
     });
 
     await test.step("a disabled rule counts as absent", async () => {
+      await bob.api.setRoomRule(roomId, MENTIONS_ACTIONS);
+      await expectFromHeader(LEVELS, MENTIONS);
       await bob.api.setPushRuleEnabled("room", roomId, false);
-      await expectFromHeader([DEFAULT, ...LEVELS], DEFAULT);
+      await expectFromHeader(LEVELS, ALL);
       await bob.api.setPushRuleEnabled("room", roomId, true);
+      await expectFromHeader(LEVELS, MENTIONS);
+    });
+
+    await test.step("back to the inherited level from elsewhere", async () => {
+      await bob.api.deleteRoomRule(roomId);
       await expectFromHeader(LEVELS, ALL);
     });
 
-    await test.step("back to Default from elsewhere, the row returns", async () => {
-      await bob.api.deleteRoomRule(roomId);
-      await expectFromHeader([DEFAULT, ...LEVELS], DEFAULT);
+    await test.step("the inherited level follows the global setting", async () => {
+      for (const rule of GROUP_MESSAGE_RULES) {
+        await bob.api.setPushRuleEnabled("underride", rule, false);
+      }
+      await expectFromHeader(LEVELS, MENTIONS);
+      expect(await bob.api.pushRule("room", roomId)).toBeNull();
+      for (const rule of GROUP_MESSAGE_RULES) {
+        await bob.api.setPushRuleEnabled("underride", rule, true);
+      }
+      await expectFromHeader(LEVELS, ALL);
     });
   });
 
@@ -418,16 +448,18 @@ test.describe("Notification levels", () => {
     });
   });
 
-  for (const { label, actions, messageNotifies } of [
+  // At All messages every message notifies, thread replies included; at
+  // Mentions & following, only mentions and replies in followed threads.
+  for (const { label, actions, everyMessageNotifies } of [
     {
       label: ALL,
       actions: ALL_MESSAGES_ACTIONS,
-      messageNotifies: true,
+      everyMessageNotifies: true,
     },
     {
       label: MENTIONS,
       actions: MENTIONS_ACTIONS,
-      messageNotifies: false,
+      everyMessageNotifies: false,
     },
   ]) {
     test(`notifies at ${label}`, async ({ people, hub }) => {
@@ -457,7 +489,7 @@ test.describe("Notification levels", () => {
 
       const message = uniqueText("Plain message");
       await alice.api.sendText(roomId, message);
-      if (messageNotifies) expected.push(message);
+      if (everyMessageNotifies) expected.push(message);
 
       const mention = uniqueText("Mention");
       await alice.api.sendText(roomId, mention, { mentions: [bob.userId] });
@@ -475,9 +507,11 @@ test.describe("Notification levels", () => {
       });
       expected.push(repliedThreadReply);
 
-      await carol.api.sendText(roomId, uniqueText("In another thread"), {
+      const otherThreadReply = uniqueText("In another thread");
+      await carol.api.sendText(roomId, otherThreadReply, {
         threadRootId: otherRoot,
       });
+      if (everyMessageNotifies) expected.push(otherThreadReply);
 
       const threadMention = uniqueText("Mention in another thread");
       await carol.api.sendText(roomId, threadMention, {
@@ -603,67 +637,136 @@ test.describe("Notification levels", () => {
     expect(await notifications.bodies()).toEqual([]);
   });
 
-  for (const { label, actions } of [
-    { label: ALL, actions: ALL_MESSAGES_ACTIONS },
-    { label: MENTIONS, actions: MENTIONS_ACTIONS },
-  ]) {
-    test(`a reply in another thread moves the chat up, unread until opened, at ${label}`, async ({
-      people,
-      hub,
-    }) => {
-      const { alice, bob, carol, roomId, roomName, witnessId } =
-        await createScene(people);
-      await bob.api.setRoomRule(roomId, actions);
-      const root = await alice.api.sendText(
-        roomId,
-        uniqueText("Not Bob's thread"),
-      );
-      await bob.api.markRead(roomId, root, "main");
-      await carol.api.sendText(witnessId, uniqueText("Latest"));
+  test("at All messages, a reply in a thread Bob does not follow moves the chat up, unread and notified", async ({
+    people,
+    hub,
+  }) => {
+    const { alice, bob, carol, roomId, roomName, witnessId } =
+      await createScene(people);
+    await bob.api.setRoomRule(roomId, ALL_MESSAGES_ACTIONS);
+    const root = await alice.api.sendText(
+      roomId,
+      uniqueText("Not Bob's thread"),
+    );
+    await bob.api.markRead(roomId, root, "main");
+    await carol.api.sendText(witnessId, uniqueText("Latest"));
 
-      const chat = await hub.open(bob);
-      await chat.openConversation(carol.displayName);
-      await chat.leftPanel.expectFirst(carol.displayName);
-      await chat.leftPanel.expectRead(roomName);
-      const notifications = await watchNotifications(chat);
+    const chat = await hub.open(bob);
+    await chat.openConversation(carol.displayName);
+    await chat.leftPanel.expectFirst(carol.displayName);
+    await chat.leftPanel.expectRead(roomName);
+    const notifications = await watchNotifications(chat);
 
-      const reply = uniqueText("A reply Bob does not follow");
-      await carol.api.sendText(roomId, reply, { threadRootId: root });
+    const reply = uniqueText("A reply Bob does not follow");
+    await carol.api.sendText(roomId, reply, { threadRootId: root });
 
+    await chat.leftPanel.expectFirst(roomName);
+    await chat.leftPanel.expectUnread(roomName);
+    await expectNotified(chat, notifications, [reply]);
+
+    await test.step("it stays so after a reload", async () => {
+      await chat.reload();
       await chat.leftPanel.expectFirst(roomName);
       await chat.leftPanel.expectUnread(roomName);
-      expect(await notifications.bodies()).toEqual([]);
-
-      await test.step("it stays so after a reload", async () => {
-        await chat.reload();
-        await chat.leftPanel.expectFirst(roomName);
-        await chat.leftPanel.expectUnread(roomName);
-      });
-
-      await test.step("opening the chat removes the dot, for good", async () => {
-        await chat.openConversation(roomName);
-        await chat.leftPanel.expectRead(roomName);
-        await chat.openConversation(carol.displayName);
-        await chat.leftPanel.expectRead(roomName);
-        await chat.reload();
-        await chat.leftPanel.expectRead(roomName);
-      });
-
-      await test.step("a new reply brings it back", async () => {
-        await carol.api.sendText(roomId, uniqueText("Another reply"), {
-          threadRootId: root,
-        });
-        await chat.leftPanel.expectUnread(roomName);
-      });
     });
-  }
+
+    await test.step("opening the chat removes the dot, for good", async () => {
+      await chat.openConversation(roomName);
+      await chat.leftPanel.expectRead(roomName);
+      await chat.openConversation(carol.displayName);
+      await chat.leftPanel.expectRead(roomName);
+      await chat.reload();
+      await chat.leftPanel.expectRead(roomName);
+    });
+
+    await test.step("a new reply brings it back", async () => {
+      await carol.api.sendText(roomId, uniqueText("Another reply"), {
+        threadRootId: root,
+      });
+      await chat.leftPanel.expectUnread(roomName);
+    });
+  });
+
+  test("at Mentions & following, a thread Bob does not follow is unread without the dot or a notification", async ({
+    people,
+    hub,
+  }) => {
+    const { alice, bob, carol, roomId, roomName, witnessId } =
+      await createScene(people);
+    await bob.api.setRoomRule(roomId, MENTIONS_ACTIONS);
+    const ownRoot = uniqueText("Bob's thread");
+    const ownRootId = await bob.api.sendText(roomId, ownRoot);
+    const otherRoot = uniqueText("Not Bob's thread");
+    const otherRootId = await alice.api.sendText(roomId, otherRoot);
+    await bob.api.markRead(roomId, otherRootId, "main");
+    await carol.api.sendText(witnessId, uniqueText("Latest"));
+
+    const chat = await hub.open(bob);
+    await chat.openConversation(carol.displayName);
+    await chat.leftPanel.expectFirst(carol.displayName);
+    await chat.leftPanel.expectRead(roomName);
+    const notifications = await watchNotifications(chat);
+    const otherReply = uniqueText("A reply Bob does not follow");
+    const ownReply = uniqueText("A reply in Bob's thread");
+
+    await test.step("a reply there moves the chat up, without the dot or a notification", async () => {
+      await carol.api.sendText(roomId, otherReply, {
+        threadRootId: otherRootId,
+      });
+      await chat.leftPanel.expectFirst(roomName);
+      await chat.page.waitForTimeout(SILENCE_MS);
+      await chat.leftPanel.expectRead(roomName);
+      expect(await notifications.bodies()).toEqual([]);
+      await chat.reload();
+      await chat.leftPanel.expectFirst(roomName);
+      await chat.leftPanel.expectRead(roomName);
+    });
+
+    await test.step("a reply in Bob's own thread brings the dot", async () => {
+      await alice.api.sendText(roomId, ownReply, { threadRootId: ownRootId });
+      await chat.leftPanel.expectUnread(roomName);
+    });
+
+    await test.step("both threads show their unread reply, banner and list alike", async () => {
+      await chat.openConversation(roomName);
+      await chat.threads.expectUnreadThreadsBanner("2 unread threads");
+      for (const root of [ownRoot, otherRoot]) {
+        await expect(chat.timeline.threadButton(root)).toHaveText(
+          "1 reply • 1 unread",
+        );
+      }
+      await chat.threads.openList();
+      for (const reply of [ownReply, otherReply]) {
+        await expect(chat.threads.listedThread(reply)).toContainText(
+          "1 reply • 1 unread",
+        );
+      }
+    });
+
+    await test.step("opening the thread Bob does not follow reads it, for good", async () => {
+      await chat.timeline.threadButton(otherRoot).click();
+      await chat.threads.expectThread(otherRoot);
+      await chat.threads.expectUnreadThreadsBanner("1 unread thread");
+      await expect(chat.timeline.threadButton(otherRoot)).toHaveText("1 reply");
+      await chat.reload();
+      await expect(chat.timeline.threadButton(otherRoot)).toHaveText(
+        "1 reply",
+        { timeout: SYNC_TIMEOUT },
+      );
+      await expect(chat.timeline.threadButton(ownRoot)).toHaveText(
+        "1 reply • 1 unread",
+      );
+      await chat.threads.expectUnreadThreadsBanner("1 unread thread");
+    });
+  });
 
   test("a reaction in a thread does not make Bob follow it", async ({
     people,
     hub,
   }) => {
     const { alice, bob, carol, roomId, witnessId } = await createScene(people);
-    await bob.api.setRoomRule(roomId, ALL_MESSAGES_ACTIONS);
+    // At All messages every reply would notify, followed or not.
+    await bob.api.setRoomRule(roomId, MENTIONS_ACTIONS);
     const root = await alice.api.sendText(roomId, uniqueText("Alice's root"));
     const firstReply = await carol.api.sendText(roomId, uniqueText("Reply"), {
       threadRootId: root,
@@ -722,7 +825,7 @@ test.describe("Notification levels", () => {
     });
   });
 
-  test("an accepted invitation starts at All messages, a chat from Tchap stays on Default", async ({
+  test("an accepted invitation starts at All messages, a chat from Tchap keeps the inherited level", async ({
     people,
     hub,
   }) => {
@@ -770,12 +873,12 @@ test.describe("Notification levels", () => {
       await chat.openConversation(carol.displayName);
       const menu = await chat.header.openMenu(carol.displayName);
       await chat.notifications.openLevels(menu);
-      await chat.notifications.expectLevels([DEFAULT, ...LEVELS], DEFAULT);
+      await chat.notifications.expectLevels(LEVELS, ALL);
       await chat.notifications.close();
     });
   });
 
-  test("a failed rule does not block a new chat, which stays on Default", async ({
+  test("a failed rule does not block a new chat, which keeps the inherited level", async ({
     people,
     hub,
     devices,
@@ -803,7 +906,7 @@ test.describe("Notification levels", () => {
 
     const menu = await chat.header.openMenu(bob.displayName);
     await chat.notifications.openLevels(menu);
-    await chat.notifications.expectLevels([DEFAULT, ...LEVELS], DEFAULT);
+    await chat.notifications.expectLevels(LEVELS, ALL);
     await chat.notifications.close();
   });
 });
