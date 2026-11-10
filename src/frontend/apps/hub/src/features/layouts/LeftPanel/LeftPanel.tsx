@@ -54,6 +54,11 @@ import { AccountSelector } from "@/features/layouts/components/AccountSelector/A
 
 import { TchapLogo } from "./TchapLogo";
 
+// Collects the first users' feedback until a support channel exists. The same
+// form for every environment.
+const FEEDBACK_FORM_URL =
+  "https://grist.numerique.gouv.fr/o/docs/forms/1JuuCeFh6A2cj1n3P7M6A8/6";
+
 type ActionItem =
   | { id: string; href: string; icon: ReactNode; label: string }
   | {
@@ -174,18 +179,31 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
 
       <div className="hub__left-panel__footer">
         <AccountSelector />
-        {/* On the left: the panel clips what overflows its right edge. */}
+        {/* The app version is shown nowhere else. Above: the panel clips what
+            overflows its right edge, where the left placement flips to. */}
         <Tooltip
           content={t("App Version {{version}}", { version: APP_VERSION })}
-          placement="left"
-          className="hub__delayed-tooltip hub__left-panel__help-tooltip"
+          placement="top"
+          className="hub__delayed-tooltip hub__left-panel__version-tooltip"
         >
+          {/* A new tab keeps the current chat open. */}
           <Button
-            variant="tertiary"
-            color="neutral"
-            icon={<QuestionMark size={24} />}
-            aria-label={t("Help")}
-          />
+            href={FEEDBACK_FORM_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            color="info"
+            size="small"
+            icon={<QuestionMark size={16} />}
+          >
+            {t("Give feedback")}
+            <span className="hub__visually-hidden">
+              {" "}
+              {t("(new window)", {
+                description: "Read after a link that opens in a new tab",
+              })}
+            </span>
+          </Button>
         </Tooltip>
       </div>
     </aside>
