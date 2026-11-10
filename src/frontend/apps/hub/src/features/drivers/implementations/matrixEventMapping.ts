@@ -45,6 +45,7 @@ import { parseMatrixAttachment } from "./matrixMedia";
 import {
   isMarkedUnreadRoom,
   isMutedRoom,
+  roomEffectiveNotificationLevel,
   type RoomVisit,
 } from "./matrixRoomMapping";
 import i18n from "@/i18n/initI18n";
@@ -391,25 +392,39 @@ export const isFollowedThread = (
     ));
 
 /**
- * Loaded unread replies for threads relevant to the user. Matrix notification
- * counts remain the authority when the list has not loaded every reply yet.
+ * Loaded unread replies of a thread, followed or not: following a thread only
+ * decides what notifies. Matrix notification counts remain the authority when
+ * the list has not loaded every reply yet.
+ *
+ * Asks the room, not the thread, as Element's `doesTimelineHaveUnreadMessages`:
+ * `Thread.hasUserReadEvent` takes every reply as read until the user's first
+ * threaded receipt in the room. Reads from the newest reply back: a receipt, or
+ * a reply we sent, covers every older reply too.
  */
 const threadUnreadReplyEvents = (
   room: Room,
   thread: Thread,
   selfUserId: string | undefined,
 ): MatrixEvent[] => {
-  if (!selfUserId || !isThreadOfUser(room, thread, selfUserId)) {
+  if (!selfUserId) {
     return [];
   }
-  return sortedThreadReplyEvents(thread).filter((event) => {
+  const replies = sortedThreadReplyEvents(thread);
+  const unread: MatrixEvent[] = [];
+  for (let index = replies.length - 1; index >= 0; index--) {
+    const event = replies[index];
     const eventId = event.getId();
-    return (
-      Boolean(eventId) &&
-      event.getSender() !== selfUserId &&
-      !thread.hasUserReadEvent(selfUserId, eventId!)
-    );
-  });
+    if (
+      event.getSender() === selfUserId ||
+      (eventId && room.hasUserReadEvent(selfUserId, eventId))
+    ) {
+      break;
+    }
+    if (eventId) {
+      unread.unshift(event);
+    }
+  }
+  return unread;
 };
 
 const computeThreadUnread = (
@@ -530,10 +545,12 @@ export const currentRoomVisit = (
 
 /**
  * Specific to the Hub, as Element keeps threads out of a room's unread state
- * and shows them in its threads activity centre: threads count here too, every
- * one of them, but only for what came after the person's last visit. Their
- * unread replies stay unread in the threads themselves. A muted room is only
- * ever unread when the person marked it so.
+ * and shows them in its threads activity centre: threads count here too, but
+ * only the replies that notify, and only for what came after the person's last
+ * visit. At All messages that is every reply; at Mentions & following, the
+ * mentions (through the notification counts) and the replies in followed
+ * threads. Their unread replies stay unread in the threads themselves, followed
+ * or not. A muted room is only ever unread when the person marked it so.
  */
 export const roomUnread = (
   room: Room,
@@ -545,6 +562,8 @@ export const roomUnread = (
     return { unread: markedUnread, highlight: false, markedUnread };
   }
   const seenUntil = visit?.threadTs ?? null;
+  const everyReplyNotifies =
+    roomEffectiveNotificationLevel(room) !== "mentions_and_following";
   return {
     unread:
       markedUnread ||
@@ -553,8 +572,11 @@ export const roomUnread = (
         (visit?.threadNotifications ?? 0) ||
       room
         .getThreads()
-        .some((thread) =>
-          hasUnseenThreadReply(room, thread, selfUserId, seenUntil),
+        .some(
+          (thread) =>
+            (everyReplyNotifies ||
+              isFollowedThread(room, thread, selfUserId)) &&
+            hasUnseenThreadReply(room, thread, selfUserId, seenUntil),
         ),
     highlight:
       room.getRoomUnreadNotificationCount(NotificationCountType.Highlight) >
