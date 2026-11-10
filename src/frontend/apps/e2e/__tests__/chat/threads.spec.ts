@@ -1,13 +1,18 @@
 import { SYNC_TIMEOUT } from "./utils/env";
 import { expect, test } from "./utils/fixtures";
-import { createUnencryptedRoom, markRoomRead } from "./utils/flows";
+import {
+  createEncryptedRoom,
+  createUnencryptedRoom,
+  markRoomRead,
+  verifyHubDevice,
+} from "./utils/flows";
 import { uniqueText } from "./utils/ids";
 import {
   delayRequests,
   SEND_REQUESTS,
   THREAD_LIST_REQUESTS,
 } from "./utils/network";
-import { watchText } from "./utils/watch";
+import { watchText, watchTexts } from "./utils/watch";
 
 /** E2E-08: starting a thread, reading it and answering it live. */
 test("starts a thread that the other person reads and answers", async ({
@@ -225,6 +230,75 @@ test("keeps a deleted reply out of the thread reply count", async ({
     await expect(button).toHaveText("1 reply", { timeout: SYNC_TIMEOUT });
   });
 });
+
+/**
+ * Issue 121: the SDK files this session's own replies only into a thread it
+ * already holds. A thread started here, on a message sent here too, had none:
+ * editing that message took its reply count away. The count must never jump,
+ * not even for a frame, while replies are sent and the root is edited.
+ */
+for (const encrypted of [false, true]) {
+  test(`keeps the reply count of a thread started here when its root is edited${
+    encrypted ? ", encrypted" : ""
+  }`, async ({ people, hub, devices }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const alicePhone = encrypted ? await devices.start(alice) : null;
+    const roomId = alicePhone
+      ? await createEncryptedRoom(alicePhone, [bob.api])
+      : await createUnencryptedRoom(alice, [bob]);
+    const chat = await hub.open(alice);
+    await chat.openConversation(bob.displayName);
+    if (alicePhone) await verifyHubDevice(chat, alicePhone);
+
+    const root = uniqueText("Thread root");
+    const sentHere = [uniqueText("Before"), root, uniqueText("After")];
+    for (const message of sentHere) {
+      await chat.composer.send(message);
+      await chat.timeline.expectMessageOnce(message);
+    }
+    // Their bubbles are replaced once the homeserver confirms them.
+    await (alicePhone ?? bob.api).waitForText(roomId, sentHere.at(-1)!);
+    const counts = await watchTexts(
+      chat.timeline.root,
+      ".hub__chat-thread-button",
+    );
+    const expectedCounts = ["", "1 reply", "2 replies", "3 replies"];
+
+    await test.step("its thread counts each reply sent", async () => {
+      await chat.timeline.reply(root);
+      await chat.threads.expectThread(root);
+      for (const count of ["1 reply", "2 replies", "3 replies"]) {
+        const reply = uniqueText("Reply");
+        await chat.threads.composer.send(reply);
+        await chat.threads.timeline.expectMessageOnce(reply);
+        await expect(chat.timeline.threadButton(root)).toHaveText(count);
+      }
+      await chat.threads.close();
+      expect(await counts.history()).toEqual(expectedCounts);
+    });
+
+    await test.step("editing the root keeps the count", async () => {
+      const edited = uniqueText("Edited root");
+      const sent = chat.page.waitForResponse(
+        (response) => SEND_REQUESTS.test(response.url()) && response.ok(),
+      );
+      await chat.timeline.pickAction(root, "Edit");
+      await chat.composer.field.fill(edited);
+      await chat.composer.saveButton.click();
+      await sent;
+      await chat.timeline.expectEdited(edited);
+      // Comes after the edit's own echo, which maps the root again.
+      const later = uniqueText("Later message");
+      await (alicePhone
+        ? alicePhone.sendText(roomId, later)
+        : bob.api.sendText(roomId, later));
+      await chat.timeline.expectMessage(later);
+      await expect(chat.timeline.threadButton(edited)).toHaveText("3 replies");
+      expect(await counts.history()).toEqual(expectedCounts);
+    });
+  });
+}
 
 /** Like Element's thread panel: the first page, then older ones on scroll. */
 test("loads the thread list page by page while scrolling", async ({

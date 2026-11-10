@@ -77,6 +77,12 @@ export class ThreadsPanel {
     });
   }
 
+  /** Closes the tools panel from its header. */
+  async close(): Promise<void> {
+    await this.root.getByRole("button", { name: "Close panel" }).click();
+    await expect(this.root).toBeHidden();
+  }
+
   /** Marks every thread read from the banner, which then disappears. */
   async markAllRead(): Promise<void> {
     await this.unreadBanner

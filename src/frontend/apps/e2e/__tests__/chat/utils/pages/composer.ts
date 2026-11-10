@@ -13,6 +13,8 @@ export const BLOCKED_PLACEHOLDER =
 export class Composer {
   readonly field: Locator;
   readonly sendButton: Locator;
+  /** The send button while a message is edited. */
+  readonly saveButton: Locator;
   readonly fileInput: Locator;
   readonly attachments: Locator;
   readonly editingStatus: Locator;
@@ -27,6 +29,7 @@ export class Composer {
     this.field = scope.getByRole("textbox", { name: fieldName });
     const form = scope.locator(".hub__chat-composer");
     this.sendButton = form.getByRole("button", { name: "Send message" });
+    this.saveButton = form.getByRole("button", { name: "Save changes" });
     this.fileInput = form.locator('input[type="file"]');
     this.attachments = scope.getByRole("list", { name: "Attached files" });
     this.editingStatus = scope.getByRole("status").filter({
