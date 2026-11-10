@@ -36,6 +36,8 @@ export const useChatNotificationMenuItem = (chat: Chat): DropdownMenuOption => {
   const effectiveLevel = chat.effectiveNotificationLevel;
 
   return useMemo<DropdownMenuOption>(() => {
+    // A conversation that inherits the global setting checks the level it
+    // inherits: picking it again would change nothing.
     const levelOption = (
       option: ChatEffectiveNotificationLevel,
       label: string,
@@ -44,9 +46,9 @@ export const useChatNotificationMenuItem = (chat: Chat): DropdownMenuOption => {
       label,
       icon: LEVEL_ICONS[option],
       testId: "hub-chat-notification-level",
-      isChecked: option === level,
+      isChecked: option === effectiveLevel,
       callback:
-        option === level
+        option === effectiveLevel
           ? undefined
           : () => {
               trackEvent("chat_notification_level_changed", {
@@ -62,20 +64,6 @@ export const useChatNotificationMenuItem = (chat: Chat): DropdownMenuOption => {
       icon: LEVEL_ICONS[effectiveLevel ?? "mentions_and_following"],
       isDisabled: !isSupported || !level || isPending,
       children: [
-        // Only while inherited: the Hub never goes back to it.
-        ...(level === "default"
-          ? [
-              {
-                id: "default",
-                label: t("Default", {
-                  description:
-                    "Notification level of a conversation that follows the global setting",
-                }),
-                testId: "hub-chat-notification-level",
-                isChecked: true,
-              },
-            ]
-          : []),
         levelOption("all_messages", t("All messages")),
         levelOption("mentions_and_following", t("Mentions & following")),
         levelOption(
