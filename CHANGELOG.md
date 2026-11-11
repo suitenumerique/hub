@@ -6,6 +6,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [v0.1.0] - 2026-11-11
+
 ### Added
 
 - ✨(frontend) Replace the help button at the bottom of the left panel with a
@@ -106,7 +108,6 @@ and this project adheres to
   Make the full URLs typed in messages clickable.
 - ✨(frontend) Mention people with @ in the composer, with suggestions from the
   conversation members, and send markdown as formatted text, as Element does.
-
 - 💄(frontend) Move encryption settings into the avatar dropdown, show setup
   actions above blocked composers and an encryption notice in the timeline.
   Organize encryption settings into device and backup sections with contextual
@@ -280,7 +281,6 @@ and this project adheres to
   verification or an explicit recovery request.
 - 🌐(frontend) Use English source messages throughout the encryption flow and
   keep French translations in the locale dictionary.
-
 - 🐛(docker) Recreate PostgreSQL before resetting the E2E data directory so
   consecutive test runs can initialize the database.
 - ♻️(frontend) Replace nested ternaries with explicit branches and prevent new
@@ -319,8 +319,6 @@ and this project adheres to
 - 🐛(frontend) Reset the composer draft when switching conversation
 - 🐛(frontend) Reuse pending direct invitations when starting a conversation
 - 🌐(frontend) Translate the current user's optimistic thread author
-
-[unreleased]: https://github.com/suitenumerique/docs/compare/main
 - 🐛(frontend) Read a conversation never read before through its last
   displayed message, as Element does, instead of keeping it unread.
 - 🐛(frontend) Show messages received while a conversation loads, in the
@@ -346,3 +344,6 @@ and this project adheres to
 - 🐛(frontend) Stop showing a read conversation unread after each reload when
   one of its threads was read on Tchap: clear the thread counts its receipt
   already covers once the thread has loaded.
+
+[unreleased]: https://github.com/suitenumerique/hub/compare/v0.1.0...main
+[v0.1.0]: https://github.com/suitenumerique/hub/releases/v0.1.0
