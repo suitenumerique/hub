@@ -1,5 +1,5 @@
 // Tchap blue, as in the logo mark.
-$hub-app-loader-accent: #2845c1;
+$hub-app-loader-accent: var(--c--contextuals--content--logo1);
 
 .hub__app-loader {
   position: fixed;
@@ -19,7 +19,7 @@ $hub-app-loader-accent: #2845c1;
     height: 4px;
     overflow: hidden;
     border-radius: 2px;
-    background: rgba($hub-app-loader-accent, 0.12);
+    background: color-mix(in srgb, $hub-app-loader-accent 12%, transparent);
 
     &::after {
       content: "";

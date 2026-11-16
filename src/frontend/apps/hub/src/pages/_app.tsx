@@ -25,6 +25,7 @@ import { Auth, prefetchCurrentUser } from "@/features/auth/Auth";
 import { ChatEmptyIllustration } from "@/features/chat/components/ChatEmptyIllustration";
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
+import { useTheme } from "@/features/theme/useTheme";
 import { useLocales } from "@/i18n/useLocale";
 
 const onError = (error: Error, query: unknown) => {
@@ -60,6 +61,7 @@ const queryClient = new QueryClient({
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { t, i18n } = useTranslation();
   const currentLocale = useLocales();
+  const { theme, cunninghamTheme } = useTheme();
 
   useEffect(() => {
     document.documentElement.lang = i18n.language;
@@ -83,7 +85,10 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       </Head>
       <div className="hub__desktop-app">
         <QueryClientProvider client={queryClient}>
-          <CunninghamProvider currentLocale={currentLocale} theme="dsfr-light">
+          <CunninghamProvider
+            currentLocale={currentLocale}
+            theme={cunninghamTheme}
+          >
             {/* Renders the one right-click menu that every `ContextMenu` opens. */}
             <ContextMenuProvider>
               <ConfigProvider>
@@ -100,7 +105,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             newestOnTop
             closeOnClick
             pauseOnFocusLoss={false}
-            theme="light"
+            theme={theme}
           />
           {process.env.NODE_ENV === "development" && (
             <ReactQueryDevtools initialIsOpen={false} />

@@ -21,9 +21,14 @@
     gap: 8px;
     background: linear-gradient(
       180deg,
-      #fff 0%,
-      #fff 56.364%,
-      rgba(238, 241, 244, 0.78) 114.64%
+      var(--c--contextuals--background--surface--primary) 0%,
+      var(--c--contextuals--background--surface--primary) 56.364%,
+      color-mix(
+          in srgb,
+          var(--c--contextuals--background--semantic--neutral--tertiary) 78%,
+          transparent
+        )
+        114.64%
     );
     font-family: var(
       --c--globals--font--families--base,

@@ -13,13 +13,8 @@
   color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
   background: linear-gradient(
     180deg,
-    color-mix(
-        in srgb,
-        var(--c--contextuals--background--surface--primary) 75%,
-        transparent
-      )
-      0%,
-    transparent 100%
+    var(--c--contextuals--background--surface--secondary) 0%,
+    var(--c--contextuals--background--semantic--contextual--transparent) 100%
   );
 
   // Progressive blur, stronger at the top: two masked layers behind the
