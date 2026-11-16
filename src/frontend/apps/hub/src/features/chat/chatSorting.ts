@@ -1,9 +1,17 @@
+import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { Chat } from "@/features/drivers/types";
 
 const isMuted = (chat: Chat): boolean => chat.notificationLevel === "mute";
 
-/** Muted conversations come last, each group sorted by latest activity. */
+/**
+ * Pending invitations come first, as in Element, so a new one is not lost below
+ * newer activity. Muted conversations come last. Each group is sorted by latest
+ * activity.
+ */
 export const compareChats = (a: Chat, b: Chat): number => {
+  if (isInvitationChat(a) !== isInvitationChat(b)) {
+    return isInvitationChat(a) ? -1 : 1;
+  }
   if (isMuted(a) !== isMuted(b)) {
     return isMuted(a) ? 1 : -1;
   }
