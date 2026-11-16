@@ -6,6 +6,19 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- ✨(frontend) Add a dark theme. It follows the system until a theme is picked
+  in the new "Settings" dialog of the account menu: Use system settings, Light
+  or Dark, kept in the browser. The dialog also holds the encryption settings.
+  #127
+
+### Changed
+
+- ⬆️(frontend) Update @gouvfr-lasuite/ui-components to 1.5.0
+- 💄(frontend) Use the ui-kit user menu again for the account menu: the
+  encryption settings move to the "Settings" dialog
+
 ## [v0.1.0] - 2026-11-11
 
 ### Added
