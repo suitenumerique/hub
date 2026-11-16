@@ -45,6 +45,13 @@
 
 body {
   margin: 0;
+  background: var(--c--contextuals--background--surface--secondary);
+  color: var(--c--contextuals--content--semantic--neutral--primary);
+}
+
+// Scrollbars and native form controls follow the theme too.
+:root.cunningham-theme--dsfr-dark {
+  color-scheme: dark;
 }
 
 * {

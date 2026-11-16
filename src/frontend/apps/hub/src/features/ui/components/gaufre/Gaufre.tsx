@@ -1,6 +1,7 @@
 import { LaGaufreV2 } from "@gouvfr-lasuite/ui-components";
 
 import { useConfig } from "@/features/config/ConfigProvider";
+import { useTheme } from "@/features/theme/useTheme";
 
 import cunningham from "@cunningham";
 
@@ -10,11 +11,12 @@ const stripQuotes = (value: string) => value.replace(/^['"]|['"]$/g, "");
 
 export const Gaufre = () => {
   const { config } = useConfig();
+  const { cunninghamTheme } = useTheme();
   if (config?.FRONTEND_HIDE_GAUFRE) {
     return null;
   }
 
-  const gaufre = cunningham.themes["dsfr-light"].components.gaufre;
+  const gaufre = cunningham.themes[cunninghamTheme].components.gaufre;
   return (
     <LaGaufreV2
       widgetPath={stripQuotes(gaufre.widgetPath)}
