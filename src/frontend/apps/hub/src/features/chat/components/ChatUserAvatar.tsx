@@ -17,8 +17,8 @@ type ChatUserAvatarProps = {
 };
 
 /**
- * A person's avatar: their picture over their initials, which stay visible
- * while it loads or when it fails.
+ * A person's avatar: their picture once it has loaded, their initials while
+ * it loads or when it fails.
  */
 export const ChatUserAvatar = ({
   accountId,
