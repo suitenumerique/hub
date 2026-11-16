@@ -1,0 +1,29 @@
+// One setting: its label and description on the left, its value on the right.
+.hub__settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--c--globals--spacings--md);
+
+  &__text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--4xs);
+    min-width: 0;
+  }
+
+  &__label {
+    font-size: var(--c--globals--font--sizes--md);
+    font-weight: var(--c--globals--font--weights--medium);
+    color: var(--c--contextuals--content--semantic--neutral--primary);
+  }
+
+  &__description {
+    font-size: var(--c--globals--font--sizes--sm);
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
+  }
+
+  &__value {
+    flex: 0 0 auto;
+  }
+}

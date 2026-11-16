@@ -3,8 +3,7 @@ import { Key } from "@gouvfr-lasuite/ui-components/icons";
 import { useTranslation } from "react-i18next";
 
 import type { AccountId } from "@/features/drivers/types";
-
-import { useEncryptionSettings } from "../EncryptionSettingsContext";
+import { useSettings } from "@/features/settings/SettingsContext";
 
 export const ChatEncryptionPrompt = ({
   accountId,
@@ -12,7 +11,7 @@ export const ChatEncryptionPrompt = ({
   accountId: AccountId;
 }) => {
   const { t } = useTranslation();
-  const { open } = useEncryptionSettings();
+  const { open } = useSettings();
 
   return (
     <div className="hub__encryption-prompt">
@@ -21,7 +20,9 @@ export const ChatEncryptionPrompt = ({
         size="small"
         variant="secondary"
         icon={<Key aria-hidden="true" />}
-        onClick={(event) => open(accountId, event.currentTarget)}
+        onClick={(event) =>
+          open("encryption", { accountId, trigger: event.currentTarget })
+        }
       >
         {t("Open encryption settings")}
       </Button>

@@ -6,7 +6,7 @@ import {
   Computer,
   Key,
 } from "@gouvfr-lasuite/ui-components/icons";
-import { useId, type ComponentProps } from "react";
+import { useEffect, useId, useRef, type ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -30,6 +30,23 @@ export const EncryptionSettingsContent = ({
 }: Props) => {
   const { t } = useTranslation();
   const id = useId();
+  const root = useRef<HTMLDivElement>(null);
+  const phase = security.verification.phase;
+  useEffect(() => {
+    // SAS transitions remove the focused Accept/Confirm button. Keep keyboard
+    // focus in the dialog so Escape and the modal's focus trap still work.
+    const frame = requestAnimationFrame(() => {
+      const dialog = root.current?.closest('[role="dialog"]');
+      if (dialog && !dialog.contains(document.activeElement)) {
+        const target =
+          root.current?.querySelector<HTMLButtonElement>(
+            "button:not(:disabled)",
+          ) ?? dialog.querySelector<HTMLButtonElement>("button:not(:disabled)");
+        target?.focus();
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [phase]);
   const external = security.externalClient;
   const clientLabel = external?.label ?? t("your reference app");
   const verified = security.trust === "verified";
@@ -42,7 +59,7 @@ export const EncryptionSettingsContent = ({
     "waiting",
     "comparing",
     "confirming",
-  ].includes(security.verification.phase);
+  ].includes(phase);
   // Hub verifies an existing identity and restores its backup. Creating an
   // identity or recovering one without another device belongs to the reference app.
   const needsExternalSetup =
@@ -167,7 +184,7 @@ export const EncryptionSettingsContent = ({
   };
 
   return (
-    <div className="hub__security-details">
+    <div className="hub__security-details" ref={root}>
       <p className="hub__security-intro">
         {t(
           "Manage this device’s security and access to your encrypted messages.",
@@ -191,10 +208,10 @@ export const EncryptionSettingsContent = ({
         aria-labelledby={`${id}-device`}
       >
         <div className="hub__security-section-heading">
-          <h2 id={`${id}-device`}>
+          <h4 id={`${id}-device`}>
             <Computer aria-hidden="true" />
             {t("This device")}
-          </h2>
+          </h4>
           <Badge type={deviceStatus.type}>
             {verified && <Checkmark aria-hidden="true" />}
             {deviceStatus.label}
@@ -235,10 +252,10 @@ export const EncryptionSettingsContent = ({
         aria-labelledby={`${id}-backup`}
       >
         <div className="hub__security-section-heading">
-          <h2 id={`${id}-backup`}>
+          <h4 id={`${id}-backup`}>
             <Key aria-hidden="true" />
             {t("Backup and history")}
-          </h2>
+          </h4>
           <Badge type={backupStatus.type}>
             {backupActive && <Checkmark aria-hidden="true" />}
             {backupStatus.label}
