@@ -3,15 +3,16 @@ import { useTranslation } from "react-i18next";
 
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ActiveChatProvider } from "@/features/chat/ActiveChatContext";
-import { EncryptionSettingsProvider } from "@/features/chat/EncryptionSettingsContext";
+import { EncryptionVerificationListener } from "@/features/chat/components/EncryptionVerificationListener";
 import { useChatEvents } from "@/features/chat/hooks/useChatEvents";
 import { useChatNotifications } from "@/features/chat/notifications/useChatNotifications";
 import { ConversationSearchModal } from "@/features/chat/search/ConversationSearchModal";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { ChatRef } from "@/features/drivers/types";
+import { SettingsModal } from "@/features/settings/components/SettingsModal";
+import { SettingsProvider } from "@/features/settings/SettingsContext";
 
 import { LeftPanel } from "./LeftPanel/LeftPanel";
-import { ChatSecurity } from "@/features/chat/components/ChatSecurity";
 
 type HubLayoutProps = {
   children: ReactNode;
@@ -64,7 +65,7 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
   }
 
   return (
-    <EncryptionSettingsProvider>
+    <SettingsProvider>
       <div className="hub__layout">
         <a href="#hub__layout__main" className="hub__layout__skip-link">
           {t("Skip to main content")}
@@ -79,12 +80,17 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
           className="hub__layout__main"
           tabIndex={-1}
         >
-          {user && <ChatSecurity />}
+          {user && (
+            <>
+              <SettingsModal />
+              <EncryptionVerificationListener />
+            </>
+          )}
           <ActiveChatProvider value={activeChatRef}>
             {children}
           </ActiveChatProvider>
         </main>
       </div>
-    </EncryptionSettingsProvider>
+    </SettingsProvider>
   );
 };

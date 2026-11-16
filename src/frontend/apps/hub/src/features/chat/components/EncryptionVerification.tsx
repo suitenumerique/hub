@@ -16,6 +16,13 @@ export const EncryptionVerification = ({
 }) => {
   const { t } = useTranslation();
   const verification = security.verification;
+  const verifying = [
+    "incoming",
+    "requesting",
+    "waiting",
+    "comparing",
+    "confirming",
+  ].includes(verification.phase);
   const clientLabel = security.externalClient?.label ?? t("your reference app");
   const renderComparison = () => {
     if (verification.phase !== "comparing") return null;
@@ -53,7 +60,7 @@ export const EncryptionVerification = ({
   if (["idle", "complete"].includes(verification.phase)) return null;
   return (
     <div className="hub__security-verification">
-      <h3>{t("Device verification")}</h3>
+      <h5>{t("Device verification")}</h5>
       <p className="hub__security-account">
         {t("Use the same account on both devices: {{userId}}", {
           userId: security.userId,
@@ -151,6 +158,17 @@ export const EncryptionVerification = ({
               </Button>
             </>
           )}
+        {verifying && (
+          <Button
+            variant="tertiary"
+            color="neutral"
+            onClick={() =>
+              onCommand({ type: "cancel", attempt: verification.attempt })
+            }
+          >
+            {t("Cancel verification")}
+          </Button>
+        )}
       </div>
     </div>
   );
