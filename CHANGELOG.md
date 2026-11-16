@@ -23,6 +23,8 @@ and this project adheres to
 
 - 🐛(frontend) Hide the initials or icon behind a profile picture once it has
   loaded, so its transparent areas no longer show them. #128
+- 🐛(frontend) List pending invitations first in the conversation list and in
+  search results, as in Element, so a new one is not missed. #129
 
 ## [v0.1.0] - 2026-11-11
 
