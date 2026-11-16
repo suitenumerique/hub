@@ -873,7 +873,7 @@ export class MatrixConversationSearch {
         }
       }
       // Result group first, then the shared comparator adapted to local chats:
-      // activity, name, account, and ID.
+      // invitations, activity, name, account, and ID.
       results.sort(
         (a, b) =>
           a.rank - b.rank ||
