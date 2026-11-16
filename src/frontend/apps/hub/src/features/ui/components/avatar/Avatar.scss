@@ -28,6 +28,11 @@ $avatar-colors:
     pointer-events: none;
   }
 
+  // Neutral backdrop for the transparent areas of a loaded picture.
+  &--image {
+    background: var(--c--contextuals--background--surface--primary);
+  }
+
   &__image {
     position: absolute;
     inset: 0;

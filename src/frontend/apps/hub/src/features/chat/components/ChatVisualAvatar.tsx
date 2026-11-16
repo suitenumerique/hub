@@ -34,8 +34,8 @@ const visualContent = (visual: ChatVisual) => {
 };
 
 /**
- * A conversation's avatar: its image when it has one, shown over its visual,
- * which also stays while the image loads or when it fails.
+ * A conversation's avatar: its image once it has loaded, its visual while
+ * the image loads or when it fails.
  */
 export const ChatVisualAvatar = ({
   chat,
