@@ -18,12 +18,16 @@ import { useChatReadState } from "./useChatReadState";
  * The favourite and read state actions of a conversation, shared by the
  * conversation list (right click and "more" button) and the header menu. Each
  * of those asks for its own items: the action is measured with where it came
- * from.
+ * from, and the icons take the size of its menu (the kit's default without
+ * one).
  */
 export const useChatQuickActions = (
   chat: Chat,
   unread: ChatUnread,
-): ((trigger: EventProperty<"chat:action-used", "trigger">) => MenuItem[]) => {
+): ((
+  trigger: EventProperty<"chat:action-used", "trigger">,
+  iconSize?: number,
+) => MenuItem[]) => {
   const { t } = useTranslation();
   const { setFavourite, isPending: isFavouritePending } = useChatFavourite(
     chat.ref,
@@ -36,13 +40,17 @@ export const useChatQuickActions = (
   const isFavourite = chat.section === "favourites";
 
   return useCallback(
-    (trigger) => [
+    (trigger, iconSize) => [
       {
         id: "favourite",
         label: isFavourite
           ? t("Remove from favourites")
           : t("Add to favourites"),
-        icon: isFavourite ? <StarSlash size={16} /> : <Star size={16} />,
+        icon: isFavourite ? (
+          <StarSlash size={iconSize} />
+        ) : (
+          <Star size={iconSize} />
+        ),
         isDisabled: isFavouritePending,
         callback: () => {
           trackEvent("chat:action-used", {
@@ -55,7 +63,11 @@ export const useChatQuickActions = (
       {
         id: "read-state",
         label: unread.unread ? t("Mark as read") : t("Mark as unread"),
-        icon: unread.unread ? <Show size={16} /> : <Hide size={16} />,
+        icon: unread.unread ? (
+          <Show size={iconSize} />
+        ) : (
+          <Hide size={iconSize} />
+        ),
         isDisabled: isReadStatePending,
         callback: () => {
           trackEvent("chat:action-used", {

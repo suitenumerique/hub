@@ -14,18 +14,30 @@ import { BellRing } from "../components/BellRing";
 
 import { useChatNotificationLevel } from "./useChatNotificationLevel";
 
-const LEVEL_ICONS: Record<ChatEffectiveNotificationLevel, ReactNode> = {
-  all_messages: <BellRing size={16} />,
-  mentions_and_following: <Bell size={16} />,
-  mute: <Mute size={16} />,
+const levelIcon = (
+  level: ChatEffectiveNotificationLevel,
+  size: number | undefined,
+): ReactNode => {
+  switch (level) {
+    case "all_messages":
+      return <BellRing size={size} />;
+    case "mentions_and_following":
+      return <Bell size={size} />;
+    case "mute":
+      return <Mute size={size} />;
+  }
 };
 
 /**
  * The "Notifications" entry of a conversation's dropdown menus, with its
  * submenu of levels. Not for the right click menu: `ContextMenu` has neither
- * submenus nor checks.
+ * submenus nor checks. The icons take the size of the menu (the kit's default
+ * without one).
  */
-export const useChatNotificationMenuItem = (chat: Chat): DropdownMenuOption => {
+export const useChatNotificationMenuItem = (
+  chat: Chat,
+  iconSize?: number,
+): DropdownMenuOption => {
   const { t } = useTranslation();
   const entries = useDriverEntries();
   const { setLevel, isPending } = useChatNotificationLevel(chat.ref);
@@ -44,7 +56,7 @@ export const useChatNotificationMenuItem = (chat: Chat): DropdownMenuOption => {
     ): DropdownMenuOption => ({
       id: option,
       label,
-      icon: LEVEL_ICONS[option],
+      icon: levelIcon(option, iconSize),
       testId: "hub-chat-notification-level",
       isChecked: option === effectiveLevel,
       callback:
@@ -61,7 +73,7 @@ export const useChatNotificationMenuItem = (chat: Chat): DropdownMenuOption => {
     return {
       id: "notifications",
       label: t("Notifications"),
-      icon: LEVEL_ICONS[effectiveLevel ?? "mentions_and_following"],
+      icon: levelIcon(effectiveLevel ?? "mentions_and_following", iconSize),
       isDisabled: !isSupported || !level || isPending,
       children: [
         levelOption("all_messages", t("All messages")),
@@ -75,5 +87,5 @@ export const useChatNotificationMenuItem = (chat: Chat): DropdownMenuOption => {
         ),
       ],
     };
-  }, [effectiveLevel, isPending, isSupported, level, setLevel, t]);
+  }, [effectiveLevel, iconSize, isPending, isSupported, level, setLevel, t]);
 };
