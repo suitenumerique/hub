@@ -1,9 +1,6 @@
 import { expect, Locator, Page } from "@playwright/test";
 
-/**
- * Full-screen preview of a file. Its header buttons are named after their
- * icons ("file_download", "info_outline", "close").
- */
+/** Full-screen preview of a file: the ui-kit `FilePreview`. */
 export class AttachmentPreview {
   readonly root: Locator;
   readonly title: Locator;
@@ -22,7 +19,9 @@ export class AttachmentPreview {
   /** A value of "File details": "Name", "Type", "Size", "Sent by"… */
   async detail(label: string): Promise<Locator> {
     if (!(await this.details.isVisible())) {
-      await this.root.getByRole("button", { name: "info_outline" }).click();
+      await this.root
+        .getByRole("button", { name: "File information", exact: true })
+        .click();
     }
     await expect(
       this.details.getByRole("heading", { name: "File details" }),
@@ -36,13 +35,13 @@ export class AttachmentPreview {
   async download() {
     const download = this.page.waitForEvent("download");
     await this.root
-      .getByRole("button", { name: "file_download", exact: true })
+      .getByRole("button", { name: "Download", exact: true })
       .click();
     return download;
   }
 
   async close(): Promise<void> {
-    await this.root.getByRole("button", { name: "close", exact: true }).click();
+    await this.root.getByRole("button", { name: "Close", exact: true }).click();
     await expect(this.root).toBeHidden();
   }
 }

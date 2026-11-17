@@ -2,24 +2,29 @@ import { expect, Locator, Page } from "@playwright/test";
 
 import { SYNC_TIMEOUT } from "../env";
 
-/** The "Encryption" dialog: device trust, key backup and verification. */
+/**
+ * The "Encryption" tab of the "Settings" dialog: device trust, key backup and
+ * verification.
+ */
 export class EncryptionDialog {
   readonly dialog: Locator;
+  readonly panel: Locator;
   readonly thisDevice: Locator;
   readonly backup: Locator;
   readonly verifyButton: Locator;
   readonly emojis: Locator;
 
   constructor(readonly page: Page) {
-    this.dialog = page.getByRole("dialog", { name: "Encryption" });
-    this.thisDevice = this.dialog.getByRole("region", { name: "This device" });
-    this.backup = this.dialog.getByRole("region", {
+    this.dialog = page.getByRole("dialog", { name: "Settings" });
+    this.panel = this.dialog.getByRole("tabpanel", { name: "Encryption" });
+    this.thisDevice = this.panel.getByRole("region", { name: "This device" });
+    this.backup = this.panel.getByRole("region", {
       name: "Backup and history",
     });
-    this.verifyButton = this.dialog.getByRole("button", {
+    this.verifyButton = this.panel.getByRole("button", {
       name: "Verify this device",
     });
-    this.emojis = this.dialog.getByRole("list", {
+    this.emojis = this.panel.getByRole("list", {
       name: "The seven verification symbols",
     });
   }
@@ -30,7 +35,7 @@ export class EncryptionDialog {
       .getByRole("button", { name: "Open encryption settings" })
       .first()
       .click();
-    await expect(this.dialog).toBeVisible();
+    await expect(this.panel).toBeVisible();
   }
 
   /** The badge of a section: "Verified", "Active", "Verification required"… */
@@ -64,22 +69,20 @@ export class EncryptionDialog {
   }
 
   async theyMatch(): Promise<void> {
-    await this.dialog.getByRole("button", { name: "They match" }).click();
+    await this.panel.getByRole("button", { name: "They match" }).click();
   }
 
   async theyDoNotMatch(): Promise<void> {
-    await this.dialog
-      .getByRole("button", { name: "They do not match" })
-      .click();
+    await this.panel.getByRole("button", { name: "They do not match" }).click();
   }
 
   async expectText(text: string | RegExp): Promise<void> {
-    await expect(this.dialog).toContainText(text, { timeout: SYNC_TIMEOUT });
+    await expect(this.panel).toContainText(text, { timeout: SYNC_TIMEOUT });
   }
 
   /** "Device ID" under "Technical details". */
   async deviceId(): Promise<string> {
-    const details = this.dialog.locator("details.hub__security-technical");
+    const details = this.panel.locator("details.hub__security-technical");
     if (
       !(await details.evaluate((node) => (node as HTMLDetailsElement).open))
     ) {
