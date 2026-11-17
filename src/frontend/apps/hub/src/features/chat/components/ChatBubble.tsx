@@ -271,6 +271,38 @@ const ChatBubbleFooter = ({
   );
 };
 
+/**
+ * Under the bubble: "Edited", the time, or both as "Edited • 08:32". A
+ * received message shows its group's time in its header instead.
+ */
+const ChatBubbleMeta = ({
+  isEdited,
+  time,
+}: {
+  isEdited: boolean;
+  time?: string;
+}) => {
+  const { t } = useTranslation();
+
+  if (!isEdited && !time) {
+    return null;
+  }
+
+  return (
+    <div className="hub__chat-bubble__meta">
+      {isEdited && (
+        <span className="hub__chat-bubble__edited">
+          {t("Edited", {
+            description: "Shown under a message changed after it was sent",
+          })}
+        </span>
+      )}
+      {isEdited && time && <span aria-hidden="true">•</span>}
+      {time && <span className="hub__chat-bubble__timestamp">{time}</span>}
+    </div>
+  );
+};
+
 export const ChatBubble = (props: ChatBubbleProps) => {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? i18n.language;
@@ -529,9 +561,6 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           htmlContent={props.htmlContent}
         />
       )}
-      {props.isEdited && (
-        <span className="hub__chat-bubble__edited">{t("edited")}</span>
-      )}
       <MessageHoverToolbar
         onReact={
           sendFailed
@@ -557,6 +586,8 @@ export const ChatBubble = (props: ChatBubbleProps) => {
   // A message still being decrypted shows a shield, without any actions.
   const isDecrypting =
     !props.isDeleted && props.availability === "encrypted-pending";
+  // Neither a deleted message nor one still being decrypted shows its text.
+  const isEdited = Boolean(props.isEdited) && !props.isDeleted && !isDecrypting;
   const renderContent = () => {
     if (props.isDeleted) {
       return (
@@ -643,11 +674,14 @@ export const ChatBubble = (props: ChatBubbleProps) => {
           reactions={reactions}
           onReact={onReact}
         />
-        {props.showTimestamp && (
-          <div className="hub__chat-bubble__timestamp">
-            {formatChatGroupTimestamp(props.timestamp, locale)}
-          </div>
-        )}
+        <ChatBubbleMeta
+          isEdited={isEdited}
+          time={
+            props.showTimestamp
+              ? formatChatGroupTimestamp(props.timestamp, locale)
+              : undefined
+          }
+        />
       </div>
     );
   }
@@ -698,6 +732,7 @@ export const ChatBubble = (props: ChatBubbleProps) => {
         reactions={reactions}
         onReact={onReact}
       />
+      <ChatBubbleMeta isEdited={isEdited} />
     </div>
   );
 };
