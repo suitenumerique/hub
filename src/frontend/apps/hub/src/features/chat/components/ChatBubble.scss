@@ -121,13 +121,6 @@
     font-style: italic;
   }
 
-  &__edited {
-    margin-left: var(--c--globals--spacings--xxs, 6px);
-    font-size: 11px;
-    font-style: italic;
-    opacity: 0.72;
-  }
-
   &--received &__body {
     flex: 0 1 auto;
     width: fit-content;
@@ -239,11 +232,22 @@
     color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
   }
 
-  &--sent &__timestamp {
-    padding-right: var(--c--globals--spacings--xs, 8px);
+  // "Edited", the time, or both, under the bubble and what hangs from it.
+  &__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
     color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
     font-size: 12px;
     line-height: 16px;
+  }
+
+  &--sent &__meta {
+    padding-right: var(--c--globals--spacings--xs, 8px);
+  }
+
+  &--received &__meta {
+    padding-left: calc(24px + var(--c--globals--spacings--xs, 8px));
   }
 
   // The reactions bar, then the thread button under it.

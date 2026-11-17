@@ -251,10 +251,11 @@ export class Timeline {
     await menu.getByRole("button", { name: action, exact: true }).click();
   }
 
+  /** "Edited" shows under the bubble, beside the time when it has one. */
   async expectEdited(text: string): Promise<void> {
     await expect(
       this.message(text).locator(".hub__chat-bubble__edited"),
-    ).toHaveText("edited", { timeout: SYNC_TIMEOUT });
+    ).toHaveText("Edited", { timeout: SYNC_TIMEOUT });
   }
 
   /** Messages still being decrypted keep their place, as a shield. */
