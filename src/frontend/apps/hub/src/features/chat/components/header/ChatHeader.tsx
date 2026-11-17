@@ -6,7 +6,6 @@ import {
 } from "@gouvfr-lasuite/ui-components";
 import {
   ArrowDropDown,
-  Edit,
   Leave,
   Shared,
   Thread,
@@ -140,22 +139,16 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
       {
         id: "members",
         label: t("Members"),
-        icon: <Shared size={16} />,
+        icon: <Shared />,
         callback: () => setIsMembersOpen(true),
       },
       ...quickActionsFor("chat_header_menu"),
       { type: "separator" },
-      {
-        id: "rename",
-        label: t("Rename chat"),
-        icon: <Edit size={16} />,
-        isDisabled: true,
-      },
       notifications,
       {
         id: "leave",
         label: t("Leave chat"),
-        icon: <Leave size={16} />,
+        icon: <Leave />,
         variant: "danger",
         isDisabled: !canLeave || isLeaving,
         callback: () => setIsLeaveOpen(true),
@@ -189,12 +182,8 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
 
   return (
     <>
-      <DropdownMenu
-        options={options}
-        {...menu}
-        onOpenChange={menu.setIsOpen}
-        variant="tiny"
-      >
+      {/* The large menu of the kit, with its default icon size. */}
+      <DropdownMenu options={options} {...menu} onOpenChange={menu.setIsOpen}>
         {trigger}
       </DropdownMenu>
       <ChatMembersModal

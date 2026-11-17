@@ -566,6 +566,9 @@ const ChatRow = memo(function ChatRow(props: ChatRowProps) {
   );
 });
 
+// The rows' menus are tiny, as the design draws them: so are their icons.
+const TINY_MENU_ICON_SIZE = 16;
+
 /**
  * Opens the quick access menu on right click or from the "more" button shown
  * while the row is hovered or focused.
@@ -574,14 +577,14 @@ const ChatRowWithMenus = (props: ChatRowProps) => {
   const { chat, unread, isActive } = props;
   const { t } = useTranslation();
   const quickActionsFor = useChatQuickActions(chat, unread);
-  const notifications = useChatNotificationMenuItem(chat);
+  const notifications = useChatNotificationMenuItem(chat, TINY_MENU_ICON_SIZE);
   const options = useMemo(
-    () => quickActionsFor("chat_list_right_click"),
+    () => quickActionsFor("chat_list_right_click", TINY_MENU_ICON_SIZE),
     [quickActionsFor],
   );
   const moreOptions = useMemo<DropdownMenuItem[]>(
     () => [
-      ...quickActionsFor("chat_list_more_button"),
+      ...quickActionsFor("chat_list_more_button", TINY_MENU_ICON_SIZE),
       { type: "separator" },
       notifications,
     ],

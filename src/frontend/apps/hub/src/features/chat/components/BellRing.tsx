@@ -2,8 +2,11 @@ type BellRingProps = {
   size?: number;
 };
 
-/** The design's `bell-ring` icon, which the UI kit does not have. */
-export const BellRing = ({ size = 16 }: BellRingProps) => (
+/**
+ * The design's `bell-ring` icon, which the UI kit does not have. 24px by
+ * default, as the kit's icons.
+ */
+export const BellRing = ({ size = 24 }: BellRingProps) => (
   <svg
     width={size}
     height={size}
