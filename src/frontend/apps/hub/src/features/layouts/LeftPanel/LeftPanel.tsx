@@ -36,6 +36,7 @@ import {
 } from "react-virtuoso";
 
 import { chatTypeOf, trackEvent } from "@/features/analytics/analytics";
+import { useInvitationAnalytics } from "@/features/analytics/useInvitationAnalytics";
 import { isInvitationChat } from "@/features/chat/chatMembership";
 import { chatHref, readChatRef, sameChatRef } from "@/features/chat/chatRefs";
 import { BellOff } from "@/features/chat/components/BellOff";
@@ -74,6 +75,7 @@ type ActionItem =
 export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const { t } = useTranslation();
   const chats = useChats();
+  useInvitationAnalytics(chats.byAccount);
   const unreadLookup = useChatUnread();
   const entries = useDriverEntries();
   // The rows render inside this element's scroll, only those near the view.

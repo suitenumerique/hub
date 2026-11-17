@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
 import { useCallback } from "react";
 
+import { chatTypeOf, trackEvent } from "@/features/analytics/analytics";
 import type { Chat, ChatRef } from "@/features/drivers/types";
 
 import { useChatInvitation } from "../hooks/useChatInvitation";
@@ -35,20 +36,31 @@ export const ChatInvitationView = ({
     useChatInvitation(chatRef);
 
   const handleAccept = useCallback(() => {
-    void accept().catch(() => {
-      // Toast already shown by the hook; stay on the invitation view.
-    });
-  }, [accept]);
+    void accept()
+      .then(() => {
+        trackEvent("invitation:responded", {
+          response: "accepted",
+          chat_type: chatTypeOf(chat),
+        });
+      })
+      .catch(() => {
+        // Toast already shown by the hook; stay on the invitation view.
+      });
+  }, [accept, chat]);
 
   const handleRefuse = useCallback(() => {
     void refuse()
       .then(() => {
+        trackEvent("invitation:responded", {
+          response: "declined",
+          chat_type: chatTypeOf(chat),
+        });
         void router.push("/chat/new");
       })
       .catch(() => {
         // Toast already shown by the hook; stay on the invitation view.
       });
-  }, [refuse, router]);
+  }, [refuse, router, chat]);
 
   return (
     <ChatInvitation

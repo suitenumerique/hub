@@ -29,6 +29,12 @@ type AnalyticsEvents = {
     chat_type?: ChatType;
   };
   "chat:created": { participant_count: number };
+  /** The first time an invitation shows up in the conversation list. */
+  "invitation:received": { chat_type?: ChatType };
+  "invitation:responded": {
+    response: "accepted" | "declined";
+    chat_type?: ChatType;
+  };
   "message:sent": {
     trigger: "enter" | "send_button";
     has_attachment: boolean;
