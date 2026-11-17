@@ -114,7 +114,7 @@ test.describe("Encryption", () => {
       await chat.openConversation(bob.displayName);
       await chat.timeline.expectMessageOnce(before);
       await chat.composer.expectUsable();
-      await chat.accountMenu.choose("Encryption");
+      await chat.accountMenu.openSettings("Encryption");
       await chat.encryption.expectDeviceStatus("Verified");
       await chat.encryption.expectBackupStatus("Active");
     });

@@ -56,7 +56,7 @@ export const verifyHubDevice = async (
   chat: ChatPage,
   otherDevice: CryptoDevice,
 ): Promise<void> => {
-  await chat.accountMenu.choose("Encryption");
+  await chat.accountMenu.openSettings("Encryption");
   await chat.encryption.startVerification();
   const sas = await otherDevice.acceptVerification();
   expect(await chat.encryption.shownEmojis()).toEqual(sas.emojis);
@@ -75,7 +75,7 @@ export const signInAgain = async (chat: ChatPage): Promise<void> => {
 
 /** The Device ID shown under "Technical details" of the Encryption dialog. */
 export const shownDeviceId = async (chat: ChatPage): Promise<string> => {
-  await chat.accountMenu.choose("Encryption");
+  await chat.accountMenu.openSettings("Encryption");
   const deviceId = await chat.encryption.deviceId();
   await chat.encryption.close();
   return deviceId;
