@@ -21,6 +21,13 @@ and this project adheres to
 - ⬆️(frontend) Update @gouvfr-lasuite/ui-components to 1.5.0
 - 💄(frontend) Use the ui-kit user menu again for the account menu: the
   encryption settings move to the "Settings" dialog
+- 💄(frontend) Draw the side panel's scrollbar between the top actions and the
+  footer, the list still passing under them, instead of behind them. #126
+- 💄(frontend) Show "Edited" under an edited message, beside its time when it
+  has one ("Edited • 08:32"), instead of inside the bubble. #126
+- 💄(frontend) Use the large menu of the UI kit, with its icon size, for the
+  conversation menu of the header, and remove its disabled "Rename chat"
+  entry for now. #126
 
 ### Fixed
 
