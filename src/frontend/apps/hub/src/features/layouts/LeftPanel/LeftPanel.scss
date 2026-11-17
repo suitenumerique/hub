@@ -64,6 +64,55 @@
     // footer. A focused row is scrolled clear of both.
     padding: calc(var(--hub-lp-top-height, 0px) + 10px) 0 76px;
     scroll-padding: var(--hub-lp-top-height, 0px) 0 76px;
+    // Its scrollbar would run behind the top and the footer:
+    // LeftPanelScrollbar draws one between them instead.
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  // Over the list's right padding, shown only while the list scrolls, as an
+  // overlay scrollbar, and kept while the pointer is on it to be grabbed.
+  // LeftPanelScrollbar sets the thumb's length and position.
+  &__scrollbar {
+    position: absolute;
+    top: var(--hub-lp-top-height, 0px);
+    right: 0;
+    bottom: var(--hub-lp-footer-height, 0px);
+    z-index: 2;
+    width: 8px;
+    opacity: 0;
+    transition: opacity 200ms ease;
+
+    &__thumb {
+      position: absolute;
+      top: 0;
+      right: 1px;
+      width: 6px;
+      height: var(--hub-lp-thumb-height, 0px);
+      transform: translateY(var(--hub-lp-thumb-offset, 0px));
+      border-radius: 3px;
+      background: var(
+        --c--contextuals--content--semantic--neutral--tertiary,
+        #626a80
+      );
+      opacity: 0.5;
+      touch-action: none;
+      transition: opacity 120ms ease;
+    }
+
+    &:hover &__thumb,
+    &[data-dragging] &__thumb {
+      opacity: 0.8;
+    }
+  }
+
+  &__scrollbar:hover,
+  &__scrollbar[data-scrolling],
+  &__scrollbar[data-dragging] {
+    opacity: 1;
   }
 
   &__logo {

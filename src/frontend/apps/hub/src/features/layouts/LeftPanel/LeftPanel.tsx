@@ -53,6 +53,7 @@ import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatRef, ChatUnread } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 
+import { LeftPanelScrollbar } from "./LeftPanelScrollbar";
 import { TchapLogo } from "./TchapLogo";
 
 // Collects the first users' feedback until a support channel exists. The same
@@ -82,7 +83,9 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null);
   // Draws the separator under the top actions once the list scrolls under it.
   const [isScrolled, setIsScrolled] = useState(false);
+  const panelRef = useRef<HTMLElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
   const searchShortcut = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
     ? "⌘K"
     : "Ctrl K";
@@ -95,19 +98,25 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
 
   // The top floats over the list outside its scroll, as the footer does, so
   // the wheel over it leaves the list still. The list starts below it, at a
-  // height that changes with the actions shown.
+  // height that changes with the actions shown, and the scrollbar runs
+  // between the two.
   useLayoutEffect(() => {
+    const panel = panelRef.current;
     const top = topRef.current;
-    if (!top || !scrollParent) return;
+    const footer = footerRef.current;
+    if (!panel || !top || !footer || !scrollParent) return;
     const observer = new ResizeObserver(() => {
-      scrollParent.style.setProperty(
-        "--hub-lp-top-height",
-        `${top.offsetHeight}px`,
+      panel.style.setProperty("--hub-lp-top-height", `${top.offsetHeight}px`);
+      panel.style.setProperty(
+        "--hub-lp-footer-height",
+        `${footer.offsetHeight}px`,
       );
-      // Virtuoso reads the lists' offset again only on scroll.
+      // Virtuoso reads the lists' offset again only on scroll, and the
+      // scrollbar its track.
       scrollParent.dispatchEvent(new Event("scroll"));
     });
     observer.observe(top);
+    observer.observe(footer);
     return () => observer.disconnect();
   }, [scrollParent]);
 
@@ -132,6 +141,7 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
 
   return (
     <aside
+      ref={panelRef}
       className="hub__left-panel"
       aria-label={t("Side panel")}
       data-scrolled={isScrolled}
@@ -178,8 +188,9 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
           unreadLookup={unreadLookup}
         />
       </div>
+      <LeftPanelScrollbar scrollElement={scrollParent} />
 
-      <div className="hub__left-panel__footer">
+      <div ref={footerRef} className="hub__left-panel__footer">
         <AccountSelector />
         {/* The app version is shown nowhere else. Above: the panel clips what
             overflows its right edge, where the left placement flips to. */}
