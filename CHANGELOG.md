@@ -12,6 +12,9 @@ and this project adheres to
   in the new "Settings" dialog of the account menu: Use system settings, Light
   or Dark, kept in the browser. The dialog also holds the encryption settings.
   #127
+- ✨(frontend) Send two invitation events to PostHog: when an invitation first
+  shows up in the conversation list, remembered in the browser so a reload
+  does not send it again, and when it is accepted or declined in the Hub. #129
 
 ### Changed
 
