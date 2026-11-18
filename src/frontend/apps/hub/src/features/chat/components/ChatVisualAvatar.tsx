@@ -5,10 +5,11 @@ import {
 } from "@/features/ui/components/avatar/Avatar";
 
 import { useChatAvatarUrl } from "../hooks/useChatAvatarUrl";
+import { ChatGroupIcon } from "./ChatGroupIcon";
 
-// Icons the UI kit does not ship yet, exported from the design.
-const ICON_ASSETS: Record<string, string> = {
-  groups: "/assets/chat-group.svg",
+// Icons the UI kit does not ship yet, drawn from the design.
+const DESIGN_ICONS: Record<string, typeof ChatGroupIcon> = {
+  groups: ChatGroupIcon,
 };
 
 /** Emoji, icon, or nothing for the default initials. */
@@ -16,18 +17,16 @@ const visualContent = (visual: ChatVisual) => {
   switch (visual.kind) {
     case "emoji":
       return visual.emoji;
-    case "icon":
-      return ICON_ASSETS[visual.icon] ? (
-        <img
-          className="hub__avatar__icon"
-          src={ICON_ASSETS[visual.icon]}
-          alt=""
-        />
+    case "icon": {
+      const DesignIcon = DESIGN_ICONS[visual.icon];
+      return DesignIcon ? (
+        <DesignIcon className="hub__avatar__icon" />
       ) : (
         <span className="material-icons" aria-hidden="true">
           {visual.icon}
         </span>
       );
+    }
     default:
       return undefined;
   }
