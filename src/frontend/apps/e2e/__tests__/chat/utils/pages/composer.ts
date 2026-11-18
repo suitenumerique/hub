@@ -68,6 +68,28 @@ export class Composer {
     await this.field.pressSequentially(text, { delay: 30 });
   }
 
+  /** Selects with Shift+← the `text` that ends at the caret, as a person would. */
+  async selectBeforeCaret(text: string): Promise<void> {
+    for (let index = 0; index < text.length; index += 1) {
+      await this.field.press("Shift+ArrowLeft");
+    }
+    await expect
+      .poll(() =>
+        this.field.evaluate((input: HTMLTextAreaElement) =>
+          input.value.slice(input.selectionStart, input.selectionEnd),
+        ),
+      )
+      .toBe(text);
+  }
+
+  /** Copies `text` to the clipboard and pastes it with the keyboard. */
+  async paste(text: string): Promise<void> {
+    await this.field
+      .page()
+      .evaluate((value) => navigator.clipboard.writeText(value), text);
+    await this.field.press("ControlOrMeta+V");
+  }
+
   /** Attaches files and waits until every upload is done. */
   async attach(files: TestFile[]): Promise<void> {
     await this.fileInput.setInputFiles(
