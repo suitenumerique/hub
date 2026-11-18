@@ -106,7 +106,7 @@ jobs:
           path: src/frontend/apps/hub/out
 
       - name: Free disk space before Docker
-        uses: ./.github/actions/free-disk-space
+        uses: suitenumerique/ci/actions/free-disk-space@ca6401ac83e981e5b0a94f06f68baaa6e6d0a436 # v0.0.1
 
       - name: Start Docker services (e2e backend)
         run: make bootstrap-e2e

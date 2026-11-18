@@ -1,5 +1,5 @@
-name: Docker Hub Workflow
-run-name: Docker Hub Workflow
+name: Docker images
+run-name: Docker images
 
 on:
   workflow_dispatch:
@@ -12,49 +12,54 @@ on:
     branches:
       - "main"
 
-env:
-  DOCKER_USER: 1001:127
-  SHOULD_PUSH: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'preview') }}
-
 permissions:
   contents: read
 
-jobs:
-  build-and-push-backend:
-    uses: ./.github/workflows/docker-publish.yml
-    permissions:
-      contents: read
-    secrets: inherit
-    with:
-      image_name: lasuite/hub-backend
-      context: .
-      file: Dockerfile
-      target: backend-production
-      should_push: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'preview') }}
-      docker_user: 1001:127
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-  build-and-push-frontend:
-    uses: ./.github/workflows/docker-publish.yml
+jobs:
+  build-and-push:
+    name: ${{ matrix.service }}
     permissions:
       contents: read
-    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            image_name: lasuite/hub-backend
+            context: .
+            file: ./Dockerfile
+            target: backend-production
+          - service: frontend
+            image_name: lasuite/hub-frontend
+            context: .
+            file: ./src/frontend/Dockerfile
+            target: frontend-production
+    uses: suitenumerique/ci/.github/workflows/_docker-publish.yml@ca6401ac83e981e5b0a94f06f68baaa6e6d0a436 # v0.0.1
     with:
-      image_name: lasuite/hub-frontend
-      context: .
-      file: src/frontend/Dockerfile
-      target: frontend-production
+      image_name: ${{ matrix.image_name }}
+      context: ${{ matrix.context }}
+      file: ${{ matrix.file }}
+      target: ${{ matrix.target }}
+      docker_user: "1001:127"
       should_push: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'preview') }}
-      docker_user: 1001:127
+      trivy_ignore_files: ./.github/.trivyignore
+    secrets:
+      DOCKER_HUB_USER: ${{ secrets.DOCKER_HUB_USER }}
+      DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
   notify-argocd:
+    permissions:
+      contents: read
     needs:
-      - build-and-push-backend
-      - build-and-push-frontend
+      - build-and-push
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'preview')
     steps:
-      - uses: numerique-gouv/action-argocd-webhook-notification@main
-        id: notify
+      - uses: suitenumerique/ci/actions/argocd-webhook-notification@ca6401ac83e981e5b0a94f06f68baaa6e6d0a436 # v0.0.1
         with:
           deployment_repo_path: "${{ secrets.DEPLOYMENT_REPO_URL }}"
           argocd_webhook_secret: "${{ secrets.ARGOCD_PREPROD_WEBHOOK_SECRET }}"
