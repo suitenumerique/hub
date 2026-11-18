@@ -15,6 +15,8 @@ and this project adheres to
 - ✨(frontend) Send two invitation events to PostHog: when an invitation first
   shows up in the conversation list, remembered in the browser so a reload
   does not send it again, and when it is accepted or declined in the Hub. #129
+- ✨(frontend) Find pending invitations in the conversation search, by name or
+  inviter, as in Element. #129
 
 ### Changed
 
@@ -28,6 +30,8 @@ and this project adheres to
 - 💄(frontend) Use the large menu of the UI kit, with its icon size, for the
   conversation menu of the header, and remove its disabled "Rename chat"
   entry for now. #126
+- 💄(frontend) Name the second button of an invitation "Decline" instead of
+  "Dismiss": it declines the invitation for good. #129
 
 ### Fixed
 
@@ -35,6 +39,10 @@ and this project adheres to
   loaded, so its transparent areas no longer show them. #128
 - 🐛(frontend) List pending invitations first in the conversation list and in
   search results, as in Element, so a new one is not missed. #129
+- 🐛(frontend) Draw the group icon of a conversation avatar in the avatar's
+  text colour, so it turns dark in the dark theme. #127
+- 🐛(frontend) Show the history of a chat joined again after leaving it, which
+  stayed empty until a reload. #129
 
 ## [v0.1.0] - 2026-11-11
 
