@@ -28,7 +28,7 @@ services:
 
   rustfs:
     user: ${DOCKER_USER:-1000}
-    image: rustfs/rustfs:1.0.0
+    image: rustfs/rustfs:1.0.6
     environment:
       - RUSTFS_ACCESS_KEY=hub
       - RUSTFS_SECRET_KEY=password
