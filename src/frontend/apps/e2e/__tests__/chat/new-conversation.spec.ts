@@ -1,7 +1,10 @@
 import { expect, test } from "./utils/fixtures";
-import { verifyHubDevice } from "./utils/flows";
+import { createUnencryptedRoom, verifyHubDevice } from "./utils/flows";
 import { downloadedBytes, testPdf, testTextFile } from "./utils/files";
 import { uniqueId, uniqueText } from "./utils/ids";
+
+/** Time left to "New" to open a conversation it should not, before saying it did not. */
+const SETTLE_MS = 1_500;
 
 /**
  * Conversations created from "New". The Hub encrypts every room it creates,
@@ -69,6 +72,47 @@ test.describe("New conversations", () => {
       await aliceChat.newChat.add(bob);
       await aliceChat.timeline.expectMessageOnce(hello);
       expect(await alice.api.joinedRooms()).toEqual([roomId]);
+    });
+  });
+
+  test("choosing someone opens the direct chat, not a named room or former group", async ({
+    people,
+    hub,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const carol = await people.create("Carol");
+    const projectName = uniqueText("Project");
+    const projectId = await createUnencryptedRoom(alice, [bob], {
+      name: projectName,
+    });
+    const inProject = uniqueText("In the project");
+    await alice.api.sendText(projectId, inProject);
+    // A group left down to Alice and Bob.
+    const groupId = await createUnencryptedRoom(alice, [bob, carol]);
+    const inGroup = uniqueText("In the group");
+    await alice.api.sendText(groupId, inGroup);
+    await carol.api.leave(groupId);
+    const bobChat = await hub.open(bob);
+    await bobChat.leftPanel.expectConversation(projectName);
+
+    await test.step("without a direct chat, neither room opens", async () => {
+      await bobChat.leftPanel.openNewChat();
+      await bobChat.newChat.add(alice);
+      await bobChat.page.waitForTimeout(SETTLE_MS);
+      await bobChat.timeline.expectNoMessage(inProject);
+      await bobChat.timeline.expectNoMessage(inGroup);
+    });
+
+    await test.step("the direct chat opens once it exists", async () => {
+      const directId = await createUnencryptedRoom(alice, [bob]);
+      const inDirect = uniqueText("In the direct chat");
+      await alice.api.sendText(directId, inDirect);
+      await bobChat.reload();
+      await bobChat.leftPanel.expectConversation({ roomId: directId });
+      await bobChat.leftPanel.openNewChat();
+      await bobChat.newChat.add(alice);
+      await bobChat.timeline.expectMessageOnce(inDirect);
     });
   });
 
