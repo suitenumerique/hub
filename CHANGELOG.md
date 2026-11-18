@@ -17,6 +17,8 @@ and this project adheres to
   does not send it again, and when it is accepted or declined in the Hub. #129
 - ✨(frontend) Find pending invitations in the conversation search, by name or
   inviter, as in Element. #129
+- ✨(frontend) Turn the selected text of the composer into a link when a URL
+  is pasted on it, `[text](url)`, as in Slack or Element. #136
 
 ### Changed
 
