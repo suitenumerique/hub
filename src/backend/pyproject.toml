@@ -53,7 +53,7 @@ dependencies = [
 "Homepage" = "https://github.com/suitenumerique/hub"
 "Repository" = "https://github.com/suitenumerique/hub"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "django-extensions==4.1",
     "drf-spectacular-sidecar==2026.10.1",
