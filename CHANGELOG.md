@@ -38,6 +38,9 @@ and this project adheres to
   entry for now. #126
 - 💄(frontend) Name the second button of an invitation "Decline" instead of
   "Dismiss": it declines the invitation for good. #129
+- 👷(ci) Run the e2e browsers in the official Playwright image, without the
+  disk cleanup, and split the e2e tests into 3 shards instead of one job per
+  browser.
 
 ### Fixed
 
