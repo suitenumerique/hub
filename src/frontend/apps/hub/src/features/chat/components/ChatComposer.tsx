@@ -37,6 +37,7 @@ import {
   saveComposerDraft,
 } from "../composer/composerDraftStore";
 import { mentionsFromFormattedBody } from "../composer/editDraftMentions";
+import { linkPastedOnSelection } from "../composer/pastedLink";
 import { serializeComposerDraft } from "../composer/serializeComposerDraft";
 import type { UploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useComposerDraft } from "../hooks/useComposerDraft";
@@ -158,6 +159,7 @@ export const ChatComposer = ({
     onSelect: onDraftSelect,
     onPointerDown,
     onPointerUp,
+    replaceRange,
     insertMention,
   } = useComposerDraft(inputRef, editDraft ? undefined : draftKey);
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
@@ -633,7 +635,8 @@ export const ChatComposer = ({
                 onPaste={(event) => {
                   // Pasted screenshots arrive as files only; rich text that also
                   // carries an image keeps its normal text paste.
-                  const { files, types } = event.clipboardData;
+                  const { clipboardData } = event;
+                  const { files, types } = clipboardData;
                   if (
                     canAttach &&
                     files.length > 0 &&
@@ -641,6 +644,21 @@ export const ChatComposer = ({
                   ) {
                     event.preventDefault();
                     addFiles(files, "paste");
+                    return;
+                  }
+                  // A URL pasted on selected text links it, in one undo step.
+                  const input = event.currentTarget;
+                  const { selectionStart: start, selectionEnd: end } = input;
+                  const link =
+                    !input.readOnly && start < end
+                      ? linkPastedOnSelection(
+                          input.value.slice(start, end),
+                          clipboardData.getData("text/plain"),
+                        )
+                      : null;
+                  if (link !== null) {
+                    event.preventDefault();
+                    replaceRange(start, end, link);
                   }
                 }}
               />
