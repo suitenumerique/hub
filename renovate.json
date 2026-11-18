@@ -13,22 +13,34 @@
   },
   "packageRules": [
     {
+      "groupName": "allowed postgres versions",
+      "matchManagers": ["docker-compose"],
+      "matchPackageNames": ["postgres"],
+      "allowedVersions": "<16"
+    },
+    {
       "groupName": "allowed python versions",
       "matchManagers": ["pep621", "dockerfile", "docker-compose"],
       "matchPackageNames": ["python"],
       "allowedVersions": "<3.15"
     },
     {
-      "enabled": false,
-      "groupName": "ignored python dependencies",
-      "matchManagers": ["pep621"],
-      "matchPackageNames": []
+      "groupName": "allowed keydb versions",
+      "matchManagers": ["docker-compose"],
+      "matchPackageNames": ["eqalpha/keydb"],
+      "allowedVersions": "<7"
     },
     {
       "groupName": "allowed redis versions",
       "matchManagers": ["pep621"],
       "matchPackageNames": ["redis"],
       "allowedVersions": "<6.0.0"
+    },
+    {
+      "enabled": false,
+      "groupName": "ignored python dependencies",
+      "matchManagers": ["pep621"],
+      "matchPackageNames": []
     },
     {
       "groupName": "allowed pylint versions",

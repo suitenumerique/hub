@@ -11,7 +11,7 @@ services:
   # Dedicated Postgres for MAS (mirrors kc_postgresql); ephemeral, no host
   # port. Synapse uses SQLite instead and needs no database service.
   matrix_postgresql:
-    image: postgres:16
+    image: postgres:15
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
       interval: 1s

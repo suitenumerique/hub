@@ -44,7 +44,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:15
         env:
           POSTGRES_DB: hub
           POSTGRES_USER: dinum
