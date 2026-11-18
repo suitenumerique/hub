@@ -18,7 +18,8 @@ and this project adheres to
 - ✨(frontend) Find pending invitations in the conversation search, by name or
   inviter, as in Element. #129
 - ✨(frontend) Turn the selected text of the composer into a link when a URL
-  is pasted on it, `[text](url)`, as in Slack or Element. #136
+  is pasted on it, `[text](url)`, as in Slack or Element. A domain pasted
+  without a scheme, such as `example.com`, links to it over HTTPS. #136
 
 ### Changed
 
