@@ -5,8 +5,10 @@ on:
     branches:
       - main
   pull_request:
-    branches:
-      - "*"
+    paths:
+      - "src/frontend/**"
+      - ".github/workflows/hub-frontend.yml"
+      - ".github/workflows/_dependencies.yml"
 
 permissions:
   contents: read
