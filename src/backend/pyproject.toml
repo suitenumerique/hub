@@ -36,8 +36,8 @@ dependencies = [
     "django-timezone-field>=5.1",
     "django<6.0.0",
     "djangorestframework==3.18.3",
-    "drf_spectacular==0.30.0",
     "dockerflow==2026.3.4",
+    "drf_spectacular==0.30.0",
     "gunicorn==26.2.0",
     "mozilla-django-oidc==5.0.2",
     "nested-multipart-parser==1.6.0",
@@ -65,8 +65,8 @@ dev = [
     "pylint<4.0.0",
     "pytest-cov==7.1.0",
     "pytest-django==4.14.0",
-    "pytest==9.2.0",
     "pytest-xdist==3.8.0",
+    "pytest==9.2.0",
     "responses==0.26.3",
     "ruff==0.17.3",
 ]
@@ -82,9 +82,9 @@ universal = true
 exclude = [
     ".git",
     ".venv",
+    "__pycache__",
     "build",
     "venv",
-    "__pycache__",
 ]
 line-length = 88
 
