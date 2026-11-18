@@ -19,28 +19,14 @@ jobs:
 
 
   lint-back:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: src/backend
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-      - name: Install Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-          cache: "pip"
-      - name: Upgrade pip and setuptools
-        run: pip install --upgrade pip setuptools
-      - name: Install development dependencies
-        run: pip install --user .[dev]
-      - name: Check code formatting with ruff
-        run: ~/.local/bin/ruff format . --diff
-      - name: Lint code with ruff
-        run: ~/.local/bin/ruff check .
-      - name: Lint code with pylint
-        run: ~/.local/bin/pylint .
+    permissions:
+      contents: read
+    uses: suitenumerique/ci/.github/workflows/_python-lint.yml@ca6401ac83e981e5b0a94f06f68baaa6e6d0a436 # v0.0.1
+    with:
+      working_directory: src/backend
+      uv_sync_args: --locked --dev
+      pylint_targets: .
+
 
   test-back:
     runs-on: ubuntu-latest
@@ -86,13 +72,8 @@ jobs:
           sudo mkdir -p /data/rustfs && \
           sudo mkdir -p /data/static
 
-      - name: Restore the mail templates
-        uses: actions/cache@v5
-        id: mail-templates
-        with:
-          path: "src/backend/core/templates/mail"
-          key: mail-templates-${{ hashFiles('src/mail/mjml') }}
-          fail-on-cache-miss: true
+      - name: Build or restore the mail templates
+        uses: suitenumerique/ci/actions/mail-templates@ca6401ac83e981e5b0a94f06f68baaa6e6d0a436 # v0.0.1
 
       - name: Start RustFS
         run: |
