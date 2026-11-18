@@ -16,7 +16,7 @@ type ChatInvitationProps = {
  * Invitation detail view shown in the central chat surface while a conversation
  * is a pending incoming invitation. Mirrors the New Chat placeholder's quiet,
  * centered layout — an envelope illustration, a short prompt naming the inviter,
- * and Accept/Dismiss actions. Purely presentational: the action wiring lives in
+ * and Accept/Decline actions. Purely presentational: the action wiring lives in
  * `ChatInvitationView`.
  */
 export const ChatInvitation = ({
@@ -84,7 +84,7 @@ export const ChatInvitation = ({
           disabled={isBusy}
           aria-busy={isRefusing}
         >
-          {t("Dismiss")}
+          {t("Decline")}
         </Button>
       </div>
     </section>

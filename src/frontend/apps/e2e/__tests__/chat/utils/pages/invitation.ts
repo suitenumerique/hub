@@ -7,7 +7,7 @@ export class Invitation {
   readonly root: Locator;
   readonly text: Locator;
   readonly acceptButton: Locator;
-  readonly dismissButton: Locator;
+  readonly declineButton: Locator;
 
   constructor(readonly page: Page) {
     this.root = page.getByRole("region", { name: "New invitation" });
@@ -16,8 +16,8 @@ export class Invitation {
       name: "Accept",
       exact: true,
     });
-    this.dismissButton = this.root.getByRole("button", {
-      name: "Dismiss",
+    this.declineButton = this.root.getByRole("button", {
+      name: "Decline",
       exact: true,
     });
   }
@@ -34,8 +34,8 @@ export class Invitation {
     await expect(this.root).toBeHidden({ timeout: SYNC_TIMEOUT });
   }
 
-  async dismiss(): Promise<void> {
-    await this.dismissButton.click();
+  async decline(): Promise<void> {
+    await this.declineButton.click();
     await expect(this.page).toHaveURL(/\/chat\/new$/, {
       timeout: SYNC_TIMEOUT,
     });
