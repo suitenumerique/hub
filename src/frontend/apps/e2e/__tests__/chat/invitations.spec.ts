@@ -145,18 +145,24 @@ test.describe("Invitations", () => {
     });
   });
 
-  test("finds invitations in search", async ({ people, hub }) => {
+  test("finds invitations in search, above the other results", async ({
+    people,
+    hub,
+  }) => {
     const alice = await people.create("Alice");
     const bob = await people.create("Bob");
+    await createUnencryptedRoom(alice, [bob]);
     const roomName = uniqueText("Project");
     await alice.api.createRoom({ name: roomName, invite: [bob.userId] });
-    await alice.api.createRoom({ invite: [bob.userId], isDirect: true });
     const bobChat = await hub.open(bob);
     await bobChat.leftPanel.expectConversation(roomName);
 
     await bobChat.search.open();
+    // Found by its inviter, before the direct chat with her.
     await bobChat.search.search(alice.displayName);
     await bobChat.search.expectResult(alice.displayName);
+    await bobChat.search.expectResult(roomName);
+    await bobChat.search.expectFirstResult(roomName);
     await bobChat.search.search(roomName);
     await bobChat.search.expectResult(roomName);
     await bobChat.search.openResult(roomName);

@@ -40,6 +40,16 @@ export class SearchDialog {
     await expect(this.result(name)).toBeVisible({ timeout: SYNC_TIMEOUT });
   }
 
+  /** The first result is this conversation. */
+  async expectFirstResult(name: string): Promise<void> {
+    await expect(
+      this.dialog
+        .locator("[cmdk-item]")
+        .first()
+        .locator(".hub__conversation-search__name"),
+    ).toHaveText(exactly(name), { timeout: SYNC_TIMEOUT });
+  }
+
   async expectNoResult(name: string): Promise<void> {
     await expect(this.result(name)).toHaveCount(0, { timeout: SYNC_TIMEOUT });
   }
