@@ -21,6 +21,15 @@ test.describe("Links pasted in the composer", () => {
       await composer.selectBeforeCaret(label);
       await composer.paste(url);
       await expect(composer.field).toHaveValue(linked);
+      // The caret waits after the link, to type on.
+      await expect
+        .poll(() =>
+          composer.field.evaluate((input: HTMLTextAreaElement) => [
+            input.selectionStart,
+            input.selectionEnd,
+          ]),
+        )
+        .toEqual([linked.length, linked.length]);
     });
 
     await test.step("one undo gives the selected text back", async () => {
@@ -85,6 +94,14 @@ test.describe("Links pasted in the composer", () => {
     await test.step("a URL pasted on a URL replaces it", async () => {
       await composer.field.fill(`Read ${url}`);
       await composer.selectBeforeCaret(url);
+      await composer.paste(otherUrl);
+      await expect(composer.field).toHaveValue(`Read ${otherUrl}`);
+    });
+
+    await test.step("a URL pasted on a link replaces it", async () => {
+      const link = `[the doc](${url})`;
+      await composer.field.fill(`Read ${link}`);
+      await composer.selectBeforeCaret(link);
       await composer.paste(otherUrl);
       await expect(composer.field).toHaveValue(`Read ${otherUrl}`);
     });
