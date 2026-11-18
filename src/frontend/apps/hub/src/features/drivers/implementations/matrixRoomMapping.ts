@@ -7,6 +7,7 @@
 import {
   EventType,
   KnownMembership,
+  type MatrixClient,
   type MatrixEvent,
   type Room,
   type RoomMember,
@@ -117,11 +118,6 @@ export const isMarkedUnreadRoom = (room: Room): boolean => {
  * room, but must not make `getChatForUsers` resolve that inactive room as an
  * existing conversation.
  */
-export const roomOtherMembers = (
-  room: Room,
-  currentUserId: string | undefined,
-) => otherActiveMembers(room.getMembers(), currentUserId);
-
 const otherActiveMembers = (
   members: RoomMember[],
   currentUserId: string | undefined,
@@ -152,6 +148,40 @@ const conversationCounterparts = (
     (member) =>
       member.userId !== currentUserId && hasConversationMembership(member),
   );
+
+/** Rooms the chat can list: like Element's room list, never a space. */
+export const chatRooms = (mx: MatrixClient): Room[] =>
+  mx.getVisibleRooms().filter((room) => !room.isSpaceRoom());
+
+/**
+ * Whether "New" with exactly these people may open this room instead of
+ * creating one, as Element's `findDMForUser`: with one person, only a direct
+ * conversation, unnamed and never with anyone else; with several, only an
+ * unnamed group of exactly them. A named room, or a group left down to these
+ * people, is a conversation of its own.
+ */
+export const matchesNewConversation = (
+  room: Room,
+  currentUserId: string | undefined,
+  userIds: string[],
+): boolean => {
+  const wanted = participantSetKey(userIds);
+  const count = wanted.split(" ").length;
+  if (
+    explicitRoomName(room) !== undefined ||
+    room.getInvitedAndJoinedMemberCount() !== count + 1
+  ) {
+    return false;
+  }
+  const members = room.getMembers();
+  const active = otherActiveMembers(members, currentUserId);
+  if (participantSetKey(active.map((member) => member.userId)) !== wanted) {
+    return false;
+  }
+  return (
+    count > 1 || conversationCounterparts(members, currentUserId).length === 1
+  );
+};
 
 /** Order- and duplicate-independent key for comparing two participant sets. */
 export const participantSetKey = (userIds: string[]): string =>
