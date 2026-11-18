@@ -1,14 +1,23 @@
 {
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>suitenumerique/ci//renovate/default"],
   "dependencyDashboard": {
     "enabled": true
   },
   "labels": ["dependencies", "noChangeLog", "automated"],
-  "schedule": ["before 7am on monday"],
-  "prCreation": "not-pending",
-  "rebaseWhen": "conflicted",
-  "updateNotScheduled": false,
+  "enabledManagers": ["github-actions", "npm", "pep621", "dockerfile", "docker-compose"],
+  "prConcurrentLimit": 6,
+  "rangeStrategy": "pin",
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "packageRules": [
+    {
+      "groupName": "allowed python versions",
+      "matchManagers": ["pep621", "dockerfile", "docker-compose"],
+      "matchPackageNames": ["python"],
+      "allowedVersions": "<3.15"
+    },
     {
       "enabled": false,
       "groupName": "ignored python dependencies",
@@ -43,16 +52,7 @@
       "enabled": false,
       "groupName": "ignored js dependencies",
       "matchManagers": ["npm"],
-      "matchPackageNames": [
-        "@next/eslint-plugin-next",
-        "eslint-config-next",
-        "fetch-mock",
-        "next",
-        "node",
-        "node-fetch",
-        "react-resizable-panels",
-        "workbox-webpack-plugin"
-      ]
+      "matchPackageNames": []
     }
   ]
 }
