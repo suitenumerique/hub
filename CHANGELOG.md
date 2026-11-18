@@ -43,6 +43,9 @@ and this project adheres to
   text colour, so it turns dark in the dark theme. #127
 - 🐛(frontend) Show the history of a chat joined again after leaving it, which
   stayed empty until a reload. #129
+- 🐛(frontend) Open from "New" only a direct chat with the chosen person, or an
+  unnamed group of exactly the chosen people, as in Element, instead of a
+  named room or a group left down to them.
 
 ## [v0.1.0] - 2026-11-11
 
