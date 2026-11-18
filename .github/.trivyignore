@@ -1,3 +1,6 @@
-CVE-2026-26996
-CVE-2026-27903
-CVE-2026-27904
+# Base image (python:3.14.10-alpine): no fixed version available yet.
+CVE-2025-47273
+CVE-2026-114613
+CVE-2026-97687
+CVE-2026-97689
+GHSA-6v7p-g79w-8964
