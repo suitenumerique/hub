@@ -1208,6 +1208,39 @@ export class MatrixDriver extends Driver {
     });
   }
 
+  /**
+   * Resolves once a fully processed `/sync` shows the user's membership of
+   * the room (or after `timeoutMs`).
+   */
+  private waitForOwnMembershipSync(
+    mx: MatrixClient,
+    roomId: string,
+    membership: KnownMembership,
+    timeoutMs = 10_000,
+  ): Promise<void> {
+    const synced = () => mx.getRoom(roomId)?.getMyMembership() === membership;
+    if (synced()) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      const cleanup = () => {
+        mx.off(ClientEvent.Sync, onSync);
+        clearTimeout(timer);
+      };
+      const onSync = () => {
+        if (synced()) {
+          cleanup();
+          resolve();
+        }
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, timeoutMs);
+      mx.on(ClientEvent.Sync, onSync);
+    });
+  }
+
   // --- Incoming invitations -----------------------------------------------
   // Accept joins the room and maps it as a joined conversation; refuse leaves
   // it. Both drop the cached joined-room set and emit `chats:changed` so the
@@ -1263,6 +1296,12 @@ export class MatrixDriver extends Driver {
       await mx.leave(chatId);
       this.joinedRoomIds = null;
       this.emit({ type: "chats:changed" });
+      // Forget only once `/sync` has brought the leave. Forgetting deletes the
+      // SDK room: a leave synced afterwards would create it again, ending on
+      // the leave and with no way back through its history. After a new
+      // invitation, the SDK would recognize that leave in the join's sync,
+      // keep that timeline and show the chat empty until a reload.
+      await this.waitForOwnMembershipSync(mx, chatId, KnownMembership.Leave);
     }
 
     const automaticallyForgotten =
