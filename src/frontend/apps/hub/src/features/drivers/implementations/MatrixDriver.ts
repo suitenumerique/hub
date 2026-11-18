@@ -1200,20 +1200,20 @@ export class MatrixDriver extends Driver {
   }
 
   /**
-   * Resolves once a fully processed `/sync` shows the user's membership of
-   * the room (or after `timeoutMs`).
+   * Resolves `true` once a fully processed `/sync` shows the user's membership
+   * of the room, or `false` after `timeoutMs`.
    */
   private waitForOwnMembershipSync(
     mx: MatrixClient,
     roomId: string,
     membership: KnownMembership,
     timeoutMs = 10_000,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const synced = () => mx.getRoom(roomId)?.getMyMembership() === membership;
     if (synced()) {
-      return Promise.resolve();
+      return Promise.resolve(true);
     }
-    return new Promise<void>((resolve) => {
+    return new Promise<boolean>((resolve) => {
       const cleanup = () => {
         mx.off(ClientEvent.Sync, onSync);
         clearTimeout(timer);
@@ -1221,12 +1221,12 @@ export class MatrixDriver extends Driver {
       const onSync = () => {
         if (synced()) {
           cleanup();
-          resolve();
+          resolve(true);
         }
       };
       const timer = setTimeout(() => {
         cleanup();
-        resolve();
+        resolve(false);
       }, timeoutMs);
       mx.on(ClientEvent.Sync, onSync);
     });
@@ -1287,12 +1287,6 @@ export class MatrixDriver extends Driver {
       await mx.leave(chatId);
       this.joinedRoomIds = null;
       this.emit({ type: "chats:changed" });
-      // Forget only once `/sync` has brought the leave. Forgetting deletes the
-      // SDK room: a leave synced afterwards would create it again, ending on
-      // the leave and with no way back through its history. After a new
-      // invitation, the SDK would recognize that leave in the join's sync,
-      // keep that timeline and show the chat empty until a reload.
-      await this.waitForOwnMembershipSync(mx, chatId, KnownMembership.Leave);
     }
 
     const automaticallyForgotten =
@@ -1300,6 +1294,24 @@ export class MatrixDriver extends Driver {
       true;
     if (automaticallyForgotten) {
       return { status: "forgotten" };
+    }
+
+    // Forget only once `/sync` has brought the leave, a retry included, as
+    // Element offers to forget only a room already left. Forgetting deletes the
+    // SDK room: a leave synced afterwards would create it again, ending on the
+    // leave and with no way back through its history. After a new invitation,
+    // the SDK would recognize that leave in the join's sync, keep that timeline
+    // and show the chat empty until a reload. Without the leave, the chat is
+    // only left and its retry tries again.
+    if (
+      !(await this.waitForOwnMembershipSync(mx, chatId, KnownMembership.Leave))
+    ) {
+      return {
+        status: "left_only",
+        cause: new Error(
+          `MatrixDriver.removeChatFromHistory: the leave of "${chatId}" has not been synced yet.`,
+        ),
+      };
     }
 
     try {
