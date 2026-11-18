@@ -63,17 +63,31 @@ jobs:
 
   test-e2e:
     needs: [install-dependencies, build-frontend-e2e]
-    # Playwright's WebKit build needs the Ubuntu 24.04 system libraries, which
-    # Ubuntu 26.04 (now ubuntu-latest) no longer ships.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, webkit, firefox]
+        # Each shard runs its part of every project: the chat suites on
+        # Chromium and the smoke tests on WebKit and Firefox. The shard count
+        # follows the length of this list.
+        shard: [1, 2, 3]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      # The browsers and their system libraries come from the official
+      # Playwright image. Installing those libraries with apt depends on the
+      # Ubuntu mirror, which is sometimes slow enough to stall the job for
+      # 20+ minutes. The image tag follows the @playwright/test version so
+      # upgrades keep both in sync. The pull runs in the background, during
+      # the next steps.
+      - name: Start pulling the Playwright image
+        run: |
+          VERSION=$(jq -r '.devDependencies["@playwright/test"]' src/frontend/apps/e2e/package.json)
+          IMAGE="mcr.microsoft.com/playwright:v${VERSION}-noble"
+          echo "PLAYWRIGHT_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+          nohup docker pull --quiet "${IMAGE}" > /tmp/playwright-pull.log 2>&1 &
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -90,43 +104,18 @@ jobs:
       - name: Set e2e env variables
         run: cat env.d/development/common.e2e >> env.d/development/common.local
 
-      - name: Get Playwright version
-        id: playwright-version
-        run: |
-          VERSION=$(node -p "require('./src/frontend/apps/e2e/package.json').devDependencies['@playwright/test']")
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers (cache miss)
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: cd src/frontend/apps/e2e && npx playwright install --with-deps ${{ matrix.browser }}
-
-      - name: Install Playwright system deps (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: cd src/frontend/apps/e2e && npx playwright install-deps ${{ matrix.browser }}
-
       - name: Download frontend bundle
         uses: actions/download-artifact@v4
         with:
           name: hub-frontend-out
           path: src/frontend/apps/hub/out
 
-      - name: Free disk space before Docker
-        uses: suitenumerique/ci/actions/free-disk-space@ca6401ac83e981e5b0a94f06f68baaa6e6d0a436 # v0.0.1
-
       - name: Start Docker services (e2e backend)
         run: make bootstrap-e2e
 
-      # The chat suites (__tests__/chat) run on Chromium only, against the
-      # local Synapse + MAS stack.
+      # Every shard can get chat suites, which need the local Synapse + MAS
+      # stack.
       - name: Start the local Matrix stack
-        if: matrix.browser == 'chromium'
         run: make run-matrix-e2e
 
       - name: Serve frontend (nginx static + prod vhost)
@@ -144,17 +133,39 @@ jobs:
         run: |
           timeout 30 bash -c 'while [[ "$(curl -s -o /dev/null -w ''%{http_code}'' http://localhost:9800/)" != "200" ]]; do echo "Waiting for frontend..." && sleep 1; done' && echo "Frontend is ready!"
 
+      # Only the browsers run in the container: the tests stay on the runner
+      # because they reset the database with make and drive mas-cli with
+      # docker exec. With the host network, localhost in the browsers is the
+      # runner's localhost. The server comes from the cached node_modules,
+      # mounted read only.
+      - name: Start the Playwright browser server
+        run: |
+          docker run --detach --name playwright-server --init \
+            --network host --ipc=host --user pwuser \
+            -v "${PWD}:${PWD}:ro" -w "${PWD}/src/frontend/apps/e2e" \
+            "${PLAYWRIGHT_IMAGE}" \
+            yarn playwright run-server --host 127.0.0.1 --port 53333
+          timeout 60 sh -c 'until docker logs playwright-server 2>&1 | grep -q "Listening on"; do sleep 1; done' \
+            || { docker logs playwright-server; exit 1; }
+
+      # Playwright reads PW_TEST_CONNECT_WS_ENDPOINT and connects to the
+      # server instead of launching local browsers.
       - name: Run e2e tests
         env:
           PLAYWRIGHT_LIST_PRINT_STEPS: true
           FORCE_COLOR: true
-        run: cd src/frontend/apps/e2e && yarn test --project=${{ matrix.browser }}
+          PW_TEST_CONNECT_WS_ENDPOINT: ws://127.0.0.1:53333/
+        run: cd src/frontend/apps/e2e && yarn test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Show the Playwright browser server logs
+        if: failure()
+        run: docker logs playwright-server
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-${{ matrix.browser }}-report
+          name: playwright-shard-${{ matrix.shard }}-report
           path: src/frontend/apps/e2e/report/
           retention-days: 7
 

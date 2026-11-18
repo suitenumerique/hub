@@ -22,7 +22,9 @@ export default defineConfig({
   testDir: "./__tests__",
   outputDir: "./test-results",
 
-  fullyParallel: false,
+  // Every test creates its own people and conversations, so the tests of a
+  // file can run on several workers, and shards split them evenly.
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   maxFailures: process.env.CI ? 3 : 0,
