@@ -29,6 +29,7 @@ import {
 } from "../ChatAttachmentPreviewContext";
 import { chatKeys } from "../chatKeys";
 import { NEW_CHAT_DRAFT_ID } from "../composer/composerDraftStore";
+import { lastEditableMessage } from "../composer/lastEditableMessage";
 import { isInvitationChat } from "../chatMembership";
 import {
   ChatMessageEditProvider,
@@ -184,6 +185,34 @@ export const ChatView = ({
   const [editingMessage, setEditingMessage] =
     useState<EditingChatMessage | null>(null);
   const chatKey = chatRef ? `${chatRef.accountId}:${chatRef.chatId}` : null;
+  const queryClient = useQueryClient();
+
+  // Read from the cache when asked, rather than following every message.
+  const editLastMessage = useCallback(() => {
+    const pages = chatRef
+      ? queryClient.getQueryData<ChatMessagesData>(chatKeys.messages(chatRef))
+          ?.pages
+      : undefined;
+    // Away from the latest messages, after a jump, the last one is not loaded.
+    if (!pages?.[0]?.isAtLiveEnd) {
+      return false;
+    }
+    // Newest page first.
+    for (const page of pages) {
+      const message = lastEditableMessage(page.messages);
+      if (message) {
+        trackEvent("message:action-used", {
+          action: "edit",
+          trigger: "shortcut",
+          is_own_message: true,
+          surface: "main",
+        });
+        setEditingMessage(message);
+        return true;
+      }
+    }
+    return false;
+  }, [chatRef, queryClient]);
 
   // The same composer submits either a new event or an in-place edit. Notify
   // `onSent` only for new messages so editing never changes navigation state.
@@ -251,7 +280,6 @@ export const ChatView = ({
     },
     [],
   );
-  const queryClient = useQueryClient();
   const threadsKeyedByRoot = useChatThreadsKeyedByRoot(chatRef);
   useEffect(() => {
     if (activeTool !== null) {
@@ -529,6 +557,7 @@ export const ChatView = ({
                         }
                         editDraft={editingMessage}
                         onCancelEdit={() => setEditingMessage(null)}
+                        onEditLastMessage={editLastMessage}
                         onTypingActivity={onTypingActivity}
                         onSubmit={
                           (chatRef || canComposeDraft) && !securityChecking
