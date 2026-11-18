@@ -21,7 +21,7 @@ type ChatInvitationViewProps = {
  * - **Accept** keeps the current route: the hook writes the now-joined chat into
  *   the single-chat cache, which flips `ChatView` out of the invitation branch
  *   in place, so the same URL renders the normal conversation.
- * - **Dismiss** navigates to `/chat/new`, because the current URL points at the
+ * - **Decline** navigates to `/chat/new`, because the current URL points at the
  *   room the user just left.
  *
  * Failures are surfaced as a toast by the hook; the rejection is swallowed here

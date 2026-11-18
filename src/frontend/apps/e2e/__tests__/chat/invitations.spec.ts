@@ -29,7 +29,7 @@ test.describe("Invitations", () => {
     await alice.api.waitForText(roomId, reply);
   });
 
-  test("dismisses an invitation for good", async ({ people, hub }) => {
+  test("declines an invitation for good", async ({ people, hub }) => {
     const alice = await people.create("Alice");
     const bob = await people.create("Bob");
     const bobChat = await hub.open(bob);
@@ -39,7 +39,7 @@ test.describe("Invitations", () => {
     });
 
     await bobChat.openConversation(alice.displayName);
-    await bobChat.invitation.dismiss();
+    await bobChat.invitation.decline();
     await bobChat.leftPanel.expectNoConversation(alice.displayName);
     await alice.api.waitForMembership(roomId, bob.userId, "leave");
 
