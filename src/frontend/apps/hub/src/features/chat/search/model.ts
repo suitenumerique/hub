@@ -1,3 +1,4 @@
+import { isInvitationChat } from "@/features/chat/chatMembership";
 import type { LocalChat } from "@/features/drivers/types";
 
 export type SearchMode = "participants" | "name-only";
@@ -67,6 +68,19 @@ export type SearchDocument = {
   subtitle: string;
   rank: number;
 };
+
+type SearchGroupMember = { chat: Pick<LocalChat, "membership">; rank: number };
+
+/**
+ * Pending invitations first, as in the conversation list, then the result
+ * groups. Within a group, results keep the list order.
+ */
+export const compareSearchGroups = (
+  a: SearchGroupMember,
+  b: SearchGroupMember,
+): number =>
+  Number(isInvitationChat(b.chat)) - Number(isInvitationChat(a.chat)) ||
+  a.rank - b.rank;
 
 /** Direct chats first, then named rooms, then rooms named after members. */
 const searchRank = (chat: LocalChat, explicitName: string | undefined) => {

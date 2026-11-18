@@ -4,6 +4,7 @@ import { HTTPError } from "matrix-js-sdk/lib/http-api";
 import { compareChats } from "@/features/chat/chatSorting";
 import { memberAcquisitions } from "@/features/chat/search/coordinator";
 import {
+  compareSearchGroups,
   emptySearchRoom,
   isComplete,
   normalizeSearch,
@@ -31,6 +32,7 @@ import {
 
 import { splitDisplayName, withoutOrganization } from "./matrixIdentity";
 import {
+  chatRooms,
   explicitRoomName,
   matrixJoinedRoomToLocalChat,
   matrixRoomToLocalChat,
@@ -390,12 +392,11 @@ export class MatrixConversationSearch {
   /**
    * Pending invitations, found as Element finds them. The index follows joined
    * rooms only, so they are read from the SDK at each search: an invite room
-   * exposes its name, alias and inviter.
+   * exposes its name, alias and inviter. Spaces stay out, as in the list.
    */
   private invitationDocuments(): SearchDocument[] {
     const self = this.mx.getUserId()!;
-    return this.mx
-      .getRooms()
+    return chatRooms(this.mx)
       .filter((room) => room.getMyMembership() === KnownMembership.Invite)
       .flatMap((room) => {
         const chat = matrixRoomToLocalChat(room, self);
@@ -414,9 +415,9 @@ export class MatrixConversationSearch {
       });
   }
 
-  /** Result group first, then the list order: invitations, activity, name. */
+  /** Invitations, then result groups, then the list order: activity, name. */
   private compareDocuments = (a: SearchDocument, b: SearchDocument): number =>
-    a.rank - b.rank ||
+    compareSearchGroups(a, b) ||
     compareChats(
       {
         ...a.chat,

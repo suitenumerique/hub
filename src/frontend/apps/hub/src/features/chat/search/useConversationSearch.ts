@@ -6,7 +6,7 @@ import type { Chat } from "@/features/drivers/types";
 import { decorateChat } from "../chatRefs";
 import { compareChats } from "../chatSorting";
 
-import { normalizeSearch } from "./model";
+import { compareSearchGroups, normalizeSearch } from "./model";
 
 type Result = {
   chat: Chat;
@@ -87,8 +87,12 @@ export const useConversationSearch = () => {
         setResults(
           pages
             .flatMap((page) => page.results)
-            // Same groups across accounts: direct, named, then member-named.
-            .sort((a, b) => a.rank - b.rank || compareChats(a.chat, b.chat))
+            // Same order across accounts: invitations, then direct, named and
+            // member-named results.
+            .sort(
+              (a, b) =>
+                compareSearchGroups(a, b) || compareChats(a.chat, b.chat),
+            )
             .slice(0, limit),
         );
         setTotal(pages.reduce((sum, page) => sum + page.total, 0));
