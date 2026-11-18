@@ -30,7 +30,11 @@ import {
 } from "@/features/chat/search/types";
 
 import { splitDisplayName, withoutOrganization } from "./matrixIdentity";
-import { matrixJoinedRoomToLocalChat } from "./matrixRoomMapping";
+import {
+  explicitRoomName,
+  matrixJoinedRoomToLocalChat,
+  matrixRoomToLocalChat,
+} from "./matrixRoomMapping";
 import {
   observeMatrixSearchSync,
   projectSearchRooms,
@@ -382,6 +386,49 @@ export class MatrixConversationSearch {
         : withoutOrganization,
     );
   }
+
+  /**
+   * Pending invitations, found as Element finds them. The index follows joined
+   * rooms only, so they are read from the SDK at each search: an invite room
+   * exposes its name, alias and inviter.
+   */
+  private invitationDocuments(): SearchDocument[] {
+    const self = this.mx.getUserId()!;
+    return this.mx
+      .getRooms()
+      .filter((room) => room.getMyMembership() === KnownMembership.Invite)
+      .flatMap((room) => {
+        const chat = matrixRoomToLocalChat(room, self);
+        const inviterId = chat.invitation?.inviterId;
+        const inviter = inviterId ? room.getMember(inviterId) : null;
+        const document = this.documentFor({
+          ...emptySearchRoom(room.roomId),
+          chat,
+          explicitName: explicitRoomName(room),
+          alias: room.getCanonicalAlias() ?? undefined,
+          mode: "participants",
+          members:
+            inviterId && inviter ? { [inviterId]: { name: inviter.name } } : {},
+        });
+        return document ? [document] : [];
+      });
+  }
+
+  /** Result group first, then the list order: invitations, activity, name. */
+  private compareDocuments = (a: SearchDocument, b: SearchDocument): number =>
+    a.rank - b.rank ||
+    compareChats(
+      {
+        ...a.chat,
+        accountId: this.accountId,
+        ref: { accountId: this.accountId, chatId: a.chat.id },
+      },
+      {
+        ...b.chat,
+        accountId: this.accountId,
+        ref: { accountId: this.accountId, chatId: b.chat.id },
+      },
+    );
 
   /**
    * Refreshes display metadata from the SDK Room when available.
@@ -872,27 +919,24 @@ export class MatrixConversationSearch {
           sliceStart = performance.now();
         }
       }
-      // Result group first, then the shared comparator adapted to local chats:
-      // invitations, activity, name, account, and ID.
-      results.sort(
-        (a, b) =>
-          a.rank - b.rank ||
-          compareChats(
-            {
-              ...a.chat,
-              accountId: this.accountId,
-              ref: { accountId: this.accountId, chatId: a.chat.id },
-            },
-            {
-              ...b.chat,
-              accountId: this.accountId,
-              ref: { accountId: this.accountId, chatId: b.chat.id },
-            },
-          ),
-      );
+      results.sort(this.compareDocuments);
       // A publication during a yield prevents caching this calculation.
       if (revision === this.revision)
         this.cachedSearch = { query, revision, results };
+    }
+    // Invitations change outside the index revision, so they stay out of the
+    // cache and are merged at each search.
+    const invitations = query
+      ? this.invitationDocuments().filter((document) =>
+          document.fields.some((field) => field.includes(query)),
+        )
+      : [];
+    if (invitations.length) {
+      const invited = new Set(invitations.map(({ chat }) => chat.id));
+      results = [
+        ...invitations,
+        ...results.filter(({ chat }) => !invited.has(chat.id)),
+      ].sort(this.compareDocuments);
     }
     request.signal?.throwIfAborted();
     const limit = Math.max(1, request.limit ?? 40);
