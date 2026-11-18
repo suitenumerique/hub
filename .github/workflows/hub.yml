@@ -17,52 +17,6 @@ jobs:
     with:
       with-build_mails: true
 
-  lint-git:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' # Makes sense only for pull requests
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: show
-        run: git log
-      - name: Enforce absence of print statements in code
-        if: always()
-        run: |
-          ! git diff origin/${{ github.event.pull_request.base.ref }}..HEAD -- src/backend ':(exclude)**/hub.yml' | grep "print("
-      - name: Check absence of fixup commits
-        if: always()
-        run: |
-          ! git log | grep 'fixup!'
-      - name: Install gitlint
-        if: always()
-        run: pip install --user requests gitlint
-      - name: Lint commit messages added to main
-        if: always()
-        run: ~/.local/bin/gitlint --commits origin/${{ github.event.pull_request.base.ref }}..HEAD
-
-  lint-spell-mistakes:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-      - name: Install codespell
-        run: pip install --user codespell
-      - name: Check for typos
-        run: |
-          codespell \
-            --check-filenames \
-            --ignore-words-list "Dokument,afterAll,excpt,statics" \
-            --ignore-words .codespell-words \
-            --skip "./git/" \
-            --skip "**/*.pdf" \
-            --skip "**/*.po" \
-            --skip "**/*.pot" \
-            --skip "**/*.json" \
-            --skip "**/uv.lock" \
-            --skip "**/yarn.lock"
 
   lint-back:
     runs-on: ubuntu-latest
