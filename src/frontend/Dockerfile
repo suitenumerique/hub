@@ -1,6 +1,8 @@
 ARG FRONTEND_IMAGE=frontend-build-output
 
-FROM node:24-alpine AS frontend-deps
+# Browser assets are architecture-independent.
+# Build them natively to avoid running things under QEMU for arm64 images.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-deps
 
 # Upgrade system packages to install security updates
 RUN apk update && \
