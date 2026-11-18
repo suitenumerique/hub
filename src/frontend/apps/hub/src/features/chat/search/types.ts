@@ -35,8 +35,9 @@ export type ConversationSearchResult = {
   chat: LocalChat;
   subtitle: string;
   /**
-   * Result group, shown in increasing order: 0 direct conversations, 1 named
-   * conversations, 2 conversations named after their members.
+   * Result group, shown in increasing order after pending invitations: 0
+   * direct conversations, 1 named conversations, 2 conversations named after
+   * their members.
    */
   rank: number;
 };
