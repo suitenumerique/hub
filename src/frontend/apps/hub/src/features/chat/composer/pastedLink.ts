@@ -1,9 +1,14 @@
-import { find, test } from "linkifyjs";
+import { test } from "linkifyjs";
 
-/** Whether `text` is one URL that names its scheme, such as `https://…`. */
+import { isShownAsLink } from "../formattedContent";
+
+/**
+ * Whether `text` is one URL that messages show as a link, such as
+ * `https://…`. Without a scheme, `example.com` or `main.py` would make a
+ * relative link, and a `file:` one is shown as text: the URL would be lost.
+ */
 const isUrl = (text: string): boolean =>
-  // linkify adds a scheme to the href of `example.com` or `main.py`.
-  test(text, "url") && find(text, "url")[0]?.href === text;
+  test(text, "url") && isShownAsLink(text);
 
 /**
  * What pasting `pasted` over the `selected` text writes, as in Slack or

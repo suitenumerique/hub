@@ -121,6 +121,12 @@ const parseUrl = (href: string): URL | null => {
   }
 };
 
+/** Whether a message shows a link to `href`: a full URL with a link scheme. */
+export const isShownAsLink = (href: string): boolean => {
+  const url = parseUrl(href);
+  return url !== null && LINK_PROTOCOLS.has(url.protocol);
+};
+
 /** A link out of the Hub, opened in a new tab without leaking the page. */
 const externalLink = (url: URL, children: ReactNode[]): ReactNode =>
   createElement(
