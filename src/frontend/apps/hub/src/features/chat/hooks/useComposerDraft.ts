@@ -281,6 +281,7 @@ export const useComposerDraft = (
     onSelect,
     onPointerDown,
     onPointerUp,
+    replaceRange,
     insertMention,
   };
 };
