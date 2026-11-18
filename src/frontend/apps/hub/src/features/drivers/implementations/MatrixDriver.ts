@@ -216,10 +216,11 @@ import {
   MATRIX_FAVOURITE_TAG,
   MATRIX_HUB_VISIT,
   MATRIX_MARKED_UNREAD_UNSTABLE,
+  chatRooms,
+  matchesNewConversation,
   matrixJoinedRoomToLocalChat,
   matrixRoomToLocalChat,
   participantSetKey,
-  roomOtherMembers,
   type RoomVisit,
 } from "./matrixRoomMapping";
 import {
@@ -360,10 +361,6 @@ type StoredOidc = {
 };
 const SYNC_STORE_DB_NAME = "matrix-web-sync-store";
 const CRYPTO_STORE_DB_NAME = "crypto-store";
-
-/** Rooms the chat can list: like Element's room list, never a space. */
-const chatRooms = (mx: MatrixClient): Room[] =>
-  mx.getVisibleRooms().filter((room) => !room.isSpaceRoom());
 
 const isMatrixSessionInvalidError = (error: unknown): boolean => {
   if (!(error instanceof MatrixError)) {
@@ -960,7 +957,6 @@ export class MatrixDriver extends Driver {
       return null;
     }
     const selfUserId = mx.getUserId() ?? undefined;
-    const wanted = participantSetKey(userIds);
     // Gate on the server-confirmed joined set (like getChats/getChat/
     // getChatMessages), not `getMyMembership()`: a stale room restored from
     // IndexedDB after a homeserver reset can still report membership "join"
@@ -969,12 +965,7 @@ export class MatrixDriver extends Driver {
     const joinedRoomIds = await this.getJoinedRoomIds(mx);
     const match = chatRooms(mx)
       .filter((room) => joinedRoomIds.has(room.roomId))
-      .find(
-        (room) =>
-          participantSetKey(
-            roomOtherMembers(room, selfUserId).map((member) => member.userId),
-          ) === wanted,
-      );
+      .find((room) => matchesNewConversation(room, selfUserId, userIds));
     return match ? matrixRoomToLocalChat(match, selfUserId) : null;
   }
 
