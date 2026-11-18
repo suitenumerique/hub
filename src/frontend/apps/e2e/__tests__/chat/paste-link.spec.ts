@@ -58,6 +58,16 @@ test.describe("Links pasted in the composer", () => {
         `<a href="${url}">${label}</a>`,
       );
     });
+
+    await test.step("a domain without a scheme links over HTTPS", async () => {
+      const domain = `example.net/${uniqueId()}`;
+      await composer.type("Read the guide");
+      await composer.selectBeforeCaret("the guide");
+      await composer.paste(domain);
+      await expect(composer.field).toHaveValue(
+        `Read [the guide](https://${domain})`,
+      );
+    });
   });
 
   test("pastes anything else as usual", async ({ people, hub }) => {
@@ -82,13 +92,6 @@ test.describe("Links pasted in the composer", () => {
       await composer.selectBeforeCaret("the doc");
       await composer.paste("the guide");
       await expect(composer.field).toHaveValue("Read the guide");
-    });
-
-    await test.step("a name without a scheme is not a URL", async () => {
-      await composer.field.fill("Read the doc");
-      await composer.selectBeforeCaret("the doc");
-      await composer.paste("notes.md");
-      await expect(composer.field).toHaveValue("Read notes.md");
     });
 
     await test.step("a URL pasted on a URL replaces it", async () => {
