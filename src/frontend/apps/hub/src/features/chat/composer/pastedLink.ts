@@ -1,4 +1,4 @@
-import { test } from "linkifyjs";
+import { find, test } from "linkifyjs";
 
 import { isShownAsLink } from "../formattedContent";
 
@@ -17,12 +17,18 @@ const isMarkdownLink = (text: string): boolean => {
 };
 
 /**
- * Whether `text` is one URL that messages show as a link, such as
- * `https://…`. Without a scheme, `example.com` or `main.py` would make a
- * relative link, and a `file:` one is shown as text: the URL would be lost.
+ * Where `text` links to when it is one URL that messages show as a link.
+ * As in Slack, a domain without a scheme, such as `example.com`, links over
+ * HTTPS: written as is, it would make a relative link. A `file:` URL is
+ * shown as text, so it makes no link.
  */
-const isUrl = (text: string): boolean =>
-  test(text, "url") && isShownAsLink(text);
+const linkTarget = (text: string): string | null => {
+  if (!test(text, "url")) {
+    return null;
+  }
+  const href = find(text, "url", { defaultProtocol: "https" })[0]?.href;
+  return href && isShownAsLink(href) ? href : null;
+};
 
 /**
  * What pasting `pasted` over the `selected` text writes, as in Slack or
@@ -36,8 +42,8 @@ export const linkPastedOnSelection = (
   pasted: string,
 ): string | null => {
   const label = selected.trim();
-  const url = pasted.trim();
-  if (!label || test(label) || isMarkdownLink(label) || !isUrl(url)) {
+  const url = linkTarget(pasted.trim());
+  if (!label || test(label) || isMarkdownLink(label) || !url) {
     return null;
   }
   const leading = selected.slice(
