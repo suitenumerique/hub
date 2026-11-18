@@ -669,7 +669,7 @@ dependencies = [
     { name = "whitenoise" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "django-extensions" },
     { name = "drf-spectacular-sidecar" },
@@ -694,7 +694,6 @@ requires-dist = [
     { name = "django-configurations", specifier = "==2.5.1" },
     { name = "django-cors-headers", specifier = "==4.9.0" },
     { name = "django-csp", specifier = "==4.0" },
-    { name = "django-extensions", marker = "extra == 'dev'", specifier = "==4.1" },
     { name = "django-filter", specifier = "==26.2" },
     { name = "django-lasuite", extras = ["all"], specifier = "==1.0.0" },
     { name = "django-redis", specifier = "==7.0.0" },
@@ -703,28 +702,32 @@ requires-dist = [
     { name = "djangorestframework", specifier = "==3.18.3" },
     { name = "dockerflow", specifier = "==2026.3.4" },
     { name = "drf-spectacular", specifier = "==0.30.0" },
-    { name = "drf-spectacular-sidecar", marker = "extra == 'dev'", specifier = "==2026.10.1" },
-    { name = "factory-boy", marker = "extra == 'dev'", specifier = "==3.3.3" },
     { name = "gunicorn", specifier = "==26.2.0" },
-    { name = "ipdb", marker = "extra == 'dev'", specifier = "==0.13.13" },
-    { name = "ipython", marker = "extra == 'dev'", specifier = "==9.18.1" },
     { name = "mozilla-django-oidc", specifier = "==5.0.2" },
     { name = "nested-multipart-parser", specifier = "==1.6.0" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.7" },
-    { name = "pyfakefs", marker = "extra == 'dev'", specifier = "==6.3.1" },
-    { name = "pylint", marker = "extra == 'dev'", specifier = "<4.0.0" },
-    { name = "pylint-django", marker = "extra == 'dev'", specifier = "==2.8.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = "==9.2.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = "==7.1.0" },
-    { name = "pytest-django", marker = "extra == 'dev'", specifier = "==4.14.0" },
-    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = "==3.8.0" },
     { name = "redis", specifier = "<6.0.0" },
-    { name = "responses", marker = "extra == 'dev'", specifier = "==0.26.3" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.17.3" },
     { name = "sentry-sdk", specifier = "==2.73.0" },
     { name = "whitenoise", specifier = "==6.12.0" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "django-extensions", specifier = "==4.1" },
+    { name = "drf-spectacular-sidecar", specifier = "==2026.10.1" },
+    { name = "factory-boy", specifier = "==3.3.3" },
+    { name = "ipdb", specifier = "==0.13.13" },
+    { name = "ipython", specifier = "==9.18.1" },
+    { name = "pyfakefs", specifier = "==6.3.1" },
+    { name = "pylint", specifier = "<4.0.0" },
+    { name = "pylint-django", specifier = "==2.8.0" },
+    { name = "pytest", specifier = "==9.2.0" },
+    { name = "pytest-cov", specifier = "==7.1.0" },
+    { name = "pytest-django", specifier = "==4.14.0" },
+    { name = "pytest-xdist", specifier = "==3.8.0" },
+    { name = "responses", specifier = "==0.26.3" },
+    { name = "ruff", specifier = "==0.17.3" },
+]
 
 [[package]]
 name = "idna"
