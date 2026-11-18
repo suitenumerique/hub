@@ -2,6 +2,20 @@ import { test } from "linkifyjs";
 
 import { isShownAsLink } from "../formattedContent";
 
+import { parseMarkdown } from "./markdown";
+
+/** Whether `text` is a markdown link as a whole, such as `[Docs](https://…)`. */
+const isMarkdownLink = (text: string): boolean => {
+  const paragraph = parseMarkdown(text).firstChild;
+  const link = paragraph?.firstChild;
+  return (
+    paragraph?.type === "paragraph" &&
+    !paragraph.next &&
+    link?.type === "link" &&
+    link === paragraph.lastChild
+  );
+};
+
 /**
  * Whether `text` is one URL that messages show as a link, such as
  * `https://…`. Without a scheme, `example.com` or `main.py` would make a
@@ -23,7 +37,7 @@ export const linkPastedOnSelection = (
 ): string | null => {
   const label = selected.trim();
   const url = pasted.trim();
-  if (!label || test(label) || !isUrl(url)) {
+  if (!label || test(label) || isMarkdownLink(label) || !isUrl(url)) {
     return null;
   }
   const leading = selected.slice(
