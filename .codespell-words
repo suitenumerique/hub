@@ -16,3 +16,8 @@ symboles
 transfert
 valide
 vie
+# ./Dockerfile
+statics
+# ./src/frontend/packages/i18n/eslint.config.mjs
+# ./src/frontend/packages/i18n/__tests__/i18n.test.ts
+afterAll
