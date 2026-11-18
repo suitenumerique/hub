@@ -14,7 +14,7 @@ permissions:
 jobs:
 
   install-dependencies:
-    uses: ./.github/workflows/dependencies.yml
+    uses: ./.github/workflows/_dependencies.yml
     with:
       node_version: '22.x'
       with-front-dependencies-installation: true
@@ -70,7 +70,7 @@ jobs:
         run: cd src/frontend/ && yarn format:check
 
   test-e2e:
-    uses: ./.github/workflows/e2e-tests.yml
+    uses: ./.github/workflows/_e2e-tests.yml
 
   bundle-size-check:
     runs-on: ubuntu-latest
