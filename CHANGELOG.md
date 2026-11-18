@@ -20,6 +20,9 @@ and this project adheres to
 - ✨(frontend) Turn the selected text of the composer into a link when a URL
   is pasted on it, `[text](url)`, as in Slack or Element. A domain pasted
   without a scheme, such as `example.com`, links to it over HTTPS. #136
+- ✨(frontend) Edit one's last message with the up arrow of the empty
+  composer, in a conversation or a thread, as in Element. While editing, the
+  up arrow stays in the text. #135
 
 ### Changed
 
