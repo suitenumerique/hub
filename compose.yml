@@ -139,7 +139,7 @@ services:
         restart: true
 
   crowdin:
-    image: crowdin/cli:3.16.0
+    image: crowdin/cli:5.6.0
     volumes:
       - ".:/app"
     env_file:
