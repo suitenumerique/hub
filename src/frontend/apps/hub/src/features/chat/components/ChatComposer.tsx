@@ -8,6 +8,7 @@ import {
 } from "@gouvfr-lasuite/ui-components/icons";
 import {
   FormEvent,
+  type KeyboardEvent,
   type RefObject,
   useCallback,
   useEffect,
@@ -83,6 +84,12 @@ type ChatComposerProps = {
   /** Message whose current text should be edited by this composer. */
   editDraft?: { id: string; content: string; htmlContent?: string } | null;
   onCancelEdit?: () => void;
+  /**
+   * Opens the last message of this user for editing, from the up arrow of the
+   * empty composer. Returns false when there is none, the arrow then doing
+   * nothing.
+   */
+  onEditLastMessage?: () => boolean;
   /** Reports real keyboard input for volatile typing notifications. */
   onTypingActivity?: (hasText: boolean) => Promise<unknown> | unknown;
   /**
@@ -119,6 +126,31 @@ type ChatComposerProps = {
 const hasDraggedFiles = (event: DragEvent) =>
   event.dataTransfer?.types.includes("Files") ?? false;
 
+const isPlainArrowUp = (event: KeyboardEvent<HTMLTextAreaElement>) =>
+  event.key === "ArrowUp" &&
+  !event.shiftKey &&
+  !event.altKey &&
+  !event.ctrlKey &&
+  !event.metaKey;
+
+/**
+ * Up from the first line, the caret goes to the start of the text, as macOS
+ * and Linux do: Windows leaves it in place. Checked once the browser has
+ * moved it, the only way to tell the first line of wrapped text.
+ */
+const moveCaretToStartPastFirstLine = (input: HTMLTextAreaElement) => {
+  const { selectionStart, selectionEnd } = input;
+  requestAnimationFrame(() => {
+    if (
+      document.activeElement === input &&
+      input.selectionStart === selectionStart &&
+      input.selectionEnd === selectionEnd
+    ) {
+      input.setSelectionRange(0, 0);
+    }
+  });
+};
+
 export const ChatComposer = ({
   placeholder,
   inputLabel,
@@ -132,6 +164,7 @@ export const ChatComposer = ({
   onSubmit,
   editDraft,
   onCancelEdit,
+  onEditLastMessage,
   onTypingActivity,
   onSendAttachment,
   onUploadAttachment,
@@ -625,6 +658,24 @@ export const ChatComposer = ({
                   if (event.key === "Escape" && editDraft) {
                     event.preventDefault();
                     cancelEdit();
+                    return;
+                  }
+                  if (isPlainArrowUp(event)) {
+                    const input = event.currentTarget;
+                    if (editDraft) {
+                      // The edit stays on its message: no older one opens.
+                      moveCaretToStartPastFirstLine(input);
+                      return;
+                    }
+                    // As in Element, the empty field edits the last message
+                    // sent, but not while files wait to go with a new one.
+                    if (
+                      !input.value &&
+                      attachments.length === 0 &&
+                      onEditLastMessage?.()
+                    ) {
+                      event.preventDefault();
+                    }
                     return;
                   }
                   if (event.key === "Enter" && !event.shiftKey) {

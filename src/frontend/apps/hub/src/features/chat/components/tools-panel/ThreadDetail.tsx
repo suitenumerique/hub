@@ -32,6 +32,7 @@ import {
 } from "../../ChatMessageJumpContext";
 import type { ThreadInitialMessage } from "../../ChatPanelContext";
 import { threadDraftKey } from "../../composer/composerDraftStore";
+import { lastEditableMessage } from "../../composer/lastEditableMessage";
 import { isSameChatDay } from "../../formatTimestamp";
 import { useUploadChatAttachment } from "../../hooks/useChatAttachmentActions";
 import { useChatThread } from "../../hooks/useChatThread";
@@ -212,6 +213,20 @@ export const ThreadDetail = ({
   // older ones around it.
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  const editLastMessage = useCallback(() => {
+    const message = lastEditableMessage(messagesRef.current);
+    if (!message) {
+      return false;
+    }
+    trackEvent("message:action-used", {
+      action: "edit",
+      trigger: "shortcut",
+      is_own_message: true,
+      surface: "thread",
+    });
+    setEditingMessage(message);
+    return true;
+  }, []);
   const jumpScrollRafRef = useRef<number | null>(null);
   const cancelJumpFocusRef = useRef<(() => void) | null>(null);
   useEffect(
@@ -498,6 +513,7 @@ export const ThreadDetail = ({
             }
             editDraft={editingMessage}
             onCancelEdit={() => setEditingMessage(null)}
+            onEditLastMessage={editLastMessage}
             onSubmit={sendState === "checking" ? undefined : handleSubmit}
             onMessageSent={() =>
               // The thread opens in memory from Reply: holding only its root,

@@ -50,7 +50,7 @@ type AnalyticsEvents = {
       | "copy"
       | "edit"
       | "delete";
-    trigger: "right_click" | "hover_button";
+    trigger: "right_click" | "hover_button" | "shortcut";
     is_own_message: boolean;
     surface: "main" | "thread";
   };
