@@ -4,8 +4,7 @@ on:
   workflow_call:
     inputs:
       node_version:
-        required: false
-        default: '22.x'
+        required: true
         type: string
       with-front-dependencies-installation:
         type: boolean

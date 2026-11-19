@@ -20,7 +20,7 @@ services:
   # Next dev server of the HTTPS origin. Its port is not published: the
   # browser reaches it through the HTTPS proxy only.
   frontend-tchap:
-    image: node:22
+    image: node:22.23.5-alpine3.24
     user: "${DOCKER_USER:-1000}"
     working_dir: /app/src/frontend/apps/hub
     command: ["yarn", "dev"]

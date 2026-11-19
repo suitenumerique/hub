@@ -49,6 +49,12 @@
       "matchPackageNames": []
     },
     {
+      "groupName": "allowed node versions",
+      "matchManagers": ["npm", "github-actions", "dockerfile", "docker-compose"],
+      "matchPackageNames": ["node"],
+      "allowedVersions": "<23"
+    },
+    {
       "enabled": false,
       "groupName": "ignored js dependencies",
       "matchManagers": ["npm"],

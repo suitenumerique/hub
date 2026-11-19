@@ -21,6 +21,7 @@ jobs:
   install-dependencies:
     uses: ./.github/workflows/_dependencies.yml
     with:
+      node_version: '22.23.5'
       with-build_mails: true
 
 

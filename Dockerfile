@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # ---- mails ----
-FROM node:24 AS mail-builder
+FROM node:22.23.5-alpine3.24 AS mail-builder
 
 COPY ./src/mail /mail/app
 
