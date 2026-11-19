@@ -529,6 +529,7 @@ export const ThreadDetail = ({
             onUploadAttachment={isSupported ? uploadAttachment : undefined}
             dropTargetRef={detailRef}
             mentions={mentionSource}
+            surface="thread"
           />
         </div>
       </div>

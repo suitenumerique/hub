@@ -1,45 +1,33 @@
 import { EmojiPicker } from "frimousse";
 import { useTranslation } from "react-i18next";
 
+import {
+  EMOJIBASE_URL,
+  type EmojibaseLocale,
+  fetchEmojibase,
+  toEmojibaseLocale,
+} from "../emojibase";
+
 import { FluentEmoji } from "./FluentEmoji";
 
 type EmojiPickerPanelProps = {
   onSelect: (emoji: string) => void;
 };
 
-// Keep the warm-up requests and Frimousse on the exact same URLs so the
-// browser can serve the picker fetches from its HTTP cache on first open.
-const EMOJIBASE_URL = "https://cdn.jsdelivr.net/npm/emojibase-data@latest";
-
-// Locales supported by both the app and Frimousse.
-const FRIMOUSSE_LOCALES = ["en", "fr", "de", "nl"] as const;
-type FrimousseLocale = (typeof FRIMOUSSE_LOCALES)[number];
-
-const toFrimousseLocale = (language: string): FrimousseLocale => {
-  const lang = language.slice(0, 2).toLowerCase();
-  return (FRIMOUSSE_LOCALES as readonly string[]).includes(lang)
-    ? (lang as FrimousseLocale)
-    : "en";
-};
-
-const dataPreloads = new Map<FrimousseLocale, Promise<void>>();
+const dataPreloads = new Map<EmojibaseLocale, Promise<void>>();
 
 /** Warm the two datasets Frimousse needs without mounting the whole picker. */
 export const preloadEmojiData = (language: string): Promise<void> => {
-  const locale = toFrimousseLocale(language);
+  const locale = toEmojibaseLocale(language);
   const existing = dataPreloads.get(locale);
   if (existing) {
     return existing;
   }
 
+  // Frimousse fetches the exact same URLs, then served from the HTTP cache.
   const preload = Promise.all(
     ["data", "messages"].map(async (file) => {
-      const response = await fetch(`${EMOJIBASE_URL}/${locale}/${file}.json`, {
-        cache: "force-cache",
-      });
-      if (!response.ok) {
-        throw new Error(`Could not preload Frimousse ${file}.`);
-      }
+      const response = await fetchEmojibase(`${locale}/${file}.json`);
       await response.arrayBuffer();
     }),
   )
@@ -61,7 +49,7 @@ export const preloadEmojiData = (language: string): Promise<void> => {
  */
 const EmojiPickerPanel = ({ onSelect }: EmojiPickerPanelProps) => {
   const { t, i18n } = useTranslation();
-  const locale = toFrimousseLocale(i18n.resolvedLanguage ?? i18n.language);
+  const locale = toEmojibaseLocale(i18n.resolvedLanguage ?? i18n.language);
 
   return (
     <EmojiPicker.Root
