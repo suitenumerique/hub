@@ -23,6 +23,10 @@ and this project adheres to
 - ✨(frontend) Edit one's last message with the up arrow of the empty
   composer, in a conversation or a thread, as in Element. While editing, the
   up arrow stays in the text. #135
+- ✨(frontend) Insert emoji in the composer, in a conversation, a thread or
+  an edit: from the emoji picker next to the send button, or by typing `:`
+  and two letters of a shortcode, such as `:tada`, with Element's shortcodes.
+  #146
 
 ### Changed
 
