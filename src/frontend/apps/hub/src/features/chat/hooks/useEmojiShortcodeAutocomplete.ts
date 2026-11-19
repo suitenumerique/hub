@@ -109,10 +109,12 @@ export const useEmojiShortcodeAutocomplete = ({
         return;
       }
       const { text } = draftRef.current;
-      // With the caret inside a shortcode, up to its closing `:`; a word
-      // glued after the one being typed stays.
+      // With the caret inside a shortcode, up to its closing `:`. A word
+      // glued after it stays, as does what follows one already closed.
       let end = input.selectionEnd;
-      end += /^[\w+-]*:/.exec(text.slice(end))?.[0].length ?? 0;
+      if (!/.:$/.test(text.slice(trigger.start, end))) {
+        end += /^[\w+-]*:/.exec(text.slice(end))?.[0].length ?? 0;
+      }
       close();
       replaceRange(trigger.start, end, item.emoji);
       onInserted();

@@ -84,6 +84,17 @@ export const ComposerEmojiButton = ({
     }
   }, [disabled]);
 
+  // Back in the text another way, as when files are dropped, the picker
+  // closes: once typed in, the text no longer matches the range held.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!anchor || !input) {
+      return;
+    }
+    input.addEventListener("focus", close);
+    return () => input.removeEventListener("focus", close);
+  }, [anchor, close, inputRef]);
+
   return (
     <>
       <Tooltip content={label} placement="top" className="hub__delayed-tooltip">
