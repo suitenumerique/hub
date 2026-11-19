@@ -25,7 +25,7 @@ license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = "==3.14.10"
 dependencies = [
-    "celery[redis]==5.5.3",
+    "celery[redis]==5.6.3",
     "django-configurations==2.5.1",
     "django-cors-headers==4.9.0",
     "django-csp==4.0",
