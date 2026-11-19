@@ -43,12 +43,6 @@
       "matchPackageNames": []
     },
     {
-      "groupName": "allowed django versions",
-      "matchManagers": ["pep621"],
-      "matchPackageNames": ["django"],
-      "allowedVersions": "<6.0.0"
-    },
-    {
       "groupName": "allowed celery versions",
       "matchManagers": ["pep621"],
       "matchPackageNames": ["celery"],
