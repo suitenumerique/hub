@@ -88,8 +88,8 @@ test.describe("Message actions across two browsers", () => {
     });
 
     await test.step("a second emoji only counts its own reactions", async () => {
-      await aliceChat.timeline.react(text, "✅");
-      await bobChat.timeline.expectReaction(text, "✅", {
+      await aliceChat.timeline.react(text, "👀");
+      await bobChat.timeline.expectReaction(text, "👀", {
         count: 1,
         mine: false,
       });
@@ -114,7 +114,7 @@ test.describe("Message actions across two browsers", () => {
         count: 1,
         mine: true,
       });
-      await aliceChat.timeline.expectReaction(text, "✅", {
+      await aliceChat.timeline.expectReaction(text, "👀", {
         count: 1,
         mine: true,
       });
@@ -242,33 +242,33 @@ test.describe("Reactions", () => {
     const text = uniqueText("React in order");
     const eventId = await alice.api.sendText(roomId, text);
     await alice.api.react(roomId, eventId, "👍");
-    await alice.api.react(roomId, eventId, "✅");
+    await alice.api.react(roomId, eventId, "👀");
     const bobChat = await hub.open(bob);
     await bobChat.openConversation({ roomId });
-    await bobChat.timeline.expectReactionOrder(text, ["👍", "✅"]);
+    await bobChat.timeline.expectReactionOrder(text, ["👍", "👀"]);
 
     await test.step("someone else adds to the second one", async () => {
-      await carol.api.react(roomId, eventId, "✅");
-      await bobChat.timeline.expectReaction(text, "✅", {
+      await carol.api.react(roomId, eventId, "👀");
+      await bobChat.timeline.expectReaction(text, "👀", {
         count: 2,
         mine: false,
       });
-      await bobChat.timeline.expectReactionOrder(text, ["👍", "✅"]);
+      await bobChat.timeline.expectReactionOrder(text, ["👍", "👀"]);
     });
 
     await test.step("Bob adds to it, then removes it", async () => {
-      await bobChat.timeline.react(text, "✅");
-      await bobChat.timeline.expectReaction(text, "✅", {
+      await bobChat.timeline.react(text, "👀");
+      await bobChat.timeline.expectReaction(text, "👀", {
         count: 3,
         mine: true,
       });
-      await bobChat.timeline.expectReactionOrder(text, ["👍", "✅"]);
-      await bobChat.timeline.reaction(text, "✅").click();
-      await bobChat.timeline.expectReaction(text, "✅", {
+      await bobChat.timeline.expectReactionOrder(text, ["👍", "👀"]);
+      await bobChat.timeline.reaction(text, "👀").click();
+      await bobChat.timeline.expectReaction(text, "👀", {
         count: 2,
         mine: false,
       });
-      await bobChat.timeline.expectReactionOrder(text, ["👍", "✅"]);
+      await bobChat.timeline.expectReactionOrder(text, ["👍", "👀"]);
     });
 
     await test.step("the first one loses its first reaction", async () => {
@@ -288,7 +288,7 @@ test.describe("Reactions", () => {
         count: 1,
         mine: false,
       });
-      await bobChat.timeline.expectReactionOrder(text, ["👍", "✅"]);
+      await bobChat.timeline.expectReactionOrder(text, ["👍", "👀"]);
     });
   });
 
@@ -341,20 +341,20 @@ test.describe("Reactions", () => {
     });
 
     await test.step("a later reaction keeps it", async () => {
-      await bob.api.react(roomId, eventId, "✅");
-      await bobChat.timeline.expectReaction(text, "✅", {
+      await bob.api.react(roomId, eventId, "👀");
+      await bobChat.timeline.expectReaction(text, "👀", {
         count: 1,
         mine: true,
       });
-      await bobChat.timeline.expectReactionOrder(text, ["👍", "✅"]);
+      await bobChat.timeline.expectReactionOrder(text, ["👍", "👀"]);
     });
 
     await test.step("a reload keeps it", async () => {
       await bobChat.reload();
       await bobChat.openConversation(alice.displayName);
-      await bobChat.timeline.expectReactionOrder(text, ["👍", "✅"]);
+      await bobChat.timeline.expectReactionOrder(text, ["👍", "👀"]);
       await bobChat.page.waitForTimeout(3_000);
-      await bobChat.timeline.expectReactionOrder(text, ["👍", "✅"]);
+      await bobChat.timeline.expectReactionOrder(text, ["👍", "👀"]);
     });
   });
 });

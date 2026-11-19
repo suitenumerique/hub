@@ -6,8 +6,9 @@ import { escapeRegExp } from "../text";
 /** Reactions offered at the top of the message actions menu. */
 export const QUICK_REACTIONS = {
   "👍": "React with a thumbs up",
+  "👀": "React with eyes",
   "😂": "React with a laughing face",
-  "✅": "React with a check mark",
+  "❤️": "React with a heart",
 } as const;
 export type QuickReaction = keyof typeof QUICK_REACTIONS;
 

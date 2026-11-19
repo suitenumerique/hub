@@ -139,8 +139,11 @@ export const MessageHoverToolbar = ({
   const quickReactions = useMemo<QuickReaction[]>(
     () => [
       { emoji: "👍", label: t("React with a thumbs up") },
+      { emoji: "👀", label: t("React with eyes") },
       { emoji: "😂", label: t("React with a laughing face") },
-      { emoji: "✅", label: t("React with a check mark") },
+      // With U+FE0F, as Element and the picker write it, or it would be
+      // another reaction for them.
+      { emoji: "❤️", label: t("React with a heart") },
     ],
     [t],
   );
