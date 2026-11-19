@@ -14,19 +14,19 @@
   "packageRules": [
     {
       "groupName": "allowed postgres versions",
-      "matchManagers": ["docker-compose"],
+      "matchManagers": ["github-actions", "dockerfile", "docker-compose"],
       "matchPackageNames": ["postgres"],
       "allowedVersions": "<16"
     },
     {
       "groupName": "allowed python versions",
-      "matchManagers": ["pep621", "dockerfile", "docker-compose"],
+      "matchManagers": ["pep621", "github-actions", "dockerfile", "docker-compose"],
       "matchPackageNames": ["python"],
       "allowedVersions": "<3.15"
     },
     {
       "groupName": "allowed keydb versions",
-      "matchManagers": ["docker-compose"],
+      "matchManagers": ["github-actions", "dockerfile", "docker-compose"],
       "matchPackageNames": ["eqalpha/keydb"],
       "allowedVersions": "<7"
     },
