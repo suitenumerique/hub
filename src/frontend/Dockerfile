@@ -54,7 +54,7 @@ COPY --from=hub-builder /home/frontend/apps/hub/out /app
 FROM ${FRONTEND_IMAGE} AS frontend-source
 
 # ---- Front-end image ----
-FROM nginx/nginx-unprivileged:1.30.7-alpine3.24 AS frontend-production
+FROM nginx/nginx-unprivileged:1.31.9-alpine3.24 AS frontend-production
 
 # Upgrade system packages to install security updates
 USER root

@@ -121,7 +121,7 @@ services:
       - "127.0.0.1:9800:9800"
 
   nginx:
-    image: nginx:1.25
+    image: nginx/nginx-unprivileged:1.31.9-alpine3.24
     ports:
       - "127.0.0.1:9803:9803"
     networks:

@@ -123,7 +123,7 @@ jobs:
           docker run -d --rm --name hub-static -p 9800:3000 \
             -v "$PWD/src/frontend/apps/hub/out:/app:ro" \
             -v "$PWD/src/frontend/apps/hub/conf/default.conf:/etc/nginx/conf.d/default.conf:ro" \
-            nginx:1.25
+            nginx/nginx-unprivileged:1.31.9-alpine3.24
 
       - name: Wait for backend to be ready
         run: |
