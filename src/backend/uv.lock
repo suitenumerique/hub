@@ -707,7 +707,7 @@ requires-dist = [
     { name = "mozilla-django-oidc", specifier = "==5.0.2" },
     { name = "nested-multipart-parser", specifier = "==1.6.0" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.7" },
-    { name = "redis", specifier = "<6.0.0" },
+    { name = "redis", specifier = "==5.3.1" },
     { name = "sentry-sdk", specifier = "==2.73.0" },
     { name = "whitenoise", specifier = "==6.12.0" },
 ]

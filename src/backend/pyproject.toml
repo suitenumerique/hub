@@ -42,7 +42,7 @@ dependencies = [
     "mozilla-django-oidc==5.0.2",
     "nested-multipart-parser==1.6.0",
     "psycopg[binary]==3.3.7",
-    "redis<6.0.0",
+    "redis==5.3.1",
     "sentry-sdk==2.73.0",
     "whitenoise==6.12.0",
 ]
