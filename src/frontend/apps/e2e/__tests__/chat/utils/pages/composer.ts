@@ -1,7 +1,7 @@
 import { expect, Locator } from "@playwright/test";
 
 import type { TestFile } from "../files";
-import { startingWith } from "../text";
+import { escapeRegExp, startingWith } from "../text";
 
 export const BLOCKED_PLACEHOLDER =
   "Verify encryption before sending a message.";
@@ -21,6 +21,13 @@ export class Composer {
   readonly mentionSuggestions: Locator;
   /** Highlight of a mention in the field, before sending. */
   readonly draftMention: Locator;
+  readonly emojiButton: Locator;
+  readonly emojiPicker: Locator;
+  readonly emojiSearch: Locator;
+  /** The emojis offered for a `:shortcode` being typed. */
+  readonly emojiSuggestions: Locator;
+  /** What screen readers hear when the `@` or `:` suggestions open. */
+  readonly suggestionsStatus: Locator;
 
   constructor(
     readonly scope: Locator,
@@ -39,6 +46,41 @@ export class Composer {
       name: "Mention suggestions",
     });
     this.draftMention = form.locator(".hub__chat-composer__mention");
+    this.emojiButton = form.getByRole("button", { name: "Add an emoji" });
+    this.emojiPicker = scope
+      .page()
+      .getByRole("dialog", { name: "Emoji picker" });
+    this.emojiSearch = this.emojiPicker.getByPlaceholder("Search emoji");
+    this.emojiSuggestions = scope.page().getByRole("listbox", {
+      name: "Emoji suggestions",
+    });
+    this.suggestionsStatus = scope.getByRole("status").filter({
+      hasText: "suggestions",
+    });
+  }
+
+  /**
+   * The suggestion of `:shortcode:` in the list, after its emoji (shown as
+   * text when no image exists for it).
+   */
+  emojiSuggestion(shortcode: string): Locator {
+    return this.emojiSuggestions.getByRole("option").filter({
+      hasText: new RegExp(`${escapeRegExp(`:${shortcode}:`)}$`),
+    });
+  }
+
+  /** Picks from the picker the emoji named `name`, found by that name. */
+  async pickEmoji(name: string): Promise<void> {
+    await this.emojiButton.click();
+    await expect(this.emojiSearch).toBeFocused();
+    await this.emojiSearch.fill(name);
+    // Emojibase names start with a capital: "Party popper".
+    await this.emojiPicker
+      .getByRole("gridcell", {
+        name: new RegExp(`^${escapeRegExp(name)}$`, "i"),
+      })
+      .click();
+    await expect(this.emojiPicker).toBeHidden();
   }
 
   /**
