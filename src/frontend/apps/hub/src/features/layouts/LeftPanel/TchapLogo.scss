@@ -47,3 +47,12 @@
     mask-image: url("/assets/tchap-logo-wordmark.svg");
   }
 }
+
+// The mark alone keeps the square box `&__mark` has inside the full logo.
+.hub__tchap-logo-mark {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+}

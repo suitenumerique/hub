@@ -1,12 +1,6 @@
 {
   "footer": {
     "default": {
-      "logo": {
-        "src": "/assets/icon-docs.svg",
-        "width": "54",
-        "alt": "Logo",
-        "withTitle": true
-      },
       "externalLinks": [
         {
           "label": "GitHub",
