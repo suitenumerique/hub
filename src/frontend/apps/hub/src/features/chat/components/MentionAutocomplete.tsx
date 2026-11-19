@@ -1,11 +1,12 @@
 import clsx from "clsx";
-import { useLayoutEffect, useRef } from "react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { AccountId } from "@/features/drivers/types";
 import { hashAvatarColor } from "@/features/ui/components/avatar/palette";
 
 import type { MentionCandidate } from "../composer/mentionMatching";
+import { useSelectedOptionInView } from "../hooks/useSelectedOptionInView";
 
 import { ChatUserAvatar } from "./ChatUserAvatar";
 
@@ -33,24 +34,7 @@ export const MentionAutocomplete = ({
 }: MentionAutocompleteProps) => {
   const { t } = useTranslation();
   const listRef = useRef<HTMLUListElement>(null);
-
-  // Scroll the list only: `scrollIntoView` could move the timeline too.
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    const option = list?.children[selectedIndex] as HTMLElement | undefined;
-    if (!list || !option) {
-      return;
-    }
-    if (option.offsetTop < list.scrollTop) {
-      list.scrollTop = option.offsetTop;
-    } else if (
-      option.offsetTop + option.offsetHeight >
-      list.scrollTop + list.clientHeight
-    ) {
-      list.scrollTop =
-        option.offsetTop + option.offsetHeight - list.clientHeight;
-    }
-  }, [items, selectedIndex]);
+  useSelectedOptionInView(listRef, selectedIndex, items);
 
   return (
     <ul
