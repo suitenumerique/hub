@@ -31,6 +31,7 @@ and this project adheres to
 ### Changed
 
 - ⬆️(frontend) Update @gouvfr-lasuite/ui-components to 1.5.0
+- 💄(frontend) Offer 👍 👀 😂 ❤️ as quick reactions, instead of 👍 😂 ✅
 - 💄(frontend) Use the ui-kit user menu again for the account menu: the
   encryption settings move to the "Settings" dialog
 - 💄(frontend) Draw the side panel's scrollbar between the top actions and the
