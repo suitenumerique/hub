@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 
 # Run mjml command to convert all mjml templates to html files
 HUB_DIR_MAILS="${HUB_DIR_MAILS:-../backend/core/templates/mail}/html/"
