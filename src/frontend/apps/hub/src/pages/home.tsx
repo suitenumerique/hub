@@ -11,6 +11,11 @@ import { Button } from "@gouvfr-lasuite/ui-components";
 
 import { login, useAuth } from "@/features/auth/Auth";
 import { useConfig } from "@/features/config/ConfigProvider";
+import {
+  TchapLogo,
+  TchapLogoMark,
+} from "@/features/layouts/LeftPanel/TchapLogo";
+import { useTheme } from "@/features/theme/useTheme";
 import { useRedirectAfterLogin } from "@/hooks/useRedirectAfterLogin";
 import { useThemeCustomization } from "@/hooks/useThemeCustomization";
 
@@ -30,6 +35,7 @@ const HomePageContent = () => {
   const { t } = useTranslation();
   const { config } = useConfig();
   const footerCustomization = useThemeCustomization("footer");
+  const { theme } = useTheme();
   const [redirectFailed, setRedirectFailed] = useState(false);
 
   useEffect(() => {
@@ -68,14 +74,10 @@ const HomePageContent = () => {
         />
       </Head>
 
-      <MainLayout
-        enableResize
-        hideLeftPanelOnDesktop
-        icon={<div className="hub__header__logo" />}
-      >
+      <MainLayout enableResize hideLeftPanelOnDesktop icon={<TchapLogo />}>
         <HomeGutter>
           <Hero
-            logo={<div className="hub__logo-icon" />}
+            logo={<TchapLogoMark className="hub__home__logo" />}
             banner=""
             title={t(
               "LaSuite Tchap v2: chat, files and video calls for your team, in one place.",
@@ -92,7 +94,12 @@ const HomePageContent = () => {
             }
           />
         </HomeGutter>
-        <Footer {...footerCustomization} />
+        {/* The footer takes an image: one per theme, as the masks of
+            `TchapLogo` cannot reach it. */}
+        <Footer
+          {...footerCustomization}
+          logo={{ src: `/assets/tchap-logo-${theme}.svg`, alt: "Tchap" }}
+        />
       </MainLayout>
     </div>
   );

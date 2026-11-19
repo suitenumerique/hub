@@ -10,19 +10,26 @@ $tablet: map.get($themes, "default", "globals", "breakpoints", "tablet");
 .hub__home {
   --header-height: 91px;
 
+  // The kit paints the header with the secondary surface and the page with the
+  // primary one: the same white in light, two greys in dark. One surface here.
   .c__header {
     height: var(--header-height);
     min-height: var(--header-height);
     max-height: var(--header-height);
+    padding-inline: 12px;
     border: none;
+    background-color: var(--c--contextuals--background--surface--primary);
   }
 
-  .c__main-layout__content {
-    margin-top: var(--header-height);
+  // Nested so it wins over the mark's default size.
+  .hub__home__logo {
+    width: 64px;
+    height: 64px;
+  }
 
-    .c__main-layout__content__center__children {
-      height: calc(100dvh - var(--header-height));
-    }
+  // Same size as the header logo, not the kit's 220px.
+  .c__footer__logo {
+    width: 108px;
   }
 
   .c__hero {
@@ -64,22 +71,4 @@ $tablet: map.get($themes, "default", "globals", "breakpoints", "tablet");
   @media (max-width: $tablet) {
     --header-height: 52px;
   }
-}
-
-.hub__header__logo {
-  background-image: var(--c--components--logo--src);
-  width: 142px;
-  height: 40px;
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-}
-
-.hub__logo-icon {
-  background-image: var(--c--components--logo-icon--src);
-  width: 64px;
-  height: 64px;
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
 }
