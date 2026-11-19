@@ -56,4 +56,6 @@ export const chatKeys = {
   /** Own profile of the user connected to this account as `chatUserId`. */
   profile: (accountId: AccountId, chatUserId: string) =>
     ["chat-profile", accountId, chatUserId] as const,
+  /** The emojis typed as `:shortcode`, read from the picker's data. */
+  emojiShortcodes: (locale: string) => ["emoji-shortcodes", locale] as const,
 };

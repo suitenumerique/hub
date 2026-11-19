@@ -42,13 +42,17 @@ import { linkPastedOnSelection } from "../composer/pastedLink";
 import { serializeComposerDraft } from "../composer/serializeComposerDraft";
 import type { UploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useComposerDraft } from "../hooks/useComposerDraft";
+import { useEmojiShortcodeAutocomplete } from "../hooks/useEmojiShortcodeAutocomplete";
 import { useMentionAutocomplete } from "../hooks/useMentionAutocomplete";
 import type { ComposerMentionSource } from "../hooks/useMentionCandidates";
 import { usePendingAttachments } from "../hooks/usePendingAttachments";
 import { sendFailureMessage } from "../securityMessages";
 
 import { ComposerAttachments } from "./ComposerAttachments";
+import { ComposerEmojiButton } from "./ComposerEmojiButton";
 import { ComposerMentionBackdrop } from "./ComposerMentionBackdrop";
+import { ComposerSuggestionsStatus } from "./ComposerSuggestionsStatus";
+import { EmojiShortcodeAutocomplete } from "./EmojiShortcodeAutocomplete";
 import { MentionAutocomplete } from "./MentionAutocomplete";
 
 type ChatComposerProps = {
@@ -121,6 +125,8 @@ type ChatComposerProps = {
   dropTargetRef?: RefObject<HTMLElement | null>;
   /** People `@` offers to mention; without it, `@` is plain text. */
   mentions?: ComposerMentionSource;
+  /** Where the composer stands, for analytics. Defaults to the conversation. */
+  surface?: EventProperty<"emoji:inserted", "surface">;
 };
 
 const hasDraggedFiles = (event: DragEvent) =>
@@ -172,6 +178,7 @@ export const ChatComposer = ({
   onMessageSent,
   dropTargetRef,
   mentions,
+  surface = "main",
 }: ChatComposerProps) => {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -221,6 +228,46 @@ export const ChatComposer = ({
     insertMention,
     disabled: disabled || isSubmitting,
   });
+  const trackEmojiInserted = useCallback(
+    (trigger: EventProperty<"emoji:inserted", "trigger">) =>
+      trackEvent("emoji:inserted", {
+        trigger,
+        surface,
+        is_edit: Boolean(editDraft),
+      }),
+    [editDraft, surface],
+  );
+  const onShortcodeInserted = useCallback(
+    () => trackEmojiInserted("autocomplete"),
+    [trackEmojiInserted],
+  );
+  const onPickedEmojiInserted = useCallback(
+    () => trackEmojiInserted("picker"),
+    [trackEmojiInserted],
+  );
+  const shortcodes = useEmojiShortcodeAutocomplete({
+    inputRef,
+    draftRef,
+    replaceRange,
+    onInserted: onShortcodeInserted,
+    disabled: disabled || isSubmitting,
+  });
+  // One list at a time: `@` and `:` never start the same word. The textarea
+  // points at it and its selected row; a textbox has no `aria-expanded`, the
+  // list opening is announced instead.
+  const openList = [autocomplete, shortcodes].find(({ isOpen }) => isOpen);
+  let suggestionsMessage = "";
+  if (autocomplete.isOpen) {
+    suggestionsMessage = t(
+      "{{count}} mention suggestions, use the arrow keys to choose",
+      { count: autocomplete.items.length },
+    );
+  } else if (shortcodes.isOpen) {
+    suggestionsMessage = t(
+      "{{count}} emoji suggestions, use the arrow keys to choose",
+      { count: shortcodes.items.length },
+    );
+  }
   // An edit only replaces text: queued files stay aside until it is done.
   const showsAttachments = Boolean(onSendAttachment) && !editDraft;
   const canAttach =
@@ -566,6 +613,18 @@ export const ChatComposer = ({
           onConfirm={autocomplete.confirm}
         />
       )}
+      {shortcodes.isOpen && (
+        <EmojiShortcodeAutocomplete
+          id={shortcodes.listId}
+          inputRef={inputRef}
+          triggerStart={shortcodes.triggerStart}
+          items={shortcodes.items}
+          selectedIndex={shortcodes.selectedIndex}
+          optionId={shortcodes.optionId}
+          onConfirm={shortcodes.confirm}
+        />
+      )}
+      <ComposerSuggestionsStatus message={suggestionsMessage} />
       {editDraft && (
         <div className="hub__chat-composer-edit" role="status">
           <span className="hub__chat-composer-edit__label">
@@ -614,31 +673,28 @@ export const ChatComposer = ({
                 disabled={disabled}
                 readOnly={isSubmitting}
                 aria-busy={isBusy || undefined}
-                {...(mentions
-                  ? {
-                      "aria-autocomplete": "list",
-                      "aria-haspopup": "listbox",
-                      "aria-expanded": autocomplete.isOpen,
-                      "aria-controls": autocomplete.isOpen
-                        ? autocomplete.listId
-                        : undefined,
-                      "aria-activedescendant": autocomplete.activeOptionId,
-                    }
-                  : {})}
+                aria-autocomplete="list"
+                aria-haspopup="listbox"
+                aria-controls={openList?.listId}
+                aria-activedescendant={openList?.activeOptionId}
                 onChange={(event) => {
                   const next = onDraftChange(event);
-                  autocomplete.onInput(
-                    (event.nativeEvent as InputEvent).inputType ?? "",
-                    next,
-                    event.currentTarget.selectionEnd,
-                  );
+                  const inputType =
+                    (event.nativeEvent as InputEvent).inputType ?? "";
+                  const caret = event.currentTarget.selectionEnd;
+                  autocomplete.onInput(inputType, next, caret);
+                  shortcodes.onInput(inputType, next, caret);
                   void onTypingActivity?.(next.text.trim().length > 0);
                 }}
                 onSelect={() => {
                   onDraftSelect();
                   autocomplete.onSelectionChange();
+                  shortcodes.onSelectionChange();
                 }}
-                onBlur={autocomplete.onBlur}
+                onBlur={() => {
+                  autocomplete.onBlur();
+                  shortcodes.onBlur();
+                }}
                 onPointerDown={onPointerDown}
                 onPointerUp={onPointerUp}
                 onScroll={(event) => {
@@ -652,7 +708,11 @@ export const ChatComposer = ({
                   if (event.nativeEvent.isComposing || event.keyCode === 229) {
                     return;
                   }
-                  if (autocomplete.onKeyDown(event) || onDraftKeyDown(event)) {
+                  if (
+                    autocomplete.onKeyDown(event) ||
+                    shortcodes.onKeyDown(event) ||
+                    onDraftKeyDown(event)
+                  ) {
                     return;
                   }
                   if (event.key === "Escape" && editDraft) {
@@ -717,6 +777,12 @@ export const ChatComposer = ({
           </div>
         </div>
         <div className="hub__chat-composer__actions">
+          <ComposerEmojiButton
+            inputRef={inputRef}
+            replaceRange={replaceRange}
+            disabled={disabled || isSubmitting}
+            onInserted={onPickedEmojiInserted}
+          />
           {/* Attaching makes no sense while editing: the button leaves. */}
           {showsAttachments && (
             <>

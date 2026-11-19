@@ -55,6 +55,11 @@ type AnalyticsEvents = {
     surface: "main" | "thread";
   };
   "attachment:added": { method: "attach_button" | "drag_and_drop" | "paste" };
+  "emoji:inserted": {
+    trigger: "picker" | "autocomplete";
+    surface: "main" | "thread";
+    is_edit: boolean;
+  };
   "chat:action-used": {
     action: "favourite_add" | "favourite_remove" | "mark_read" | "mark_unread";
     trigger:

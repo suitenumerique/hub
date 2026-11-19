@@ -1,0 +1,64 @@
+// `:shortcode` suggestions (Figma 4041:18215), floating above the composer
+// like the `@` ones, lined up with the `:` typed: the left edge is set at
+// runtime.
+.hub__emoji-autocomplete {
+  position: absolute;
+  z-index: 4;
+  bottom: calc(100% + var(--c--globals--spacings--xxxs, 4px));
+  left: 0;
+  width: max-content;
+  max-width: min(320px, 100%);
+  // Five rows, then the list scrolls.
+  max-height: calc(5 * 28px + 2 * var(--c--globals--spacings--xs, 8px));
+  margin: 0;
+  padding: var(--c--globals--spacings--xs, 8px);
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--c--contextuals--border--surface--primary, #dfe2ea);
+  border-radius: 4px;
+  background: var(--c--contextuals--background--surface--secondary, #fff);
+  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+  font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+  font-size: 14px;
+  line-height: 18px;
+  color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+
+  &__option {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 28px;
+    padding: var(--c--globals--spacings--xxxs, 4px);
+    border-radius: 4px;
+    cursor: pointer;
+
+    &:hover,
+    &--selected {
+      background: var(
+        --c--contextuals--background--semantic--overlay--primary,
+        rgba(24, 27, 36, 0.05)
+      );
+    }
+  }
+
+  &__emoji {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+  }
+
+  &__shortcode {
+    min-width: 0;
+    padding: 0 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__match {
+    font-weight: 700;
+  }
+}

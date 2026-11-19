@@ -179,6 +179,7 @@ export const DraftThreadDetail = ({
             dropTargetRef={detailRef}
             onSubmitted={openCreatedThread}
             mentions={mentionSource}
+            surface="thread"
           />
         </div>
       </div>
