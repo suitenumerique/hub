@@ -19,7 +19,7 @@ export const useReadAtLatest = ({
   isOpened,
   isAtLatest,
   lastLoadedId,
-  unread: { hasUnread, markAllRead },
+  unread: { hasUnread, isReceiptBehind, markAllRead },
   markedUnread: { isMarkedUnread, canClear, clearIfAllowed },
 }: {
   isOpened: boolean;
@@ -43,7 +43,10 @@ export const useReadAtLatest = ({
     };
   }, []);
 
-  const shouldRead = isOpened && isActive && hasUnread && isAtLatest;
+  // A receipt behind the latest events moves here too, with nothing left to
+  // read: the conversation may have been open in the background meanwhile.
+  const shouldRead =
+    isOpened && isActive && (hasUnread || isReceiptBehind) && isAtLatest;
   const shouldClearMark = isOpened && isActive && isMarkedUnread && canClear;
 
   useEffect(() => {

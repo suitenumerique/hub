@@ -379,12 +379,24 @@ export type ChatMessagesPage = {
 export type ChatMainTimelineUnread = {
   /** Whether messages from others follow the boundary. */
   hasUnread: boolean;
+  /**
+   * Whether the person's receipt on the homeserver is behind
+   * `liveEndReceiptId`. Like Element, reading then sends one even with no
+   * message left to read, as for one deleted before it was read: the
+   * homeserver counts what the receipt has not reached.
+   */
+  isReceiptBehind: boolean;
   /** Last persisted or locally-confirmed event before the unread boundary. */
   readUpToId: string | null;
   /** First eligible remote message after the boundary, when it is loaded. */
   firstUnreadId: string | null;
   /** Last main-timeline message at the genuine live end. */
   liveEndId: string | null;
+  /**
+   * Event a read receipt through `liveEndId` goes on: the last event of
+   * someone else it covers, hidden ones such as a deletion included.
+   */
+  liveEndReceiptId: string | null;
 };
 
 /**

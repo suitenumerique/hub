@@ -1918,19 +1918,34 @@ export class MatrixDriver extends Driver {
     const { mx, room } = this.requireRoom("getMainTimelineUnread", chatId);
     const selfUserId = mx.getUserId();
     const liveEvents = room.getLiveTimeline().getEvents();
-    const liveEndId =
-      liveEvents
-        .filter((event) => isMainTimelineMessage(event, room))
-        .at(-1)
-        ?.getId() ?? null;
+    const liveEnd = liveEvents
+      .filter((event) => isMainTimelineMessage(event, room))
+      .at(-1);
+    const liveEndId = liveEnd?.getId() ?? null;
+    const receiptTarget = liveEnd
+      ? this.mainReceiptTarget(room, liveEnd, selfUserId)
+      : null;
+    const liveEndReceiptId = receiptTarget?.getId() ?? null;
     if (!selfUserId) {
       return {
         hasUnread: false,
+        isReceiptBehind: false,
         readUpToId: null,
         firstUnreadId: null,
         liveEndId,
+        liveEndReceiptId,
       };
     }
+    // Like Element's TimelinePanel, the receipt the homeserver has: not the
+    // one the SDK assumes from the person's own events, nor this session's
+    // before its echo.
+    const serverReceiptId = room.getEventReadUpTo(selfUserId, true);
+    const serverReceiptIndex = serverReceiptId
+      ? liveEvents.findIndex((event) => event.getId() === serverReceiptId)
+      : -1;
+    const isReceiptBehind =
+      receiptTarget !== null &&
+      liveEvents.indexOf(receiptTarget) > serverReceiptIndex;
 
     const fullyReadContent = room
       .getAccountData(EventType.FullyRead)
@@ -1985,7 +2000,14 @@ export class MatrixDriver extends Driver {
       firstUnreadId = null;
       hasUnread = computeRoomUnread(room, selfUserId);
     }
-    return { hasUnread, readUpToId, firstUnreadId, liveEndId };
+    return {
+      hasUnread,
+      isReceiptBehind,
+      readUpToId,
+      firstUnreadId,
+      liveEndId,
+      liveEndReceiptId,
+    };
   }
 
   /** Resolves a connected client for Matrix-only operations. */
@@ -2671,6 +2693,7 @@ export class MatrixDriver extends Driver {
       );
     }
 
+    const receiptTarget = this.mainReceiptTarget(room, event, mx.getUserId());
     const currentBoundary = this.confirmedMainReadBoundaries.get(chatId);
     if (currentBoundary) {
       const ordering = room.compareEventOrdering(currentBoundary, eventId);
@@ -2682,8 +2705,8 @@ export class MatrixDriver extends Driver {
           currentEvent !== undefined &&
           currentEvent.getTs() >= event.getTs())
       ) {
-        if (currentBoundary === eventId) {
-          await mx.sendReadReceipt(event);
+        if (currentBoundary === eventId && receiptTarget) {
+          await mx.sendReadReceipt(receiptTarget);
         }
         return;
       }
@@ -2695,7 +2718,56 @@ export class MatrixDriver extends Driver {
     await mx.setRoomReadMarkers(chatId, eventId);
     this.confirmedMainReadBoundaries.set(chatId, eventId);
     this.emit({ type: "main-timeline-unread:changed", chatId });
-    await mx.sendReadReceipt(event);
+    if (receiptTarget) {
+      await mx.sendReadReceipt(receiptTarget);
+    }
+  }
+
+  /**
+   * The event a main-timeline receipt through `message` goes on, as Element's
+   * TimelinePanel picks it: the last event of someone else that reading
+   * through the message covers, the hidden ones right after it included, such
+   * as a deletion. A room set to all messages counts those, and a receipt on
+   * the message alone would leave the conversation unread. The person's own
+   * events need no receipt, thread replies keep theirs, and a local echo
+   * cannot take one. Null when no one else wrote.
+   */
+  private mainReceiptTarget(
+    room: Room,
+    message: MatrixEvent,
+    selfUserId: string | null,
+  ): MatrixEvent | null {
+    const events = room.getLiveTimeline().getEvents();
+    const index = events.findIndex(
+      (event) => event.getId() === message.getId(),
+    );
+    if (index < 0) {
+      return message;
+    }
+    // Reading through the message covers what follows it, up to the next
+    // message of someone else or a local echo.
+    let end = index + 1;
+    while (
+      end < events.length &&
+      events[end].status === null &&
+      !(
+        isMainTimelineMessage(events[end], room) &&
+        events[end].getSender() !== selfUserId
+      )
+    ) {
+      end++;
+    }
+    return (
+      events
+        .slice(0, end)
+        .findLast(
+          (event) =>
+            event.status === null &&
+            Boolean(event.getId()) &&
+            event.getSender() !== selfUserId &&
+            !threadReplyRootId(event, room),
+        ) ?? null
+    );
   }
 
   /**
