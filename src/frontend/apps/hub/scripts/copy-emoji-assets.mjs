@@ -9,7 +9,8 @@
 //   `emojiToCodepoints` in `src/features/chat/fluentEmoji.ts` names it.
 // - `emojibase/<locale>/…`: the Emojibase files Frimousse and the shortcode
 //   suggestions read, keeping only the emojis that have a Fluent drawing so
-//   none is drawn in another style.
+//   none is drawn in another style. Each emoji's shortcodes join its
+//   keywords, so the picker's search finds `laughing` in every language.
 import {
   copyFileSync,
   mkdirSync,
@@ -81,15 +82,35 @@ const writeJson = (path, value) => {
 };
 
 const isDrawn = ({ emoji }) => drawn.has(emojiFileName(emoji));
+const shortcodeFiles = Object.fromEntries(
+  SHORTCODES.map((path) => [path, readJson(path)]),
+);
+const shortcodesOf = (locale, hexcode) =>
+  ["en/shortcodes/iamcal.json", `${locale}/shortcodes/cldr.json`].flatMap(
+    (path) => shortcodeFiles[path]?.[hexcode] ?? [],
+  );
+// `heart_eyes` is found as typed and as `heart eyes`.
+const asKeywords = (shortcode) =>
+  shortcode.includes("_")
+    ? [shortcode, shortcode.replace(/_/g, " ")]
+    : [shortcode];
+
 for (const locale of LOCALES) {
   const emojis = readJson(`${locale}/data.json`)
     .filter(isDrawn)
-    .map((emoji) =>
-      emoji.skins ? { ...emoji, skins: emoji.skins.filter(isDrawn) } : emoji,
-    );
+    .map(({ tags = [], ...emoji }) => ({
+      ...emoji,
+      tags: [
+        ...new Set([
+          ...tags,
+          ...shortcodesOf(locale, emoji.hexcode).flatMap(asKeywords),
+        ]),
+      ],
+      ...(emoji.skins && { skins: emoji.skins.filter(isDrawn) }),
+    }));
   writeJson(`${locale}/data.json`, emojis);
   writeJson(`${locale}/messages.json`, readJson(`${locale}/messages.json`));
 }
-for (const path of SHORTCODES) {
-  writeJson(path, readJson(path));
+for (const [path, shortcodes] of Object.entries(shortcodeFiles)) {
+  writeJson(path, shortcodes);
 }

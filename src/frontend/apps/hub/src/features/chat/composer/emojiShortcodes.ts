@@ -1,15 +1,26 @@
 import type { ComposerMention } from "./composerDraft";
 
-/** One emoji with the shortcodes it is typed with, such as `+1` and `thumbsup`. */
-export type ShortcodeEmoji = { emoji: string; shortcodes: readonly string[] };
+/**
+ * One emoji with the shortcodes it is typed with, such as `+1` and
+ * `thumbsup`, and the keywords it is also found by, such as `mdr`.
+ */
+export type ShortcodeEmoji = {
+  emoji: string;
+  shortcodes: readonly string[];
+  keywords?: readonly string[];
+};
 
-/** An emoji offered for the shortcode being typed, with the part typed. */
+/**
+ * An emoji offered for the shortcode being typed, with the part typed. Found
+ * by a keyword, it shows its first shortcode with nothing in bold.
+ */
 export type ShortcodeMatch = {
   emoji: string;
   shortcode: string;
   /** Where the typed text starts in `shortcode`. */
   matchStart: number;
   matchLength: number;
+  byKeyword?: boolean;
 };
 
 /** A `:shortcode` being typed: where its `:` stands and the text after it. */
@@ -149,17 +160,32 @@ const wordStart = (shortcode: string, query: string): number => {
 
 /**
  * Element's order: the text found earliest, then the shortest shortcode, so
- * `heart` comes before `headphones`. Ties keep the emojis' own order.
+ * `heart` comes before `headphones`. Emojis found by a keyword come last, in
+ * their own order, as do ties.
  */
-const compareMatches = (first: ShortcodeMatch, second: ShortcodeMatch) =>
-  first.matchStart - second.matchStart ||
-  first.shortcode.length - second.shortcode.length;
+const compareMatches = (first: ShortcodeMatch, second: ShortcodeMatch) => {
+  if (first.byKeyword || second.byKeyword) {
+    return Number(first.byKeyword ?? false) - Number(second.byKeyword ?? false);
+  }
+  return (
+    first.matchStart - second.matchStart ||
+    first.shortcode.length - second.shortcode.length
+  );
+};
+
+/** Whether a word of one of the keywords starts with `needle`. */
+const hasKeyword = (keywords: readonly string[], needle: string) =>
+  keywords.some(
+    (keyword) =>
+      wordStart(normalize(keyword).replace(/\s+/g, "_"), needle) >= 0,
+  );
 
 /**
  * The emojis whose shortcode has a word starting with `query`, as in
  * Element: `san` offers `santa` and `sandal`, then `thong_sandal`. Each emoji
- * shows once, with its best matching shortcode. `emojis` come in the
- * picker's order.
+ * shows once, with its best matching shortcode. Then those found by a word
+ * of their keywords, as the picker's search: `mdr` offers 😄 😆 🤣 😂.
+ * `emojis` come in the picker's order.
  */
 export const matchShortcodes = (
   emojis: readonly ShortcodeEmoji[],
@@ -168,7 +194,7 @@ export const matchShortcodes = (
 ): ShortcodeMatch[] => {
   const needle = normalize(query);
   const matches: ShortcodeMatch[] = [];
-  for (const { emoji, shortcodes } of emojis) {
+  for (const { emoji, shortcodes, keywords = [] } of emojis) {
     let best: ShortcodeMatch | undefined;
     for (const shortcode of shortcodes) {
       const matchStart = wordStart(normalize(shortcode), needle);
@@ -181,6 +207,15 @@ export const matchShortcodes = (
       if (matchStart >= 0 && (!best || compareMatches(match, best) < 0)) {
         best = match;
       }
+    }
+    if (!best && shortcodes.length > 0 && hasKeyword(keywords, needle)) {
+      best = {
+        emoji,
+        shortcode: shortcodes[0],
+        matchStart: 0,
+        matchLength: 0,
+        byKeyword: true,
+      };
     }
     if (best) {
       matches.push(best);

@@ -26,7 +26,7 @@ import {
   useSuggestionTrigger,
 } from "./useComposerSuggestions";
 
-type EmojibaseEmoji = { hexcode: string; emoji: string };
+type EmojibaseEmoji = { hexcode: string; emoji: string; tags?: string[] };
 type EmojibaseShortcodes = Record<string, string | string[]>;
 
 const fetchShortcodes = (path: string, signal?: AbortSignal) =>
@@ -40,8 +40,8 @@ const asList = (codes: string | string[] | undefined) =>
 /**
  * The emojis that have a shortcode: in the UI language as the picker's search
  * (CLDR's `coeur_rouge`), and Element's Slack-style English ones (`heart`)
- * in every language. The emojis come from the picker's own data, often
- * already in the HTTP cache.
+ * in every language, with the picker's keywords (`mdr`). The emojis come
+ * from the picker's own data, often already in the HTTP cache.
  */
 const loadShortcodeEmojis = async (
   locale: EmojibaseLocale,
@@ -56,12 +56,12 @@ const loadShortcodeEmojis = async (
       ? undefined
       : fetchShortcodes(`${locale}/shortcodes/cldr.json`, signal),
   ]);
-  return emojis.flatMap(({ hexcode, emoji }) => {
+  return emojis.flatMap(({ hexcode, emoji, tags }) => {
     const shortcodes = [
       ...asList(local?.[hexcode]),
       ...asList(english[hexcode]),
     ];
-    return shortcodes.length > 0 ? [{ emoji, shortcodes }] : [];
+    return shortcodes.length > 0 ? [{ emoji, shortcodes, keywords: tags }] : [];
   });
 };
 
