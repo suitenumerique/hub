@@ -82,10 +82,41 @@ export const isMessageEvent = (event: MatrixEvent): boolean =>
   event.getRelation()?.rel_type !== RelationType.Replace &&
   event.getRelation()?.rel_type !== RelationType.Annotation;
 
+/**
+ * The root of the thread an event is a reply in, or `undefined` when it lives
+ * on the room's main timeline. The SDK also gives `threadRootId` to an event
+ * that only quotes a thread root, as it treats a reply as part of its parent,
+ * yet keeps it in the room: Element shows it there. Follow the SDK placement,
+ * not `threadRootId` alone.
+ */
+export const threadReplyRootId = (
+  event: MatrixEvent,
+  room: Room,
+): string | undefined => {
+  const threadId = event.threadRootId;
+  if (!threadId || event.isThreadRoot) {
+    return undefined;
+  }
+  if (event.isRelation(RelationType.Thread)) {
+    return threadId;
+  }
+  return room.eventShouldLiveIn(event).shouldLiveInRoom ? undefined : threadId;
+};
+
+/** The thread whose detail shows this event: its own as a root, or its reply's. */
+export const messageThreadId = (
+  event: MatrixEvent,
+  room: Room,
+): string | undefined =>
+  event.isThreadRoot ? event.getId() : threadReplyRootId(event, room);
+
 /** A user-visible message on the room's main timeline (not a reply or edit). */
-export const isMainTimelineMessage = (event: MatrixEvent): boolean =>
+export const isMainTimelineMessage = (
+  event: MatrixEvent,
+  room: Room,
+): boolean =>
   isMessageEvent(event) &&
-  (!event.threadRootId || event.isThreadRoot) &&
+  !threadReplyRootId(event, room) &&
   event.getRelation()?.rel_type !== RelationType.Replace;
 
 /**
@@ -114,7 +145,7 @@ export const computeRoomUnread = (
     const event = events[index];
     const eventId = event.getId();
     if (
-      !isMainTimelineMessage(event) ||
+      !isMainTimelineMessage(event, room) ||
       event.isRedacted() ||
       !eventId ||
       event.getSender() === selfUserId
@@ -852,9 +883,11 @@ export const reactionUpdateEventsForTarget = (
   const rootedThreadId =
     room.getThread(targetId)?.id ??
     (target?.isThreadRoot ? targetId : undefined);
-  const containingThreadId = rootedThreadId
-    ? undefined
-    : (target?.threadRootId ?? threadIdHint);
+  // The hint only stands in for a target that is not loaded.
+  const targetThreadId = target
+    ? threadReplyRootId(target, room)
+    : threadIdHint;
+  const containingThreadId = rootedThreadId ? undefined : targetThreadId;
   const threadId = rootedThreadId ?? containingThreadId;
   const events: ChatEvent[] = [];
 
@@ -893,7 +926,7 @@ const reactionEventToChatEvent = (
     room,
     relation.event_id,
     aggregateReactions(room, relation.event_id, selfUserId, event.threadRootId),
-    event.threadRootId,
+    threadReplyRootId(event, room),
   );
 };
 
@@ -1293,9 +1326,7 @@ export const timelineEventToChatEvent = (
       room,
       selfUserId,
     );
-    const threadId = original.isThreadRoot
-      ? original.getId()
-      : original.threadRootId;
+    const threadId = messageThreadId(original, room);
     // A file edit only changes its caption; the attachment stays.
     const editedContent = originalMessage.attachment
       ? (parseMatrixAttachment(newContent ?? {})?.caption ?? "")
@@ -1341,15 +1372,15 @@ export const timelineEventToChatEvent = (
   // A thread reply never becomes a top-level bubble. It updates its own
   // thread, refreshes the thread list and replaces the root message so its
   // summary count/unread badge moves live.
-  if (event.threadRootId && !event.isThreadRoot) {
+  const threadId = threadReplyRootId(event, room);
+  if (threadId) {
     const root =
-      room.getThread(event.threadRootId)?.rootEvent ??
-      room.findEventById(event.threadRootId);
+      room.getThread(threadId)?.rootEvent ?? room.findEventById(threadId);
     return [
       {
         type: "thread:reply",
         chatId: room.roomId,
-        threadId: event.threadRootId,
+        threadId,
         message: matrixEventToChatMessage(event, room, selfUserId),
         authors: buildAuthors(room, [event], selfUserId),
       },
