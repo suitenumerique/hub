@@ -1,11 +1,5 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  type RefObject,
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type RefObject, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { chatKeys } from "../chatKeys";
@@ -80,9 +74,6 @@ const shortcodesQuery = (locale: EmojibaseLocale) =>
     meta: { noGlobalError: true },
   });
 
-/** A shortcode written in full, replaced once the text shows it. */
-type ClosedShortcode = { start: number; end: number; emoji: string };
-
 // The emoji, not its shortcode: the one shown can change as the text refines.
 const matchKey = (match: ShortcodeMatch) => match.emoji;
 
@@ -134,7 +125,6 @@ export const useEmojiShortcodeAutocomplete = ({
     () => (emojis ? shortcodeLookup(emojis) : null),
     [emojis],
   );
-  const [closed, setClosed] = useState<ClosedShortcode | null>(null);
   const items = useMemo(
     () =>
       emojis && trigger && trigger.query.length >= MIN_SHORTCODE_QUERY
@@ -172,23 +162,23 @@ export const useEmojiShortcodeAutocomplete = ({
         lookup && !disabled && inputType === "insertText"
           ? findClosedShortcode(draft.text, caret, draft.mentions, lookup)
           : null;
-      if (found) {
-        setClosed({ ...found, end: caret });
+      if (!found) {
+        return;
       }
+      // Once this input event is over: replaced during it, the controlled
+      // textarea would put the text back. Its own undo step brings back the
+      // shortcode.
+      queueMicrotask(() => {
+        if (inputRef.current?.value !== draft.text) {
+          return;
+        }
+        close();
+        replaceRange(found.start, caret, found.emoji);
+        onInserted();
+      });
     },
-    [disabled, followInput, lookup],
+    [close, disabled, followInput, inputRef, lookup, onInserted, replaceRange],
   );
-
-  // Replaced once the textarea shows the closing `:`, in its own undo step.
-  useLayoutEffect(() => {
-    if (!closed) {
-      return;
-    }
-    setClosed(null);
-    close();
-    replaceRange(closed.start, closed.end, closed.emoji);
-    onInserted();
-  }, [close, closed, onInserted, replaceRange]);
 
   /** Turns the shortcodes of a text just pasted at `start` into emojis. */
   const onPasted = useCallback(
