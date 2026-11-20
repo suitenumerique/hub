@@ -1,4 +1,5 @@
 import { EmojiPicker } from "frimousse";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -50,10 +51,20 @@ export const preloadEmojiData = (language: string): Promise<void> => {
 const EmojiPickerPanel = ({ onSelect }: EmojiPickerPanelProps) => {
   const { t, i18n } = useTranslation();
   const locale = toEmojibaseLocale(i18n.resolvedLanguage ?? i18n.language);
+  // The emoji reached with the arrow keys gets an outline (RGAA 10.7); the
+  // mouse only lights it up.
+  const [isKeyboardActive, setIsKeyboardActive] = useState(false);
 
   return (
     <EmojiPicker.Root
       className="hub__emoji-picker"
+      data-keyboard={isKeyboardActive || undefined}
+      onKeyDownCapture={(event) => {
+        if (event.key.startsWith("Arrow")) {
+          setIsKeyboardActive(true);
+        }
+      }}
+      onPointerMoveCapture={() => setIsKeyboardActive(false)}
       locale={locale}
       emojibaseUrl={EMOJIBASE_URL}
       onEmojiSelect={({ emoji }) => onSelect(emoji)}
