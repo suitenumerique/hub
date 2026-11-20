@@ -199,12 +199,7 @@ export const MessageReactions = ({
               }
               onClick={() => onReact(reaction.emoji)}
             >
-              <FluentEmoji
-                emoji={reaction.emoji}
-                size="xs"
-                emojiStyle="flat"
-                decorative
-              />
+              <FluentEmoji emoji={reaction.emoji} size="xs" decorative />
               <span className="hub__message-reactions__count">
                 {reaction.count}
               </span>

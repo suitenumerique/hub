@@ -1,28 +1,22 @@
 /**
- * Resolves an emoji character to a Fluent UI emoji asset URL.
+ * Resolves an emoji character to its Fluent UI drawing (flat style).
  *
- * Assets come from the codepoint-keyed `shuding/fluentui-emoji-unicode` mirror,
- * served by jsDelivr. The CDN ref is pinned to an immutable commit — an
- * unpinned `gh/` URL tracks the default branch and could break silently.
+ * The drawings are served by the Hub itself, copied from the pinned
+ * `@lobehub/fluent-emoji-flat` by `scripts/copy-emoji-assets.mjs`, which
+ * names them as `emojiToCodepoints` does:
  *
- * This is the single indirection point for emoji assets: moving to
- * self-hosted assets (required before production, for sovereignty / RGPD)
- * only changes this file.
- *
- *   👋   → 1f44b_3d.png
- *   👋🏿  → 1f44b-1f3ff_3d.png
- *   1️⃣   → 0031-20e3_3d.png   (codepoints zero-padded to 4 hex digits)
+ *   👋   → 1f44b.svg
+ *   👋🏿  → 1f44b-1f3ff.svg
+ *   1️⃣   → 0031-20e3.svg   (codepoints zero-padded to 4 hex digits)
  */
 
-const CDN_BASE =
-  "https://cdn.jsdelivr.net/gh/shuding/fluentui-emoji-unicode@7a40f1a2d064d76e436813edc0f09b6c8cde5da8/assets";
-
-export type FluentEmojiStyle = "3d" | "color" | "flat" | "high-contrast";
+const FLUENT_EMOJI_PATH = "/emoji/fluent";
 
 /**
  * Derives the hyphen-joined codepoint sequence used in Fluent asset filenames:
  * iterate Unicode code points, hex-encode, zero-pad each to 4 digits, drop the
- * `fe0f` variation selector, keep `200d` zero-width joiners.
+ * `fe0f` variation selector, keep `200d` zero-width joiners. Without `fe0f`,
+ * an emoji sent with or without it finds the same drawing.
  */
 export const emojiToCodepoints = (emoji: string): string =>
   [...emoji]
@@ -30,11 +24,6 @@ export const emojiToCodepoints = (emoji: string): string =>
     .filter((codepoint) => codepoint !== "fe0f")
     .join("-");
 
-/** Builds the Fluent UI emoji asset URL for a native emoji character. */
-export const fluentEmojiUrl = (
-  emoji: string,
-  style: FluentEmojiStyle = "3d",
-): string => {
-  const extension = style === "3d" ? "png" : "svg";
-  return `${CDN_BASE}/${emojiToCodepoints(emoji)}_${style}.${extension}`;
-};
+/** The URL of the Fluent drawing of a native emoji character. */
+export const fluentEmojiUrl = (emoji: string): string =>
+  `${FLUENT_EMOJI_PATH}/${emojiToCodepoints(emoji)}.svg`;

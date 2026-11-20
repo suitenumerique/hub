@@ -1369,6 +1369,11 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
+"@lobehub/fluent-emoji-flat@1.1.0":
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/@lobehub/fluent-emoji-flat/-/fluent-emoji-flat-1.1.0.tgz#3870fe52a29fd507668acdb89ff31a170d09c257"
+  integrity sha512-lPYCg8+N56MIj+iOgeBeH6AF0tneXxJCvgi41rOTjAWpA5rU2WUcmU1fiIXouEe8GrSTarWCYLY2ML+rdLRHsg==
+
 "@matrix-org/matrix-sdk-crypto-wasm@^18.7.0", "@matrix-org/matrix-sdk-crypto-wasm@^18.9.0":
   version "18.9.0"
   resolved "https://registry.yarnpkg.com/@matrix-org/matrix-sdk-crypto-wasm/-/matrix-sdk-crypto-wasm-18.9.0.tgz#8e622beb607e0438e32cfe20991650da63313827"
@@ -4498,6 +4503,11 @@ emoji-regex@^9.2.2:
   version "9.2.2"
   resolved "https://registry.yarnpkg.com/emoji-regex/-/emoji-regex-9.2.2.tgz#840c8803b0d8047f4ff0cf963176b32d4ef3ed72"
   integrity sha512-L18DaJsXSUk2+42pv8mLs5jJT2hqFkFE4j21wOmgbUqsZ2hL72NsUU785g9RXgo3s0ZNgVl42TiHp3ZtOv/Vyg==
+
+emojibase-data@18.0.0:
+  version "18.0.0"
+  resolved "https://registry.yarnpkg.com/emojibase-data/-/emojibase-data-18.0.0.tgz#a64ddfa7579ea27a90c0b7728ff8054bdab199eb"
+  integrity sha512-TPPRRYv2zPd0jKI+pTpMquwWNZXYAsC3IVsCMeg2X8y8fEzKwOks4/5bz0YavF5r6d71aGPpb6oDnUEwSLLMoA==
 
 encoding-sniffer@^0.2.1:
   version "0.2.1"

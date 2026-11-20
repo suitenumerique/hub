@@ -40,3 +40,6 @@ yarn-error.log*
 /public/cmaps
 /public/standard_fonts
 /public/wasm
+
+# Emoji data and Fluent drawings, copied by scripts/copy-emoji-assets.mjs
+/public/emoji

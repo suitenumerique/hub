@@ -90,17 +90,7 @@ const EmojiPickerPanel = ({ onSelect }: EmojiPickerPanelProps) => {
                 className="hub__emoji-picker__emoji"
                 aria-label={emoji.label}
               >
-                {/*
-                  `flat` (SVG) — tiny (~2 KB) AND cheap to rasterize. `color`
-                  SVGs are gradient-heavy: rasterizing dozens per scroll tick
-                  froze the main thread. `3d` PNGs are 30-44 KB each.
-                */}
-                <FluentEmoji
-                  emoji={emoji.emoji}
-                  size="md"
-                  emojiStyle="flat"
-                  decorative
-                />
+                <FluentEmoji emoji={emoji.emoji} size="md" decorative />
               </button>
             ),
           }}

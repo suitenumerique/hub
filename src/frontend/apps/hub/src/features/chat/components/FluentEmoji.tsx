@@ -1,7 +1,6 @@
 import clsx from "clsx";
-import { useState } from "react";
 
-import { type FluentEmojiStyle, fluentEmojiUrl } from "../fluentEmoji";
+import { useFluentEmojiUrl } from "../hooks/useFluentEmojiUrl";
 
 type FluentEmojiSize = "xs" | "sm" | "md";
 
@@ -12,35 +11,26 @@ type FluentEmojiProps = {
   label?: string;
   /** Discrete rendered size. */
   size?: FluentEmojiSize;
-  /**
-   * Fluent asset style. `color` (SVG) is far lighter than `3d` (PNG) — prefer
-   * it for long, virtualized lists such as the emoji picker.
-   */
-  emojiStyle?: FluentEmojiStyle;
   /** Hide from assistive tech — for use inside a control with its own name. */
   decorative?: boolean;
   className?: string;
 };
 
 /**
- * Renders an emoji as a Fluent UI asset, falling back to the native glyph
- * when the asset fails to load — the CDN mirror does not cover every emoji.
+ * Renders an emoji as its Fluent UI drawing, falling back to the native glyph
+ * when the Hub has none for it.
  */
 export const FluentEmoji = ({
   emoji,
   label,
   size = "sm",
-  emojiStyle = "3d",
   decorative = false,
   className,
 }: FluentEmojiProps) => {
-  // Tracked per-URL so a recycled instance (e.g. a virtualized picker cell)
-  // retries the asset when it receives a different emoji.
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const url = fluentEmojiUrl(emoji, emojiStyle);
+  const { url, onError } = useFluentEmojiUrl(emoji);
   const accessibleName = label ?? emoji;
 
-  if (failedUrl === url) {
+  if (!url) {
     return (
       <span
         className={clsx(
@@ -72,7 +62,7 @@ export const FluentEmoji = ({
       // loading only adds a second deferral layer and re-evaluates on every
       // remount — causing visible pop-in even for cached emoji.
       decoding="async"
-      onError={() => setFailedUrl(url)}
+      onError={onError}
     />
   );
 };
