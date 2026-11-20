@@ -284,6 +284,7 @@ describe("timelineEventToChatEvent (real-time sync mapping)", () => {
       body: "reply",
       id: "$reply:localhost",
       threadRootId: "$root:localhost",
+      relation: { rel_type: "m.thread", event_id: "$root:localhost" },
     });
     const member = makeMessageEvent({
       sender: OTHER_ID,

@@ -97,7 +97,7 @@ export const threadReplyRootId = (
   if (!threadId || event.isThreadRoot) {
     return undefined;
   }
-  if (event.isRelation(RelationType.Thread)) {
+  if (event.getRelation()?.rel_type === RelationType.Thread) {
     return threadId;
   }
   return room.eventShouldLiveIn(event).shouldLiveInRoom ? undefined : threadId;
