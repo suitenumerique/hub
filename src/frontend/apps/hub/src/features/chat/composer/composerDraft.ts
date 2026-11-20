@@ -126,6 +126,14 @@ export const mentionAround = (
 ): ComposerMention | undefined =>
   mentions.find((mention) => mention.start < caret && caret < mention.end);
 
+/** Whether the range from `start` to `end` holds a mention, even in part. */
+export const rangeHasMention = (
+  mentions: readonly ComposerMention[],
+  start: number,
+  end: number,
+): boolean =>
+  mentions.some((mention) => mention.start < end && mention.end > start);
+
 /** Widens a selection so it holds whole mentions only. */
 export const expandRangeToMentions = (
   mentions: readonly ComposerMention[],

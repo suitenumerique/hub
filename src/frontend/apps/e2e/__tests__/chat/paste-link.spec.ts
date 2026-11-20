@@ -108,5 +108,19 @@ test.describe("Links pasted in the composer", () => {
       await composer.paste(otherUrl);
       await expect(composer.field).toHaveValue(`Read ${otherUrl}`);
     });
+
+    await test.step("a URL pasted on a mention replaces it", async () => {
+      // A mention is a link already: it is not put in another one.
+      const [firstName] = bob.displayName.split(" ");
+      await composer.field.fill("Read ");
+      await composer.mention(firstName, bob.displayName);
+      await expect(composer.field).toHaveValue(`Read ${bob.displayName} `);
+      await composer.field.press("End");
+      await composer.field.press("ArrowLeft");
+      await composer.selectBeforeCaret(bob.displayName);
+      await composer.paste(url);
+      await expect(composer.field).toHaveValue(`Read ${url} `);
+      await expect(composer.draftMention).toHaveCount(0);
+    });
   });
 });

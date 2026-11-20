@@ -31,6 +31,7 @@ import {
   type ComposerDraft,
   EMPTY_DRAFT,
   joinDrafts,
+  rangeHasMention,
   trimDraft,
 } from "../composer/composerDraft";
 import {
@@ -758,10 +759,13 @@ export const ChatComposer = ({
                     return;
                   }
                   // A URL pasted on selected text links it, in one undo step.
+                  // A mention is a link already: it gets the normal paste.
                   const input = event.currentTarget;
                   const { selectionStart: start, selectionEnd: end } = input;
                   const link =
-                    !input.readOnly && start < end
+                    !input.readOnly &&
+                    start < end &&
+                    !rangeHasMention(draftRef.current.mentions, start, end)
                       ? linkPastedOnSelection(
                           input.value.slice(start, end),
                           clipboardData.getData("text/plain"),
