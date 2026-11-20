@@ -101,4 +101,10 @@
       );
     }
   }
+
+  &[data-keyboard] &__emoji[data-active] {
+    outline: 2px solid
+      var(--c--contextuals--border--semantic--brand--primary, #3e5de7);
+    outline-offset: -2px;
+  }
 }
