@@ -2,9 +2,10 @@
  * When a conversation was last active, which orders the conversation list. A
  * port of Element's and Tchap's `getLastTimestamp`
  * (`stores/room-list-v3/skip-list/sorters/utils/getLastTimestamp.ts`), so the
- * same events move a conversation up. Element asks its own timeline whether it
- * shows an event; the Hub shows fewer of them, so the types Element shows are
- * listed here, from its `EventTileFactory.tsx` and `TextForEvent.tsx`.
+ * same events move a conversation up, except the reactions of the current
+ * user. Element asks its own timeline whether it shows an event; the Hub
+ * shows fewer of them, so the types Element shows are listed here, from its
+ * `EventTileFactory.tsx` and `TextForEvent.tsx`.
  */
 import {
   EventType,
@@ -141,10 +142,35 @@ const triggersUnreadCount = (
   isShownByElement(room, event, currentUserId);
 
 /**
- * `shouldCauseReorder`: an event of the current user moves the conversation,
- * unless it only changes their name or avatar.
+ * A reaction, even still encrypted. A removed one keeps its type but loses its
+ * relation.
  */
-const shouldCauseReorder = (event: MatrixEvent): boolean => {
+const isReaction = (event: MatrixEvent): boolean =>
+  event.getType() === EventType.Reaction ||
+  event.isRelation(RelationType.Annotation);
+
+/** A reaction, or the redaction that removes one. */
+const isReactionChange = (room: Room, event: MatrixEvent): boolean => {
+  if (isReaction(event)) {
+    return true;
+  }
+  if (!event.isRedaction()) {
+    return false;
+  }
+  const targetId = event.getAssociatedId();
+  const target = targetId ? room.findEventById(targetId) : undefined;
+  return target !== undefined && isReaction(target);
+};
+
+/**
+ * `shouldCauseReorder`: an event of the current user moves the conversation,
+ * unless it only changes their name or avatar, or, unlike Element, adds or
+ * removes a reaction: the reactions of others do not move it either.
+ */
+const shouldCauseReorder = (room: Room, event: MatrixEvent): boolean => {
+  if (isReactionChange(room, event)) {
+    return false;
+  }
   if (event.getType() !== EventType.RoomMember) {
     return true;
   }
@@ -165,7 +191,7 @@ export const isListActivity = (
   event: MatrixEvent,
   currentUserId: string | undefined,
 ): boolean =>
-  (event.getSender() === currentUserId && shouldCauseReorder(event)) ||
+  (event.getSender() === currentUserId && shouldCauseReorder(room, event)) ||
   triggersUnreadCount(room, event, currentUserId);
 
 /**

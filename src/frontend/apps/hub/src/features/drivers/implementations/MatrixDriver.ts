@@ -3838,7 +3838,7 @@ export class MatrixDriver extends Driver {
         return;
       }
       // What moves a conversation up, as in Element, rereads the list: a room
-      // setting, a poll, a call, or a reaction or an edit of the user. A new
+      // setting, a poll, a call, or an edit or a deletion of the user. A new
       // message and a membership already do, through their own events.
       const isNewMessage =
         (event.getType() === EventType.RoomMessage ||
