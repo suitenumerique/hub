@@ -26,8 +26,11 @@ and this project adheres to
   up arrow stays in the text. #135
 - ✨(frontend) Insert emoji in the composer, in a conversation, a thread or
   an edit: from the emoji picker next to the send button, or by typing `:`
-  and two letters of a shortcode, such as `:tada`, with Element's shortcodes.
-  #146
+  and two letters of a shortcode, such as `:tada`, with Element's shortcodes
+  and those of the interface language. A shortcode typed or pasted in full,
+  such as `:tada:`, becomes its emoji. Emoji show in the Fluent style
+  everywhere, the composer and the messages included, from files the Hub
+  serves. #146
 
 ### Changed
 
