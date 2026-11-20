@@ -51,6 +51,8 @@ and this project adheres to
 - 👷(ci) Run the e2e browsers in the official Playwright image, without the
   disk cleanup, and split the e2e tests into 3 shards instead of one job per
   browser.
+- ⚡️(frontend) Compress the emoji drawings and data the Hub serves, and let
+  browsers keep them a week. #146
 
 ### Fixed
 
