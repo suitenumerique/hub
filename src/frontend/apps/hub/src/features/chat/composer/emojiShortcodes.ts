@@ -20,13 +20,38 @@ export const MIN_SHORTCODE_QUERY = 2;
 
 const MAX_SHORTCODE_MATCHES = 10;
 
-/**
- * A `:` at the start of a word (never in `10:30` or a URL), shortcode
- * characters, then the closing `:` if typed, up to the caret.
- */
-const TRIGGER = /(^|[\s([{"'«“‘]):([\w+-]*):?$/;
+/** Shortcode characters, accented letters included (`:cœur`). */
+const SHORTCODE_CHARS = "[\\p{L}\\p{N}_+-]";
 
-/** The shortcode being typed before `caret`, as Element detects it. */
+/**
+ * The `:` opening a shortcode: glued to a word (`toto:smile`) but not to a
+ * number, so the minutes of a time such as `12:10` offer no emoji.
+ */
+const OPENING_COLON = "(?<!\\p{N}):";
+
+/**
+ * An opening `:`, shortcode characters, then the closing `:` if typed, up to
+ * the caret. A URL matches nothing.
+ */
+const TRIGGER = new RegExp(`${OPENING_COLON}(${SHORTCODE_CHARS}*):?$`, "u");
+
+/** Each `:shortcode:` written in full in a text. */
+const CLOSED_SHORTCODES = new RegExp(
+  `${OPENING_COLON}(${SHORTCODE_CHARS}+):`,
+  "gu",
+);
+
+/** The rest of a shortcode after the caret, up to its closing `:`. */
+const SHORTCODE_REST = new RegExp(`^${SHORTCODE_CHARS}*:`, "u");
+
+/**
+ * How far the shortcode around `caret` goes on after it, its closing `:`
+ * included, or 0 when no `:` closes it.
+ */
+export const shortcodeRestLength = (text: string, caret: number): number =>
+  SHORTCODE_REST.exec(text.slice(caret))?.[0].length ?? 0;
+
+/** The shortcode being typed before `caret`. */
 export const findShortcodeTrigger = (
   text: string,
   caret: number,
@@ -36,16 +61,82 @@ export const findShortcodeTrigger = (
   if (!match) {
     return null;
   }
-  const start = match.index + match[1].length;
+  const start = match.index;
   return mentions.some(
     (mention) => mention.start < caret && mention.end > start,
   )
     ? null
-    : { start, query: match[2] };
+    : { start, query: match[1] };
 };
 
-/** Case does not matter, and `-` stands for `_`, as in `thong-sandal`. */
-const normalize = (value: string) => value.toLowerCase().replace(/-/g, "_");
+/**
+ * Case and accents do not matter (`:Cœur` finds `coeur_rouge`), and `-`
+ * stands for `_`, as in `thong-sandal`.
+ */
+const normalize = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/œ/g, "oe")
+    .replace(/æ/g, "ae")
+    .replace(/-/g, "_");
+
+/** Finds the emoji of a shortcode written in full, in any case or accent. */
+export type ShortcodeLookup = (shortcode: string) => string | undefined;
+
+export const shortcodeLookup = (
+  emojis: readonly ShortcodeEmoji[],
+): ShortcodeLookup => {
+  const byShortcode = new Map<string, string>();
+  for (const { emoji, shortcodes } of emojis) {
+    for (const shortcode of shortcodes) {
+      const key = normalize(shortcode);
+      if (!byShortcode.has(key)) {
+        byShortcode.set(key, emoji);
+      }
+    }
+  }
+  return (shortcode) => byShortcode.get(normalize(shortcode));
+};
+
+/**
+ * The `:shortcode:` just closed before `caret`, as Slack and Element turn it
+ * into its emoji, or null.
+ */
+export const findClosedShortcode = (
+  text: string,
+  caret: number,
+  mentions: readonly ComposerMention[],
+  lookup: ShortcodeLookup,
+): { start: number; emoji: string } | null => {
+  const trigger = findShortcodeTrigger(text, caret, mentions);
+  if (!trigger?.query || text[caret - 1] !== ":") {
+    return null;
+  }
+  const emoji = lookup(trigger.query);
+  return emoji ? { start: trigger.start, emoji } : null;
+};
+
+/**
+ * The text with each known `:shortcode:` replaced by its emoji. `precededBy`
+ * is what stands before the text, so that one at its start stays after a
+ * number, as `12` then a pasted `:tada:`.
+ */
+export const replaceShortcodes = (
+  text: string,
+  lookup: ShortcodeLookup,
+  precededBy = "",
+) =>
+  text.replace(
+    CLOSED_SHORTCODES,
+    (written, shortcode: string, offset: number) => {
+      if (offset === 0 && /\p{N}$/u.test(precededBy)) {
+        return written;
+      }
+      return lookup(shortcode) ?? written;
+    },
+  );
 
 /** Where `query` starts a word of `shortcode`, or -1. */
 const wordStart = (shortcode: string, query: string): number => {

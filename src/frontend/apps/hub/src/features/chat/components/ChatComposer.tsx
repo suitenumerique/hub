@@ -781,6 +781,12 @@ export const ChatComposer = ({
                   if (link !== null) {
                     event.preventDefault();
                     replaceRange(start, end, link);
+                    return;
+                  }
+                  // Shortcodes pasted in full become emojis once pasted.
+                  const pasted = clipboardData.getData("text/plain");
+                  if (!input.readOnly && pasted) {
+                    setTimeout(() => void shortcodes.onPasted(start, pasted));
                   }
                 }}
               />

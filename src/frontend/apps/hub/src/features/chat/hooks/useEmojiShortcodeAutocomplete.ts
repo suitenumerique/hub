@@ -1,15 +1,25 @@
-import { useQuery } from "@tanstack/react-query";
-import { type RefObject, useCallback, useMemo } from "react";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type RefObject,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { chatKeys } from "../chatKeys";
 import type { ComposerDraft } from "../composer/composerDraft";
 import {
+  findClosedShortcode,
   findShortcodeTrigger,
   matchShortcodes,
   MIN_SHORTCODE_QUERY,
+  replaceShortcodes,
   type ShortcodeEmoji,
+  shortcodeLookup,
   type ShortcodeMatch,
+  shortcodeRestLength,
 } from "../composer/emojiShortcodes";
 import {
   type EmojibaseLocale,
@@ -25,31 +35,53 @@ import {
 type EmojibaseEmoji = { hexcode: string; emoji: string };
 type EmojibaseShortcodes = Record<string, string | string[]>;
 
+const fetchShortcodes = (path: string, signal?: AbortSignal) =>
+  fetchEmojibase(path, signal).then(
+    (response) => response.json() as Promise<EmojibaseShortcodes>,
+  );
+
+const asList = (codes: string | string[] | undefined) =>
+  typeof codes === "string" ? [codes] : (codes ?? []);
+
 /**
- * The emojis that have a shortcode. Element's Slack-style set (iamcal), in
- * English for every language; the emojis come from the picker's own data,
- * often already in the HTTP cache.
+ * The emojis that have a shortcode: in the UI language as the picker's search
+ * (CLDR's `coeur_rouge`), and Element's Slack-style English ones (`heart`)
+ * in every language. The emojis come from the picker's own data, often
+ * already in the HTTP cache.
  */
 const loadShortcodeEmojis = async (
   locale: EmojibaseLocale,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<ShortcodeEmoji[]> => {
-  const [emojis, shortcodes] = await Promise.all([
+  const [emojis, english, local] = await Promise.all([
     fetchEmojibase(`${locale}/data.json`, signal).then(
       (response) => response.json() as Promise<EmojibaseEmoji[]>,
     ),
-    fetchEmojibase("en/shortcodes/iamcal.json", signal).then(
-      (response) => response.json() as Promise<EmojibaseShortcodes>,
-    ),
+    fetchShortcodes("en/shortcodes/iamcal.json", signal),
+    locale === "en"
+      ? undefined
+      : fetchShortcodes(`${locale}/shortcodes/cldr.json`, signal),
   ]);
   return emojis.flatMap(({ hexcode, emoji }) => {
-    const codes = shortcodes[hexcode];
-    if (!codes) {
-      return [];
-    }
-    return [{ emoji, shortcodes: typeof codes === "string" ? [codes] : codes }];
+    const shortcodes = [
+      ...asList(local?.[hexcode]),
+      ...asList(english[hexcode]),
+    ];
+    return shortcodes.length > 0 ? [{ emoji, shortcodes }] : [];
   });
 };
+
+const shortcodesQuery = (locale: EmojibaseLocale) =>
+  queryOptions({
+    queryKey: chatKeys.emojiShortcodes(locale),
+    queryFn: ({ signal }) => loadShortcodeEmojis(locale, signal),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    meta: { noGlobalError: true },
+  });
+
+/** A shortcode written in full, replaced once the text shows it. */
+type ClosedShortcode = { start: number; end: number; emoji: string };
 
 // The emoji, not its shortcode: the one shown can change as the text refines.
 const matchKey = (match: ShortcodeMatch) => match.emoji;
@@ -67,7 +99,8 @@ type UseEmojiShortcodeAutocompleteOptions = {
  * The emojis offered for a `:shortcode`, from two characters after the `:`,
  * with the keys of the `@` suggestions: arrows move the selection, Enter or
  * Tab replaces the shortcode with the emoji, Escape hides the list until the
- * next keystroke. The textarea keeps the focus throughout.
+ * next keystroke. The textarea keeps the focus throughout. A shortcode typed
+ * or pasted in full (`:santa:`) turns into its emoji, as in Slack.
  */
 export const useEmojiShortcodeAutocomplete = ({
   inputRef,
@@ -78,21 +111,30 @@ export const useEmojiShortcodeAutocomplete = ({
 }: UseEmojiShortcodeAutocompleteOptions) => {
   const { i18n } = useTranslation();
   const locale = toEmojibaseLocale(i18n.resolvedLanguage ?? i18n.language);
-  const { trigger, isWanted, selectedKey, select, close, ...typing } =
-    useSuggestionTrigger({
-      inputRef,
-      draftRef,
-      findTrigger: findShortcodeTrigger,
-    });
+  const queryClient = useQueryClient();
+  const {
+    trigger,
+    isWanted,
+    selectedKey,
+    select,
+    close,
+    onInput: followInput,
+    ...typing
+  } = useSuggestionTrigger({
+    inputRef,
+    draftRef,
+    findTrigger: findShortcodeTrigger,
+  });
   // The emojis load once someone types `:`, then stay available.
   const { data: emojis } = useQuery({
-    queryKey: chatKeys.emojiShortcodes(locale),
-    queryFn: ({ signal }) => loadShortcodeEmojis(locale, signal),
+    ...shortcodesQuery(locale),
     enabled: isWanted,
-    staleTime: Infinity,
-    gcTime: Infinity,
-    meta: { noGlobalError: true },
   });
+  const lookup = useMemo(
+    () => (emojis ? shortcodeLookup(emojis) : null),
+    [emojis],
+  );
+  const [closed, setClosed] = useState<ClosedShortcode | null>(null);
   const items = useMemo(
     () =>
       emojis && trigger && trigger.query.length >= MIN_SHORTCODE_QUERY
@@ -113,13 +155,69 @@ export const useEmojiShortcodeAutocomplete = ({
       // glued after it stays, as does what follows one already closed.
       let end = input.selectionEnd;
       if (!/.:$/.test(text.slice(trigger.start, end))) {
-        end += /^[\w+-]*:/.exec(text.slice(end))?.[0].length ?? 0;
+        end += shortcodeRestLength(text, end);
       }
       close();
       replaceRange(trigger.start, end, item.emoji);
       onInserted();
     },
     [close, draftRef, inputRef, onInserted, replaceRange, trigger],
+  );
+
+  /** Follows each edit, and turns a shortcode just closed into its emoji. */
+  const onInput = useCallback(
+    (inputType: string, draft: ComposerDraft, caret: number) => {
+      followInput(inputType, draft, caret);
+      const found =
+        lookup && !disabled && inputType === "insertText"
+          ? findClosedShortcode(draft.text, caret, draft.mentions, lookup)
+          : null;
+      if (found) {
+        setClosed({ ...found, end: caret });
+      }
+    },
+    [disabled, followInput, lookup],
+  );
+
+  // Replaced once the textarea shows the closing `:`, in its own undo step.
+  useLayoutEffect(() => {
+    if (!closed) {
+      return;
+    }
+    setClosed(null);
+    close();
+    replaceRange(closed.start, closed.end, closed.emoji);
+    onInserted();
+  }, [close, closed, onInserted, replaceRange]);
+
+  /** Turns the shortcodes of a text just pasted at `start` into emojis. */
+  const onPasted = useCallback(
+    async (start: number, pasted: string) => {
+      const text = pasted.replace(/\r\n?/g, "\n");
+      if (disabled || !/:[^\s:]+:/u.test(text)) {
+        return;
+      }
+      const pastedLookup =
+        lookup ??
+        shortcodeLookup(
+          await queryClient.fetchQuery(shortcodesQuery(locale)).catch(() => []),
+        );
+      const value = inputRef.current?.value ?? "";
+      const end = start + text.length;
+      // Left as pasted if the text changed meanwhile.
+      if (value.slice(start, end) !== text) {
+        return;
+      }
+      const replaced = replaceShortcodes(
+        text,
+        pastedLookup,
+        value.slice(0, start),
+      );
+      if (replaced !== text) {
+        replaceRange(start, end, replaced);
+      }
+    },
+    [disabled, inputRef, locale, lookup, queryClient, replaceRange],
   );
 
   const list = useSuggestionList({
@@ -139,6 +237,8 @@ export const useEmojiShortcodeAutocomplete = ({
     triggerStart: trigger?.start ?? 0,
     ...list,
     ...typing,
+    onInput,
+    onPasted,
     onBlur: close,
     confirm,
   };

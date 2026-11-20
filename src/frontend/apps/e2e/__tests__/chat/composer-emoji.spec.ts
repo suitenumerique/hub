@@ -181,23 +181,25 @@ test.describe("Inserting emoji in the composer", () => {
     });
 
     await test.step("a closed shortcode leaves the next one alone", async () => {
+      // A real shortcode closed in full turns into its emoji at once: these
+      // two are none, so they stay as typed and `:tad:` still offers 🎉.
       await composer.field.press("End");
-      await composer.field.pressSequentially(" :heart:", { delay: 30 });
-      for (let index = 0; index < ":heart:".length; index += 1) {
+      await composer.field.pressSequentially(" :zzqx:", { delay: 30 });
+      for (let index = 0; index < ":zzqx:".length; index += 1) {
         await composer.field.press("ArrowLeft");
       }
-      await composer.field.pressSequentially(":tada:", { delay: 30 });
+      await composer.field.pressSequentially(":tad:", { delay: 30 });
       await expect(composer.emojiSuggestion("tada")).toBeVisible();
       await composer.field.press("Enter");
       await expect(composer.field).toHaveValue(
-        `${text} 🎉 👎 😍 :smil :zzqx at 10:30 @Bob 🎉end 🎉:heart:`,
+        `${text} 🎉 👎 😍 :smil :zzqx at 10:30 @Bob 🎉end 🎉:zzqx:`,
       );
     });
 
     await test.step("the emojis are sent as text", async () => {
       await composer.sendDraft();
       await chat.timeline.expectMessage(
-        `${text} 🎉 👎 😍 :smil :zzqx at 10:30 @Bob 🎉end 🎉:heart:`,
+        `${text} 🎉 👎 😍 :smil :zzqx at 10:30 @Bob 🎉end 🎉:zzqx:`,
       );
     });
   });
