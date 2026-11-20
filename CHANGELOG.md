@@ -71,6 +71,8 @@ and this project adheres to
   reload in another language than English no longer raises a hydration error.
 - 🐛(frontend) Keep a chat in its place in the list when you react to a
   message or remove your reaction, as when someone else does. #165
+- 🐛(frontend) Keep in the chat a reply that quotes a message starting a
+  thread, as in Element, instead of moving it into that thread. #154
 
 ## [v0.1.0] - 2026-11-11
 

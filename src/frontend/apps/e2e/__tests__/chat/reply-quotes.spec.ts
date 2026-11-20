@@ -214,4 +214,49 @@ test.describe("Reply quotes", () => {
       await timeline.expectSelected(first);
     });
   });
+
+  test("keeps in the conversation a reply quoting a thread root", async ({
+    people,
+    hub,
+  }) => {
+    const alice = await people.create("Alice");
+    const bob = await people.create("Bob");
+    const carol = await people.create("Carol");
+    const roomId = await createUnencryptedRoom(alice, [bob, carol]);
+    const root = uniqueText("Bob starts a thread");
+    const rootId = await bob.api.sendText(roomId, root);
+    const inThread = uniqueText("Carol answers in the thread");
+    await carol.api.sendText(roomId, inThread, { threadRootId: rootId });
+
+    const chat = await hub.open(alice);
+    await chat.openConversation({ roomId });
+    const { timeline } = chat;
+    // The SDK gives a reply the thread of the message it quotes once it knows
+    // that thread: the reply must arrive after it, while the Hub is open.
+    await expect(timeline.threadButton(root)).toBeVisible();
+    const reply = uniqueText("Carol answers Bob in the conversation");
+    await carol.api.sendReply(roomId, rootId, reply);
+
+    await test.step("the reply arriving live stays in the conversation", async () => {
+      await timeline.expectQuote(reply, {
+        author: bob.displayName,
+        quoted: root,
+      });
+    });
+
+    await test.step("the thread keeps its own replies only", async () => {
+      await timeline.threadButton(root).click();
+      await chat.threads.expectThread(root);
+      await chat.threads.timeline.expectMessage(inThread);
+      await expect(chat.threads.timeline.message(reply)).toHaveCount(0);
+    });
+
+    await test.step("the reply is still in the conversation after a reload", async () => {
+      await chat.reload();
+      await chat.timeline.expectQuote(reply, {
+        author: bob.displayName,
+        quoted: root,
+      });
+    });
+  });
 });

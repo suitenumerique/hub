@@ -163,6 +163,7 @@ import {
   isThreadReplyMessage,
   isUndecryptedEvent,
   matrixEventToChatMessage,
+  messageThreadId,
   needsReactionSnapshot,
   observeThreadReply,
   ownReactionEvents,
@@ -176,6 +177,7 @@ import {
   sortedThreadReplyEvents,
   threadReplyCount,
   threadReplyEventKey,
+  threadReplyRootId,
   threadToChatThread,
   threadToChatThreadDetail,
   timelineEventToChatEvent,
@@ -1322,8 +1324,10 @@ export class MatrixDriver extends Driver {
     }
   }
 
-  private mainTimelineEvents(window: TimelineWindow) {
-    return window.getEvents().filter(isMainTimelineMessage);
+  private mainTimelineEvents(window: TimelineWindow, room: Room) {
+    return window
+      .getEvents()
+      .filter((event) => isMainTimelineMessage(event, room));
   }
 
   /**
@@ -1380,9 +1384,11 @@ export class MatrixDriver extends Driver {
    */
   private async nearestMainTimelineMessageId(
     window: TimelineWindow,
+    room: Room,
     eventId: string,
     eventsPerRequest: number,
   ): Promise<string> {
+    const isMain = (event: MatrixEvent) => isMainTimelineMessage(event, room);
     // `undefined` while not found yet, `null` when the event is not loaded.
     const find = (
       direction: typeof EventTimeline.BACKWARDS | typeof EventTimeline.FORWARDS,
@@ -1392,12 +1398,12 @@ export class MatrixDriver extends Driver {
       if (index < 0) {
         return null;
       }
-      if (isMainTimelineMessage(events[index])) {
+      if (isMain(events[index])) {
         return events[index];
       }
       return direction === EventTimeline.FORWARDS
-        ? events.slice(index + 1).find(isMainTimelineMessage)
-        : events.slice(0, index).findLast(isMainTimelineMessage);
+        ? events.slice(index + 1).find(isMain)
+        : events.slice(0, index).findLast(isMain);
     };
     for (const direction of [
       EventTimeline.FORWARDS,
@@ -1607,7 +1613,7 @@ export class MatrixDriver extends Driver {
             type: "message:reconciled",
             chatId: room.roomId,
             messageId: eventId,
-            message: isMainTimelineMessage(event)
+            message: isMainTimelineMessage(event, room)
               ? matrixEventToChatMessage(event, room, selfUserId)
               : null,
           });
@@ -1686,7 +1692,7 @@ export class MatrixDriver extends Driver {
       return;
     }
     const selfUserId = mx.getUserId() ?? undefined;
-    const threadId = event.isThreadRoot ? messageId : event.threadRootId;
+    const threadId = messageThreadId(event, room);
     if (threadId && isMessageEvent(event)) {
       // A thread root shows in both caches, a reply in its thread only.
       this.emit({
@@ -1701,7 +1707,7 @@ export class MatrixDriver extends Driver {
       type: "message:reconciled",
       chatId: room.roomId,
       messageId,
-      message: isMainTimelineMessage(event)
+      message: isMainTimelineMessage(event, room)
         ? matrixEventToChatMessage(event, room, selfUserId)
         : null,
     });
@@ -1739,6 +1745,7 @@ export class MatrixDriver extends Driver {
       const anchorMessageId = anchorId
         ? await this.nearestMainTimelineMessageId(
             window,
+            room,
             anchorId,
             eventsPerRequest,
           )
@@ -1747,7 +1754,7 @@ export class MatrixDriver extends Driver {
 
       const targetIndex = () =>
         targetId
-          ? this.mainTimelineEvents(window).findIndex(
+          ? this.mainTimelineEvents(window, room).findIndex(
               (event) => event.getId() === targetId,
             )
           : -1;
@@ -1780,13 +1787,13 @@ export class MatrixDriver extends Driver {
               const index = targetIndex();
               return (
                 index >= 0 &&
-                this.mainTimelineEvents(window).length - index - 1 >=
+                this.mainTimelineEvents(window, room).length - index - 1 >=
                   newerTarget
               );
             },
           ),
         ]);
-        const events = this.mainTimelineEvents(window);
+        const events = this.mainTimelineEvents(window, room);
         const index = targetIndex();
         const startIndex = Math.max(
           0,
@@ -1812,7 +1819,7 @@ export class MatrixDriver extends Driver {
 
       if (cursor && direction === "newer") {
         const newerCount = () =>
-          this.mainTimelineEvents(window).length - targetIndex() - 1;
+          this.mainTimelineEvents(window, room).length - targetIndex() - 1;
         // Like older pages: known messages at once, else one request. They
         // are added below what the user reads, so nothing moves on screen.
         this.extendTimelineWindowInMemory(
@@ -1829,7 +1836,7 @@ export class MatrixDriver extends Driver {
             () => newerCount() > 0,
           );
         }
-        const events = this.mainTimelineEvents(window);
+        const events = this.mainTimelineEvents(window, room);
         const startIndex = targetIndex() + 1;
         const available = events.slice(startIndex);
         const pageEvents = available.slice(0, limit);
@@ -1850,7 +1857,7 @@ export class MatrixDriver extends Driver {
 
       // Messages older than the cursor, or every message on the live page.
       const olderCount = () =>
-        cursor ? targetIndex() : this.mainTimelineEvents(window).length;
+        cursor ? targetIndex() : this.mainTimelineEvents(window, room).length;
       // Like Element (TimelineWindow.load, then fill requests of
       // PAGINATE_SIZE), known messages show at once, however few: the list
       // asks for the next page while its viewport is not full. Only a page
@@ -1870,7 +1877,7 @@ export class MatrixDriver extends Driver {
           () => olderCount() > 0,
         );
       }
-      const events = this.mainTimelineEvents(window);
+      const events = this.mainTimelineEvents(window, room);
       const endIndex = olderCount();
       const startIndex = Math.max(0, endIndex - limit);
       const pageEvents = events.slice(startIndex, endIndex);
@@ -1891,10 +1898,11 @@ export class MatrixDriver extends Driver {
 
   private isEligibleMainTimelineUnread(
     event: MatrixEvent,
+    room: Room,
     selfUserId: string,
   ): boolean {
     return (
-      isMainTimelineMessage(event) &&
+      isMainTimelineMessage(event, room) &&
       !event.isRedacted() &&
       event.getSender() !== selfUserId
     );
@@ -1911,7 +1919,10 @@ export class MatrixDriver extends Driver {
     const selfUserId = mx.getUserId();
     const liveEvents = room.getLiveTimeline().getEvents();
     const liveEndId =
-      liveEvents.filter(isMainTimelineMessage).at(-1)?.getId() ?? null;
+      liveEvents
+        .filter((event) => isMainTimelineMessage(event, room))
+        .at(-1)
+        ?.getId() ?? null;
     if (!selfUserId) {
       return {
         hasUnread: false,
@@ -1964,7 +1975,9 @@ export class MatrixDriver extends Driver {
       firstUnreadId =
         liveEvents
           .slice(markerIndex + 1)
-          .find((event) => this.isEligibleMainTimelineUnread(event, selfUserId))
+          .find((event) =>
+            this.isEligibleMainTimelineUnread(event, room, selfUserId),
+          )
           ?.getId() ?? null;
       hasUnread = firstUnreadId !== null;
     } else {
@@ -2078,9 +2091,10 @@ export class MatrixDriver extends Driver {
       ? Boolean(
           event &&
           isMessageEvent(event) &&
-          (event.getId() === threadId || event.threadRootId === threadId),
+          (event.getId() === threadId ||
+            threadReplyRootId(event, room) === threadId),
         )
-      : Boolean(event && isMainTimelineMessage(event));
+      : Boolean(event && isMainTimelineMessage(event, room));
     if (!event || !validTarget) {
       throw new Error(
         `MatrixDriver.${method}: message "${messageId}" not found${
@@ -2431,7 +2445,7 @@ export class MatrixDriver extends Driver {
       // The SDK removes a thread when its last reply is redacted. Keep the
       // opened composer usable with its root, without restoring deleted replies.
       const rootEvent = room.findEventById(threadId);
-      if (!rootEvent || !isMainTimelineMessage(rootEvent)) {
+      if (!rootEvent || !isMainTimelineMessage(rootEvent, room)) {
         throw new Error(
           `MatrixDriver.getChatThread: thread "${threadId}" not found in room "${chatId}".`,
         );
@@ -2651,7 +2665,7 @@ export class MatrixDriver extends Driver {
       await mx.getEventTimeline(room.getUnfilteredTimelineSet(), eventId);
       event = room.findEventById(eventId);
     }
-    if (!event || !isMainTimelineMessage(event)) {
+    if (!event || !isMainTimelineMessage(event, room)) {
       throw new Error(
         `MatrixDriver.markChatReadThrough: event "${eventId}" is not a main-timeline message in room "${chatId}".`,
       );
@@ -2912,7 +2926,7 @@ export class MatrixDriver extends Driver {
     // A key still missing leaves the message unavailable, not the request.
     await mx.decryptEventIfNeeded(event).catch(() => {});
     const selfUserId = mx.getUserId() ?? undefined;
-    const threadId = event.isThreadRoot ? undefined : event.threadRootId;
+    const threadId = threadReplyRootId(event, room);
     return {
       message: matrixEventToChatMessage(event, room, selfUserId),
       author: authorForSender(
@@ -3867,7 +3881,7 @@ export class MatrixDriver extends Driver {
           return;
         }
         const targetId = relation.event_id;
-        const threadIdHint = event.threadRootId;
+        const threadIdHint = threadReplyRootId(event, room);
         const askedAt = performance.now();
         void fetchReactionSnapshot(mx, room.roomId, targetId, selfUserId)
           .then((snapshot) => {
@@ -3982,7 +3996,7 @@ export class MatrixDriver extends Driver {
         mx.reEmitter.reEmit(replacement, [MatrixEventEvent.Decrypted]);
         return;
       }
-      const threadId = event.isThreadRoot ? event.getId() : event.threadRootId;
+      const threadId = messageThreadId(event, room);
       emitCurrent({
         type: "message:updated",
         chatId: room.roomId,
@@ -4001,11 +4015,11 @@ export class MatrixDriver extends Driver {
     const onBeforeRedaction = (target: MatrixEvent, redaction: MatrixEvent) => {
       const eventId = target.getId();
       const targetRoomId = target.getRoomId();
-      const threadId = target.isThreadRoot ? eventId : target.threadRootId;
-      const thread =
-        threadId && targetRoomId
-          ? mx.getRoom(targetRoomId)?.getThread(threadId)
-          : undefined;
+      const targetRoom = targetRoomId ? mx.getRoom(targetRoomId) : null;
+      const threadId = targetRoom
+        ? messageThreadId(target, targetRoom)
+        : undefined;
+      const thread = threadId ? targetRoom?.getThread(threadId) : undefined;
       if (thread && eventId !== threadId && !redaction.status) {
         forgetThreadReply(thread, target);
       }
@@ -4029,9 +4043,7 @@ export class MatrixDriver extends Driver {
       if (target?.getType() === EventType.RoomMessage) {
         // Route by the event's current SDK timeline. Confirmed reply redactions
         // have lost m.thread and now belong to the main timeline.
-        const currentThreadId = target.isThreadRoot
-          ? target.getId()
-          : target.threadRootId;
+        const currentThreadId = messageThreadId(target, room);
         emitCurrent({
           type: "message:updated",
           chatId: room.roomId,
@@ -4470,14 +4482,14 @@ export class MatrixDriver extends Driver {
           type: "message:reconciled",
           chatId: room.roomId,
           messageId: eventId,
-          message: isMainTimelineMessage(event)
+          message: isMainTimelineMessage(event, room)
             ? matrixEventToChatMessage(event, room, selfUserId)
             : null,
         });
         // History decrypted outside the live timeline, around a read marker
         // or a search result, changes no unread state, thread or list preview.
         // Refreshing them for it fed a load-and-decrypt loop in large rooms.
-        const isThreadEvent = event.isThreadRoot || Boolean(event.threadRootId);
+        const isThreadEvent = Boolean(messageThreadId(event, room));
         const pending =
           isThreadEvent ||
           room.getTimelineForEvent(eventId) === room.getLiveTimeline()
