@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import type { AccountId, ChatThread } from "@/features/drivers/types";
 
+import { renderEmojiText } from "../../formattedContent";
 import { formatChatThreadTimestamp } from "../../formatTimestamp";
 import { isOptimisticThreadId } from "../../hooks/chatCompositionCache";
 import { ChatUserAvatar } from "../ChatUserAvatar";
@@ -61,7 +62,7 @@ export const ThreadListItem = ({
           <span className="hub__chat-thread-item__preview">
             {thread.lastReplyDeleted
               ? t("Message deleted")
-              : thread.lastReplyPreview}
+              : renderEmojiText(thread.lastReplyPreview)}
           </span>
           <span className="hub__chat-thread-item__replies">
             <span

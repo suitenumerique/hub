@@ -1,6 +1,8 @@
 import { find } from "linkifyjs";
 import { createElement, Fragment, type ReactNode } from "react";
 
+import { InlineEmoji } from "./components/InlineEmoji";
+import { splitEmoji } from "./emojiText";
 import { parseUserPermalink } from "./mentionPermalinks";
 
 /**
@@ -9,7 +11,8 @@ import { parseUserPermalink } from "./mentionPermalinks";
  * document (no script runs, no resource loads), then rebuilt element by
  * element from an allowlist mirroring Element's: no raw HTML reaches the page,
  * text goes through React's escaping and only vetted attributes are copied.
- * URLs typed in the text become links, in plain and formatted messages alike.
+ * URLs typed in the text become links, in plain and formatted messages alike,
+ * and emojis show their Fluent drawing.
  */
 
 /** Tags of the Matrix subset rendered as themselves. */
@@ -140,6 +143,16 @@ const externalLink = (url: URL, children: ReactNode[]): ReactNode =>
     ...children,
   );
 
+/** The text with its emojis drawn in the Fluent style. */
+export const renderEmojiText = (text: string): ReactNode =>
+  createElement(
+    Fragment,
+    null,
+    ...splitEmoji(text).map(({ text: part, isEmoji }) =>
+      isEmoji ? createElement(InlineEmoji, { emoji: part }) : part,
+    ),
+  );
+
 /**
  * The text with the URLs it contains as links. Like Element, only full URLs
  * qualify: `example.com` or `README.md` stay text, and so do email addresses.
@@ -151,13 +164,13 @@ const linkifyText = (text: string): ReactNode[] => {
     const url = parseUrl(link.value);
     if (url && LINK_PROTOCOLS.has(url.protocol)) {
       nodes.push(
-        text.slice(cursor, link.start),
-        externalLink(url, [link.value]),
+        renderEmojiText(text.slice(cursor, link.start)),
+        externalLink(url, [renderEmojiText(link.value)]),
       );
       cursor = link.end;
     }
   }
-  nodes.push(text.slice(cursor));
+  nodes.push(renderEmojiText(text.slice(cursor)));
   return nodes;
 };
 
@@ -206,7 +219,9 @@ const renderNode = (
     if (TABLE_CONTAINERS.has(parentTag) && !text.trim()) {
       return null;
     }
-    return linkify ? createElement(Fragment, null, ...linkifyText(text)) : text;
+    return linkify
+      ? createElement(Fragment, null, ...linkifyText(text))
+      : renderEmojiText(text);
   }
   if (node.nodeType !== Node.ELEMENT_NODE) {
     return null;

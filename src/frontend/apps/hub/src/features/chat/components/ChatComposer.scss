@@ -245,7 +245,9 @@
     position: relative;
   }
 
-  // Repeats the text invisibly behind the textarea to paint the mentions.
+  // Repeats the text invisibly behind the textarea to paint the mentions. With
+  // emojis, it draws the text, Fluent emojis included, and the textarea's own
+  // glyphs vanish: only its caret and a see-through selection stay.
   &__backdrop {
     @include composer-text-metrics;
     position: absolute;
@@ -305,6 +307,27 @@
       color: var(
         --c--contextuals--content--semantic--neutral--tertiary,
         #626a80
+      );
+    }
+  }
+
+  &__editor[data-emoji] &__backdrop {
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__editor[data-emoji] &__input {
+    color: transparent;
+    caret-color: var(
+      --c--contextuals--content--semantic--neutral--primary,
+      #222631
+    );
+
+    &::selection {
+      color: transparent;
+      background: color-mix(
+        in srgb,
+        var(--c--contextuals--border--semantic--brand--primary, #3e5de7) 30%,
+        transparent
       );
     }
   }
