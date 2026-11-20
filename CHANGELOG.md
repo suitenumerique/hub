@@ -65,6 +65,8 @@ and this project adheres to
 - 🐛(frontend) Open from "New" only a direct chat with the chosen person, or an
   unnamed group of exactly the chosen people, as in Element, instead of a
   named room or a group left down to them.
+- 🐛(frontend) Show the "Screen too small" page once the app has loaded, so a
+  reload in another language than English no longer raises a hydration error.
 
 ## [v0.1.0] - 2026-11-11
 
