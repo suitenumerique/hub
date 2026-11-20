@@ -69,6 +69,8 @@ and this project adheres to
   named room or a group left down to them.
 - 🐛(frontend) Show the "Screen too small" page once the app has loaded, so a
   reload in another language than English no longer raises a hydration error.
+- 🐛(frontend) Keep a chat in its place in the list when you react to a
+  message or remove your reaction, as when someone else does. #165
 
 ## [v0.1.0] - 2026-11-11
 
