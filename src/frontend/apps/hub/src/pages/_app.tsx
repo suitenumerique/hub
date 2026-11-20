@@ -26,6 +26,7 @@ import { ChatEmptyIllustration } from "@/features/chat/components/ChatEmptyIllus
 import { ConfigProvider } from "@/features/config/ConfigProvider";
 import type { AppPropsWithLayout } from "@/features/layouts/NextPageWithLayout";
 import { useTheme } from "@/features/theme/useTheme";
+import { useIsHydrated } from "@/hooks/useIsHydrated";
 import { useLocales } from "@/i18n/useLocale";
 
 const onError = (error: Error, query: unknown) => {
@@ -62,6 +63,9 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { t, i18n } = useTranslation();
   const currentLocale = useLocales();
   const { theme, cunninghamTheme } = useTheme();
+  // The small-screen notice sits outside `<Auth>`, so it is the only translated
+  // text in the pre-rendered HTML: render it once hydrated (see useIsHydrated).
+  const isHydrated = useIsHydrated();
 
   useEffect(() => {
     document.documentElement.lang = i18n.language;
@@ -112,20 +116,22 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           )}
         </QueryClientProvider>
       </div>
-      <section
-        className="hub__small-screen"
-        aria-labelledby="hub-small-screen-title"
-      >
-        <ChatEmptyIllustration variant="small-screen" />
-        <div className="hub__small-screen__copy">
-          <h1 id="hub-small-screen-title">{t("Screen too small")}</h1>
-          <p>
-            {t(
-              "This app isn't available at this size yet. Use a computer or widen your window for now. We're working on support for smaller screens.",
-            )}
-          </p>
-        </div>
-      </section>
+      {isHydrated && (
+        <section
+          className="hub__small-screen"
+          aria-labelledby="hub-small-screen-title"
+        >
+          <ChatEmptyIllustration variant="small-screen" />
+          <div className="hub__small-screen__copy">
+            <h1 id="hub-small-screen-title">{t("Screen too small")}</h1>
+            <p>
+              {t(
+                "This app isn't available at this size yet. Use a computer or widen your window for now. We're working on support for smaller screens.",
+              )}
+            </p>
+          </div>
+        </section>
+      )}
     </>
   );
 }
