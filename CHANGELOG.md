@@ -19,7 +19,8 @@ and this project adheres to
   inviter, as in Element. #129
 - ✨(frontend) Turn the selected text of the composer into a link when a URL
   is pasted on it, `[text](url)`, as in Slack or Element. A domain pasted
-  without a scheme, such as `example.com`, links to it over HTTPS. #136
+  without a scheme, such as `example.com`, links to it over HTTPS. A
+  selection holding a mention, a link already, keeps the normal paste. #136
 - ✨(frontend) Edit one's last message with the up arrow of the empty
   composer, in a conversation or a thread, as in Element. While editing, the
   up arrow stays in the text. #135
