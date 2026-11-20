@@ -41,6 +41,7 @@ import {
 import { mentionsFromFormattedBody } from "../composer/editDraftMentions";
 import { linkPastedOnSelection } from "../composer/pastedLink";
 import { serializeComposerDraft } from "../composer/serializeComposerDraft";
+import { hasEmoji } from "../emojiText";
 import type { UploadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useComposerDraft } from "../hooks/useComposerDraft";
 import { useEmojiShortcodeAutocomplete } from "../hooks/useEmojiShortcodeAutocomplete";
@@ -212,6 +213,7 @@ export const ChatComposer = ({
   const wasEditingRef = useRef(false);
   const handledFocusSignalRef = useRef<number | undefined>(undefined);
   const trimmedDraft = useMemo(() => draft.text.trim(), [draft.text]);
+  const draftHasEmoji = useMemo(() => hasEmoji(draft.text), [draft.text]);
   const {
     items: pendingItems,
     addFiles: queueFiles,
@@ -659,8 +661,13 @@ export const ChatComposer = ({
             }
           />
           <div className="hub__chat-composer__field">
-            <div className="hub__chat-composer__editor" ref={editorRef}>
-              {draft.mentions.length > 0 && (
+            <div
+              className="hub__chat-composer__editor"
+              ref={editorRef}
+              // A disabled textarea draws its own, greyed text.
+              data-emoji={(draftHasEmoji && !disabled) || undefined}
+            >
+              {(draft.mentions.length > 0 || draftHasEmoji) && (
                 <ComposerMentionBackdrop ref={backdropRef} draft={draft} />
               )}
               <textarea

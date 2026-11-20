@@ -38,3 +38,21 @@
     font-size: 22px;
   }
 }
+
+// An emoji within text: the native glyph keeps its place, invisible, under
+// its Fluent drawing.
+.hub__inline-emoji {
+  position: relative;
+  color: transparent;
+
+  &__image {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 1.25em;
+    height: 1.25em;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    user-select: none;
+  }
+}
