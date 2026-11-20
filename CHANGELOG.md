@@ -73,6 +73,8 @@ and this project adheres to
   message or remove your reaction, as when someone else does. #165
 - 🐛(frontend) Keep in the chat a reply that quotes a message starting a
   thread, as in Element, instead of moving it into that thread. #154
+- 🐛(frontend) Show a chat as read once opened when its only unread message
+  was deleted before being read: it stayed unread in the list. #155
 
 ## [v0.1.0] - 2026-11-11
 

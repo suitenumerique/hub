@@ -40,6 +40,9 @@ export const useMainTimelineUnread = (
   // Latest boundary wins while a write is running, without an older queued
   // write moving the marker backwards afterwards.
   const queuedBoundaryRef = useRef<string | null>(null);
+  // Last boundary asked for, so that a count the homeserver has yet to clear
+  // does not send the same receipt again.
+  const askedBoundaryRef = useRef<string | null>(null);
   const writingRef = useRef(false);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
@@ -109,35 +112,54 @@ export const useMainTimelineUnread = (
   }, []);
 
   const hasUnread = readingThroughId ? false : (query.data?.hasUnread ?? false);
+  const isReceiptBehind = readingThroughId
+    ? false
+    : (query.data?.isReceiptBehind ?? false);
   const liveEndId = query.data?.liveEndId ?? null;
+  const liveEndReceiptId = query.data?.liveEndReceiptId ?? null;
 
   const markAllRead = useCallback(
     (lastLoadedId?: string) => {
       const eventId = liveEndId ?? lastLoadedId;
-      if (!hasUnread || !eventId) {
+      if (!eventId) {
         return;
       }
+      // Like Element, with nothing left to read, a receipt behind the latest
+      // events is still sent, as for a message deleted before it was read:
+      // once for the event it goes on, as its echo may take a while.
+      const receiptId =
+        (eventId === liveEndId ? liveEndReceiptId : null) ?? eventId;
+      const movesReceipt =
+        isReceiptBehind && askedBoundaryRef.current !== receiptId;
+      if (!hasUnread && !movesReceipt) {
+        return;
+      }
+      askedBoundaryRef.current = receiptId;
       setReadingThroughId(eventId);
       queuedBoundaryRef.current = eventId;
       void flushBoundary();
     },
-    [flushBoundary, hasUnread, liveEndId],
+    [flushBoundary, hasUnread, isReceiptBehind, liveEndId, liveEndReceiptId],
   );
 
   return useMemo(
     () => ({
       hasUnread,
+      isReceiptBehind,
       readUpToId: readingThroughId ?? query.data?.readUpToId ?? null,
       firstUnreadId: readingThroughId
         ? null
         : (query.data?.firstUnreadId ?? null),
       liveEndId,
+      liveEndReceiptId,
       isLoading: query.isPending,
       markAllRead,
     }),
     [
       hasUnread,
+      isReceiptBehind,
       liveEndId,
+      liveEndReceiptId,
       markAllRead,
       query.data?.firstUnreadId,
       query.data?.readUpToId,
