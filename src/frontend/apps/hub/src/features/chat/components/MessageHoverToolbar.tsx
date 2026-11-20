@@ -206,7 +206,7 @@ export const MessageHoverToolbar = ({
                 finish();
               }}
             >
-              <FluentEmoji emoji={emoji} emojiStyle="flat" decorative />
+              <FluentEmoji emoji={emoji} decorative />
             </button>
           ))}
 

@@ -86,7 +86,7 @@ export const EmojiShortcodeAutocomplete = ({
             onClick={() => onConfirm(item)}
           >
             <span className="hub__emoji-autocomplete__emoji">
-              <FluentEmoji emoji={item.emoji} size="xs" emojiStyle="flat" />
+              <FluentEmoji emoji={item.emoji} size="xs" />
             </span>
             <span className="hub__emoji-autocomplete__shortcode">
               :{shortcode.slice(0, matchStart)}
