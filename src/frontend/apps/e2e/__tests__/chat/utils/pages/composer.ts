@@ -54,8 +54,9 @@ export class Composer {
     this.emojiSuggestions = scope.page().getByRole("listbox", {
       name: "Emoji suggestions",
     });
+    // Singular or plural: "1 emoji suggestion, use the arrow keys to choose".
     this.suggestionsStatus = scope.getByRole("status").filter({
-      hasText: "suggestions",
+      hasText: "use the arrow keys to choose",
     });
   }
 
