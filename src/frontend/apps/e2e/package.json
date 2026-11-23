@@ -15,17 +15,17 @@
     "test:ui::chromium": "yarn test:ui --project=chromium"
   },
   "devDependencies": {
-    "@matrix-org/matrix-sdk-crypto-wasm": "^18.9.0",
-    "@playwright/test": "1.58.2",
-    "@types/node": "24.10.1",
-    "@typescript-eslint/eslint-plugin": "8.57.1",
-    "@typescript-eslint/parser": "8.57.1",
-    "eslint": "9.20.1",
-    "eslint-plugin-playwright": "2.10.1",
-    "matrix-js-sdk": "^42.4.0"
+    "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0",
+    "@playwright/test": "1.65.1",
+    "@types/node": "26.6.6",
+    "@typescript-eslint/eslint-plugin": "8.72.2",
+    "@typescript-eslint/parser": "8.72.2",
+    "eslint": "10.15.0",
+    "eslint-plugin-playwright": "2.12.2",
+    "matrix-js-sdk": "42.4.0"
   },
   "dependencies": {
-    "dotenv": "17.3.1"
+    "dotenv": "18.0.10"
   },
   "packageManager": "yarn@1.22.22"
 }

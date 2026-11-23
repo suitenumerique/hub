@@ -33,21 +33,21 @@
     "test": "yarn app:test"
   },
   "devDependencies": {
-    "prettier": "3.8.3"
+    "prettier": "3.10.1"
   },
   "resolutions": {
-    "@next/eslint-plugin-next": "15.1.7",
-    "@types/node": "24.12.0",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
-    "eslint": "9.20.1",
-    "eslint-config-next": "15.1.7",
-    "glob": "13.0.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "serialize-javascript": "7.0.5",
-    "typescript": "5.9.3",
-    "wrap-ansi": "10.0.0"
+    "@next/eslint-plugin-next": "16.4.6",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint": "10.15.0",
+    "eslint-config-next": "16.4.6",
+    "glob": "14.0.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "serialize-javascript": "7.1.4",
+    "typescript": "7.0.2",
+    "wrap-ansi": "10.0.2"
   },
   "packageManager": "yarn@1.22.22"
 }
