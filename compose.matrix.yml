@@ -65,7 +65,7 @@ services:
         condition: service_started
 
   element:
-    image: vectorim/element-web:v1.12.15
+    image: vectorim/element-web:v1.12.35
     # The image's nginx renders `listen ${ELEMENT_WEB_PORT}` (default 80); pin it
     # to 8080 so it matches the published port and the healthcheck below.
     environment:
