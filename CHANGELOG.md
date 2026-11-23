@@ -6,6 +6,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-11-23
+
 ### Added
 
 - ✨(frontend) Add a dark theme. It follows the system until a theme is picked
@@ -420,5 +422,6 @@ and this project adheres to
   one of its threads was read on Tchap: clear the thread counts its receipt
   already covers once the thread has loaded.
 
-[unreleased]: https://github.com/suitenumerique/hub/compare/v0.1.0...main
+[unreleased]: https://github.com/suitenumerique/hub/compare/v0.2.0...main
+[v0.2.0]: https://github.com/suitenumerique/hub/releases/v0.2.0
 [v0.1.0]: https://github.com/suitenumerique/hub/releases/v0.1.0
