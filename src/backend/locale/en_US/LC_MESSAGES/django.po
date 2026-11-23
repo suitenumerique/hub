@@ -2,8 +2,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: lasuite-hub\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-07 11:46+0000\n"
-"PO-Revision-Date: 2026-10-30 08:13\n"
+"POT-Creation-Date: 2026-11-06 10:48+0000\n"
+"PO-Revision-Date: 2026-11-23 12:34\n"
 "Last-Translator: \n"
 "Language-Team: English\n"
 "Language: en_US\n"
@@ -30,7 +30,7 @@ msgid "Important dates"
 msgstr ""
 
 #: core/apps.py:12
-msgid "Hub core application"
+msgid "Core application"
 msgstr ""
 
 #: core/models.py:40
@@ -118,7 +118,7 @@ msgid "active"
 msgstr ""
 
 #: core/models.py:152
-msgid "Whether this user should be treated as active. Unselect this instead of deleting hub."
+msgid "Whether this user should be treated as active. Unselect this instead of deleting users."
 msgstr ""
 
 #: core/models.py:164
