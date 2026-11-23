@@ -47,7 +47,7 @@ services:
       - ./data/rustfs:/data
 
   createbuckets:
-    image: amazon/aws-cli:2.41.1
+    image: amazon/aws-cli:2.42.1
     environment:
       - AWS_ACCESS_KEY_ID=hub
       - AWS_SECRET_ACCESS_KEY=password
