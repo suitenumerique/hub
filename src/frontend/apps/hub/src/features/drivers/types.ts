@@ -304,9 +304,15 @@ export type ChatComposedMessage = {
 };
 
 export type ChatMessage = {
+  /**
+   * `encrypted-pending`: being decrypted. `encrypted-missing-key`: its key has
+   * not been received yet, a key backup restore can still bring it.
+   * `encrypted-unavailable` / `encrypted-error`: other decryption failures.
+   */
   availability?:
     | "clear"
     | "encrypted-pending"
+    | "encrypted-missing-key"
     | "encrypted-unavailable"
     | "encrypted-error"
     | "unsupported-media";

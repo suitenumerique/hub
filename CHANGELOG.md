@@ -75,6 +75,9 @@ and this project adheres to
   thread, as in Element, instead of moving it into that thread. #154
 - 🐛(frontend) Show a chat as read once opened when its only unread message
   was deleted before being read: it stayed unread in the list. #155
+- 🐛(frontend) Show the decryption shield on messages whose key was missing
+  while the key backup is restored, and while a key that just arrived
+  decrypts them: they went straight from the failure text to the message. #104
 
 ## [v0.1.0] - 2026-11-11
 

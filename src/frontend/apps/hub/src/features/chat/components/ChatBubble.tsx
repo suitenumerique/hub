@@ -36,6 +36,7 @@ import { formatChatGroupTimestamp } from "../formatTimestamp";
 import { isOptimisticThreadId } from "../hooks/chatCompositionCache";
 import { useDownloadChatAttachment } from "../hooks/useChatAttachmentActions";
 import { useChatCompositionSupport } from "../hooks/useChatCompositionSupport";
+import { useIsRestoringKeys } from "../hooks/useChatSecurity";
 import { useDeleteChatMessage } from "../hooks/useDeleteChatMessage";
 import { useEnsureMessageDecrypted } from "../hooks/useEnsureMessageDecrypted";
 import { useReportMessageShown } from "../hooks/useReportMessageShown";
@@ -316,6 +317,8 @@ export const ChatBubble = (props: ChatBubbleProps) => {
     threadId,
   } = props;
   useEnsureMessageDecrypted(chatRef, messageId, props.availability);
+  const isKeyMissing = props.availability === "encrypted-missing-key";
+  const isRestoringKeys = useIsRestoringKeys(chatRef.accountId, isKeyMissing);
   useReportMessageShown(chatRef, messageId);
   const { openThread, openDraftThread } = useChatPanel();
   const { startEditing, retryFailedMessage, discardFailedMessage } =
@@ -583,9 +586,12 @@ export const ChatBubble = (props: ChatBubbleProps) => {
       />
     </>
   );
-  // A message still being decrypted shows a shield, without any actions.
+  // A message still being decrypted shows a shield, without any actions. So
+  // does one whose missing key the key backup being restored may bring.
   const isDecrypting =
-    !props.isDeleted && props.availability === "encrypted-pending";
+    !props.isDeleted &&
+    (props.availability === "encrypted-pending" ||
+      (isKeyMissing && isRestoringKeys));
   // Neither a deleted message nor one still being decrypted shows its text.
   const isEdited = Boolean(props.isEdited) && !props.isDeleted && !isDecrypting;
   const renderContent = () => {
