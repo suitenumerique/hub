@@ -4,86 +4,47 @@
 
 ### General configuration
 
-| Name                                                                                | Description                                                                | Value                                                              |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `image.repository`                                                                  | Repository to use to pull hub's container image                        | `lasuite/hub-backend`                                          |
-| `image.tag`                                                                         | hub's container tag                                                    | `latest`                                                           |
-| `image.pullPolicy`                                                                  | Container image pull policy                                                | `IfNotPresent`                                                     |
-| `image.credentials.username`                                                        | Username for container registry authentication                             |                                                                    |
-| `image.credentials.password`                                                        | Password for container registry authentication                             |                                                                    |
-| `image.credentials.registry`                                                        | Registry url for which the credentials are specified                       |                                                                    |
-| `image.credentials.name`                                                            | Name of the generated secret for imagePullSecrets                          |                                                                    |
-| `nameOverride`                                                                      | Override the chart name                                                    | `""`                                                               |
-| `fullnameOverride`                                                                  | Override the full application name                                         | `""`                                                               |
-| `ingress.enabled`                                                                   | whether to enable the Ingress or not                                       | `false`                                                            |
-| `ingress.className`                                                                 | IngressClass to use for the Ingress                                        | `nil`                                                              |
-| `ingress.host`                                                                      | Host for the Ingress                                                       | `hub.example.com`                                              |
-| `ingress.path`                                                                      | Path to use for the Ingress                                                | `/`                                                                |
-| `ingress.hosts`                                                                     | Additional host to configure for the Ingress                               | `[]`                                                               |
-| `ingress.tls.enabled`                                                               | Whether to enable TLS for the Ingress                                      | `true`                                                             |
-| `ingress.tls.secretName`                                                            | Secret name for TLS config                                                 | `nil`                                                              |
-| `ingress.tls.additional[].secretName`                                               | Secret name for additional TLS config                                      |                                                                    |
-| `ingress.tls.additional[].hosts[]`                                                  | Hosts for additional TLS config                                            |                                                                    |
-| `ingress.customBackends`                                                            | Add custom backends to ingress                                             | `[]`                                                               |
-| `ingressCollaborationWS.enabled`                                                    | whether to enable the Ingress or not                                       | `false`                                                            |
-| `ingressCollaborationWS.className`                                                  | IngressClass to use for the Ingress                                        | `nil`                                                              |
-| `ingressCollaborationWS.host`                                                       | Host for the Ingress                                                       | `hub.example.com`                                              |
-| `ingressCollaborationWS.path`                                                       | Path to use for the Ingress                                                | `/collaboration/ws/`                                               |
-| `ingressCollaborationWS.hosts`                                                      | Additional host to configure for the Ingress                               | `[]`                                                               |
-| `ingressCollaborationWS.tls.enabled`                                                | Whether to enable TLS for the Ingress                                      | `true`                                                             |
-| `ingressCollaborationWS.tls.secretName`                                             | Secret name for TLS config                                                 | `nil`                                                              |
-| `ingressCollaborationWS.tls.additional[].secretName`                                | Secret name for additional TLS config                                      |                                                                    |
-| `ingressCollaborationWS.tls.additional[].hosts[]`                                   | Hosts for additional TLS config                                            |                                                                    |
-| `ingressCollaborationWS.customBackends`                                             | Add custom backends to ingress                                             | `[]`                                                               |
-| `ingressCollaborationWS.annotations.nginx.ingress.kubernetes.io/enable-websocket`   |                                                                            | `true`                                                             |
-| `ingressCollaborationWS.annotations.nginx.ingress.kubernetes.io/proxy-read-timeout` |                                                                            | `86400`                                                            |
-| `ingressCollaborationWS.annotations.nginx.ingress.kubernetes.io/proxy-send-timeout` |                                                                            | `86400`                                                            |
-| `ingressCollaborationWS.annotations.nginx.ingress.kubernetes.io/upstream-hash-by`   |                                                                            | `$arg_room`                                                        |
-| `ingressRedirects.enabled`                                                          | whether to enable the Ingress Redirects or not                             | `false`                                                            |
-| `ingressRedirects.className`                                                        | IngressClass to use for the Ingress Redirects                              | `nil`                                                              |
-| `ingressRedirects.host`                                                             | Host for the Ingress Redirects                                             | `hub.example.com`                                              |
-| `ingressRedirects.tls.enabled`                                                      | Whether to enable TLS for the Ingress Redirects                            | `true`                                                             |
-| `ingressRedirects.tls.secretName`                                                   | Secret name for TLS config                                                 | `nil`                                                              |
-| `ingressRedirects.tls.additional[].secretName`                                      | Secret name for additional TLS config                                      |                                                                    |
-| `ingressRedirects.tls.additional[].hosts[]`                                         | Hosts for additional TLS config                                            |                                                                    |
-| `ingressRedirects.rules`                                                            | Rules for the Ingress Redirects                                            | `[]`                                                               |
-| `ingressCollaborationApi.enabled`                                                   | whether to enable the Ingress or not                                       | `false`                                                            |
-| `ingressCollaborationApi.className`                                                 | IngressClass to use for the Ingress                                        | `nil`                                                              |
-| `ingressCollaborationApi.host`                                                      | Host for the Ingress                                                       | `hub.example.com`                                              |
-| `ingressCollaborationApi.path`                                                      | Path to use for the Ingress                                                | `/collaboration/api/`                                              |
-| `ingressCollaborationApi.hosts`                                                     | Additional host to configure for the Ingress                               | `[]`                                                               |
-| `ingressCollaborationApi.tls.enabled`                                               | Whether to enable TLS for the Ingress                                      | `true`                                                             |
-| `ingressCollaborationApi.tls.secretName`                                            | Secret name for TLS config                                                 | `nil`                                                              |
-| `ingressCollaborationApi.tls.additional[].secretName`                               | Secret name for additional TLS config                                      |                                                                    |
-| `ingressCollaborationApi.tls.additional[].hosts[]`                                  | Hosts for additional TLS config                                            |                                                                    |
-| `ingressCollaborationApi.customBackends`                                            | Add custom backends to ingress                                             | `[]`                                                               |
-| `ingressCollaborationApi.annotations.nginx.ingress.kubernetes.io/upstream-hash-by`  |                                                                            | `$arg_room`                                                        |
-| `ingressAdmin.enabled`                                                              | whether to enable the Ingress or not                                       | `false`                                                            |
-| `ingressAdmin.className`                                                            | IngressClass to use for the Ingress                                        | `nil`                                                              |
-| `ingressAdmin.host`                                                                 | Host for the Ingress                                                       | `hub.example.com`                                              |
-| `ingressAdmin.path`                                                                 | Path to use for the Ingress                                                | `/admin`                                                           |
-| `ingressAdmin.hosts`                                                                | Additional host to configure for the Ingress                               | `[]`                                                               |
-| `ingressAdmin.tls.enabled`                                                          | Whether to enable TLS for the Ingress                                      | `true`                                                             |
-| `ingressAdmin.tls.secretName`                                                       | Secret name for TLS config                                                 | `nil`                                                              |
-| `ingressAdmin.tls.additional[].secretName`                                          | Secret name for additional TLS config                                      |                                                                    |
-| `ingressAdmin.tls.additional[].hosts[]`                                             | Hosts for additional TLS config                                            |                                                                    |
-| `ingressMedia.enabled`                                                              | whether to enable the Ingress or not                                       | `false`                                                            |
-| `ingressMedia.className`                                                            | IngressClass to use for the Ingress                                        | `nil`                                                              |
-| `ingressMedia.host`                                                                 | Host for the Ingress                                                       | `hub.example.com`                                              |
-| `ingressMedia.path`                                                                 | Path to use for the Ingress                                                | `/media/(.*)`                                                      |
-| `ingressMedia.hosts`                                                                | Additional host to configure for the Ingress                               | `[]`                                                               |
-| `ingressMedia.tls.enabled`                                                          | Whether to enable TLS for the Ingress                                      | `true`                                                             |
-| `ingressMedia.tls.secretName`                                                       | Secret name for TLS config                                                 | `nil`                                                              |
-| `ingressMedia.tls.additional[].secretName`                                          | Secret name for additional TLS config                                      |                                                                    |
-| `ingressMedia.tls.additional[].hosts[]`                                             | Hosts for additional TLS config                                            |                                                                    |
-| `ingressMedia.annotations.nginx.ingress.kubernetes.io/auth-url`                     |                                                                            | `https://hub.example.com/api/v1.0/documents/media-auth/`       |
-| `ingressMedia.annotations.nginx.ingress.kubernetes.io/auth-response-headers`        |                                                                            | `Authorization, X-Amz-Date, X-Amz-Content-SHA256`                  |
-| `ingressMedia.annotations.nginx.ingress.kubernetes.io/upstream-vhost`               |                                                                            | `minio.hub.svc.cluster.local:9000`                             |
-| `ingressMedia.annotations.nginx.ingress.kubernetes.io/configuration-snippet`        |                                                                            | `add_header Content-Security-Policy "default-src 'none'" always;
-` |
-| `serviceMedia.host`                                                                 | Hostname of the media storage backend (S3/MinIO) used by the media ingress | `minio.hub.svc.cluster.local`                                  |
-| `serviceMedia.port`                                                                 | Port of the media storage backend                                          | `9000`                                                             |
-| `serviceMedia.annotations`                                                          | Annotations to add to the media ExternalName Service                       | `{}`                                                               |
+| Name                                           | Description                                                                | Value                         |
+| ---------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------- |
+| `image.repository`                             | Repository to use to pull hub's container image                            | `lasuite/hub-backend`         |
+| `image.tag`                                    | hub's container tag                                                        | `latest`                      |
+| `image.pullPolicy`                             | Container image pull policy                                                | `IfNotPresent`                |
+| `image.credentials.username`                   | Username for container registry authentication                             |                               |
+| `image.credentials.password`                   | Password for container registry authentication                             |                               |
+| `image.credentials.registry`                   | Registry url for which the credentials are specified                       |                               |
+| `image.credentials.name`                       | Name of the generated secret for imagePullSecrets                          |                               |
+| `nameOverride`                                 | Override the chart name                                                    | `""`                          |
+| `fullnameOverride`                             | Override the full application name                                         | `""`                          |
+| `ingress.enabled`                              | whether to enable the Ingress or not                                       | `false`                       |
+| `ingress.className`                            | IngressClass to use for the Ingress                                        | `nil`                         |
+| `ingress.host`                                 | Host for the Ingress                                                       | `hub.example.com`             |
+| `ingress.path`                                 | Path to use for the Ingress                                                | `/`                           |
+| `ingress.hosts`                                | Additional host to configure for the Ingress                               | `[]`                          |
+| `ingress.tls.enabled`                          | Whether to enable TLS for the Ingress                                      | `true`                        |
+| `ingress.tls.secretName`                       | Secret name for TLS config                                                 | `nil`                         |
+| `ingress.tls.additional[].secretName`          | Secret name for additional TLS config                                      |                               |
+| `ingress.tls.additional[].hosts[]`             | Hosts for additional TLS config                                            |                               |
+| `ingress.customBackends`                       | Add custom backends to ingress                                             | `[]`                          |
+| `ingressRedirects.enabled`                     | whether to enable the Ingress Redirects or not                             | `false`                       |
+| `ingressRedirects.className`                   | IngressClass to use for the Ingress Redirects                              | `nil`                         |
+| `ingressRedirects.host`                        | Host for the Ingress Redirects                                             | `hub.example.com`             |
+| `ingressRedirects.tls.enabled`                 | Whether to enable TLS for the Ingress Redirects                            | `true`                        |
+| `ingressRedirects.tls.secretName`              | Secret name for TLS config                                                 | `nil`                         |
+| `ingressRedirects.tls.additional[].secretName` | Secret name for additional TLS config                                      |                               |
+| `ingressRedirects.tls.additional[].hosts[]`    | Hosts for additional TLS config                                            |                               |
+| `ingressRedirects.rules`                       | Rules for the Ingress Redirects                                            | `[]`                          |
+| `ingressAdmin.enabled`                         | whether to enable the Ingress or not                                       | `false`                       |
+| `ingressAdmin.className`                       | IngressClass to use for the Ingress                                        | `nil`                         |
+| `ingressAdmin.host`                            | Host for the Ingress                                                       | `hub.example.com`             |
+| `ingressAdmin.path`                            | Path to use for the Ingress                                                | `/admin`                      |
+| `ingressAdmin.hosts`                           | Additional host to configure for the Ingress                               | `[]`                          |
+| `ingressAdmin.tls.enabled`                     | Whether to enable TLS for the Ingress                                      | `true`                        |
+| `ingressAdmin.tls.secretName`                  | Secret name for TLS config                                                 | `nil`                         |
+| `ingressAdmin.tls.additional[].secretName`     | Secret name for additional TLS config                                      |                               |
+| `ingressAdmin.tls.additional[].hosts[]`        | Hosts for additional TLS config                                            |                               |
+| `serviceMedia.host`                            | Hostname of the media storage backend (S3/MinIO) used by the media ingress | `minio.hub.svc.cluster.local` |
+| `serviceMedia.port`                            | Port of the media storage backend                                          | `9000`                        |
+| `serviceMedia.annotations`                     | Annotations to add to the media ExternalName Service                       | `{}`                          |
 
 ### backend
 
@@ -150,72 +111,72 @@
 | `backend.serviceAccountName`                          | Optional service account name to use for backend pods                                     | `nil`                                                                                                                                                                                                                                                                                 |
 | `backend.themeCustomization.enabled`                  | Enable theme customization                                                                | `false`                                                                                                                                                                                                                                                                               |
 | `backend.themeCustomization.file_content`             | Content of the theme customization file. Must be a json object.                           | `""`                                                                                                                                                                                                                                                                                  |
-| `backend.themeCustomization.mount_path`               | Path where the customization file will be mounted in the backend deployment.              | `/app/hub/configuration/theme`                                                                                                                                                                                                                                                    |
-| `backend.celery.replicas`                             | Amount of celery replicas                                                                 | `1`                                                                                                                                                                                                                                                                                   |
+| `backend.themeCustomization.mount_path`               | Path where the customization file will be mounted in the backend deployment.              | `/app/hub/configuration/theme`                                                                                                                                                                                                                                                        |
+| `backend.celery.replicas`                             | Amount of celery replicas                                                                 | `0`                                                                                                                                                                                                                                                                                   |
 | `backend.celery.command`                              | Override the celery container command                                                     | `[]`                                                                                                                                                                                                                                                                                  |
-| `backend.celery.args`                                 | Override the celery container args                                                        | `["celery","-A","hub.celery_app","worker","-l","INFO","-n","hub@%h"]`                                                                                                                                                                                                         |
+| `backend.celery.args`                                 | Override the celery container args                                                        | `["celery","-A","hub.celery_app","worker","-l","INFO","-n","hub@%h"]`                                                                                                                                                                                                                 |
 | `backend.celery.resources`                            | Resource requirements for the celery container                                            | `{}`                                                                                                                                                                                                                                                                                  |
-| `backend.celery.probes.liveness.exec.command`         | Override the celery container liveness probe command                                      | `["/bin/sh","-c","celery -A hub.celery_app inspect ping -d hub@$HOSTNAME"]`                                                                                                                                                                                                   |
+| `backend.celery.probes.liveness.exec.command`         | Override the celery container liveness probe command                                      | `["/bin/sh","-c","celery -A hub.celery_app inspect ping -d hub@$HOSTNAME"]`                                                                                                                                                                                                           |
 | `backend.celery.probes.liveness.initialDelaySeconds`  | Initial delay for the celery container liveness probe                                     | `60`                                                                                                                                                                                                                                                                                  |
 | `backend.celery.probes.liveness.timeoutSeconds`       | Timeout for the celery container liveness probe                                           | `5`                                                                                                                                                                                                                                                                                   |
-| `backend.celery.probes.readiness.exec.command`        | Override the celery container readiness probe command                                     | `["/bin/sh","-c","celery -A hub.celery_app inspect ping -d hub@$HOSTNAME"]`                                                                                                                                                                                                   |
+| `backend.celery.probes.readiness.exec.command`        | Override the celery container readiness probe command                                     | `["/bin/sh","-c","celery -A hub.celery_app inspect ping -d hub@$HOSTNAME"]`                                                                                                                                                                                                           |
 | `backend.celery.probes.readiness.initialDelaySeconds` | Initial delay for the celery container readiness probe                                    | `15`                                                                                                                                                                                                                                                                                  |
 | `backend.celery.probes.readiness.timeoutSeconds`      | Timeout for the celery container readiness probe                                          | `5`                                                                                                                                                                                                                                                                                   |
 | `backend.celery.envVars`                              | Celery worker specific environment variables (not shared with the backend web deployment) |                                                                                                                                                                                                                                                                                       |
 
 ### frontend
 
-| Name                                                   | Description                                                                         | Value                      |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------- | -------------------------- |
-| `frontend.image.repository`                            | Repository to use to pull hub's frontend container image                        | `lasuite/hub-frontend` |
-| `frontend.image.tag`                                   | hub's frontend container tag                                                    | `latest`                   |
-| `frontend.image.pullPolicy`                            | frontend container image pull policy                                                | `IfNotPresent`             |
-| `frontend.command`                                     | Override the frontend container command                                             | `[]`                       |
-| `frontend.args`                                        | Override the frontend container args                                                | `[]`                       |
-| `frontend.replicas`                                    | Amount of frontend replicas                                                         | `3`                        |
-| `frontend.shareProcessNamespace`                       | Enable share process namespace between containers                                   | `false`                    |
-| `frontend.sidecars`                                    | Add sidecars containers to frontend deployment                                      | `[]`                       |
-| `frontend.securityContext.allowPrivilegeEscalation`    | Whether to allow privilege escalation for the frontend container                    | `false`                    |
-| `frontend.securityContext.capabilities.drop`           | List of capabilities to drop for the frontend container                             | `["ALL"]`                  |
-| `frontend.securityContext.runAsNonRoot`                | Whether to run the frontend container as a non-root user                            | `true`                     |
-| `frontend.securityContext.seccompProfile.type`         | Seccomp profile type for the frontend container                                     | `RuntimeDefault`           |
-| `frontend.envVars`                                     | Configure frontend container environment variables                                  | `undefined`                |
-| `frontend.envVars.BY_VALUE`                            | Example environment variable by setting value directly                              |                            |
-| `frontend.envVars.FROM_CONFIGMAP.configMapKeyRef.name` | Name of a ConfigMap when configuring env vars from a ConfigMap                      |                            |
-| `frontend.envVars.FROM_CONFIGMAP.configMapKeyRef.key`  | Key within a ConfigMap when configuring env vars from a ConfigMap                   |                            |
-| `frontend.envVars.FROM_SECRET.secretKeyRef.name`       | Name of a Secret when configuring env vars from a Secret                            |                            |
-| `frontend.envVars.FROM_SECRET.secretKeyRef.key`        | Key within a Secret when configuring env vars from a Secret                         |                            |
-| `frontend.podAnnotations`                              | Annotations to add to the frontend Pod                                              | `{}`                       |
-| `frontend.dpAnnotations`                               | Annotations to add to the frontend Deployment                                       | `{}`                       |
-| `frontend.service.type`                                | frontend Service type                                                               | `ClusterIP`                |
-| `frontend.service.port`                                | frontend Service listening port                                                     | `80`                       |
-| `frontend.service.targetPort`                          | frontend container listening port                                                   | `8080`                     |
-| `frontend.service.annotations`                         | Annotations to add to the frontend Service                                          | `{}`                       |
-| `frontend.probes`                                      | Configure probe for frontend                                                        | `{}`                       |
-| `frontend.probes.liveness.path`                        | Configure path for frontend HTTP liveness probe                                     |                            |
-| `frontend.probes.liveness.targetPort`                  | Configure port for frontend HTTP liveness probe                                     |                            |
-| `frontend.probes.liveness.initialDelaySeconds`         | Configure initial delay for frontend liveness probe                                 |                            |
-| `frontend.probes.liveness.initialDelaySeconds`         | Configure timeout for frontend liveness probe                                       |                            |
-| `frontend.probes.startup.path`                         | Configure path for frontend HTTP startup probe                                      |                            |
-| `frontend.probes.startup.targetPort`                   | Configure port for frontend HTTP startup probe                                      |                            |
-| `frontend.probes.startup.initialDelaySeconds`          | Configure initial delay for frontend startup probe                                  |                            |
-| `frontend.probes.startup.initialDelaySeconds`          | Configure timeout for frontend startup probe                                        |                            |
-| `frontend.probes.readiness.path`                       | Configure path for frontend HTTP readiness probe                                    |                            |
-| `frontend.probes.readiness.targetPort`                 | Configure port for frontend HTTP readiness probe                                    |                            |
-| `frontend.probes.readiness.initialDelaySeconds`        | Configure initial delay for frontend readiness probe                                |                            |
-| `frontend.probes.readiness.initialDelaySeconds`        | Configure timeout for frontend readiness probe                                      |                            |
-| `frontend.resources`                                   | Resource requirements for the frontend container                                    | `{}`                       |
-| `frontend.nodeSelector`                                | Node selector for the frontend Pod                                                  | `{}`                       |
-| `frontend.tolerations`                                 | Tolerations for the frontend Pod                                                    | `[]`                       |
-| `frontend.affinity`                                    | Affinity for the frontend Pod                                                       | `{}`                       |
-| `frontend.persistence`                                 | Additional volumes to create and mount on the frontend. Used for debugging purposes | `{}`                       |
-| `frontend.persistence.volume-name.size`                | Size of the additional volume                                                       |                            |
-| `frontend.persistence.volume-name.type`                | Type of the additional volume, persistentVolumeClaim or emptyDir                    |                            |
-| `frontend.persistence.volume-name.mountPath`           | Path where the volume should be mounted to                                          |                            |
-| `frontend.extraVolumeMounts`                           | Additional volumes to mount on the frontend.                                        | `[]`                       |
-| `frontend.extraVolumes`                                | Additional volumes to mount on the frontend.                                        | `[]`                       |
-| `frontend.pdb.enabled`                                 | Enable pdb on frontend                                                              | `true`                     |
-| `frontend.serviceAccountName`                          | Optional service account name to use for frontend pods                              | `nil`                      |
+| Name                                                   | Description                                                                         | Value                  |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------- |
+| `frontend.image.repository`                            | Repository to use to pull hub's frontend container image                            | `lasuite/hub-frontend` |
+| `frontend.image.tag`                                   | hub's frontend container tag                                                        | `latest`               |
+| `frontend.image.pullPolicy`                            | frontend container image pull policy                                                | `IfNotPresent`         |
+| `frontend.command`                                     | Override the frontend container command                                             | `[]`                   |
+| `frontend.args`                                        | Override the frontend container args                                                | `[]`                   |
+| `frontend.replicas`                                    | Amount of frontend replicas                                                         | `3`                    |
+| `frontend.shareProcessNamespace`                       | Enable share process namespace between containers                                   | `false`                |
+| `frontend.sidecars`                                    | Add sidecars containers to frontend deployment                                      | `[]`                   |
+| `frontend.securityContext.allowPrivilegeEscalation`    | Whether to allow privilege escalation for the frontend container                    | `false`                |
+| `frontend.securityContext.capabilities.drop`           | List of capabilities to drop for the frontend container                             | `["ALL"]`              |
+| `frontend.securityContext.runAsNonRoot`                | Whether to run the frontend container as a non-root user                            | `true`                 |
+| `frontend.securityContext.seccompProfile.type`         | Seccomp profile type for the frontend container                                     | `RuntimeDefault`       |
+| `frontend.envVars`                                     | Configure frontend container environment variables                                  | `undefined`            |
+| `frontend.envVars.BY_VALUE`                            | Example environment variable by setting value directly                              |                        |
+| `frontend.envVars.FROM_CONFIGMAP.configMapKeyRef.name` | Name of a ConfigMap when configuring env vars from a ConfigMap                      |                        |
+| `frontend.envVars.FROM_CONFIGMAP.configMapKeyRef.key`  | Key within a ConfigMap when configuring env vars from a ConfigMap                   |                        |
+| `frontend.envVars.FROM_SECRET.secretKeyRef.name`       | Name of a Secret when configuring env vars from a Secret                            |                        |
+| `frontend.envVars.FROM_SECRET.secretKeyRef.key`        | Key within a Secret when configuring env vars from a Secret                         |                        |
+| `frontend.podAnnotations`                              | Annotations to add to the frontend Pod                                              | `{}`                   |
+| `frontend.dpAnnotations`                               | Annotations to add to the frontend Deployment                                       | `{}`                   |
+| `frontend.service.type`                                | frontend Service type                                                               | `ClusterIP`            |
+| `frontend.service.port`                                | frontend Service listening port                                                     | `80`                   |
+| `frontend.service.targetPort`                          | frontend container listening port                                                   | `8080`                 |
+| `frontend.service.annotations`                         | Annotations to add to the frontend Service                                          | `{}`                   |
+| `frontend.probes`                                      | Configure probe for frontend                                                        | `{}`                   |
+| `frontend.probes.liveness.path`                        | Configure path for frontend HTTP liveness probe                                     |                        |
+| `frontend.probes.liveness.targetPort`                  | Configure port for frontend HTTP liveness probe                                     |                        |
+| `frontend.probes.liveness.initialDelaySeconds`         | Configure initial delay for frontend liveness probe                                 |                        |
+| `frontend.probes.liveness.initialDelaySeconds`         | Configure timeout for frontend liveness probe                                       |                        |
+| `frontend.probes.startup.path`                         | Configure path for frontend HTTP startup probe                                      |                        |
+| `frontend.probes.startup.targetPort`                   | Configure port for frontend HTTP startup probe                                      |                        |
+| `frontend.probes.startup.initialDelaySeconds`          | Configure initial delay for frontend startup probe                                  |                        |
+| `frontend.probes.startup.initialDelaySeconds`          | Configure timeout for frontend startup probe                                        |                        |
+| `frontend.probes.readiness.path`                       | Configure path for frontend HTTP readiness probe                                    |                        |
+| `frontend.probes.readiness.targetPort`                 | Configure port for frontend HTTP readiness probe                                    |                        |
+| `frontend.probes.readiness.initialDelaySeconds`        | Configure initial delay for frontend readiness probe                                |                        |
+| `frontend.probes.readiness.initialDelaySeconds`        | Configure timeout for frontend readiness probe                                      |                        |
+| `frontend.resources`                                   | Resource requirements for the frontend container                                    | `{}`                   |
+| `frontend.nodeSelector`                                | Node selector for the frontend Pod                                                  | `{}`                   |
+| `frontend.tolerations`                                 | Tolerations for the frontend Pod                                                    | `[]`                   |
+| `frontend.affinity`                                    | Affinity for the frontend Pod                                                       | `{}`                   |
+| `frontend.persistence`                                 | Additional volumes to create and mount on the frontend. Used for debugging purposes | `{}`                   |
+| `frontend.persistence.volume-name.size`                | Size of the additional volume                                                       |                        |
+| `frontend.persistence.volume-name.type`                | Type of the additional volume, persistentVolumeClaim or emptyDir                    |                        |
+| `frontend.persistence.volume-name.mountPath`           | Path where the volume should be mounted to                                          |                        |
+| `frontend.extraVolumeMounts`                           | Additional volumes to mount on the frontend.                                        | `[]`                   |
+| `frontend.extraVolumes`                                | Additional volumes to mount on the frontend.                                        | `[]`                   |
+| `frontend.pdb.enabled`                                 | Enable pdb on frontend                                                              | `true`                 |
+| `frontend.serviceAccountName`                          | Optional service account name to use for frontend pods                              | `nil`                  |
 
 ### posthog
 
@@ -223,7 +184,7 @@
 | -------------------------------------- | ----------------------------------------------------------- | ------------------------- |
 | `posthog.ingress.enabled`              | Enable or disable the ingress resource creation             | `false`                   |
 | `posthog.ingress.className`            | Kubernetes ingress class name to use (e.g., nginx, traefik) | `nil`                     |
-| `posthog.ingress.host`                 | Primary hostname for the ingress resource                   | `hub.example.com`     |
+| `posthog.ingress.host`                 | Primary hostname for the ingress resource                   | `hub.example.com`         |
 | `posthog.ingress.path`                 | URL path prefix for the ingress routes (e.g., /)            | `/`                       |
 | `posthog.ingress.hosts`                | Additional hostnames array to be included in the ingress    | `[]`                      |
 | `posthog.ingress.tls.enabled`          | Enable or disable TLS/HTTPS for the ingress                 | `true`                    |
@@ -232,7 +193,7 @@
 | `posthog.ingress.annotations`          | Additional Kubernetes annotations to apply to the ingress   | `{}`                      |
 | `posthog.ingressAssets.enabled`        | Enable or disable the ingress resource creation             | `false`                   |
 | `posthog.ingressAssets.className`      | Kubernetes ingress class name to use (e.g., nginx, traefik) | `nil`                     |
-| `posthog.ingressAssets.host`           | Primary hostname for the ingress resource                   | `hub.example.com`     |
+| `posthog.ingressAssets.host`           | Primary hostname for the ingress resource                   | `hub.example.com`         |
 | `posthog.ingressAssets.paths`          | URL paths prefix for the ingress routes (e.g., /static)     | `["/static","/array"]`    |
 | `posthog.ingressAssets.hosts`          | Additional hostnames array to be included in the ingress    | `[]`                      |
 | `posthog.ingressAssets.tls.enabled`    | Enable or disable TLS/HTTPS for the ingress                 | `true`                    |
@@ -247,84 +208,3 @@
 | `posthog.assetsService.externalName`   | External service hostname when type is ExternalName         | `eu-assets.i.posthog.com` |
 | `posthog.assetsService.port`           | Port number for the service                                 | `443`                     |
 | `posthog.assetsService.annotations`    | Additional annotations to apply to the service              | `{}`                      |
-
-### yProvider
-
-| Name                                                    | Description                                                                          | Value                        |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------- |
-| `yProvider.image.repository`                            | Repository to use to pull hub's yProvider container image                        | `lasuite/hub-y-provider` |
-| `yProvider.image.tag`                                   | hub's yProvider container tag                                                    | `latest`                     |
-| `yProvider.image.pullPolicy`                            | yProvider container image pull policy                                                | `IfNotPresent`               |
-| `yProvider.command`                                     | Override the yProvider container command                                             | `[]`                         |
-| `yProvider.args`                                        | Override the yProvider container args                                                | `[]`                         |
-| `yProvider.replicas`                                    | Amount of yProvider replicas                                                         | `3`                          |
-| `yProvider.shareProcessNamespace`                       | Enable share process nameyProvider between containers                                | `false`                      |
-| `yProvider.sidecars`                                    | Add sidecars containers to yProvider deployment                                      | `[]`                         |
-| `yProvider.securityContext.allowPrivilegeEscalation`    | Whether to allow privilege escalation for the yProvider container                    | `false`                      |
-| `yProvider.securityContext.capabilities.drop`           | List of capabilities to drop for the yProvider container                             | `["ALL"]`                    |
-| `yProvider.securityContext.runAsNonRoot`                | Whether to run the yProvider container as a non-root user                            | `true`                       |
-| `yProvider.securityContext.seccompProfile.type`         | Seccomp profile type for the yProvider container                                     | `RuntimeDefault`             |
-| `yProvider.envVars`                                     | Configure yProvider container environment variables                                  | `undefined`                  |
-| `yProvider.envVars.BY_VALUE`                            | Example environment variable by setting value directly                               |                              |
-| `yProvider.envVars.FROM_CONFIGMAP.configMapKeyRef.name` | Name of a ConfigMap when configuring env vars from a ConfigMap                       |                              |
-| `yProvider.envVars.FROM_CONFIGMAP.configMapKeyRef.key`  | Key within a ConfigMap when configuring env vars from a ConfigMap                    |                              |
-| `yProvider.envVars.FROM_SECRET.secretKeyRef.name`       | Name of a Secret when configuring env vars from a Secret                             |                              |
-| `yProvider.envVars.FROM_SECRET.secretKeyRef.key`        | Key within a Secret when configuring env vars from a Secret                          |                              |
-| `yProvider.podAnnotations`                              | Annotations to add to the yProvider Pod                                              | `{}`                         |
-| `yProvider.dpAnnotations`                               | Annotations to add to the yProvider Deployment                                       | `{}`                         |
-| `yProvider.service.type`                                | yProvider Service type                                                               | `ClusterIP`                  |
-| `yProvider.service.port`                                | yProvider Service listening port                                                     | `443`                        |
-| `yProvider.service.targetPort`                          | yProvider container listening port                                                   | `4444`                       |
-| `yProvider.service.annotations`                         | Annotations to add to the yProvider Service                                          | `{}`                         |
-| `yProvider.probes.liveness.path`                        | Configure path for yProvider HTTP liveness probe                                     | `/ping`                      |
-| `yProvider.probes.liveness.initialDelaySeconds`         | Configure initial delay for yProvider liveness probe                                 | `10`                         |
-| `yProvider.probes.liveness.targetPort`                  | Configure port for yProvider HTTP liveness probe                                     |                              |
-| `yProvider.probes.liveness.timeoutSeconds`              | Configure timeout for yProvider liveness probe                                       |                              |
-| `yProvider.probes.startup.path`                         | Configure path for yProvider HTTP startup probe                                      |                              |
-| `yProvider.probes.startup.targetPort`                   | Configure port for yProvider HTTP startup probe                                      |                              |
-| `yProvider.probes.startup.initialDelaySeconds`          | Configure initial delay for yProvider startup probe                                  |                              |
-| `yProvider.probes.startup.timeoutSeconds`               | Configure timeout for yProvider startup probe                                        |                              |
-| `yProvider.probes.readiness.path`                       | Configure path for yProvider HTTP readiness probe                                    |                              |
-| `yProvider.probes.readiness.targetPort`                 | Configure port for yProvider HTTP readiness probe                                    |                              |
-| `yProvider.probes.readiness.initialDelaySeconds`        | Configure initial delay for yProvider readiness probe                                |                              |
-| `yProvider.probes.readiness.timeoutSeconds`             | Configure timeout for yProvider readiness probe                                      |                              |
-| `yProvider.resources`                                   | Resource requirements for the yProvider container                                    | `{}`                         |
-| `yProvider.nodeSelector`                                | Node selector for the yProvider Pod                                                  | `{}`                         |
-| `yProvider.tolerations`                                 | Tolerations for the yProvider Pod                                                    | `[]`                         |
-| `yProvider.affinity`                                    | Affinity for the yProvider Pod                                                       | `{}`                         |
-| `yProvider.persistence`                                 | Additional volumes to create and mount on the yProvider. Used for debugging purposes | `{}`                         |
-| `yProvider.persistence.volume-name.size`                | Size of the additional volume                                                        |                              |
-| `yProvider.persistence.volume-name.type`                | Type of the additional volume, persistentVolumeClaim or emptyDir                     |                              |
-| `yProvider.persistence.volume-name.mountPath`           | Path where the volume should be mounted to                                           |                              |
-| `yProvider.extraVolumeMounts`                           | Additional volumes to mount on the yProvider.                                        | `[]`                         |
-| `yProvider.extraVolumes`                                | Additional volumes to mount on the yProvider.                                        | `[]`                         |
-| `yProvider.pdb.enabled`                                 | Enable pdb on yProvider                                                              | `true`                       |
-| `yProvider.serviceAccountName`                          | Optional service account name to use for yProvider pods                              | `nil`                        |
-
-### docSpec
-
-| Name                                               | Description                                                     | Value                   |
-| -------------------------------------------------- | --------------------------------------------------------------- | ----------------------- |
-| `docSpec.enabled`                                  | Enable docSpec deployment                                       | `false`                 |
-| `docSpec.image.repository`                         | Repository to use to pull docSpec container image               | `ghcr.io/docspecio/api` |
-| `docSpec.image.tag`                                | docSpec container tag                                           | `2.6.3`                 |
-| `docSpec.image.pullPolicy`                         | docSpec container image pull policy                             | `IfNotPresent`          |
-| `docSpec.command`                                  | Override the docSpec container command                          | `[]`                    |
-| `docSpec.args`                                     | Override the docSpec container args                             | `[]`                    |
-| `docSpec.replicas`                                 | Amount of docSpec replicas                                      | `1`                     |
-| `docSpec.securityContext.allowPrivilegeEscalation` | Whether to allow privilege escalation for the docSpec container | `false`                 |
-| `docSpec.securityContext.capabilities.drop`        | List of capabilities to drop for the docSpec container          | `["ALL"]`               |
-| `docSpec.securityContext.runAsNonRoot`             | Whether to run the docSpec container as a non-root user         | `true`                  |
-| `docSpec.securityContext.seccompProfile.type`      | Seccomp profile type for the docSpec container                  | `RuntimeDefault`        |
-| `docSpec.envVars`                                  | Configure docSpec container environment variables               | `{}`                    |
-| `docSpec.service.type`                             | docSpec Service type                                            | `ClusterIP`             |
-| `docSpec.service.port`                             | docSpec Service listening port                                  | `4000`                  |
-| `docSpec.service.targetPort`                       | docSpec container listening port                                | `4000`                  |
-| `docSpec.probes.liveness.path`                     | Configure path for docSpec HTTP liveness probe                  | `/health`               |
-| `docSpec.probes.readiness.path`                    | Configure path for docSpec HTTP readiness probe                 | `/health`               |
-| `docSpec.resources`                                | docSpec resources                                               | `{}`                    |
-| `docSpec.nodeSelector`                             | Node selector for the docSpec Pod                               | `{}`                    |
-| `docSpec.tolerations`                              | Tolerations for the docSpec Pod                                 | `[]`                    |
-| `docSpec.affinity`                                 | Affinity for the docSpec Pod                                    | `{}`                    |
-| `docSpec.extraVolumeMounts`                        | Additional volumes to mount on docSpec                          | `[]`                    |
-| `docSpec.extraVolumes`                             | Additional volumes to mount on docSpec                          | `[]`                    |
