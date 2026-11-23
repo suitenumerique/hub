@@ -15,6 +15,7 @@ export const useEnsureMessageDecrypted = (
 ): void => {
   const isEncrypted =
     availability === "encrypted-pending" ||
+    availability === "encrypted-missing-key" ||
     availability === "encrypted-unavailable" ||
     availability === "encrypted-error";
   useEffect(() => {

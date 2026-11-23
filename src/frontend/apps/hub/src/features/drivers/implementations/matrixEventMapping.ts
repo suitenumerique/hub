@@ -1013,12 +1013,10 @@ export const matrixEventToChatMessage = (
   if (media) {
     visibleContent = media.caption;
   } else if (undecrypted) {
-    if (undecrypted.isDecryptionFailure()) {
-      availability =
-        undecrypted.decryptionFailureReason ===
-        DecryptionFailureCode.UNKNOWN_ERROR
-          ? "encrypted-error"
-          : "encrypted-unavailable";
+    // A failed event keeps its failure while the SDK retries it with a key
+    // that just arrived: it is being decrypted again.
+    if (undecrypted.isDecryptionFailure() && !undecrypted.isBeingDecrypted()) {
+      availability = failureAvailability(undecrypted.decryptionFailureReason);
       visibleContent = encryptedFailureText(undecrypted);
     } else {
       availability = "encrypted-pending";
@@ -1079,6 +1077,26 @@ export const matrixEventToChatMessage = (
     };
   }
   return message;
+};
+
+/** Failures that a key received later, from the key backup, can still fix. */
+const MISSING_KEY_FAILURES: ReadonlySet<DecryptionFailureCode> = new Set([
+  DecryptionFailureCode.MEGOLM_UNKNOWN_INBOUND_SESSION_ID,
+  DecryptionFailureCode.OLM_UNKNOWN_MESSAGE_INDEX,
+  DecryptionFailureCode.MEGOLM_KEY_WITHHELD,
+  DecryptionFailureCode.MEGOLM_KEY_WITHHELD_FOR_UNVERIFIED_DEVICE,
+  DecryptionFailureCode.HISTORICAL_MESSAGE_BACKUP_UNCONFIGURED,
+  DecryptionFailureCode.HISTORICAL_MESSAGE_WORKING_BACKUP,
+]);
+
+const failureAvailability = (
+  reason: DecryptionFailureCode | null,
+): ChatMessage["availability"] => {
+  if (reason === DecryptionFailureCode.UNKNOWN_ERROR) return "encrypted-error";
+  if (reason && MISSING_KEY_FAILURES.has(reason)) {
+    return "encrypted-missing-key";
+  }
+  return "encrypted-unavailable";
 };
 
 const encryptedFailureText = (event: MatrixEvent): string => {

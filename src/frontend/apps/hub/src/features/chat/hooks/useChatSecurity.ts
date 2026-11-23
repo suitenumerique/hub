@@ -27,6 +27,31 @@ export const useChatSecurity = (accountId: AccountId | null) => {
 };
 
 /**
+ * Whether the account is restoring its key backup, which decrypts the messages
+ * whose key was missing. Only `enabled` callers subscribe, and they re-render
+ * when the restore starts or ends, not on each of its progress steps.
+ */
+export const useIsRestoringKeys = (
+  accountId: AccountId | null,
+  enabled: boolean,
+): boolean => {
+  const entries = useDriverEntries();
+  const driver = enabled
+    ? entries.find((entry) => entry.accountId === accountId)?.driver
+    : undefined;
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      driver?.subscribeToSecurity(listener) ?? (() => {}),
+    [driver],
+  );
+  const getSnapshot = useCallback(
+    () => driver?.getSecuritySnapshot().history === "restoring",
+    [driver],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+};
+
+/**
  * `checking` while the conversation, its encryption policy or this device's
  * security are still being resolved: sending waits, but nothing asks the user
  * to set up encryption. `blocked` once that work proves this device cannot

@@ -104,6 +104,7 @@ export const MessageQuote = ({
     if (
       isError ||
       !message ||
+      message.availability === "encrypted-missing-key" ||
       message.availability === "encrypted-unavailable" ||
       message.availability === "encrypted-error"
     ) {
