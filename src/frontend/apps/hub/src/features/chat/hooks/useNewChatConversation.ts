@@ -84,6 +84,12 @@ export const useNewChatConversation = ({
     requestAnimationFrame(() => searchInputRef.current?.focus());
   }, []);
 
+  /** Back to an empty search, as after creating a group from it. */
+  const startOver = useCallback(() => {
+    reset();
+    focusSearch();
+  }, [focusSearch, reset]);
+
   const clearResolvedConversation = useCallback(() => {
     setCreatedChatRef(null);
     creationTargetRef.current = null;
@@ -226,6 +232,7 @@ export const useNewChatConversation = ({
     addUser,
     removeUser,
     confirmSelection,
+    startOver,
     chatRef,
     canUseChatTools: Boolean(chatRef),
     canComposeDraft,

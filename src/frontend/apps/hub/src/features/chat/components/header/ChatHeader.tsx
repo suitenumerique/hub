@@ -21,6 +21,7 @@ import { useChatQuickActions } from "@/features/chat/hooks/useChatQuickActions";
 import { useChatUnread } from "@/features/chat/hooks/useChatUnread";
 import { useRemoveChatFromHistory } from "@/features/chat/hooks/useRemoveChatFromHistory";
 import type { Chat } from "@/features/drivers/types";
+import { useGroupChatMenu } from "@/features/groups/hooks/useGroupChatMenu";
 
 import { ChatVisualAvatar } from "../ChatVisualAvatar";
 import { ChatMembersModal } from "./ChatMembersModal";
@@ -113,6 +114,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
     isSupported: canLeave,
   } = useRemoveChatFromHistory(chat.ref);
   const isInvitation = isInvitationChat(chat);
+  const groupMenu = useGroupChatMenu(chat);
 
   useEffect(() => {
     menu.setIsOpen(false);
@@ -140,8 +142,9 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         id: "members",
         label: t("Members"),
         icon: <Shared />,
-        callback: () => setIsMembersOpen(true),
+        callback: groupMenu.openMembers ?? (() => setIsMembersOpen(true)),
       },
+      ...groupMenu.items,
       ...quickActionsFor("chat_header_menu"),
       { type: "separator" },
       notifications,
@@ -154,7 +157,15 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         callback: () => setIsLeaveOpen(true),
       },
     ],
-    [canLeave, isLeaving, notifications, quickActionsFor, t],
+    [
+      canLeave,
+      groupMenu.items,
+      groupMenu.openMembers,
+      isLeaving,
+      notifications,
+      quickActionsFor,
+      t,
+    ],
   );
 
   const trigger = (
@@ -191,6 +202,7 @@ const ChatMenu = ({ chat }: { chat: Chat }) => {
         isOpen={isMembersOpen}
         onClose={() => setIsMembersOpen(false)}
       />
+      {groupMenu.modals}
       <LeaveConversationModal
         isOpen={isLeaveOpen}
         isPending={isLeaving}

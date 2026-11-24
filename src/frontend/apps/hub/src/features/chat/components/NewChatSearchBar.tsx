@@ -1,16 +1,33 @@
 import { Thread, UserSearch } from "@gouvfr-lasuite/ui-components/icons";
-import { KeyboardEvent, RefObject, useEffect, useMemo, useState } from "react";
-import { ComboBox, Input, Popover } from "react-aria-components";
+import {
+  type ContextType,
+  KeyboardEvent,
+  type MutableRefObject,
+  RefObject,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ComboBox,
+  ComboBoxStateContext,
+  Input,
+  Popover,
+} from "react-aria-components";
 import type { Key } from "react-aria-components";
 import { useTranslation } from "react-i18next";
 
 import type { ChatUser } from "@/features/drivers/types";
+import { CreateGroupModal } from "@/features/groups/components/CreateGroupModal";
 
+import { useComposerAccountId } from "../hooks/useChatAccounts";
 import { useChatUserSearch } from "../hooks/useChatUserSearch";
 
 import { SelectedUserChip } from "./SelectedUserChip";
 import type { ChatTool } from "./tools-panel/ChatToolsPanel";
-import { UserSearchListBox } from "./UserSearchListBox";
+import { CREATE_GROUP_KEY, UserSearchListBox } from "./UserSearchListBox";
 
 export type NewChatSearchBarProps = {
   selectedUsers: ChatUser[];
@@ -24,6 +41,29 @@ export type NewChatSearchBarProps = {
   /** Called on Enter with an empty search and at least one selected participant. */
   onConfirm?: () => void;
   onToggleTool?: (tool: ChatTool) => void;
+  /** After a group was created from the selected people. */
+  onGroupCreated?: () => void;
+};
+
+/** A group gathers the current user and at least two other people. */
+const MIN_GROUP_INVITEES = 2;
+
+type ComboBoxStateValue = ContextType<typeof ComboBoxStateContext>;
+
+/**
+ * Hands the ComboBox state to the search bar, which renders the ComboBox (its
+ * Popover hides the state from the menu content, too).
+ */
+const ComboBoxStateBridge = ({
+  stateRef,
+}: {
+  stateRef: MutableRefObject<ComboBoxStateValue>;
+}) => {
+  const state = useContext(ComboBoxStateContext);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state, stateRef]);
+  return null;
 };
 
 export const NewChatSearchBar = ({
@@ -37,9 +77,19 @@ export const NewChatSearchBar = ({
   onRemoveUser,
   onConfirm,
   onToggleTool,
+  onGroupCreated,
 }: NewChatSearchBarProps) => {
   const { t } = useTranslation();
+  const accountId = useComposerAccountId();
   const [armedUserId, setArmedUserId] = useState<string | null>(null);
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const comboBoxStateRef = useRef<ComboBoxStateValue>(null);
+  const canCreateGroup = selectedUsers.length >= MIN_GROUP_INVITEES;
+  // Once someone is chosen the menu stays open: ready for the next search
+  // result, or to create a group.
+  const showsMenu = query.trim().length > 0 || selectedUsers.length > 0;
+  const selectedCount = selectedUsers.length;
+  const previousSelectedCountRef = useRef(selectedCount);
   const excludedUserIds = useMemo(
     () => selectedUsers.map((user) => user.id),
     [selectedUsers],
@@ -57,8 +107,39 @@ export const NewChatSearchBar = ({
     }
   }, [armedUserId, query, selectedUsers]);
 
+  // Choosing someone closes the ComboBox: open it again on what follows.
+  // Runs after the ComboBox's own effects, which close it on a selection.
+  useEffect(() => {
+    const hasAdded = selectedCount > previousSelectedCountRef.current;
+    previousSelectedCountRef.current = selectedCount;
+    if (hasAdded) {
+      comboBoxStateRef.current?.open(null, "manual");
+    }
+  }, [selectedCount]);
+
+  const openCreateGroup = () => {
+    // An open ComboBox hides the rest of the page from assistive technologies,
+    // even with its menu gone: the modal must not open under it.
+    comboBoxStateRef.current?.close();
+    setIsCreateGroupOpen(true);
+  };
+
+  // The modal gives the focus back to the field while it unmounts, unseen by
+  // React Aria: tell the ComboBox, or typing would not open its menu again.
+  const returnToSearch = () => {
+    requestAnimationFrame(() => {
+      comboBoxStateRef.current?.setFocused(true);
+      inputRef.current?.focus();
+    });
+  };
+
   const handleSelectionChange = (key: Key | null) => {
     if (key === null) {
+      return;
+    }
+    if (key === CREATE_GROUP_KEY) {
+      // An action, normally run by its `onAction`: never a selection.
+      openCreateGroup();
       return;
     }
 
@@ -95,6 +176,8 @@ export const NewChatSearchBar = ({
       if (selectedUsers.length > 0) {
         event.preventDefault();
         event.stopPropagation();
+        // The people are chosen: the menu kept open for more closes.
+        comboBoxStateRef.current?.close();
         onConfirm?.();
       }
       return;
@@ -128,6 +211,7 @@ export const NewChatSearchBar = ({
         onInputChange={onQueryChange}
         onSelectionChange={handleSelectionChange}
       >
+        <ComboBoxStateBridge stateRef={comboBoxStateRef} />
         <div
           className="hub__new-chat-search__field"
           onClick={() => inputRef.current?.focus()}
@@ -164,13 +248,19 @@ export const NewChatSearchBar = ({
           </span>
         </div>
 
-        {query.trim().length > 0 && (
+        {showsMenu && (
           <Popover
             className="hub__new-chat-dropdown"
             placement="bottom start"
             offset={0}
           >
-            <UserSearchListBox isLoading={isInitialLoading} />
+            <UserSearchListBox
+              users={users}
+              isLoading={isInitialLoading}
+              query={query}
+              canCreateGroup={canCreateGroup}
+              onCreateGroup={openCreateGroup}
+            />
           </Popover>
         )}
       </ComboBox>
@@ -192,6 +282,21 @@ export const NewChatSearchBar = ({
           </div>
         )}
       </div>
+
+      <CreateGroupModal
+        isOpen={isCreateGroupOpen}
+        accountId={accountId}
+        invitees={selectedUsers}
+        onClose={() => {
+          setIsCreateGroupOpen(false);
+          returnToSearch();
+        }}
+        onCreated={() => {
+          setIsCreateGroupOpen(false);
+          onGroupCreated?.();
+          returnToSearch();
+        }}
+      />
     </header>
   );
 };

@@ -48,9 +48,11 @@ import {
   useChatUnread,
 } from "@/features/chat/hooks/useChatUnread";
 import { useChats } from "@/features/chat/hooks/useChats";
+import { useComposerAccountId } from "@/features/chat/hooks/useChatAccounts";
 import { APP_VERSION } from "@/features/config/appVersion";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatRef, ChatUnread } from "@/features/drivers/types";
+import { demoGroupChats } from "@/features/groups/demoGroups";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 
 import { LeftPanelScrollbar } from "./LeftPanelScrollbar";
@@ -79,6 +81,12 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
   useInvitationAnalytics(chats.byAccount);
   const unreadLookup = useChatUnread();
   const entries = useDriverEntries();
+  // Two hard-coded groups on top of the list: delete with `demoGroups.ts`.
+  const accountId = useComposerAccountId();
+  const allChats = useMemo(
+    () => [...(accountId ? demoGroupChats(accountId) : []), ...chats.all],
+    [accountId, chats.all],
+  );
   // The rows render inside this element's scroll, only those near the view.
   const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null);
   // Draws the separator under the top actions once the list scrolls under it.
@@ -178,10 +186,10 @@ export const LeftPanel = ({ onSearch }: { onSearch: () => void }) => {
         ) : null}
         <ChatSection
           title={t("All chats")}
-          chats={chats.all}
+          chats={allChats}
           scrollParent={scrollParent}
           showNewChat={
-            !chats.isLoading && !chats.isError && chats.all.length === 0
+            !chats.isLoading && !chats.isError && allChats.length === 0
           }
           accountLabels={accountLabels}
           showAccountLabels={showAccountLabels}

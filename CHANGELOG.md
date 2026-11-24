@@ -6,6 +6,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- 🚧(frontend) Prepare the group screens: create a group from the New chat
+  search (whose menu now stays open after each pick), edit its emoji and name,
+  and manage its members and roles. The calls to the Hub are only logged for
+  now: `docs/frontend/groups-api.md` says how to connect them. #173
+
 ## [v0.2.0] - 2026-11-23
 
 ### Added

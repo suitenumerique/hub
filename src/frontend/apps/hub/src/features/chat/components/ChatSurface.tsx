@@ -4,6 +4,8 @@ import { useCallback, useRef } from "react";
 import { chatHref } from "@/features/chat/chatRefs";
 import { useHasNoChats } from "@/features/chat/hooks/useChats";
 import type { ChatRef } from "@/features/drivers/types";
+import { DemoGroupView } from "@/features/groups/components/DemoGroupView";
+import { findDemoGroupChat } from "@/features/groups/demoGroups";
 
 import { useReportActiveChat } from "../ActiveChatContext";
 import { useComposerFocusSignal } from "../hooks/useComposerFocusSignal";
@@ -47,6 +49,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
     addUser,
     removeUser,
     confirmSelection,
+    startOver,
     chatRef: newChatRef,
     canUseChatTools,
     canComposeDraft,
@@ -80,6 +83,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
         onRemoveUser={removeUser}
         onConfirm={confirmSelection}
         onToggleTool={onToggleTool}
+        onGroupCreated={startOver}
       />
     ),
     [
@@ -91,6 +95,7 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
       searchInputRef,
       selectedUsers,
       setQuery,
+      startOver,
     ],
   );
 
@@ -103,6 +108,12 @@ export const ChatSurface = ({ isNew, urlChatRef }: ChatSurfaceProps) => {
       ) : null,
     [selectedUsers.length, showWelcome],
   );
+
+  // Delete with `demoGroups.ts`.
+  const demoGroupChat = isNew ? null : findDemoGroupChat(urlChatRef);
+  if (demoGroupChat) {
+    return <DemoGroupView chat={demoGroupChat} />;
+  }
 
   return (
     <ChatView

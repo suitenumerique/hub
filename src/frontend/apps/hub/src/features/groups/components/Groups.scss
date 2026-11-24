@@ -1,0 +1,89 @@
+// Figma "Create a group" (Tchap 2, node 2777:139429): a 450px modal, wider
+// than the kit's small size. The kit takes no class, so the form marks it.
+.c__modal--small:has(.hub__group-form) {
+  width: min(450px, calc(100vw - var(--c--globals--spacings--base, 16px)));
+
+  .c__modal__title:has(+ .c__modal__subtitle) {
+    margin-bottom: 0;
+  }
+
+  .c__modal__subtitle {
+    margin-top: var(--c--globals--spacings--xxxs, 4px);
+    margin-bottom: var(--c--globals--spacings--base, 16px);
+  }
+
+  .c__modal__footer {
+    margin-top: var(--c--globals--spacings--base, 16px);
+  }
+}
+
+.hub__group-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--c--globals--spacings--xs, 8px);
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--xs, 8px);
+  }
+
+  &__label {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--c--contextuals--content--semantic--neutral--primary, #222631);
+  }
+
+  &__row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--c--globals--spacings--xs, 8px);
+  }
+
+  &__emoji.c__button {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  &__name-column {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+  }
+
+  &__name {
+    // The kit's classic field is 44px high, the Figma one 40px.
+    .c__field__wrapper,
+    .c__input__wrapper {
+      min-height: 40px;
+      height: 40px;
+    }
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--error--primary, #c9191e);
+  }
+}
+
+.hub__group-members__status {
+  p {
+    margin: 0;
+    padding: 0 var(--c--globals--spacings--base, 16px);
+    font-size: 14px;
+    line-height: 18px;
+  }
+
+  [role="alert"] {
+    padding-bottom: var(--c--globals--spacings--xs, 8px);
+    color: var(--c--contextuals--content--semantic--error--primary, #c9191e);
+  }
+}
