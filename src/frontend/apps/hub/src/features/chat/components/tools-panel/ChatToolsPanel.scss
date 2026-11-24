@@ -294,6 +294,7 @@
     }
 
     &:hover .hub__chat-tools-panel__list-item__actions,
+    &:focus-within .hub__chat-tools-panel__list-item__actions,
     &[data-active] .hub__chat-tools-panel__list-item__actions {
       opacity: 1;
     }
@@ -307,9 +308,10 @@
       min-width: 0;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: var(--c--globals--spacings--xxs, 6px);
       height: 40px;
-      padding: 0 var(--c--globals--spacings--xxs, 6px);
+      padding: 0 var(--c--globals--spacings--xxs, 6px) 0
+        var(--c--globals--spacings--xxxs, 4px);
       color: inherit;
       font-family: inherit;
       text-align: left;
@@ -324,22 +326,15 @@
     }
 
     &__icon {
-      flex: 0 0 32px;
-      width: 32px;
-      height: 32px;
+      flex: 0 0 40px;
+      width: 40px;
+      height: 40px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      color: var(
-        --c--contextuals--content--semantic--neutral--tertiary,
-        #75758a
+      filter: drop-shadow(
+        0 1px 1.5px var(--c--globals--colors--black-050, rgba(24, 27, 36, 0.05))
       );
-      filter: drop-shadow(0 2px 2px rgba(24, 27, 36, 0.05));
-
-      svg {
-        width: 100%;
-        height: 100%;
-      }
     }
 
     &__name {

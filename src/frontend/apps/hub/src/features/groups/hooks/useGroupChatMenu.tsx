@@ -64,11 +64,13 @@ export const useGroupChatMenu = (chat: Chat): GroupChatMenu => {
       <>
         <GroupSettingsModal
           group={group}
+          chatRef={chat.ref}
           isOpen={openModal === "settings"}
           onClose={() => setOpenModal(null)}
         />
         <GroupMembersModal
           group={group}
+          chatRef={chat.ref}
           isOpen={openModal === "members"}
           onClose={() => setOpenModal(null)}
         />

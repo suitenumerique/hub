@@ -1,11 +1,17 @@
 import { fetchAPI } from "@/features/api/fetchApi";
-import type { ApiConfig, User } from "@/features/drivers/types";
-import { DEMO_ACCESSES, DEMO_GROUPS } from "@/features/groups/demoGroups";
+// import { getRegistry } from "@/features/drivers/DriverRegistry"; // [groups:matrix]
+import type { ApiConfig, ChatRef, User } from "@/features/drivers/types";
+import {
+  DEMO_ACCESSES,
+  DEMO_FILES,
+  DEMO_GROUPS,
+} from "@/features/groups/demoGroups";
 import type {
   AddGroupAccessesPayload,
   CreateGroupPayload,
   Group,
   GroupAccess,
+  GroupFile,
   GroupRole,
   UpdateGroupPayload,
 } from "@/features/groups/types";
@@ -22,9 +28,10 @@ export interface HubApi {
   createGroup(payload: CreateGroupPayload): Promise<Group | undefined>;
   updateGroup(
     groupId: string,
+    chatRef: ChatRef,
     payload: UpdateGroupPayload,
   ): Promise<Group | undefined>;
-  getGroupAccesses(groupId: string): Promise<GroupAccess[]>;
+  getGroupAccesses(groupId: string, chatRef: ChatRef): Promise<GroupAccess[]>;
   addGroupAccesses(
     groupId: string,
     payload: AddGroupAccessesPayload,
@@ -35,6 +42,7 @@ export interface HubApi {
     role: GroupRole,
   ): Promise<void>;
   deleteGroupAccess(groupId: string, accessId: string): Promise<void>;
+  getGroupFiles(groupId: string): Promise<GroupFile[]>;
 }
 
 export class StandardHubApi implements HubApi {
@@ -82,28 +90,59 @@ export class StandardHubApi implements HubApi {
     return undefined;
   }
 
+  // Hub or Matrix? When this was written, we did not know whether the two
+  // methods below would go through the Hub or straight to Matrix. Both versions
+  // are kept: uncomment one and delete the other, with `chatRef` (the group's
+  // conversation) if it is the Hub. The Matrix version also needs every block
+  // marked `[groups:matrix]` in the code: the import above, and the drivers.
+
   async updateGroup(
     groupId: string,
+    chatRef: ChatRef,
     payload: UpdateGroupPayload,
   ): Promise<Group | undefined> {
-    console.log(`[groups] PATCH groups/${groupId}/`, payload);
+    console.log(
+      `[groups] PATCH groups/${groupId}/ (or Matrix room ${chatRef.chatId})`,
+      payload,
+    );
+
+    // Version 1: through the Hub.
     // const response = await fetchAPI(
     //   `groups/${groupId}/`,
     //   { method: "PATCH", body: JSON.stringify(payload) },
     //   { redirectOn40x: false },
     // );
     // return response.json();
+
+    // Version 2: straight to Matrix. [groups:matrix]
+    // await getRegistry()
+    //   .get(chatRef.accountId)
+    //   .updateGroup(chatRef.chatId, payload);
+
     return undefined;
   }
 
-  async getGroupAccesses(groupId: string): Promise<GroupAccess[]> {
-    console.log(`[groups] GET groups/${groupId}/accesses/`);
+  async getGroupAccesses(
+    groupId: string,
+    chatRef: ChatRef,
+  ): Promise<GroupAccess[]> {
+    console.log(
+      `[groups] GET groups/${groupId}/accesses/ (or Matrix room ${chatRef.chatId})`,
+    );
+
+    // Version 1: through the Hub.
     // const response = await fetchAPI(
     //   `groups/${groupId}/accesses/`,
     //   undefined,
     //   { redirectOn40x: false },
     // );
     // return response.json();
+
+    // Version 2: straight to Matrix. [groups:matrix]
+    // return getRegistry()
+    //   .get(chatRef.accountId)
+    //   .getGroupAccesses(chatRef.chatId);
+
     return DEMO_ACCESSES;
   }
 
@@ -141,6 +180,16 @@ export class StandardHubApi implements HubApi {
     //   { method: "DELETE" },
     //   { redirectOn40x: false },
     // );
+  }
+
+  /** The Drive files shared with the group (#35). */
+  async getGroupFiles(groupId: string): Promise<GroupFile[]> {
+    console.log(`[groups] GET groups/${groupId}/files/`);
+    // const response = await fetchAPI(`groups/${groupId}/files/`, undefined, {
+    //   redirectOn40x: false,
+    // });
+    // return response.json();
+    return DEMO_FILES;
   }
 }
 

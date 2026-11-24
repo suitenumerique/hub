@@ -12,6 +12,9 @@ and this project adheres to
   search (whose menu now stays open after each pick), edit its emoji and name,
   and manage its members and roles. The calls to the Hub are only logged for
   now: `docs/frontend/groups-api.md` says how to connect them. #173
+- 🚧(frontend) Prepare the Drive panel of groups: the files shared with the
+  group, opened from a button beside the threads one. Its call to the Hub is
+  only logged for now. #35
 
 ## [v0.2.0] - 2026-11-23
 

@@ -432,6 +432,14 @@ export abstract class Driver {
     chatId: string,
     options?: DriverReadOptions,
   ): Promise<ChatMembers>;
+  // [groups:matrix] Only if groups go straight to Matrix, see `HubApi.ts`.
+  // abstract updateGroup(
+  //   chatId: string,
+  //   payload: import("@/features/groups/types").UpdateGroupPayload,
+  // ): Promise<void>;
+  // abstract getGroupAccesses(
+  //   chatId: string,
+  // ): Promise<import("@/features/groups/types").GroupAccess[]>;
   /** Existing conversation for exactly these participants, or `null`. */
   abstract getChatForUsers(userIds: string[]): Promise<LocalChat | null>;
   /** Single conversation, fetched by id. */

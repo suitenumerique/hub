@@ -728,6 +728,44 @@ export class MatrixDriver extends Driver {
     };
   }
 
+  // [groups:matrix] Only if groups go straight to Matrix, see `HubApi.ts`.
+  // async updateGroup(
+  //   chatId: string,
+  //   { name, emoji }: import("@/features/groups/types").UpdateGroupPayload,
+  // ): Promise<void> {
+  //   const { mx, room } = this.requireRoom("updateGroup", chatId);
+  //   // The state event the backend POC keeps the emoji in, among other fields.
+  //   const metadataType = "fr.gouv.lasuite.hub.group.metadata";
+  //   const metadata = room.currentState
+  //     .getStateEvents(metadataType, "")
+  //     ?.getContent();
+  //   await mx.setRoomName(chatId, name);
+  //   await mx.sendStateEvent(
+  //     chatId,
+  //     metadataType as never,
+  //     { ...metadata, emoji } as never,
+  //     "",
+  //   );
+  // }
+  //
+  // async getGroupAccesses(
+  //   chatId: string,
+  // ): Promise<import("@/features/groups/types").GroupAccess[]> {
+  //   const { present, pendingInvites } = await this.getChatMembers(chatId);
+  //   const { room } = this.requireRoom("getGroupAccesses", chatId);
+  //   return [...present, ...pendingInvites].map(
+  //     ({ id, name, secondaryText }) => ({
+  //       id,
+  //       // 50: what the backend POC asks to rename the room, invite or remove.
+  //       role:
+  //         (room.getMember(id)?.powerLevel ?? 0) >= 50
+  //           ? "administrator"
+  //           : "member",
+  //       user: { id, full_name: name, email: secondaryText },
+  //     }),
+  //   );
+  // }
+
   async setChatFavourite(chatId: string, favourite: boolean): Promise<void> {
     const { mx, room } = this.requireRoom("setChatFavourite", chatId);
     const joinedRoomIds = await this.getJoinedRoomIds(mx);

@@ -21,6 +21,7 @@ import type {
   ChatThreadDetail,
   ChatUser,
 } from "@/features/drivers/types";
+import { useGroupForChat } from "@/features/groups/hooks/useGroups";
 
 import {
   ChatAttachmentPreviewProvider,
@@ -77,6 +78,10 @@ import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 import { TypingIndicator } from "./TypingIndicator";
 
 const FLOATING_STACK_SAFETY_GAP = 8;
+
+const NO_TOOLS: ChatTool[] = [];
+const CHAT_TOOLS: ChatTool[] = ["threads"];
+const GROUP_TOOLS: ChatTool[] = ["threads", "files"];
 
 type ChatViewProps = {
   chatRef: ChatRef | null;
@@ -159,6 +164,7 @@ export const ChatView = ({
   // with the invitation detail view until it is accepted.
   const invitationChat = isInvitationChat(chat) ? chat : null;
   const isInvitation = invitationChat !== null;
+  const group = useGroupForChat(isNewChat || isInvitation ? null : chat);
   const {
     sendMessage,
     sendAttachment,
@@ -309,6 +315,16 @@ export const ChatView = ({
   };
 
   const closePanel = () => setActiveTool(null);
+
+  // Files belong to a group: their panel closes on any other conversation.
+  // Adjusted while rendering, so that they never show beside it.
+  if (
+    activeTool === "files" &&
+    group === null &&
+    (chat !== null || chatRef === null)
+  ) {
+    setActiveTool(null);
+  }
 
   // Too narrow for the panel beside the conversation, it opens over it.
   const viewRef = useRef<HTMLDivElement>(null);
@@ -469,6 +485,12 @@ export const ChatView = ({
     }
     return renderEmpty?.();
   };
+  let headerTools = CHAT_TOOLS;
+  if (isInvitation) {
+    headerTools = NO_TOOLS;
+  } else if (group) {
+    headerTools = GROUP_TOOLS;
+  }
   let composerPlaceholder: string | undefined;
   if (securityBlocked) {
     composerPlaceholder = t("Verify encryption before sending a message.");
@@ -501,7 +523,7 @@ export const ChatView = ({
                   chat={chat}
                   activeTool={activeTool}
                   onToggleTool={toggleTool}
-                  showTools={!isInvitation}
+                  tools={headerTools}
                 />
               )}
             </div>
@@ -609,6 +631,7 @@ export const ChatView = ({
                   tool={activeTool ?? displayedTool}
                   isOpen={activeTool !== null}
                   chatRef={chatRef}
+                  group={group}
                   threadId={activeThreadId}
                   threadComposerFocusSignal={threadComposerFocusSignal}
                   threadInitialMessage={threadInitialMessage}

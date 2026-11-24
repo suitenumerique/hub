@@ -51,3 +51,21 @@ export type AddGroupAccessesPayload = {
   user_ids: string[];
   role: GroupRole;
 };
+
+/**
+ * A file or folder of Drive shared with a group. The fields that Drive has too
+ * keep its names, so the backend can pass them on as they are.
+ */
+export type GroupFile = {
+  /** Id of the item in Drive. */
+  id: string;
+  /** With its extension, which the list hides. */
+  title: string;
+  type: "file" | "folder";
+  /** `null` for a folder. `lasuite/docs` for a Docs document. */
+  mimetype: string | null;
+  /** `public`: anyone with the link can open it. */
+  computed_link_reach: "restricted" | "authenticated" | "public" | null;
+  /** Page of the item in Drive (not its `url`, which downloads it). */
+  drive_url: string;
+};

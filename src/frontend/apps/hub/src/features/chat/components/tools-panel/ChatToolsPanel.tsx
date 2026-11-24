@@ -2,15 +2,15 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ChatRef } from "@/features/drivers/types";
+import { GroupFilesTool } from "@/features/groups/components/GroupFilesTool";
+import type { Group } from "@/features/groups/types";
 import type {
   DraftThreadRoot,
   OpenThreadOptions,
   ThreadInitialMessage,
 } from "../../ChatPanelContext";
 
-import { DocumentsTool } from "./DocumentsTool";
 import { ThreadsTool } from "./ThreadsTool";
-import { ToolsPanelHeader } from "./ToolsPanelHeader";
 
 export type ChatTool = "threads" | "files";
 
@@ -23,6 +23,8 @@ type ChatToolsPanelProps = {
   tool: ChatTool | null;
   isOpen: boolean;
   chatRef: ChatRef;
+  /** The group of the conversation, for its files. */
+  group: Group | null;
   /** Thread whose detail view is open, or `null` for the thread list. */
   threadId: string | null;
   /** Incremented whenever a Reply action requests focus in the composer. */
@@ -41,6 +43,7 @@ export const ChatToolsPanel = ({
   tool,
   isOpen,
   chatRef,
+  group,
   threadId,
   threadComposerFocusSignal,
   threadInitialMessage,
@@ -74,14 +77,7 @@ export const ChatToolsPanel = ({
       }}
     >
       {tool === "files" && (
-        <>
-          <ToolsPanelHeader
-            title={t("Documents")}
-            isOpen={isOpen}
-            onClose={onClose}
-          />
-          <DocumentsTool />
-        </>
+        <GroupFilesTool group={group} isOpen={isOpen} onClose={onClose} />
       )}
       {tool === "threads" && (
         <ThreadsTool

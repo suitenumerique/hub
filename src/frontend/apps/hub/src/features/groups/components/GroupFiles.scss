@@ -1,0 +1,200 @@
+// Drive tool of a group (Figma "Tools Panel - Shared", Tchap 2, node
+// 1792:7679), in the tools panel: see ChatToolsPanel.scss for its rows.
+.hub__group-files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--c--globals--spacings--sm, 12px);
+
+  &__title {
+    margin: 0;
+    padding: var(--c--globals--spacings--xxxs, 4px)
+      var(--c--globals--spacings--xs, 8px);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary, #626a80);
+  }
+
+  &__separator {
+    margin-inline: var(--c--globals--spacings--xs, 8px);
+  }
+
+  // At the bottom of the panel, or after a list longer than it.
+  &__note {
+    margin: auto 0 0;
+    padding-bottom: var(--c--globals--spacings--md, 24px);
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--c--contextuals--content--semantic--disabled--primary, #a4abbc);
+  }
+
+  &__empty {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--c--globals--spacings--xxxs, 4px);
+    padding: var(--c--globals--spacings--lg, 32px) 0
+      var(--c--globals--spacings--xxxl, 56px);
+    text-align: center;
+
+    > p {
+      max-width: 228px;
+      margin: 0;
+    }
+
+    &__title {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 18px;
+      color: var(
+        --c--contextuals--content--semantic--neutral--primary,
+        #222631
+      );
+    }
+
+    &__text {
+      font-size: 12px;
+      line-height: 16px;
+      color: var(
+        --c--contextuals--content--semantic--neutral--secondary,
+        #555e74
+      );
+    }
+  }
+
+  &__illustration {
+    position: relative;
+    flex: 0 0 auto;
+    width: 102px;
+    height: 72px;
+    overflow: hidden;
+
+    > span {
+      position: absolute;
+      filter: drop-shadow(
+        0 1px 1.5px var(--c--globals--colors--black-050, rgba(24, 27, 36, 0.05))
+      );
+    }
+
+    img {
+      display: block;
+    }
+
+    // 41.6px file icon, turned 15.4° around its center.
+    &__slides {
+      top: 22.22px;
+      left: 60.71px;
+      transform: rotate(15.4deg);
+    }
+
+    // 39.2px file icon, turned -15.61° around its center.
+    &__doc {
+      top: 17.36px;
+      left: 17.03px;
+      width: 23.54px;
+      height: 31.38px;
+      overflow: hidden;
+      background: var(--c--contextuals--background--surface--primary, #fff);
+      border: 0.686px solid
+        color-mix(
+          in srgb,
+          var(--c--contextuals--background--palette--blue-1--primary, #3677cc)
+            20%,
+          #f6f8f9
+        );
+      border-radius: 3.487px;
+      transform: rotate(-15.61deg);
+
+      img {
+        position: absolute;
+      }
+    }
+
+    &__doc-cover {
+      top: -0.69px;
+      left: -0.69px;
+    }
+
+    &__doc-title {
+      top: calc(26.87% - 0.32px);
+      left: calc(12.92% - 0.51px);
+    }
+
+    &__doc-lines {
+      top: calc(38.75% - 0.15px);
+      left: calc(12.96% - 0.51px);
+    }
+
+    // 46.2px file icon.
+    &__image {
+      top: 26.34px;
+      left: 32.78px;
+    }
+  }
+
+  // The rows to come: their icon and their name.
+  &__skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-top: 38px;
+
+    &__row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 40px;
+      padding: 0 var(--c--globals--spacings--xs, 8px);
+    }
+
+    &__icon,
+    &__name {
+      background: linear-gradient(
+        90deg,
+        var(--c--contextuals--background--semantic--neutral--tertiary, #eef1f4)
+          0%,
+        color-mix(
+            in srgb,
+            var(
+                --c--contextuals--background--semantic--neutral--tertiary,
+                #eef1f4
+              )
+              60%,
+            transparent
+          )
+          50%,
+        var(--c--contextuals--background--semantic--neutral--tertiary, #eef1f4)
+          100%
+      );
+      background-size: 200% 100%;
+      border-radius: var(--c--globals--spacings--xxxs, 4px);
+      animation: hub-chat-skeleton-shimmer 1.6s linear infinite;
+    }
+
+    &__icon {
+      flex: 0 0 auto;
+      width: 24px;
+      height: 32px;
+      margin: 0 4px;
+    }
+
+    &__name {
+      width: 45%;
+      height: 14px;
+    }
+
+    &__row:nth-child(even) &__name {
+      width: 60%;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__group-files__skeleton__icon,
+  .hub__group-files__skeleton__name {
+    animation: none;
+  }
+}

@@ -13,8 +13,8 @@ const GROUPS_STALE_TIME = 60_000;
  * the chat driver: the Hub only tells which ones are groups, by room id. A
  * direct conversation is never a group and asks nothing.
  */
-export const useGroupForChat = (chat: Chat): Group | null => {
-  const canBeGroup = chat.kind === "group";
+export const useGroupForChat = (chat: Chat | null): Group | null => {
+  const canBeGroup = chat?.kind === "group";
   const { data: groups } = useQuery({
     queryKey: groupKeys.list(),
     queryFn: () => getHubApi().getGroups(),

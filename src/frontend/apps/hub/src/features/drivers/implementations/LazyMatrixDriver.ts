@@ -198,6 +198,18 @@ export class LazyMatrixDriver extends BaseDriver {
     return this.withTarget((driver) => driver.getChatMembers(chatId, options));
   }
 
+  // [groups:matrix] Only if groups go straight to Matrix, see `HubApi.ts`.
+  // async updateGroup(
+  //   chatId: string,
+  //   payload: import("@/features/groups/types").UpdateGroupPayload,
+  // ) {
+  //   return this.withTarget((driver) => driver.updateGroup(chatId, payload));
+  // }
+  //
+  // async getGroupAccesses(chatId: string) {
+  //   return this.withTarget((driver) => driver.getGroupAccesses(chatId));
+  // }
+
   async getChatForUsers(userIds: string[]): Promise<LocalChat | null> {
     return this.withTarget((driver) => driver.getChatForUsers(userIds));
   }

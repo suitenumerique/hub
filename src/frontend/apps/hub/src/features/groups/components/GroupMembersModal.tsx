@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useChatUserSearch } from "@/features/chat/hooks/useChatUserSearch";
+import type { ChatRef } from "@/features/drivers/types";
 
 import { useGroupAccesses } from "../hooks/useGroupAccesses";
 import { useGroupAccessMutations } from "../hooks/useGroupMutations";
@@ -20,6 +21,8 @@ import {
 
 type GroupMembersModalProps = {
   group: Group;
+  /** The group's conversation. */
+  chatRef: ChatRef;
   isOpen: boolean;
   onClose: () => void;
 };
@@ -34,12 +37,13 @@ const isGroupRole = (role: string): role is GroupRole =>
  */
 export const GroupMembersModal = ({
   group,
+  chatRef,
   isOpen,
   onClose,
 }: GroupMembersModalProps) => {
   const { t } = useTranslation();
   const canManage = group.user_role === "administrator";
-  const accesses = useGroupAccesses(group.id, isOpen);
+  const accesses = useGroupAccesses(group.id, chatRef, isOpen);
   const { add, updateRole, remove } = useGroupAccessMutations(group.id);
   const [query, setQuery] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

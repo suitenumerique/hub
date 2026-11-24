@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { getHubApi } from "@/features/config/HubApi";
+import type { ChatRef } from "@/features/drivers/types";
 
 import { groupKeys } from "../groupKeys";
 import type {
@@ -23,10 +24,10 @@ export const useCreateGroup = () => {
 };
 
 /** Changes a group's name and emoji; the list of groups is fetched again. */
-export const useUpdateGroup = (groupId: string) => {
+export const useUpdateGroup = (groupId: string, chatRef: ChatRef) => {
   const queryClient = useQueryClient();
   return useMutation<Group | undefined, Error, UpdateGroupPayload>({
-    mutationFn: (payload) => getHubApi().updateGroup(groupId, payload),
+    mutationFn: (payload) => getHubApi().updateGroup(groupId, chatRef, payload),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: groupKeys.list() }),
     meta: { noGlobalError: true },

@@ -6,12 +6,19 @@ import {
 } from "@gouvfr-lasuite/ui-components";
 import {
   ArrowDropDown,
+  File,
   Leave,
   Shared,
   Thread,
 } from "@gouvfr-lasuite/ui-components/icons";
 import { useRouter } from "next/router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { isInvitationChat } from "@/features/chat/chatMembership";
@@ -32,11 +39,8 @@ type ChatHeaderProps = {
   chat: Chat | null;
   activeTool: ChatTool | null;
   onToggleTool: (tool: ChatTool) => void;
-  /**
-   * Whether to render the conversation tools (threads). Off for a pending
-   * invitation, whose tools panel and composer are suppressed.
-   */
-  showTools?: boolean;
+  /** The conversation tools to offer: none for a pending invitation. */
+  tools: readonly ChatTool[];
 };
 
 /**
@@ -48,7 +52,7 @@ export const ChatHeader = ({
   chat,
   activeTool,
   onToggleTool,
-  showTools = true,
+  tools,
 }: ChatHeaderProps) => {
   const { t } = useTranslation();
 
@@ -77,27 +81,53 @@ export const ChatHeader = ({
       </div>
 
       <div className="hub__chat-header__actions">
-        {showTools && (
+        {tools.length > 0 && (
           <div className="hub__chat-header__selector">
-            <Button
-              type="button"
-              variant="tertiary"
-              color="neutral"
-              size="small"
-              className="hub__chat-header__icon-button"
-              aria-label={t("Threads")}
-              aria-pressed={activeTool === "threads"}
-              data-active={activeTool === "threads"}
-              active={activeTool === "threads"}
-              onClick={() => onToggleTool("threads")}
-              icon={<Thread />}
-            />
+            {tools.includes("threads") && (
+              <ToolButton
+                label={t("Threads")}
+                icon={<Thread />}
+                isActive={activeTool === "threads"}
+                onClick={() => onToggleTool("threads")}
+              />
+            )}
+            {tools.includes("files") && (
+              <ToolButton
+                label={t("Drive")}
+                icon={<File />}
+                isActive={activeTool === "files"}
+                onClick={() => onToggleTool("files")}
+              />
+            )}
           </div>
         )}
       </div>
     </header>
   );
 };
+
+type ToolButtonProps = {
+  label: string;
+  icon: ReactNode;
+  isActive: boolean;
+  onClick: () => void;
+};
+
+const ToolButton = ({ label, icon, isActive, onClick }: ToolButtonProps) => (
+  <Button
+    type="button"
+    variant="tertiary"
+    color="neutral"
+    size="small"
+    className="hub__chat-header__icon-button"
+    aria-label={label}
+    aria-pressed={isActive}
+    data-active={isActive}
+    active={isActive}
+    onClick={onClick}
+    icon={icon}
+  />
+);
 
 const ChatMenu = ({ chat }: { chat: Chat }) => {
   const router = useRouter();
