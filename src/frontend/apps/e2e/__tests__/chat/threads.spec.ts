@@ -190,7 +190,11 @@ test("marks unread threads read, from the thread or from the banner", async ({
   });
 });
 
-/** The root's server summary still counts a reply deleted since it loaded. */
+/**
+ * The root's server summary still counts a reply deleted since it loaded. Only
+ * the reply count is checked: Synapse may keep counting the deleted reply as
+ * unread, once its periodic summary of the notifications has run.
+ */
 test("keeps a deleted reply out of the thread reply count", async ({
   people,
   hub,
@@ -222,12 +226,12 @@ test("keeps a deleted reply out of the thread reply count", async ({
   await test.step("it stays out once the thread is opened", async () => {
     await button.click();
     await bobChat.threads.expectThread(root);
-    await expect(button).toHaveText("1 reply");
+    await expect(button).toHaveText(/^1 reply\b/);
   });
 
   await test.step("and after a reload", async () => {
     await bobChat.reload();
-    await expect(button).toHaveText("1 reply", { timeout: SYNC_TIMEOUT });
+    await expect(button).toHaveText(/^1 reply\b/, { timeout: SYNC_TIMEOUT });
   });
 });
 
