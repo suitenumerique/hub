@@ -1,0 +1,403 @@
+// Takes the place of the home page or of the conversation. The card has the
+// look of the ui-kit modal, without its backdrop.
+.hub__message-unlock {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow-y: auto;
+  padding: 24px var(--c--globals--spacings--md, 24px) 64px;
+  font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
+
+  // Clears the floating header of the conversation.
+  .hub__chat-view & {
+    padding-top: 76px;
+  }
+
+  &__card {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    max-width: 520px;
+    // Centred, yet scrollable from its top when the window is too short.
+    margin: auto;
+    padding: var(--c--components--modal--padding);
+    border: 1px solid var(--c--components--modal--border-color);
+    border-radius: var(--c--components--modal--border-radius);
+    background: var(--c--components--modal--background-color);
+    color: var(--c--components--modal--color);
+  }
+
+  // Stays long enough to be read, then fades: `DONE_DURATION_MS`.
+  &__card--done {
+    align-items: center;
+    gap: 10px;
+    padding-block: 44px 32px;
+    text-align: center;
+    animation: hub-message-unlock-leave 0.6s ease 3.8s forwards;
+  }
+
+  &__mark {
+    width: 72px;
+    height: 72px;
+    animation: hub-message-unlock-mark 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  &__head {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    h1 {
+      margin: 0;
+      font-size: var(--c--globals--font--sizes--lg, 18px);
+      font-weight: var(--c--components--modal--title-font-weight);
+      line-height: 24px;
+      text-wrap: balance;
+
+      // Focused by script, to be read when the card changes.
+      &:focus {
+        outline: none;
+      }
+    }
+
+    p {
+      margin: 4px 0 0;
+      font-size: var(--c--globals--font--sizes--sm, 14px);
+      line-height: 18px;
+      color: var(--c--contextuals--content--semantic--neutral--secondary);
+    }
+  }
+
+  &__stepper {
+    display: flex;
+    gap: 6px;
+
+    span {
+      flex: 1;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--c--contextuals--border--surface--primary);
+      transition: background-color 0.3s ease;
+
+      &[data-active="true"] {
+        background: var(--c--contextuals--background--semantic--brand--primary);
+      }
+    }
+  }
+
+  // Three numbers to compare, or none.
+  &__card > p {
+    margin: 0;
+    font-size: var(--c--globals--font--sizes--sm, 14px);
+    line-height: 20px;
+  }
+
+  &__error {
+    margin: 0;
+    font-size: var(--c--globals--font--sizes--sm, 14px);
+    line-height: 18px;
+    color: var(--c--contextuals--content--semantic--error--secondary);
+  }
+
+  &__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--xs, 8px);
+
+    &--spread,
+    &--end {
+      flex-flow: row wrap;
+      justify-content: space-between;
+    }
+
+    &--end {
+      justify-content: flex-end;
+    }
+  }
+
+  &__waiting {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 8px;
+    background: var(--c--contextuals--background--semantic--neutral--tertiary);
+    font-size: var(--c--globals--font--sizes--sm, 14px);
+    line-height: 20px;
+
+    > span {
+      display: flex;
+    }
+  }
+
+  // The emojis come one after the other.
+  .hub__security-sas {
+    margin: 0;
+    padding: 16px;
+    border-radius: 8px;
+    background: var(--c--contextuals--background--semantic--neutral--tertiary);
+
+    li {
+      animation: hub-message-unlock-line 0.35s ease-out backwards;
+    }
+
+    @for $index from 2 through 7 {
+      li:nth-child(#{$index}) {
+        animation-delay: #{($index - 1) * 110ms};
+      }
+    }
+  }
+
+  &__progress {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    // As tall as the illustration it replaces.
+    min-height: 140px;
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      line-height: 22px;
+      color: var(--c--contextuals--content--semantic--neutral--secondary);
+
+      &[data-done="false"] {
+        font-weight: 600;
+        color: var(--c--contextuals--content--semantic--neutral--primary);
+        animation: hub-message-unlock-line 0.4s ease-out;
+      }
+    }
+  }
+
+  &__illustration {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 20px 16px 14px;
+    border-radius: 10px;
+    background: var(--c--contextuals--background--semantic--brand--tertiary);
+  }
+
+  &__device {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--c--globals--font--sizes--xs, 12px);
+    font-weight: 600;
+    line-height: 16px;
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
+
+    &[data-current="true"] {
+      color: var(--c--contextuals--content--semantic--brand--primary);
+    }
+  }
+
+  &__laptop,
+  &__phone {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 3px solid var(--c--contextuals--content--semantic--neutral--primary);
+    background: var(--c--contextuals--background--surface--primary);
+  }
+
+  &__laptop {
+    width: 132px;
+    height: 88px;
+    border-radius: 8px;
+  }
+
+  &__device[data-current="true"] &__laptop {
+    border-color: var(--c--contextuals--border--semantic--brand--primary);
+    box-shadow: 0 0 0 4px
+      var(--c--contextuals--background--semantic--brand--secondary);
+  }
+
+  &__phone {
+    width: 58px;
+    height: 100px;
+    border-radius: 13px;
+  }
+
+  &__window-bar {
+    flex: none;
+    display: flex;
+    gap: 3px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--c--contextuals--border--surface--primary);
+    background: var(--c--contextuals--background--semantic--neutral--tertiary);
+
+    i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--c--contextuals--border--semantic--neutral--secondary);
+    }
+  }
+
+  &__emojis {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  &__phone &__emojis {
+    flex-direction: column;
+  }
+
+  &__match {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--c--contextuals--background--semantic--success--primary);
+    color: var(--c--contextuals--content--semantic--success--on-success);
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  // One loop: the emojis show on both devices, the check lands, then again.
+  &__emoji,
+  &__match {
+    animation: 5s ease-out infinite hub-message-unlock-emoji-1;
+  }
+
+  &__emoji:nth-child(2) {
+    animation-name: hub-message-unlock-emoji-2;
+  }
+
+  &__emoji:nth-child(3) {
+    animation-name: hub-message-unlock-emoji-3;
+  }
+
+  &__match {
+    animation-name: hub-message-unlock-match;
+  }
+}
+
+@keyframes hub-message-unlock-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes hub-message-unlock-mark {
+  from {
+    opacity: 0;
+    transform: scale(0.3) rotate(-12deg);
+  }
+}
+
+@keyframes hub-message-unlock-line {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes hub-message-unlock-emoji-1 {
+  0%,
+  4% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  11%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+
+  95%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hub-message-unlock-emoji-2 {
+  0%,
+  12% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  19%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+
+  95%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hub-message-unlock-emoji-3 {
+  0%,
+  20% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  27%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+
+  95%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hub-message-unlock-match {
+  0%,
+  32% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+
+  40%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+
+  95%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub__message-unlock__emoji,
+  .hub__message-unlock__match,
+  .hub__message-unlock__mark,
+  .hub__message-unlock__card--done,
+  .hub__message-unlock__progress li,
+  .hub__message-unlock .hub__security-sas li {
+    animation: none;
+  }
+
+  .hub__message-unlock__stepper span {
+    transition: none;
+  }
+}

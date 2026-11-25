@@ -6,9 +6,9 @@ import type { AccountId } from "@/features/drivers/types";
 import { useChatSecurity } from "./useChatSecurity";
 
 /**
- * Security state and commands of one account, for the "Encryption" settings.
- * Used by the settings modal rather than its tab, so a command still running
- * reports its failure after a tab change.
+ * Security state and commands of one account, for the "Encryption" settings
+ * and the unlock card. Used by the settings modal rather than its tab, so a
+ * command still running reports its failure after a tab change.
  */
 export const useEncryptionCommands = (accountId: AccountId | null) => {
   const { security, driver } = useChatSecurity(accountId);
@@ -34,13 +34,16 @@ export const useEncryptionCommands = (accountId: AccountId | null) => {
     });
   };
 
-  /** The settings close: a verification left open is cancelled. */
-  const onClose = () => {
+  /**
+   * The settings close: a verification left open is cancelled, unless it goes
+   * on elsewhere.
+   */
+  const onClose = ({ keepVerification = false } = {}) => {
     // A pending failure must not show up when the settings open again.
     commandGeneration.current++;
     setCommandFailed(false);
     const { verification } = security;
-    if (verification.phase !== "idle") {
+    if (verification.phase !== "idle" && !keepVerification) {
       run({ type: "cancel", attempt: verification.attempt });
     }
   };

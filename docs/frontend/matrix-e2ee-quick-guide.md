@@ -68,10 +68,12 @@ and an incognito window for B. Keep the incognito window open throughout the tes
 3. In profile **A**, open <http://localhost:9800> in a new tab and sign in as
    `hub`. If a Matrix consent screen appears, check the account shown.
    A's Hub and Element must both use **`@hub:localhost`**, with distinct device IDs.
-4. Open the conversation. Sending encrypted messages must be blocked before
-   verification.
-5. In Hub, open **avatar → Encryption → Verify this device**. The encryption
-   setup button above the composer opens the same settings.
+4. Open the conversation. Before verification, the **Unlock your messages**
+   card must take its place, while an unencrypted conversation opens normally.
+5. In the card, choose **Compare with my phone**, or **Open Element local on my
+   computer**, which also opens Element in a new tab. The card then goes through
+   every step. **Avatar → Settings → Encryption → Verify this device** does the
+   same in the settings.
 6. Accept the request in **A's Element**. Compare all seven emojis in the same
    order, then confirm **in both applications** only if they match. If three
    numbers are displayed instead, compare those three numbers.

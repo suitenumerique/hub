@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { EncryptionSettingsContent } from "@/features/chat/components/EncryptionSettingsContent";
 import { useComposerAccountId } from "@/features/chat/hooks/useChatAccounts";
 import { useEncryptionCommands } from "@/features/chat/hooks/useEncryptionCommands";
+import { useMessageUnlock } from "@/features/chat/MessageUnlockContext";
 
 import { type SettingsTab, useSettings } from "../SettingsContext";
 
@@ -16,9 +17,9 @@ export const SettingsModal = () => {
   const { t } = useTranslation();
   const settings = useSettings();
   const composerAccountId = useComposerAccountId();
-  const encryption = useEncryptionCommands(
-    settings.accountId ?? composerAccountId,
-  );
+  const accountId = settings.accountId ?? composerAccountId;
+  const encryption = useEncryptionCommands(accountId);
+  const { session } = useMessageUnlock();
 
   const tabs: ModalTab[] = [
     {
@@ -44,7 +45,10 @@ export const SettingsModal = () => {
   }
 
   const close = () => {
-    encryption.onClose();
+    encryption.onClose({
+      // The unlock card goes on with its own.
+      keepVerification: accountId !== null && session?.accountId === accountId,
+    });
     settings.close();
   };
 

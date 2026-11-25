@@ -5,6 +5,7 @@ import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ActiveChatProvider } from "@/features/chat/ActiveChatContext";
 import { EncryptionVerificationListener } from "@/features/chat/components/EncryptionVerificationListener";
 import { useChatEvents } from "@/features/chat/hooks/useChatEvents";
+import { MessageUnlockProvider } from "@/features/chat/MessageUnlockContext";
 import { useChatNotifications } from "@/features/chat/notifications/useChatNotifications";
 import { ConversationSearchModal } from "@/features/chat/search/ConversationSearchModal";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
@@ -66,31 +67,33 @@ export const HubLayout = ({ children, requireAuth = true }: HubLayoutProps) => {
 
   return (
     <SettingsProvider>
-      <div className="hub__layout">
-        <a href="#hub__layout__main" className="hub__layout__skip-link">
-          {t("Skip to main content")}
-        </a>
-        {user && <LeftPanel onSearch={() => setSearchOpen(true)} />}
-        {user && searchOpen && (
-          <ConversationSearchModal onClose={() => setSearchOpen(false)} />
-        )}
-
-        <main
-          id="hub__layout__main"
-          className="hub__layout__main"
-          tabIndex={-1}
-        >
-          {user && (
-            <>
-              <SettingsModal />
-              <EncryptionVerificationListener />
-            </>
+      <MessageUnlockProvider>
+        <div className="hub__layout">
+          <a href="#hub__layout__main" className="hub__layout__skip-link">
+            {t("Skip to main content")}
+          </a>
+          {user && <LeftPanel onSearch={() => setSearchOpen(true)} />}
+          {user && searchOpen && (
+            <ConversationSearchModal onClose={() => setSearchOpen(false)} />
           )}
-          <ActiveChatProvider value={activeChatRef}>
-            {children}
-          </ActiveChatProvider>
-        </main>
-      </div>
+
+          <main
+            id="hub__layout__main"
+            className="hub__layout__main"
+            tabIndex={-1}
+          >
+            {user && (
+              <>
+                <SettingsModal />
+                <EncryptionVerificationListener />
+              </>
+            )}
+            <ActiveChatProvider value={activeChatRef}>
+              {children}
+            </ActiveChatProvider>
+          </main>
+        </div>
+      </MessageUnlockProvider>
     </SettingsProvider>
   );
 };

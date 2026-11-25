@@ -14,6 +14,13 @@ and this project adheres to
   plain loading screen.
 - ✨(frontend) Offer to try again or to contact support when the chat still
   connects after two minutes. It opens as soon as the connection succeeds.
+- ✨(frontend) Ask to unlock the messages on a device that is not verified, on
+  the home page and, when another device can verify it, in place of the
+  encrypted chats: by comparing emojis with one's phone, or with Tchap opened
+  in another tab, the Hub tab then being called "🔐 To confirm". The same card
+  compares the emojis, waits for the other device, then follows the keys and
+  the history, until the account is ready. The rest stays usable, unencrypted
+  chats included.
 - 🌐(frontend) Name the emojis compared to verify a device in the interface
   language, with the names of the Matrix specification.
 

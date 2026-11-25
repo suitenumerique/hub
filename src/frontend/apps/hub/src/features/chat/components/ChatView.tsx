@@ -60,6 +60,7 @@ import { useEditChatMessage } from "../hooks/useEditChatMessage";
 import type { ComposerMentionSource } from "../hooks/useMentionCandidates";
 import { useChatMessagesLoaded } from "../hooks/useChatMessages";
 import { useIgnoreStrayFileDrops } from "../hooks/useIgnoreStrayFileDrops";
+import { useIsChatLocked } from "../hooks/useIsChatLocked";
 import { useChatThreadsKeyedByRoot } from "../hooks/useChatThreadCompositionSupport";
 import { useChatUnreadThreads } from "../hooks/useChatUnreadThreads";
 import { useSendChatMessage } from "../hooks/useSendChatMessage";
@@ -73,6 +74,7 @@ import { ChatHeader } from "./header/ChatHeader";
 import { ChatToolsPanel, ChatTool } from "./tools-panel/ChatToolsPanel";
 import { ToolsPanelResizeHandle } from "./tools-panel/ToolsPanelResizeHandle";
 import { useToolsPanelFits } from "./tools-panel/useToolsPanelFits";
+import { MessageUnlock } from "./unlock/MessageUnlock";
 import { UnreadThreadsBanner } from "./UnreadThreadsBanner";
 import { TypingIndicator } from "./TypingIndicator";
 
@@ -159,6 +161,11 @@ export const ChatView = ({
   // with the invitation detail view until it is accepted.
   const invitationChat = isInvitationChat(chat) ? chat : null;
   const isInvitation = invitationChat !== null;
+  // Until another device unlocks this one, the unlock card takes the place of
+  // the timeline and the composer.
+  const isLocked =
+    useIsChatLocked(chatRef, isNewChat ? composerAccountId : null) &&
+    !isInvitation;
   const {
     sendMessage,
     sendAttachment,
@@ -458,6 +465,9 @@ export const ChatView = ({
     if (invitationChat && chatRef) {
       return <ChatInvitationView chatRef={chatRef} chat={invitationChat} />;
     }
+    if (isLocked && securityAccountId) {
+      return <MessageUnlock accountId={securityAccountId} />;
+    }
     if (chatRef) {
       return (
         <ChatConversation
@@ -515,7 +525,7 @@ export const ChatView = ({
                 {renderConversation()}
               </div>
               {/* An invitation suppresses the composer until it is accepted. */}
-              {!isInvitation && (
+              {!isInvitation && !isLocked && (
                 <div className="hub__chat-view__composer">
                   {/* The composer keeps a single instance across the empty → chat
                   transition so an in-progress draft and the input focus survive

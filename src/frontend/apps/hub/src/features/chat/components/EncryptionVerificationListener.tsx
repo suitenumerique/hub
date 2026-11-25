@@ -5,6 +5,7 @@ import type { AccountId } from "@/features/drivers/types";
 import { useSettings } from "@/features/settings/SettingsContext";
 
 import { useChatSecurity } from "../hooks/useChatSecurity";
+import { useMessageUnlock } from "../MessageUnlockContext";
 
 const AccountVerificationListener = ({
   accountId,
@@ -13,7 +14,11 @@ const AccountVerificationListener = ({
 }) => {
   const { security } = useChatSecurity(accountId);
   const { open } = useSettings();
-  const active = security.supported && security.verification.phase !== "idle";
+  const { session } = useMessageUnlock();
+  const active =
+    security.supported &&
+    security.verification.phase !== "idle" &&
+    session?.accountId !== accountId;
   useEffect(() => {
     if (!active) return;
     // The settings then stay open until the user closes them, terminal states
@@ -31,7 +36,7 @@ const AccountVerificationListener = ({
 
 /**
  * Opens the "Encryption" settings as soon as a device verification starts,
- * even one another device asked for.
+ * even one another device asked for. The unlock card shows its own instead.
  */
 export const EncryptionVerificationListener = () => {
   const entries = useDriverEntries();
