@@ -21,6 +21,8 @@ and this project adheres to
   compares the emojis, waits for the other device, then follows the keys and
   the history, until the account is ready. The rest stays usable, unencrypted
   chats included.
+- ✨(frontend) Open the Hub on a welcome page, to choose a chat, instead of the
+  "New chat" page, still shown to someone without any chat.
 - 🌐(frontend) Name the emojis compared to verify a device in the interface
   language, with the names of the Matrix specification.
 

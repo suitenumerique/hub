@@ -10,7 +10,7 @@ export default function IndexPage() {
 
   useEffect(() => {
     if (user) {
-      router.replace("/chat/new");
+      router.replace("/chat");
     }
   }, [user, router]);
 
