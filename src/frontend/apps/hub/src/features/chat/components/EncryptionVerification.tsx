@@ -7,6 +7,8 @@ import type {
   ChatSecuritySnapshot,
 } from "@/features/drivers/security";
 
+import { SasComparison } from "./SasComparison";
+
 export const EncryptionVerification = ({
   security,
   onCommand,
@@ -24,39 +26,6 @@ export const EncryptionVerification = ({
     "confirming",
   ].includes(verification.phase);
   const clientLabel = security.externalClient?.label ?? t("your reference app");
-  const renderComparison = () => {
-    if (verification.phase !== "comparing") return null;
-    if (verification.emojis) {
-      return (
-        <ol
-          className="hub__security-sas"
-          aria-label={t("The seven verification symbols")}
-        >
-          {verification.emojis.map(([emoji, label], index) => (
-            <li key={index}>
-              <span aria-hidden="true">{emoji}</span>
-              <span>{label}</span>
-            </li>
-          ))}
-        </ol>
-      );
-    }
-    if (verification.decimals) {
-      return (
-        <p>
-          {t(
-            "This app uses three numbers instead of emojis. Compare all three in the same order.",
-          )}{" "}
-          <strong>{verification.decimals.join(" · ")}</strong>
-        </p>
-      );
-    }
-    return (
-      <p role="alert">
-        {t("No compatible comparison code. Cancel and try again.")}
-      </p>
-    );
-  };
   if (["idle", "complete"].includes(verification.phase)) return null;
   return (
     <div className="hub__security-verification">
@@ -109,7 +78,12 @@ export const EncryptionVerification = ({
           </p>
         )}
       </div>
-      {renderComparison()}
+      {verification.phase === "comparing" && (
+        <SasComparison
+          emojis={verification.emojis}
+          decimals={verification.decimals}
+        />
+      )}
       <div className="hub__security-actions">
         {verification.phase === "waiting" && security.externalClient && (
           <Button

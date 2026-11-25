@@ -14,6 +14,8 @@ and this project adheres to
   plain loading screen.
 - ✨(frontend) Offer to try again or to contact support when the chat still
   connects after two minutes. It opens as soon as the connection succeeds.
+- 🌐(frontend) Name the emojis compared to verify a device in the interface
+  language, with the names of the Matrix specification.
 
 ## [v0.2.0] - 2026-11-23
 

@@ -199,10 +199,10 @@
     gap: 8px;
     text-align: center;
   }
-  span:first-child {
+  li > span:first-child {
     font-size: 36px;
   }
-  span:last-child {
+  li > span:last-child {
     font-size: 14px;
   }
 }
