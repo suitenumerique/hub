@@ -29,15 +29,6 @@ export class EncryptionDialog {
     });
   }
 
-  /** Opens it from the prompt shown above a blocked composer. */
-  async openFromComposer(): Promise<void> {
-    await this.page
-      .getByRole("button", { name: "Open encryption settings" })
-      .first()
-      .click();
-    await expect(this.panel).toBeVisible();
-  }
-
   /** The badge of a section: "Verified", "Active", "Verification required"… */
   badge(section: Locator): Locator {
     return section.locator(".c__badge");

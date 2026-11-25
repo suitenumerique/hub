@@ -178,6 +178,11 @@ export class Composer {
     );
   }
 
+  /** There is none: something else takes the place of the conversation. */
+  async expectHidden(): Promise<void> {
+    await expect(this.field).toHaveCount(0);
+  }
+
   async expectUsable(): Promise<void> {
     await expect(this.field).toBeEnabled({ timeout: 30_000 });
     await expect(this.field).not.toHaveAttribute(

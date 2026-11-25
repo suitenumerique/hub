@@ -14,6 +14,7 @@ import { NotificationMenu } from "./notification-menu";
 import { SearchDialog } from "./search-dialog";
 import { ThreadsPanel } from "./threads-panel";
 import { Timeline } from "./timeline";
+import { UnlockCard } from "./unlock-card";
 
 /** URL of a conversation (`chatHref` in the Hub). */
 export const chatPath = (roomId: string): string =>
@@ -33,6 +34,7 @@ export class ChatPage {
   readonly notifications: NotificationMenu;
   readonly search: SearchDialog;
   readonly encryption: EncryptionDialog;
+  readonly unlock: UnlockCard;
   readonly accountMenu: AccountMenu;
   readonly invitation: Invitation;
   readonly preview: AttachmentPreview;
@@ -56,6 +58,7 @@ export class ChatPage {
     this.notifications = new NotificationMenu(page);
     this.search = new SearchDialog(page);
     this.encryption = new EncryptionDialog(page);
+    this.unlock = new UnlockCard(page);
     this.accountMenu = new AccountMenu(page);
     this.invitation = new Invitation(page);
     this.preview = new AttachmentPreview(page);

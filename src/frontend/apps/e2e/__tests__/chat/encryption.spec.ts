@@ -32,41 +32,41 @@ test.describe("Encryption", () => {
     const chat = await hub.open(alice);
     await chat.openConversation(bob.displayName);
 
-    await test.step("sending is blocked before verification", async () => {
-      await expect(
-        chat.page.getByText("Set up encryption to send messages."),
-      ).toBeVisible();
-      await chat.composer.expectBlocked();
+    await test.step("the conversation waits for the device to be unlocked", async () => {
+      await chat.unlock.expectScreen("Unlock your messages");
+      await chat.composer.expectHidden();
     });
 
     await test.step("emojis that do not match cancel it", async () => {
-      await chat.encryption.openFromComposer();
-      await chat.encryption.expectDeviceStatus("Verification required");
-      await chat.encryption.startVerification();
+      await chat.unlock.compareWithPhone();
       const sas = await alicePhone.acceptVerification();
-      expect(await chat.encryption.shownEmojis()).toEqual(sas.emojis);
-      await chat.encryption.theyDoNotMatch();
-      await chat.encryption.expectText(
-        "The symbols do not match. Verification has been cancelled.",
-      );
+      expect(await chat.unlock.shownEmojis()).toEqual(sas.emojis);
+      await chat.unlock.theyDoNotMatch();
+      await chat.unlock.expectScreen("The emojis did not match");
       expect(await sas.finished).toBe(VerificationPhase.Cancelled);
-      await chat.encryption.expectDeviceStatus("Verification required");
-      await chat.encryption.close();
-      await chat.composer.expectBlocked();
+      await chat.unlock.startAgain();
+      await chat.unlock.expectScreen("Unlock your messages");
     });
 
-    await test.step("matching emojis verify it", async () => {
-      await chat.encryption.openFromComposer();
-      await chat.encryption.startVerification();
+    await test.step("matching emojis unlock it, without the settings", async () => {
+      await chat.unlock.compareWithPhone();
       const sas = await alicePhone.acceptVerification();
-      expect(await chat.encryption.shownEmojis()).toEqual(sas.emojis);
-      await chat.encryption.theyMatch();
+      expect(await chat.unlock.shownEmojis()).toEqual(sas.emojis);
+      await chat.unlock.theyMatch();
+      await chat.unlock.expectText("Waiting for confirmation from your phone…");
       await sas.confirm();
       expect(await sas.finished).toBe(VerificationPhase.Done);
+      await chat.unlock.expectScreen("Your Tchap account is ready");
+      await expect(chat.encryption.dialog).toBeHidden();
+      await chat.unlock.expectHidden();
+      await chat.composer.expectUsable();
+    });
+
+    await test.step("the settings show the device as verified", async () => {
+      await chat.accountMenu.openSettings("Encryption");
       await chat.encryption.expectDeviceStatus("Verified");
       await chat.encryption.expectBackupStatus("Active");
       await chat.encryption.close();
-      await chat.composer.expectUsable();
     });
 
     await test.step("the other device decrypts what the Hub sends", async () => {
@@ -97,15 +97,14 @@ test.describe("Encryption", () => {
     const chat = await hub.open(alice);
     await chat.openConversation(bob.displayName);
 
-    await test.step("the message is unreadable on the new device", async () => {
-      await expect(
-        chat.timeline.messages().filter({ hasText: ENCRYPTED_PLACEHOLDER }),
-      ).toHaveCount(1, { timeout: 20_000 });
+    await test.step("the message cannot be read on the new device", async () => {
+      await chat.unlock.expectScreen("Unlock your messages");
       await chat.timeline.expectNoMessage(before);
     });
 
-    await test.step("verification restores it from the backup", async () => {
+    await test.step("verification from the settings restores it from the backup", async () => {
       await verifyHubDevice(chat, alicePhone);
+      await chat.unlock.expectHidden();
       await chat.timeline.expectMessageOnce(before);
     });
 
