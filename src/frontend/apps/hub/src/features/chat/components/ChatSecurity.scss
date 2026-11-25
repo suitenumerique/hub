@@ -225,4 +225,10 @@
   max-width: 650px;
   margin: 15vh auto;
   padding: 24px;
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 }

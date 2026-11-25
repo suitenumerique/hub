@@ -12,6 +12,8 @@ and this project adheres to
   screen: checking the account, preparing the workspace, retrieving the chats.
   It also links to support, the feedback form for now. Later openings keep the
   plain loading screen.
+- ✨(frontend) Offer to try again or to contact support when the chat still
+  connects after two minutes. It opens as soon as the connection succeeds.
 
 ## [v0.2.0] - 2026-11-23
 

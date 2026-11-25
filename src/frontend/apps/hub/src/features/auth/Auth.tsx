@@ -26,6 +26,8 @@ import { ChatLocalUser } from "../drivers/types";
 import { useSynchronizedLanguage } from "../language/hooks/useSynchronizedLanguage";
 import { authUrl } from "./authUrl";
 import { ChatSignIn } from "./components/ChatSignIn/ChatSignIn";
+import { SlowConnection } from "./components/SlowConnection/SlowConnection";
+import { useSlowConnection } from "./hooks/useSlowConnection";
 import { attemptSilentLogin, canAttemptSilentLogin } from "./silentLogin";
 
 export const logout = async () => {
@@ -110,6 +112,8 @@ export const Auth = ({ children }: PropsWithChildren) => {
     justSignedIn,
     step,
   } = useChatConnections(user);
+  const isConnecting = chatStatus === "connecting";
+  const isConnectionSlow = useSlowConnection(isConnecting);
   useSecurityAnalytics();
 
   const init = async () => {
@@ -198,11 +202,11 @@ export const Auth = ({ children }: PropsWithChildren) => {
     }
   }, [redirectTo]);
 
-  if (
-    user === undefined ||
-    chatAccounts.isReconciling ||
-    chatStatus === "connecting"
-  ) {
+  if (isConnecting && isConnectionSlow) {
+    return <SlowConnection />;
+  }
+
+  if (user === undefined || chatAccounts.isReconciling || isConnecting) {
     return <AppLoader step={step} />;
   }
 
