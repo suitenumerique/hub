@@ -6,6 +6,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- ✨(frontend) Say what the first chat connection is doing on the loading
+  screen: checking the account, preparing the workspace, retrieving the chats.
+  It also links to support, the feedback form for now. Later openings keep the
+  plain loading screen.
+
 ## [v0.2.0] - 2026-11-23
 
 ### Added

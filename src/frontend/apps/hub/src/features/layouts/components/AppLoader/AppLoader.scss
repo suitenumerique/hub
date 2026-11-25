@@ -13,8 +13,59 @@ $hub-app-loader-accent: var(--c--contextuals--content--logo1);
   padding-bottom: 8vh;
   background: var(--c--contextuals--background--surface--primary, #fff);
 
+  &__progress {
+    position: relative;
+  }
+
+  // Out of the flow: the logo and the bar stay in place when the text appears.
+  &__text {
+    position: absolute;
+    top: calc(100% + 20px);
+    left: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: max-content;
+    max-width: calc(100vw - 48px);
+    text-align: center;
+    transform: translateX(-50%);
+  }
+
+  &__status {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--c--contextuals--content--semantic--neutral--primary);
+    text-wrap: balance;
+  }
+
+  &__step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    animation: hub-app-loader-step 0.4s ease-out;
+  }
+
+  &__patience {
+    max-width: 440px;
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--c--contextuals--content--semantic--neutral--tertiary);
+  }
+
+  &__help {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
   &__bar {
     position: relative;
+    display: block;
     width: 160px;
     height: 4px;
     overflow: hidden;
@@ -44,6 +95,13 @@ $hub-app-loader-accent: var(--c--contextuals--content--logo1);
   }
 }
 
+@keyframes hub-app-loader-step {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 @keyframes hub-app-loader-pulse {
   0%,
   100% {
@@ -59,5 +117,9 @@ $hub-app-loader-accent: var(--c--contextuals--content--logo1);
   .hub__app-loader__bar::after {
     width: 100%;
     animation: hub-app-loader-pulse 2s ease-in-out infinite;
+  }
+
+  .hub__app-loader__step {
+    animation: none;
   }
 }

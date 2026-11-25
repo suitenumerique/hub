@@ -3457,6 +3457,7 @@ export class MatrixDriver extends Driver {
         return { status: "idle", chatUser: null };
       }
       let matrixUser: MatrixUserInterface;
+      this.emit({ type: "connection:progress", step: "signing-in" });
       try {
         matrixUser = await this.completeLogin(code, state);
       } finally {
@@ -3464,7 +3465,7 @@ export class MatrixDriver extends Driver {
         sessionStorage.removeItem(this.key(STORAGE.oidcState));
         this.clearCallbackParams();
       }
-      await this.bootstrapClient(matrixUser);
+      await this.bootstrapClient(matrixUser, { justSignedIn: true });
       return {
         status: "connected",
         chatUser: toChatUser(matrixUser),
@@ -3655,7 +3656,10 @@ export class MatrixDriver extends Driver {
     }
   }
 
-  private async bootstrapClient(user: MatrixUserInterface): Promise<void> {
+  private async bootstrapClient(
+    user: MatrixUserInterface,
+    { justSignedIn = false } = {},
+  ): Promise<void> {
     if (this.mx && this.mx.getUserId() === user.mxId) {
       await this.startConversationSearch(this.mx);
       return;
@@ -3672,8 +3676,18 @@ export class MatrixDriver extends Driver {
     assertActive();
     await this.ownership.acquire([`crypto:${this.cryptoStoreDbName(user)}`]);
     assertActive();
+    // A new sign-in has nothing cached. Nor has a saved session reloaded
+    // before its first sync ended, which `onFullSync` reports.
+    let isFirstSync = false;
+    const onFirstSync = () => {
+      if (isFirstSync) return;
+      isFirstSync = true;
+      this.emit({ type: "connection:progress", step: "preparing" });
+    };
+    if (justSignedIn) onFirstSync();
     const mx = await initClient(user, {
       assertActive,
+      onFullSync: onFirstSync,
       syncStoreDbName: this.key(SYNC_STORE_DB_NAME),
       cryptoStoreDbName: this.cryptoStoreDbName(user),
       tokenRefreshFunction: this.buildTokenRefreshFunction(user),
@@ -3707,6 +3721,8 @@ export class MatrixDriver extends Driver {
     }
     this.mx = mx;
     localStorage.removeItem(this.key("matrixRedactedThreads"));
+    if (isFirstSync)
+      this.emit({ type: "connection:progress", step: "loading-chats" });
     // Like Element, the chat opens at the first `Prepared`, which a warm start
     // emits from the IndexedDB cache before any network `/sync`. The bridge
     // attaches inside that event, so it observes the first network sync.

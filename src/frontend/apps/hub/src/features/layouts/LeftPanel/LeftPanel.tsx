@@ -49,17 +49,13 @@ import {
 } from "@/features/chat/hooks/useChatUnread";
 import { useChats } from "@/features/chat/hooks/useChats";
 import { APP_VERSION } from "@/features/config/appVersion";
+import { FEEDBACK_FORM_URL } from "@/features/config/feedbackForm";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { Chat, ChatRef, ChatUnread } from "@/features/drivers/types";
 import { AccountSelector } from "@/features/layouts/components/AccountSelector/AccountSelector";
 
 import { LeftPanelScrollbar } from "./LeftPanelScrollbar";
 import { TchapLogo } from "./TchapLogo";
-
-// Collects the first users' feedback until a support channel exists. The same
-// form for every environment.
-const FEEDBACK_FORM_URL =
-  "https://grist.numerique.gouv.fr/o/docs/forms/1JuuCeFh6A2cj1n3P7M6A8/6";
 
 type ActionItem =
   | { id: string; href: string; icon: ReactNode; label: string }

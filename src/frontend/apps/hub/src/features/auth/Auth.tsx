@@ -108,6 +108,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     detail,
     accountId: chatAccountId,
     justSignedIn,
+    step,
   } = useChatConnections(user);
   useSecurityAnalytics();
 
@@ -202,7 +203,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     chatAccounts.isReconciling ||
     chatStatus === "connecting"
   ) {
-    return <AppLoader />;
+    return <AppLoader step={step} />;
   }
 
   if (chatStatus === "sign-in-required" && user && chatAccountId) {

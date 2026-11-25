@@ -226,6 +226,14 @@ export type ChatConnectionStatus =
   | "error";
 
 /**
+ * What a first connection is doing, in this order:
+ * - `signing-in`: checking the account after its sign-in page;
+ * - `preparing`: setting up this device, its storage and its encryption;
+ * - `loading-chats`: loading the whole account for the first time.
+ */
+export type ChatConnectionStep = "signing-in" | "preparing" | "loading-chats";
+
+/**
  * Raised by `signIn` when the sign-in cannot start, so the sign-in page can
  * explain it and let the user correct the email:
  * - `invalid-email`: the server rejected the address;
@@ -274,6 +282,8 @@ export type ChatConnectionState = {
   detail?: string;
   /** Connected by a sign-in just completed, not from a saved session. */
   justSignedIn?: boolean;
+  /** Set while a first connection is `connecting`. */
+  step?: ChatConnectionStep;
 };
 
 /**
@@ -290,6 +300,8 @@ export type ChatConnectionState = {
  */
 export type ChatEvent =
   | { type: "connection:invalidated" }
+  // Only for a first connection: a later one opens from this device's cache.
+  | { type: "connection:progress"; step: ChatConnectionStep }
   | { type: "search:changed" }
   | {
       type: "message:reconciled";

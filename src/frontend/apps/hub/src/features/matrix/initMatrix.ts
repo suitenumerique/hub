@@ -29,6 +29,11 @@ type InitClientOptions = {
    */
   tokenRefreshFunction?: TokenRefreshFunction;
   /**
+   * Called when no saved sync can be replayed: the first `/sync` then loads
+   * the whole account, which can take minutes.
+   */
+  onFullSync?: () => void;
+  /**
    * Optional local projections attach after cache repair, before sync starts.
    * `joinedRoomIds` is the server's `/joined_rooms` answer fetched during
    * startup, or null when that request failed.
@@ -201,6 +206,7 @@ const startupClient = async (
   { mx, indexedDBStore, cryptoStoreDbName }: MatrixClientStores,
   user: MatrixUserInterface,
   assertActive: () => void,
+  onFullSync?: () => void,
 ): Promise<string[] | null> => {
   // Validate (and refresh when possible) the persisted OIDC session before
   // opening either IndexedDB store. A local MAS/Synapse reset invalidates both
@@ -252,17 +258,15 @@ const startupClient = async (
   assertActive();
   const savedSync = await indexedDBStore.getSavedSync();
   assertActive();
-  shareSavedSync(
-    mx,
+  const replayableSync = await discardStaleJoinedRooms(
     indexedDBStore,
-    await discardStaleJoinedRooms(
-      indexedDBStore,
-      savedSync,
-      joinedRoomsRequest,
-      assertActive,
-    ),
+    savedSync,
+    joinedRoomsRequest,
+    assertActive,
   );
+  shareSavedSync(mx, indexedDBStore, replayableSync);
   assertActive();
+  if (!replayableSync) onFullSync?.();
   await mx.initRustCrypto({ cryptoDatabasePrefix: cryptoStoreDbName });
   assertActive();
   if (published) {
@@ -382,7 +386,12 @@ export const initClient = async (
   try {
     const assertActive = options.assertActive ?? (() => {});
     assertActive();
-    const joinedRoomIds = await startupClient(client, user, assertActive);
+    const joinedRoomIds = await startupClient(
+      client,
+      user,
+      assertActive,
+      options.onFullSync,
+    );
     await options.onSyncStoreReady?.(client.mx, joinedRoomIds);
     assertActive();
     return client.mx;

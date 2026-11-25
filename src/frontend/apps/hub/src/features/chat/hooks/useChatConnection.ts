@@ -31,11 +31,24 @@ export const useChatConnections = (
   useEffect(() => {
     const cleanups = entries.map((entry) =>
       entry.driver.subscribeToEvents((event) => {
-        if (event.type !== "connection:invalidated") return;
+        if (
+          event.type !== "connection:invalidated" &&
+          event.type !== "connection:progress"
+        )
+          return;
         const queryKey = [
           ...chatKeys.connection(entry.accountId, userId),
           entry.generation,
         ];
+        if (event.type === "connection:progress") {
+          // The running `connect` replaces it with its result.
+          queryClient.setQueryData<ChatConnectionState>(queryKey, {
+            status: "connecting",
+            chatUser: null,
+            step: event.step,
+          });
+          return;
+        }
         // Connection results otherwise stay fresh indefinitely. Hide the old
         // connected state while this driver revalidates its saved session.
         queryClient.setQueryData<ChatConnectionState>(queryKey, {
@@ -106,12 +119,16 @@ export const useChatConnections = (
         };
       }
 
-      const requiredConnecting = requiredResults.some(
+      const requiredConnecting = requiredResults.find(
         ({ result }) =>
           result?.isPending || result?.data?.status === "connecting",
       );
       if (requiredConnecting) {
-        return { status: "connecting", chatUser: null };
+        return {
+          status: "connecting",
+          chatUser: null,
+          step: requiredConnecting.result?.data?.step,
+        };
       }
 
       return {
