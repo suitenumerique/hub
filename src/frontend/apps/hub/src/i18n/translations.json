@@ -227,6 +227,7 @@
       "Some message history could not be recovered. Messages already recovered remain available.": "Une partie de l’historique n’a pas pu être récupérée. Les messages déjà retrouvés restent disponibles.",
       "Technical details": "Détails techniques",
       "The backup is temporarily unavailable. Keys already on this device are kept; try again when the connection is restored.": "La sauvegarde est temporairement indisponible. Les clés déjà présentes sur cet appareil sont conservées. Réessayez une fois la connexion rétablie.",
+      "The browser closed the chat’s storage, for example to free up disk space. Try again to reload the chat. If this happens again, free up space on your computer.": "Le navigateur a fermé le stockage de la messagerie, par exemple pour libérer de l’espace disque. Réessayez pour recharger la messagerie. Si cela se reproduit, libérez de l’espace sur votre ordinateur.",
       "The chat and its history will be removed from this account. Other participants will keep the chat and its history.": "La discussion et son historique seront supprimés de ce compte. Les autres participants garderont la discussion et son historique.",
       "The chat could not be added to favourites. Please try again.": "La discussion n'a pas pu être ajoutée aux favoris. Veuillez réessayer.",
       "The chat could not be created. Please try again.": "La discussion n'a pas pu être créée. Veuillez réessayer.",
