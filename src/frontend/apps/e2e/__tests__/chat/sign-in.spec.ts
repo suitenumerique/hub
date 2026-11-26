@@ -1,13 +1,24 @@
 import { expect, test } from "./utils/fixtures";
-import { matrixSessionKey, readMatrixSession } from "./utils/hub-session";
+import {
+  deleteHubDatabases,
+  matrixSessionKey,
+  readMatrixSession,
+  waitForPublishedDeviceKeys,
+} from "./utils/hub-session";
 import { uniqueText } from "./utils/ids";
 import { MatrixApi } from "./utils/matrix-api";
 import {
+  allowHubAccess,
   completeFirstMasSignIn,
   signInToHub,
   watchMasNavigations,
 } from "./utils/oidc";
 import { ChatPage } from "./utils/pages/chat-page";
+import {
+  ConnectionError,
+  LOST_KEYS_MESSAGE,
+  STORAGE_CLOSED_MESSAGE,
+} from "./utils/pages/connection-error";
 
 /**
  * The only tests through the real OIDC chain: Hub → Keycloak, then the chat
@@ -102,6 +113,37 @@ test.describe("Real sign-in", () => {
       );
       expect(whoami.user_id).toBe(erin.userId);
       expect(masPages).toEqual([]);
+    });
+  });
+
+  /** E2E-26: a device whose keys the browser deleted is replaced (#153). */
+  test("moves the chat to a new device once the browser deleted its keys", async ({
+    page,
+    people,
+  }) => {
+    const erin = await people.createNewcomer("Erin");
+    await signInToHub(page, erin);
+    await completeFirstMasSignIn(page);
+    const chat = new ChatPage(page, erin);
+    await chat.leftPanel.expectReady();
+    const lostDevice = await waitForPublishedDeviceKeys(page, erin);
+    const blocked = new ConnectionError(page);
+
+    await test.step("the browser deletes the keys of the device", async () => {
+      await deleteHubDatabases(page);
+      await blocked.expectShown(STORAGE_CLOSED_MESSAGE);
+      await blocked.tryAgainButton.click();
+      await blocked.expectShown(LOST_KEYS_MESSAGE);
+    });
+
+    await test.step("the chat signs in again on a new device", async () => {
+      await blocked.reconnectButton.click();
+      // MAS still knows the person: it only asks to allow the new device.
+      await allowHubAccess(page);
+      await chat.leftPanel.expectReady();
+      const device = (await readMatrixSession(page, erin))?.deviceId;
+      expect(device).toBeTruthy();
+      expect(device).not.toBe(lostDevice);
     });
   });
 });

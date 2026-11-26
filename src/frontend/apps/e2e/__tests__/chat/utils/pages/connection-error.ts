@@ -5,12 +5,16 @@ export class ConnectionError {
   readonly root: Locator;
   readonly message: Locator;
   readonly tryAgainButton: Locator;
+  readonly reconnectButton: Locator;
   readonly logOutButton: Locator;
 
   constructor(readonly page: Page) {
     this.root = page.locator("main.hub__connection-error");
     this.message = this.root.getByRole("alert");
     this.tryAgainButton = this.root.getByRole("button", { name: "Try again" });
+    this.reconnectButton = this.root.getByRole("button", {
+      name: "Reconnect LaSuite Tchap v2 with a new device",
+    });
     this.logOutButton = this.root.getByRole("button", { name: "Log out" });
   }
 

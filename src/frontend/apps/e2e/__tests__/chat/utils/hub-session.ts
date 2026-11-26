@@ -1,4 +1,4 @@
-import { BrowserContext, Page } from "@playwright/test";
+import { BrowserContext, expect, Page } from "@playwright/test";
 
 import { CHAT_ACCOUNT_ID, HOMESERVER_URL, HUB_API_URL, MAS_URL } from "./env";
 import type { MatrixCredentials, TestIdentity } from "./matrix-admin";
@@ -68,6 +68,51 @@ export const readMatrixSession = async (
     matrixSessionKey(identity),
   );
   return raw ? (JSON.parse(raw) as StoredMatrixSession) : null;
+};
+
+/**
+ * Waits until the homeserver publishes the keys of the Hub's device, which is
+ * what tells a later load that the device lost its own. Returns its id.
+ */
+export const waitForPublishedDeviceKeys = async (
+  page: Page,
+  identity: TestIdentity,
+): Promise<string> => {
+  const session = await readMatrixSession(page, identity);
+  const deviceId = session?.deviceId;
+  if (!session || !deviceId) {
+    throw new Error("The Hub keeps no Matrix device for this person.");
+  }
+  await expect
+    .poll(async () => {
+      const response = await page.request.post(
+        `${HOMESERVER_URL}/_matrix/client/v3/keys/query`,
+        {
+          headers: { Authorization: `Bearer ${session.accessToken}` },
+          data: { device_keys: { [session.mxId]: [] } },
+        },
+      );
+      const { device_keys: keys } = (await response.json()) as {
+        device_keys: Record<string, Record<string, unknown>>;
+      };
+      return Boolean(keys[session.mxId]?.[deviceId]);
+    })
+    .toBe(true);
+  return deviceId;
+};
+
+/**
+ * Deletes the IndexedDB of the Hub under the open page, as Chrome does to a
+ * site when free disk space runs low: the connections close, localStorage
+ * stays (#153). Chromium only.
+ */
+export const deleteHubDatabases = async (page: Page): Promise<void> => {
+  const devtools = await page.context().newCDPSession(page);
+  await devtools.send("Storage.clearDataForOrigin", {
+    origin: new URL(page.url()).origin,
+    storageTypes: "indexeddb",
+  });
+  await devtools.detach();
 };
 
 /** Records every request a page sends to MAS, to prove none happened. */
