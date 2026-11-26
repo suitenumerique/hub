@@ -12,7 +12,7 @@ type UnlockCompletionProps = {
   security: ChatSecuritySnapshot;
   device: UnlockDevice;
   client: string;
-  onSkip: () => void;
+  onStop: () => void;
 };
 
 /** From the confirmation on this device to the recovered history. */
@@ -20,7 +20,7 @@ export const UnlockCompletion = ({
   security,
   device,
   client,
-  onSkip,
+  onStop,
 }: UnlockCompletionProps) => {
   const { t } = useTranslation();
   const onPhone = device === "phone";
@@ -64,13 +64,13 @@ export const UnlockCompletion = ({
     <UnlockCard
       title={t("Unlocking in progress")}
       step={3}
-      // The keys go on arriving without the card.
       actions={
-        isConfirmed && (
-          <Button variant="tertiary" color="neutral" fullWidth onClick={onSkip}>
-            {t("Continue without waiting")}
-          </Button>
-        )
+        <Button variant="tertiary" color="neutral" fullWidth onClick={onStop}>
+          {/* Once confirmed, the keys go on arriving without the card. */}
+          {isConfirmed
+            ? t("Continue without waiting")
+            : t("Cancel verification")}
+        </Button>
       }
     >
       <UnlockProgress lines={lines} />

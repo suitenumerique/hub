@@ -128,7 +128,7 @@ export const MessageUnlock = ({ accountId }: { accountId: AccountId }) => {
             security={security}
             device={device}
             client={client}
-            onSkip={stop}
+            onStop={stop}
           />
         );
       case "done":
