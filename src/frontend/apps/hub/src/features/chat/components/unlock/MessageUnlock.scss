@@ -1,3 +1,7 @@
+// The devices of the illustration, which set the width of their columns.
+$laptop-width: 132px;
+$phone-width: 58px;
+
 // Takes the place of the home page or of the conversation. The card has the
 // look of the ui-kit modal, without its backdrop.
 .hub__message-unlock {
@@ -175,27 +179,35 @@
     }
   }
 
+  // The devices and the check share one row, so the check sits halfway
+  // between them whatever their heights; the names share the next one. The
+  // columns are as wide as the devices: a longer name overflows on both sides
+  // instead of moving the device away from the check.
   &__illustration {
-    display: flex;
+    display: grid;
+    grid-template-columns: $laptop-width auto $phone-width;
+    grid-template-areas:
+      "computer match phone"
+      "computer-name . phone-name";
     align-items: center;
     justify-content: center;
-    gap: 20px;
+    justify-items: center;
+    gap: 8px 20px;
     padding: 20px 16px 14px;
     border-radius: 10px;
     background: var(--c--contextuals--background--semantic--brand--tertiary);
   }
 
-  &__device {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
+  &__device-name {
+    grid-area: phone-name;
+    white-space: nowrap;
     font-size: var(--c--globals--font--sizes--xs, 12px);
     font-weight: 600;
     line-height: 16px;
     color: var(--c--contextuals--content--semantic--neutral--secondary);
 
-    &[data-current="true"] {
+    &[data-device="computer"] {
+      grid-area: computer-name;
       color: var(--c--contextuals--content--semantic--brand--primary);
     }
   }
@@ -209,20 +221,20 @@
     background: var(--c--contextuals--background--surface--primary);
   }
 
+  // This computer: the device being unlocked.
   &__laptop {
-    width: 132px;
+    grid-area: computer;
+    width: $laptop-width;
     height: 88px;
-    border-radius: 8px;
-  }
-
-  &__device[data-current="true"] &__laptop {
     border-color: var(--c--contextuals--border--semantic--brand--primary);
+    border-radius: 8px;
     box-shadow: 0 0 0 4px
       var(--c--contextuals--background--semantic--brand--secondary);
   }
 
   &__phone {
-    width: 58px;
+    grid-area: phone;
+    width: $phone-width;
     height: 100px;
     border-radius: 13px;
   }
@@ -256,7 +268,7 @@
   }
 
   &__match {
-    flex: none;
+    grid-area: match;
     display: flex;
     align-items: center;
     justify-content: center;

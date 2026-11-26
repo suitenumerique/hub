@@ -24,26 +24,26 @@ export const UnlockIllustration = () => {
 
   return (
     <div className="hub__message-unlock__illustration" aria-hidden="true">
-      <div className="hub__message-unlock__device" data-current="true">
-        <div className="hub__message-unlock__laptop">
-          <span className="hub__message-unlock__window-bar">
-            <i />
-            <i />
-            <i />
-          </span>
-          <DeviceEmojis />
-        </div>
-        <span>{t("This computer")}</span>
+      <div className="hub__message-unlock__laptop">
+        <span className="hub__message-unlock__window-bar">
+          <i />
+          <i />
+          <i />
+        </span>
+        <DeviceEmojis />
       </div>
       <span className="hub__message-unlock__match">
         <Checkmark2 />
       </span>
-      <div className="hub__message-unlock__device">
-        <div className="hub__message-unlock__phone">
-          <DeviceEmojis />
-        </div>
-        <span>{t("Your phone")}</span>
+      <div className="hub__message-unlock__phone">
+        <DeviceEmojis />
       </div>
+      <span className="hub__message-unlock__device-name" data-device="computer">
+        {t("This computer")}
+      </span>
+      <span className="hub__message-unlock__device-name" data-device="phone">
+        {t("Your phone")}
+      </span>
     </div>
   );
 };
