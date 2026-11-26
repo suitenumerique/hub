@@ -10,7 +10,8 @@ import { TchapLogo } from "@/features/layouts/LeftPanel/TchapLogo";
 
 const subscribeToNothing = () => () => {};
 
-const stepContent = (
+/** What a step of the first chat connection shows. */
+export const stepContent = (
   t: TFunction,
   step: ChatConnectionStep,
 ): { emoji: string; label: string } => {

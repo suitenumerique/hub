@@ -203,7 +203,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
   }, [redirectTo]);
 
   if (isConnecting && isConnectionSlow) {
-    return <SlowConnection />;
+    return <SlowConnection step={step} />;
   }
 
   if (user === undefined || chatAccounts.isReconciling || isConnecting) {

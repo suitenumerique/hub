@@ -226,6 +226,13 @@
   margin: 15vh auto;
   padding: 24px;
 
+  &__step {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-weight: 500;
+  }
+
   &__actions {
     display: flex;
     flex-wrap: wrap;
