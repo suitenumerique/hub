@@ -22,6 +22,7 @@ import { clearFailedMessages } from "../chat/composer/failedMessagesStore";
 import { useConfig } from "../config/ConfigProvider";
 import { getRegistry } from "../drivers/DriverRegistry";
 import { AppLoader } from "../layouts/components/AppLoader/AppLoader";
+import { keepSiteStorage } from "../storage/persistentStorage";
 import { ChatLocalUser } from "../drivers/types";
 import { useSynchronizedLanguage } from "../language/hooks/useSynchronizedLanguage";
 import { authUrl } from "./authUrl";
@@ -166,6 +167,11 @@ export const Auth = ({ children }: PropsWithChildren) => {
       trackEvent("chat-account:connected", {});
     }
   }, [chatStatus, justSignedIn]);
+
+  // Like Element at each start of the session, once the chat holds its keys.
+  useEffect(() => {
+    if (chatStatus === "connected") void keepSiteStorage();
+  }, [chatStatus]);
 
   // Apply the language saved on the profile once logged in, or save the
   // detected one when the profile has none yet. Visitors get the detected

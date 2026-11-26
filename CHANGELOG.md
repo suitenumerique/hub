@@ -6,6 +6,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- 🐛(frontend) Ask the browser to keep the Hub's data when disk space runs
+  low, as Element does, and tell PostHog whether it does. Without it, Chrome
+  and the browsers built on it can delete the encryption keys of the device,
+  which then has to be replaced. #153
+
 ## [v0.2.0] - 2026-11-23
 
 ### Added

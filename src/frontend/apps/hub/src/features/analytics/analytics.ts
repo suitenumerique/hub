@@ -20,6 +20,12 @@ type AnalyticsEvents = {
     reason: "invalid-email" | "unknown-server" | "unavailable";
   };
   "connection:error-shown": { reason: string };
+  /** Whether the browser keeps the Hub's storage when disk space runs low. */
+  "storage:persistence": {
+    result: "persisted" | "granted" | "denied" | "unsupported";
+    /** Storage used by the Hub's origin, rounded. */
+    usage_mb?: number;
+  };
   "encryption:verification-completed": {
     result: "verified" | "mismatch" | "cancelled" | "expired" | "error";
   };
