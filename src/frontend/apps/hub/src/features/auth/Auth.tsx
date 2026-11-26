@@ -282,46 +282,48 @@ export const Auth = ({ children }: PropsWithChildren) => {
         <h1>{t("Chat connection interrupted")}</h1>
         <p role="alert">{message}</p>
         {detail && <p>{detail}</p>}
-        <Button onClick={() => window.location.reload()}>
-          {t("Try again")}
-        </Button>
-        {reason === "storage-continuity" && user && (
+        <div className="hub__connection-error__actions">
+          <Button onClick={() => window.location.reload()}>
+            {t("Try again")}
+          </Button>
+          {reason === "storage-continuity" && user && (
+            <Button
+              disabled={replacingDevice}
+              onClick={() => {
+                setReplacingDevice(true);
+                setReplacementFailed(false);
+                const driver = getRegistry()
+                  .getSnapshot()
+                  .find((entry) => entry.criticality === "required")?.driver;
+                void driver
+                  ?.replaceLostDeviceSession(user)
+                  .then((state) => {
+                    if (state.redirectTo)
+                      window.location.assign(state.redirectTo);
+                    // A Tchap account asks for the email on the sign-in page.
+                    else window.location.reload();
+                  })
+                  .finally(() => setReplacingDevice(false))
+                  .catch(() => setReplacementFailed(true));
+              }}
+            >
+              {t("Reconnect LaSuite Tchap v2 with a new device")}
+            </Button>
+          )}
           <Button
-            disabled={replacingDevice}
+            variant="tertiary"
             onClick={() => {
-              setReplacingDevice(true);
-              setReplacementFailed(false);
-              const driver = getRegistry()
-                .getSnapshot()
-                .find((entry) => entry.criticality === "required")?.driver;
-              void driver
-                ?.replaceLostDeviceSession(user)
-                .then((state) => {
-                  if (state.redirectTo)
-                    window.location.assign(state.redirectTo);
-                  // A Tchap account asks for the email on the sign-in page.
-                  else window.location.reload();
-                })
-                .finally(() => setReplacingDevice(false))
-                .catch(() => setReplacementFailed(true));
+              void logout();
             }}
           >
-            {t("Reconnect LaSuite Tchap v2 with a new device")}
+            {t("Log out")}
           </Button>
-        )}
+        </div>
         {replacementFailed && (
           <p role="alert">
             {t("Reconnection failed. Check your connection and try again.")}
           </p>
         )}
-        <Button
-          variant="tertiary"
-          onClick={() => {
-            void logout();
-          }}
-        >
-          {t("Log out")}
-        </Button>
       </main>
     );
   }

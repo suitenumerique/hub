@@ -11,6 +11,11 @@ and this project adheres to
 - ✨(frontend) Tell PostHog what stopped the chat: the check of the device
   that failed, or the store the browser closed. #153
 
+### Changed
+
+- 💄(frontend) Space the buttons of the "Chat connection interrupted" screen,
+  which touched each other. #153
+
 ### Fixed
 
 - 🐛(frontend) Ask the browser to keep the Hub's data when disk space runs
