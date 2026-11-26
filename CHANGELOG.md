@@ -6,12 +6,20 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- ✨(frontend) Tell PostHog what stopped the chat: the check of the device
+  that failed, or the store the browser closed. #153
+
 ### Fixed
 
 - 🐛(frontend) Ask the browser to keep the Hub's data when disk space runs
   low, as Element does, and tell PostHog whether it does. Without it, Chrome
   and the browsers built on it can delete the encryption keys of the device,
   which then has to be replaced. #153
+- 🐛(frontend) Stop the chat and offer to reload it when the browser closes
+  its storage, as Element does, instead of failing to decrypt every message
+  and asking to set up encryption. #153
 
 ## [v0.2.0] - 2026-11-23
 

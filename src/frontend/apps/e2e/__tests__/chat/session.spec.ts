@@ -10,6 +10,8 @@ import { ChatPage } from "./utils/pages/chat-page";
 import {
   ANOTHER_TAB_MESSAGE,
   ConnectionError,
+  LOST_KEYS_MESSAGE,
+  STORAGE_CLOSED_MESSAGE,
 } from "./utils/pages/connection-error";
 
 /** E2E-03: a reload restores the session without signing in again. */
@@ -100,5 +102,46 @@ test("blocks a second tab until the first one is closed", async ({
     const secondTab = new ChatPage(secondPage, alice);
     await secondTab.leftPanel.expectReady();
     await secondTab.leftPanel.expectConversation(bob.displayName);
+  });
+});
+
+/** E2E-25: the browser deleting the chat's storage stops the chat (#153). */
+test("stops the chat when the browser deletes its storage", async ({
+  people,
+  hub,
+}) => {
+  const alice = await people.create("Alice");
+  const bob = await people.create("Bob");
+  await createUnencryptedRoom(alice, [bob]);
+  const chat = await hub.open(alice);
+  await chat.leftPanel.expectConversation(bob.displayName);
+  const deviceId = (await readMatrixSession(chat.page, alice))?.deviceId ?? "";
+  expect(deviceId).not.toBe("");
+  // Published keys are what tells the next load that the device lost its own.
+  await expect
+    .poll(async () => {
+      const { device_keys: keys } = await alice.api.request<{
+        device_keys: Record<string, Record<string, unknown>>;
+      }>("POST", "/_matrix/client/v3/keys/query", {
+        body: { device_keys: { [alice.api.userId]: [] } },
+      });
+      return Boolean(keys[alice.api.userId]?.[deviceId]);
+    })
+    .toBe(true);
+  const blocked = new ConnectionError(chat.page);
+
+  await test.step("the browser deletes the storage of the open chat", async () => {
+    // What Chrome does to a site when free disk space runs low.
+    const devtools = await chat.page.context().newCDPSession(chat.page);
+    await devtools.send("Storage.clearDataForOrigin", {
+      origin: new URL(chat.page.url()).origin,
+      storageTypes: "indexeddb",
+    });
+    await blocked.expectShown(STORAGE_CLOSED_MESSAGE);
+  });
+
+  await test.step("the reload finds the keys of the device gone", async () => {
+    await blocked.tryAgainButton.click();
+    await blocked.expectShown(LOST_KEYS_MESSAGE);
   });
 });

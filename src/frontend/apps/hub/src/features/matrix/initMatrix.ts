@@ -17,6 +17,7 @@ import { saveOnMembershipChange } from "./membershipSave";
 import { MatrixUserInterface } from "./types";
 import { ownSyncStore } from "./ownedSyncStore";
 import { preloadRustCrypto } from "./preloadRustCrypto";
+import { watchDatabaseClosure } from "./storageClosure";
 
 type InitClientOptions = {
   /** Recheck ownership and client generation after asynchronous startup steps. */
@@ -37,6 +38,12 @@ type InitClientOptions = {
     mx: MatrixClient,
     joinedRoomIds: string[] | null,
   ) => Promise<void>;
+  /**
+   * The browser closed a store under the running client: storage eviction
+   * under low disk space, corruption, cleared site data. Neither store
+   * reopens. Each store reports it once.
+   */
+  onStorageClosed?: (store: "crypto" | "sync") => void;
 };
 
 type MatrixClientStores = {
@@ -51,13 +58,57 @@ const stores = new WeakMap<MatrixClient, () => Promise<void>>();
 const startingClients = new WeakMap<MatrixClient, Promise<void>>();
 const handOverSavedSync = new WeakMap<MatrixClient, () => void>();
 const closingClients = new WeakMap<MatrixClient, Promise<void>>();
+const cryptoStoreWatches = new WeakMap<MatrixClient, () => void>();
 
-export class MatrixStorageContinuityError extends Error {}
+/** The database matrix-sdk-crypto-wasm opens for a crypto store prefix. */
+const rustCryptoDbName = (prefix: string) => `${prefix}::matrix-sdk-crypto`;
+
+/** The device continuity check that failed, reported to analytics. */
+export type StorageContinuityCheck =
+  | "session-identity"
+  | "databases-unsupported"
+  | "crypto-store-missing"
+  | "device-keys-mismatch"
+  | "saved-session-mismatch"
+  | "saved-session-unreadable";
+
+export class MatrixStorageContinuityError extends Error {
+  constructor(
+    message: string,
+    readonly check: StorageContinuityCheck,
+    /** Kinds of the databases left, when the crypto store is missing. */
+    readonly storesLeft?: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * The kinds of the databases left in this browser, without their names, which
+ * hold Matrix ids. The other stores still there point to the crypto database
+ * deleted alone; none left, to the whole site's storage evicted or cleared.
+ */
+const databaseKinds = (databases: IDBDatabaseInfo[]): string =>
+  [
+    ...new Set(
+      databases.map(({ name = "" }) => {
+        if (name.endsWith("::matrix-sdk-crypto")) return "crypto";
+        if (name.startsWith("matrix-js-sdk:")) return "sync";
+        if (name.startsWith("hub-conversation-search:")) return "search";
+        return "other";
+      }),
+    ),
+  ]
+    .sort()
+    .join(",") || "none";
 
 /** Stop crypto first, then close (never delete) the independent sync database. */
 export const closeMatrixClient = (mx: MatrixClient): Promise<void> => {
   const existing = closingClients.get(mx);
   if (existing) return existing;
+  // Closing on purpose is not a store lost under the client.
+  cryptoStoreWatches.get(mx)?.();
+  cryptoStoreWatches.delete(mx);
   // startClient awaits server capabilities before constructing its sync loop.
   // Stopping before that prelude finishes would allow the loop to start late.
   mx.http.abort();
@@ -193,6 +244,9 @@ const buildClient = (
   });
 
   saveOnMembershipChange(indexedDBStore);
+  // Like Element's MatrixClientPeg.onUnexpectedStoreClose. A store closed on
+  // purpose, or degraded to memory, does not emit it.
+  indexedDBStore.on("closed", () => options.onStorageClosed?.("sync"));
   stores.set(mx, ownSyncStore(indexedDBStore));
   return { mx, indexedDBStore, cryptoStoreDbName };
 };
@@ -201,6 +255,7 @@ const startupClient = async (
   { mx, indexedDBStore, cryptoStoreDbName }: MatrixClientStores,
   user: MatrixUserInterface,
   assertActive: () => void,
+  onStorageClosed?: InitClientOptions["onStorageClosed"],
 ): Promise<string[] | null> => {
   // Validate (and refresh when possible) the persisted OIDC session before
   // opening either IndexedDB store. A local MAS/Synapse reset invalidates both
@@ -223,6 +278,7 @@ const startupClient = async (
   ) {
     throw new MatrixStorageContinuityError(
       "Matrix session identity does not match this device.",
+      "session-identity",
     );
   }
   // Query public keys before Rust can create/upload any device identity. A
@@ -234,17 +290,20 @@ const startupClient = async (
     if (!indexedDB.databases) {
       throw new MatrixStorageContinuityError(
         "Cannot check existing crypto storage in this browser.",
+        "databases-unsupported",
       );
     }
     const databases = await indexedDB.databases();
     assertActive();
     if (
       !databases.some(
-        ({ name }) => name === `${cryptoStoreDbName}::matrix-sdk-crypto`,
+        ({ name }) => name === rustCryptoDbName(cryptoStoreDbName),
       )
     ) {
       throw new MatrixStorageContinuityError(
         "The keys for this device are missing from this browser.",
+        "crypto-store-missing",
+        databaseKinds(databases),
       );
     }
   }
@@ -265,6 +324,12 @@ const startupClient = async (
   assertActive();
   await mx.initRustCrypto({ cryptoDatabasePrefix: cryptoStoreDbName });
   assertActive();
+  cryptoStoreWatches.set(
+    mx,
+    watchDatabaseClosure(rustCryptoDbName(cryptoStoreDbName), () =>
+      onStorageClosed?.("crypto"),
+    ),
+  );
   if (published) {
     const own = await mx.getCrypto()!.getOwnDeviceKeys();
     assertActive();
@@ -274,6 +339,7 @@ const startupClient = async (
     ) {
       throw new MatrixStorageContinuityError(
         "The local device keys do not match the published identity.",
+        "device-keys-mismatch",
       );
     }
   }
@@ -382,7 +448,12 @@ export const initClient = async (
   try {
     const assertActive = options.assertActive ?? (() => {});
     assertActive();
-    const joinedRoomIds = await startupClient(client, user, assertActive);
+    const joinedRoomIds = await startupClient(
+      client,
+      user,
+      assertActive,
+      options.onStorageClosed,
+    );
     await options.onSyncStoreReady?.(client.mx, joinedRoomIds);
     assertActive();
     return client.mx;

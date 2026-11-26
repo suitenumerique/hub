@@ -481,6 +481,8 @@ export class MatrixDriver extends Driver {
   private readonly pendingWork = new Set<Promise<unknown>>();
   private disposed = false;
   private lostDeviceSession = false;
+  /** The store the browser closed under the client: only a reload recovers. */
+  private closedStore: "crypto" | "sync" | null = null;
   private clearProjectionOnClose = false;
   private clientAbort = new AbortController();
   /** Reaction checks of loaded pages: a few at once, one per event. */
@@ -3361,6 +3363,7 @@ export class MatrixDriver extends Driver {
     if (typeof window === "undefined") {
       return { status: "connecting", chatUser: null };
     }
+    if (this.closedStore) return this.storageClosedState(this.closedStore);
     this.setStorageOwner(user);
     try {
       // Reserve credentials and sync storage before reading either. The crypto
@@ -3372,6 +3375,9 @@ export class MatrixDriver extends Driver {
       this.assertOwner();
       return await this.connectSession(user);
     } catch (error) {
+      // A store closed while connecting aborts the startup: the reload screen,
+      // not that abort. The refetch the closure asks for joins this attempt.
+      if (this.closedStore) return this.storageClosedState(this.closedStore);
       if (error instanceof MatrixOwnershipError) {
         return { status: "blocked", chatUser: null, reason: error.reason };
       }
@@ -3381,6 +3387,10 @@ export class MatrixDriver extends Driver {
           status: "blocked",
           chatUser: null,
           reason: "storage-continuity",
+          diagnostic: {
+            check: error.check,
+            ...(error.storesLeft && { stores_left: error.storesLeft }),
+          },
         };
       }
       this.teardownClient();
@@ -3415,6 +3425,7 @@ export class MatrixDriver extends Driver {
       ) {
         throw new MatrixStorageContinuityError(
           "The saved session does not match the configured account.",
+          "saved-session-mismatch",
         );
       }
       try {
@@ -3677,6 +3688,7 @@ export class MatrixDriver extends Driver {
       syncStoreDbName: this.key(SYNC_STORE_DB_NAME),
       cryptoStoreDbName: this.cryptoStoreDbName(user),
       tokenRefreshFunction: this.buildTokenRefreshFunction(user),
+      onStorageClosed: (store) => this.onStorageClosed(store, generation),
       onSyncStoreReady: async (client, joinedRoomIds) => {
         assertActive();
         this.mx = client;
@@ -4666,6 +4678,38 @@ export class MatrixDriver extends Driver {
     };
   }
 
+  /**
+   * The browser closed a store under the running client: storage eviction
+   * under low disk space, corruption, cleared site data (#153). Like Element
+   * (MatrixClientPeg.onUnexpectedStoreClose), stop the client at once and ask
+   * for a reload: the Rust crypto store never reopens, so every message would
+   * fail to decrypt, and each further `/sync` would acknowledge to-device room
+   * keys it can no longer store. The server keeps those until then.
+   */
+  private storageClosedState(store: "crypto" | "sync"): ChatConnectionState {
+    return {
+      status: "blocked",
+      chatUser: null,
+      reason: "storage-closed",
+      diagnostic: { store },
+    };
+  }
+
+  private onStorageClosed(store: "crypto" | "sync", generation: number): void {
+    if (
+      this.disposed ||
+      this.closedStore ||
+      generation !== this.clientGeneration
+    )
+      return;
+    console.warn(
+      `The browser closed the ${store} store of the chat: reload the page.`,
+    );
+    this.closedStore = store;
+    this.teardownClient();
+    this.emit({ type: "connection:invalidated" });
+  }
+
   private async startClientOrFailOnLogout(
     mx: MatrixClient,
     onPrepared: () => void,
@@ -4932,6 +4976,7 @@ export class MatrixDriver extends Driver {
     } catch {
       throw new MatrixStorageContinuityError(
         "The saved Matrix session is unreadable.",
+        "saved-session-unreadable",
       );
     }
   }

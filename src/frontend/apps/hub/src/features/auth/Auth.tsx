@@ -20,6 +20,7 @@ import { useChatConnections } from "../chat/hooks/useChatConnection";
 import { clearComposerDrafts } from "../chat/composer/composerDraftStore";
 import { clearFailedMessages } from "../chat/composer/failedMessagesStore";
 import { useConfig } from "../config/ConfigProvider";
+import type { ChatConnectionState } from "../drivers/Driver";
 import { getRegistry } from "../drivers/DriverRegistry";
 import { AppLoader } from "../layouts/components/AppLoader/AppLoader";
 import { keepSiteStorage } from "../storage/persistentStorage";
@@ -82,10 +83,17 @@ export const AuthContext = React.createContext<AuthContextInterface>({});
 export const useAuth = () => React.useContext(AuthContext);
 
 /** Reports the full-screen error while it shows. */
-const ConnectionErrorShown = ({ reason }: { reason: string }) => {
+const ConnectionErrorShown = ({
+  reason,
+  diagnostic,
+}: {
+  reason: string;
+  diagnostic?: ChatConnectionState["diagnostic"];
+}) => {
+  const { check, store, stores_left } = diagnostic ?? {};
   useEffect(() => {
-    trackEvent("connection:error-shown", { reason });
-  }, [reason]);
+    trackEvent("connection:error-shown", { reason, check, store, stores_left });
+  }, [reason, check, store, stores_left]);
   return null;
 };
 
@@ -107,6 +115,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     redirectTo,
     reason,
     detail,
+    diagnostic,
     accountId: chatAccountId,
     justSignedIn,
   } = useChatConnections(user);
@@ -239,6 +248,11 @@ export const Auth = ({ children }: PropsWithChildren) => {
           "This device’s local keys are missing or no longer match its session. Stored data has not been deleted. A new device session is required.",
         );
         break;
+      case "storage-closed":
+        message = t(
+          "The browser closed the chat’s storage, for example to free up disk space. Try again to reload the chat. If this happens again, free up space on your computer.",
+        );
+        break;
       case "sign-in-failed":
         message = t(
           "Signing in to the chat did not succeed. Try again, or contact your administrator if the problem persists.",
@@ -263,6 +277,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
       <main className="hub__connection-error">
         <ConnectionErrorShown
           reason={chatUnconfigured ? "unconfigured" : (reason ?? "unavailable")}
+          diagnostic={chatUnconfigured ? undefined : diagnostic}
         />
         <h1>{t("Chat connection interrupted")}</h1>
         <p role="alert">{message}</p>
