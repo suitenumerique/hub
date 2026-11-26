@@ -1,18 +1,25 @@
-import { Button, Input, Spinner } from "@gouvfr-lasuite/ui-components";
+import {
+  Alert,
+  Button,
+  Input,
+  Spinner,
+  VariantType,
+} from "@gouvfr-lasuite/ui-components";
 import { QuestionMark } from "@gouvfr-lasuite/ui-components/icons";
 import { useMutation } from "@tanstack/react-query";
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { trackEvent } from "@/features/analytics/analytics";
 import { ChatSignInError } from "@/features/drivers/Driver";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
 import type { AccountId, User } from "@/features/drivers/types";
+import { SupportLink } from "@/features/layouts/components/SupportLink/SupportLink";
 import { TchapLogo } from "@/features/layouts/LeftPanel/TchapLogo";
-import { Gaufre } from "@/features/ui/components/gaufre/Gaufre";
 
 import { logout } from "../../Auth";
 import { ExternalServerModal } from "./ExternalServerModal";
+import { ProConnectLogo } from "./ProConnectLogo";
 
 type ChatSignInProps = {
   user: User;
@@ -29,6 +36,7 @@ export const ChatSignIn = ({ user, accountId }: ChatSignInProps) => {
     (entry) => entry.accountId === accountId,
   )?.driver;
   const emailField = useRef<HTMLInputElement>(null);
+  const helpId = useId();
   // Usually the chat address: the Hub signs in with the same identity
   // provider. Editable for accounts whose chat address differs.
   const [email, setEmail] = useState(user.email);
@@ -127,6 +135,13 @@ export const ChatSignIn = ({ user, accountId }: ChatSignInProps) => {
           noValidate
           onSubmit={onSubmit}
         >
+          <Alert type={VariantType.INFO} icon={<ProConnectLogo />}>
+            <span id={helpId}>
+              {t(
+                "Enter the ProConnect address you use for Tchap and the other LaSuite products.",
+              )}
+            </span>
+          </Alert>
           <Input
             ref={emailField}
             type="email"
@@ -146,8 +161,9 @@ export const ChatSignIn = ({ user, accountId }: ChatSignInProps) => {
               signIn.reset();
             }}
             aria-invalid={error ? true : undefined}
+            aria-describedby={helpId}
             state={error ? "error" : "default"}
-            text={error ?? t("Type your ProConnect address to continue.")}
+            text={error}
           />
           {/* The field does not link its text to the input: announce errors. */}
           <p className="hub__visually-hidden" role="alert">
@@ -159,7 +175,7 @@ export const ChatSignIn = ({ user, accountId }: ChatSignInProps) => {
             aria-busy={signingIn}
             icon={signingIn ? <Spinner size="md" /> : undefined}
           >
-            {signingIn ? t("Signing in…") : t("Sign in")}
+            {signingIn ? t("Signing in…") : t("Sign in with ProConnect")}
           </Button>
         </form>
       </div>
@@ -177,15 +193,10 @@ export const ChatSignIn = ({ user, accountId }: ChatSignInProps) => {
         }}
       />
 
-      <div className="hub__chat-sign-in__menu">
-        <Gaufre />
-        <Button
-          variant="tertiary"
-          color="neutral"
-          size="small"
-          icon={<QuestionMark size={24} />}
-          aria-label={t("Help")}
-        />
+      <div className="hub__chat-sign-in__help">
+        <SupportLink size="small" icon={<QuestionMark size={16} />}>
+          {t("Need help? Contact support")}
+        </SupportLink>
       </div>
     </main>
   );

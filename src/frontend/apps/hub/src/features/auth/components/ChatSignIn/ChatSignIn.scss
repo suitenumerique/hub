@@ -88,10 +88,9 @@
   &__form {
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 20px;
     width: 100%;
-    // Room of the field's hidden label, as in the design.
-    padding-top: 38px;
+    padding-top: 18px;
 
     // The helper text lines up with the field, as in the design.
     .c__field__footer {
@@ -99,13 +98,11 @@
     }
   }
 
-  &__menu {
+  // As on the loading screen: help stays at the bottom, in the middle.
+  &__help {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 12px;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
   }
 }
