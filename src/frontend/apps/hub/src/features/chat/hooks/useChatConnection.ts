@@ -1,14 +1,19 @@
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { chatKeys } from "@/features/chat/chatKeys";
 import { useDriverEntries } from "@/features/drivers/DriverRegistry";
-import type { ChatConnectionState } from "@/features/drivers/Driver";
+import type {
+  ChatConnectionState,
+  ChatConnectionStep,
+} from "@/features/drivers/Driver";
 import type { AccountId, User } from "@/features/drivers/types";
 
 export type ChatConnectionsState = ChatConnectionState & {
   /** Account to sign in to, when the status is `sign-in-required`. */
   accountId?: AccountId;
+  /** Set while a first connection is `connecting`. */
+  step?: ChatConnectionStep;
 };
 
 const DISCONNECTED: ChatConnectionsState = {
@@ -27,28 +32,31 @@ export const useChatConnections = (
   const entries = useDriverEntries();
   const userId = user?.id ?? null;
   const queryClient = useQueryClient();
+  // Not in the connection query: with data, a first connection that fails
+  // would no longer be stale, nor tried again when the network comes back.
+  const [progress, setProgress] = useState<{
+    accountId: AccountId;
+    generation: number;
+    step: ChatConnectionStep;
+  } | null>(null);
 
   useEffect(() => {
     const cleanups = entries.map((entry) =>
       entry.driver.subscribeToEvents((event) => {
-        if (
-          event.type !== "connection:invalidated" &&
-          event.type !== "connection:progress"
-        )
-          return;
-        const queryKey = [
-          ...chatKeys.connection(entry.accountId, userId),
-          entry.generation,
-        ];
         if (event.type === "connection:progress") {
-          // The running `connect` replaces it with its result.
-          queryClient.setQueryData<ChatConnectionState>(queryKey, {
-            status: "connecting",
-            chatUser: null,
+          setProgress({
+            accountId: entry.accountId,
+            generation: entry.generation,
             step: event.step,
           });
           return;
         }
+        if (event.type !== "connection:invalidated") return;
+        setProgress(null);
+        const queryKey = [
+          ...chatKeys.connection(entry.accountId, userId),
+          entry.generation,
+        ];
         // Connection results otherwise stay fresh indefinitely. Hide the old
         // connected state while this driver revalidates its saved session.
         queryClient.setQueryData<ChatConnectionState>(queryKey, {
@@ -124,10 +132,15 @@ export const useChatConnections = (
           result?.isPending || result?.data?.status === "connecting",
       );
       if (requiredConnecting) {
+        const { accountId, generation } = requiredConnecting.entry;
         return {
           status: "connecting",
           chatUser: null,
-          step: requiredConnecting.result?.data?.step,
+          step:
+            progress?.accountId === accountId &&
+            progress.generation === generation
+              ? progress.step
+              : undefined,
         };
       }
 

@@ -282,8 +282,6 @@ export type ChatConnectionState = {
   detail?: string;
   /** Connected by a sign-in just completed, not from a saved session. */
   justSignedIn?: boolean;
-  /** Set while a first connection is `connecting`. */
-  step?: ChatConnectionStep;
 };
 
 /**
