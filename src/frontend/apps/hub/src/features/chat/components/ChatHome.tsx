@@ -6,9 +6,8 @@ import { TchapLogoMark } from "@/features/layouts/LeftPanel/TchapLogo";
 
 import { useReportActiveChat } from "../ActiveChatContext";
 import { useComposerAccountId } from "../hooks/useChatAccounts";
-import { useChatSecurity } from "../hooks/useChatSecurity";
 import { useHasNoChats } from "../hooks/useChats";
-import { isDeviceUnverified, useIsChatLocked } from "../hooks/useIsChatLocked";
+import { useIsHomeLocked } from "../hooks/useIsChatLocked";
 
 import { MessageUnlock } from "./unlock/MessageUnlock";
 
@@ -20,13 +19,7 @@ export const ChatHome = () => {
   const { t } = useTranslation();
   const router = useRouter();
   const accountId = useComposerAccountId();
-  const { security } = useChatSecurity(accountId);
-  // Nothing to hide here: it also says what to do before unlocking.
-  const isLocked =
-    useIsChatLocked(null, accountId) || isDeviceUnverified(security);
-  // The welcome never shows just before the unlock card.
-  const isChecking =
-    security.supported && security.trust === "checking" && !security.issue;
+  const isLocked = useIsHomeLocked(accountId);
   const hasNoChats = useHasNoChats();
   useReportActiveChat(null);
 
@@ -36,7 +29,7 @@ export const ChatHome = () => {
     }
   }, [hasNoChats, router]);
 
-  if (hasNoChats || isChecking) {
+  if (hasNoChats) {
     return null;
   }
 

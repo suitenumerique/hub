@@ -43,6 +43,8 @@ type MessageUnlock = {
   session: UnlockSession | null;
   /** The messages are unlocked: the card says so before it leaves. */
   isDone: boolean;
+  /** Accounts verified from the card, on this page. */
+  verifiedAccountIds: readonly AccountId[];
   /** To call with the `verify` command. */
   start: (accountId: AccountId, device: UnlockDevice) => void;
   /** Leaves the verification, wherever it is. */
@@ -53,10 +55,10 @@ const MessageUnlockContext = createContext<MessageUnlock | null>(null);
 
 /**
  * Whether nothing more is expected once the device is verified: its history is
- * there, or will not come by waiting, which the settings then explain.
+ * there, or will not come by waiting, which the settings then explain. Not on
+ * an `issue`: a network cut reports one too, and the keys follow it.
  */
 const isUnlockOver = (security: ChatSecuritySnapshot): boolean =>
-  security.issue !== undefined ||
   security.secrets === "delayed" ||
   ["complete", "partial", "error"].includes(security.history) ||
   (security.trust === "verified" &&
@@ -73,13 +75,27 @@ export const MessageUnlockProvider = ({ children }: PropsWithChildren) => {
   const [session, setSession] = useState<UnlockSession | null>(null);
   const { security, run } = useEncryptionCommands(session?.accountId ?? null);
   const { phase, attempt } = security.verification;
+  const [verifiedAccountIds, setVerifiedAccountIds] = useState<
+    readonly AccountId[]
+  >([]);
 
   // Adjusted while rendering, not in an effect: no screen of a session that is
   // over ever shows in between.
-  if (session && !session.hasRun && phase !== "idle") {
+  if (session && phase === "incoming") {
+    // Another device asks in its turn: the settings answer it.
+    setSession(null);
+  } else if (session && !session.hasRun && phase !== "idle") {
     setSession({ ...session, hasRun: true });
   } else if (session?.hasRun && phase === "idle") {
     setSession(null);
+  }
+  // The trust can take a while to follow: the card must not ask again.
+  if (
+    session &&
+    phase === "complete" &&
+    !verifiedAccountIds.includes(session.accountId)
+  ) {
+    setVerifiedAccountIds([...verifiedAccountIds, session.accountId]);
   }
 
   const start = useCallback(
@@ -116,8 +132,8 @@ export const MessageUnlockProvider = ({ children }: PropsWithChildren) => {
   }, [isOver, isDone, stableStop]);
 
   const value = useMemo(
-    () => ({ session, isDone, start, stop: stableStop }),
-    [session, isDone, start, stableStop],
+    () => ({ session, isDone, verifiedAccountIds, start, stop: stableStop }),
+    [session, isDone, verifiedAccountIds, start, stableStop],
   );
 
   return (

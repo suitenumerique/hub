@@ -8,7 +8,9 @@
   padding: 64px 40px 96px;
   font-family: var(--c--globals--font--families--base, "Marianne", sans-serif);
   text-align: center;
-  animation: hub-chat-home 0.6s ease;
+  // Not at once: the check of the device mostly ends before, and shows the
+  // unlock card instead when it is needed.
+  animation: hub-chat-home 0.6s ease 0.3s backwards;
 
   &__mark {
     width: 48px;
