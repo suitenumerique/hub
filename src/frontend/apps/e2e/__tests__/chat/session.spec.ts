@@ -4,12 +4,19 @@ import {
   shownDeviceId,
   signInAgain,
 } from "./utils/flows";
-import { readMatrixSession, watchMasRequests } from "./utils/hub-session";
+import {
+  deleteHubDatabases,
+  readMatrixSession,
+  waitForPublishedDeviceKeys,
+  watchMasRequests,
+} from "./utils/hub-session";
 import { uniqueText } from "./utils/ids";
 import { ChatPage } from "./utils/pages/chat-page";
 import {
   ANOTHER_TAB_MESSAGE,
   ConnectionError,
+  LOST_KEYS_MESSAGE,
+  STORAGE_CLOSED_MESSAGE,
 } from "./utils/pages/connection-error";
 
 /** E2E-03: a reload restores the session without signing in again. */
@@ -100,5 +107,29 @@ test("blocks a second tab until the first one is closed", async ({
     const secondTab = new ChatPage(secondPage, alice);
     await secondTab.leftPanel.expectReady();
     await secondTab.leftPanel.expectConversation(bob.displayName);
+  });
+});
+
+/** E2E-25: the browser deleting the chat's storage stops the chat (#153). */
+test("stops the chat when the browser deletes its storage", async ({
+  people,
+  hub,
+}) => {
+  const alice = await people.create("Alice");
+  const bob = await people.create("Bob");
+  await createUnencryptedRoom(alice, [bob]);
+  const chat = await hub.open(alice);
+  await chat.leftPanel.expectConversation(bob.displayName);
+  await waitForPublishedDeviceKeys(chat.page, alice);
+  const blocked = new ConnectionError(chat.page);
+
+  await test.step("the browser deletes the storage of the open chat", async () => {
+    await deleteHubDatabases(chat.page);
+    await blocked.expectShown(STORAGE_CLOSED_MESSAGE);
+  });
+
+  await test.step("the reload finds the keys of the device gone", async () => {
+    await blocked.tryAgainButton.click();
+    await blocked.expectShown(LOST_KEYS_MESSAGE);
   });
 });

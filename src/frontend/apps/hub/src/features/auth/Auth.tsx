@@ -20,8 +20,10 @@ import { useChatConnections } from "../chat/hooks/useChatConnection";
 import { clearComposerDrafts } from "../chat/composer/composerDraftStore";
 import { clearFailedMessages } from "../chat/composer/failedMessagesStore";
 import { useConfig } from "../config/ConfigProvider";
+import type { ChatConnectionState } from "../drivers/Driver";
 import { getRegistry } from "../drivers/DriverRegistry";
 import { AppLoader } from "../layouts/components/AppLoader/AppLoader";
+import { keepSiteStorage } from "../storage/persistentStorage";
 import { ChatLocalUser } from "../drivers/types";
 import { useSynchronizedLanguage } from "../language/hooks/useSynchronizedLanguage";
 import { authUrl } from "./authUrl";
@@ -81,10 +83,17 @@ export const AuthContext = React.createContext<AuthContextInterface>({});
 export const useAuth = () => React.useContext(AuthContext);
 
 /** Reports the full-screen error while it shows. */
-const ConnectionErrorShown = ({ reason }: { reason: string }) => {
+const ConnectionErrorShown = ({
+  reason,
+  diagnostic,
+}: {
+  reason: string;
+  diagnostic?: ChatConnectionState["diagnostic"];
+}) => {
+  const { check, store, stores_left } = diagnostic ?? {};
   useEffect(() => {
-    trackEvent("connection:error-shown", { reason });
-  }, [reason]);
+    trackEvent("connection:error-shown", { reason, check, store, stores_left });
+  }, [reason, check, store, stores_left]);
   return null;
 };
 
@@ -106,6 +115,7 @@ export const Auth = ({ children }: PropsWithChildren) => {
     redirectTo,
     reason,
     detail,
+    diagnostic,
     accountId: chatAccountId,
     justSignedIn,
   } = useChatConnections(user);
@@ -166,6 +176,11 @@ export const Auth = ({ children }: PropsWithChildren) => {
       trackEvent("chat-account:connected", {});
     }
   }, [chatStatus, justSignedIn]);
+
+  // Like Element at each start of the session, once the chat holds its keys.
+  useEffect(() => {
+    if (chatStatus === "connected") void keepSiteStorage();
+  }, [chatStatus]);
 
   // Apply the language saved on the profile once logged in, or save the
   // detected one when the profile has none yet. Visitors get the detected
@@ -233,6 +248,11 @@ export const Auth = ({ children }: PropsWithChildren) => {
           "This device’s local keys are missing or no longer match its session. Stored data has not been deleted. A new device session is required.",
         );
         break;
+      case "storage-closed":
+        message = t(
+          "The browser closed the chat’s storage, for example to free up disk space. Try again to reload the chat. If this happens again, free up space on your computer.",
+        );
+        break;
       case "sign-in-failed":
         message = t(
           "Signing in to the chat did not succeed. Try again, or contact your administrator if the problem persists.",
@@ -257,50 +277,53 @@ export const Auth = ({ children }: PropsWithChildren) => {
       <main className="hub__connection-error">
         <ConnectionErrorShown
           reason={chatUnconfigured ? "unconfigured" : (reason ?? "unavailable")}
+          diagnostic={chatUnconfigured ? undefined : diagnostic}
         />
         <h1>{t("Chat connection interrupted")}</h1>
         <p role="alert">{message}</p>
         {detail && <p>{detail}</p>}
-        <Button onClick={() => window.location.reload()}>
-          {t("Try again")}
-        </Button>
-        {reason === "storage-continuity" && user && (
+        <div className="hub__connection-error__actions">
+          <Button onClick={() => window.location.reload()}>
+            {t("Try again")}
+          </Button>
+          {reason === "storage-continuity" && user && (
+            <Button
+              disabled={replacingDevice}
+              onClick={() => {
+                setReplacingDevice(true);
+                setReplacementFailed(false);
+                const driver = getRegistry()
+                  .getSnapshot()
+                  .find((entry) => entry.criticality === "required")?.driver;
+                void driver
+                  ?.replaceLostDeviceSession(user)
+                  .then((state) => {
+                    if (state.redirectTo)
+                      window.location.assign(state.redirectTo);
+                    // A Tchap account asks for the email on the sign-in page.
+                    else window.location.reload();
+                  })
+                  .finally(() => setReplacingDevice(false))
+                  .catch(() => setReplacementFailed(true));
+              }}
+            >
+              {t("Reconnect LaSuite Tchap v2 with a new device")}
+            </Button>
+          )}
           <Button
-            disabled={replacingDevice}
+            variant="tertiary"
             onClick={() => {
-              setReplacingDevice(true);
-              setReplacementFailed(false);
-              const driver = getRegistry()
-                .getSnapshot()
-                .find((entry) => entry.criticality === "required")?.driver;
-              void driver
-                ?.replaceLostDeviceSession(user)
-                .then((state) => {
-                  if (state.redirectTo)
-                    window.location.assign(state.redirectTo);
-                  // A Tchap account asks for the email on the sign-in page.
-                  else window.location.reload();
-                })
-                .finally(() => setReplacingDevice(false))
-                .catch(() => setReplacementFailed(true));
+              void logout();
             }}
           >
-            {t("Reconnect LaSuite Tchap v2 with a new device")}
+            {t("Log out")}
           </Button>
-        )}
+        </div>
         {replacementFailed && (
           <p role="alert">
             {t("Reconnection failed. Check your connection and try again.")}
           </p>
         )}
-        <Button
-          variant="tertiary"
-          onClick={() => {
-            void logout();
-          }}
-        >
-          {t("Log out")}
-        </Button>
       </main>
     );
   }

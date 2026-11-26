@@ -1,3 +1,5 @@
+import { keepSiteStorage } from "@/features/storage/persistentStorage";
+
 // This marker suppresses automatic requests, never the fallback on a real gesture.
 const AUTOMATIC_ATTEMPT_KEY = "hub:notifications:permission-requested:v1";
 
@@ -76,6 +78,8 @@ export class NotificationPermission {
       const permission = await Notification.requestPermission();
       if (this.disposed) return;
       this.pending = permission === "default";
+      // Chrome keeps the storage of a site allowed to send notifications.
+      if (permission === "granted") void keepSiteStorage();
       // A blocked automatic request leaves the gesture fallback armed.
       // A dismissed gesture request is not repeated during this page visit.
     } catch {

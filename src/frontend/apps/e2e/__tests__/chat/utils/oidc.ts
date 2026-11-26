@@ -23,6 +23,12 @@ export const completeFirstMasSignIn = async (page: Page): Promise<void> => {
     page.getByRole("heading", { name: "Import your data" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Create Account" }).click();
+  await allowHubAccess(page);
+};
+
+/** MAS asks to allow the Hub for each new device, then goes back to it. */
+export const allowHubAccess = async (page: Page): Promise<void> => {
+  await expect(page).toHaveURL(new RegExp(`^${MAS_URL}/`), { timeout: 30_000 });
   await expect(
     page.getByRole("heading", { name: "Allow access to your account?" }),
   ).toBeVisible();

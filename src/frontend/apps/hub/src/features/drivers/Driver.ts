@@ -267,11 +267,14 @@ export type ChatConnectionState = {
     | "another-tab"
     | "unsupported"
     | "storage-continuity"
+    | "storage-closed"
     | "sign-in-failed"
     | "unknown-server"
     | "account-expired";
   /** Server-provided explanation shown as is, e.g. an OAuth error description. */
   detail?: string;
+  /** What blocked the connection, for analytics only, never shown. */
+  diagnostic?: { check?: string; store?: string; stores_left?: string };
   /** Connected by a sign-in just completed, not from a saved session. */
   justSignedIn?: boolean;
 };
