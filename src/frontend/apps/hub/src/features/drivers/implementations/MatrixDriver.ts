@@ -3502,9 +3502,13 @@ export class MatrixDriver extends Driver {
     if (this.settings.discovery === "tchap-email") {
       return { status: "sign-in-required", chatUser: null };
     }
+    const client: OidcClient =
+      "oidcClientId" in this.settings
+        ? { clientId: this.settings.oidcClientId }
+        : { clientName: this.settings.clientName };
     const redirectTo = await this.startOidcFlow(
       this.settings.baseUrl,
-      { clientId: this.settings.oidcClientId },
+      client,
       hubEmail,
     );
     return { status: "connecting", chatUser: null, redirectTo };

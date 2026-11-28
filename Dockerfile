@@ -136,6 +136,11 @@ CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 # ---- Production image ----
 FROM core AS backend-production
 
+# Chat environment served to the frontend. Override at runtime for another
+# Matrix stack; the MijnBureau image defaults to its own manifest.
+ARG FRONTEND_CHAT_ENVIRONMENT=""
+ENV FRONTEND_CHAT_ENVIRONMENT=${FRONTEND_CHAT_ENVIRONMENT}
+
 # Remove apk cache, we don't need it anymore
 RUN rm -rf /var/cache/apk/*
 

@@ -12,9 +12,15 @@ on:
 env:
   DOCKER_USER: 1001:127
   REGISTRY: ghcr.io
+  # Baked into the backend image; deployments can still override it.
+  FRONTEND_CHAT_ENVIRONMENT: mijnbureau
 
 permissions:
   contents: read
+
+concurrency:
+  group: ghcr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-push-backend:
@@ -41,6 +47,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
+            type=raw,value=mijnbureau
+            type=sha,prefix=mijnbureau-
       - name: Login to GHCR
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
@@ -53,7 +61,9 @@ jobs:
           context: .
           target: backend-production
           platforms: linux/amd64,linux/arm64
-          build-args: DOCKER_USER=${{ env.DOCKER_USER }}
+          build-args: |
+            DOCKER_USER=${{ env.DOCKER_USER }}
+            FRONTEND_CHAT_ENVIRONMENT=${{ env.FRONTEND_CHAT_ENVIRONMENT }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -87,6 +97,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
+            type=raw,value=mijnbureau
+            type=sha,prefix=mijnbureau-
       - name: Login to GHCR
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:

@@ -9,16 +9,21 @@ type MatrixSharedSettings = {
   maxUploadSize?: number;
 };
 
-/** One known homeserver with an OAuth client registered on its issuer. */
-export type MatrixFixedSettings = MatrixSharedSettings & {
-  discovery: "fixed";
-  /** Matrix client-server API base URL for this account. */
-  baseUrl: string;
-  /** Matrix server name retained as account metadata for future servers. */
-  serverName: string;
-  /** OAuth client registered on the account's delegated-auth issuer. */
-  oidcClientId: string;
-};
+/**
+ * OAuth client of a fixed account: either registered in advance on the
+ * issuer, or registered dynamically at each login under this name.
+ */
+type MatrixFixedClient = { oidcClientId: string } | { clientName: string };
+
+/** One known homeserver with an OAuth client on its delegated-auth issuer. */
+export type MatrixFixedSettings = MatrixSharedSettings &
+  MatrixFixedClient & {
+    discovery: "fixed";
+    /** Matrix client-server API base URL for this account. */
+    baseUrl: string;
+    /** Matrix server name retained as account metadata for future servers. */
+    serverName: string;
+  };
 
 /**
  * Tchap federation: the user's homeserver is resolved from their email, and the
@@ -50,6 +55,17 @@ export const MATRIX_LOCAL_SETTINGS = {
   externalClientUrl: "http://localhost:9807",
   externalClientLabel: "Element local",
   maxUploadSize: 20 * 1024 * 1024,
+} satisfies MatrixDriverSettings;
+
+// MijnBureau's self-hosted Synapse + MAS + Element. The OAuth client is
+// registered dynamically at each login, so it works from any Hub origin.
+export const MIJNBUREAU_SETTINGS = {
+  discovery: "fixed",
+  baseUrl: "https://matrix.open-desk.nl",
+  serverName: "matrix.open-desk.nl",
+  clientName: "LaSuite Hub",
+  externalClientUrl: "https://element.open-desk.nl",
+  externalClientLabel: "Element",
 } satisfies MatrixDriverSettings;
 
 // Name of the OAuth client the Hub registers on Tchap. Development builds say
@@ -195,11 +211,33 @@ export const parseMatrixDriverSettings = (
   if (discovery !== "fixed") {
     throw new Error('Matrix account setting "discovery" is invalid.');
   }
-  return {
-    discovery,
-    baseUrl: readRequiredString(raw, "baseUrl"),
-    serverName: readRequiredString(raw, "serverName"),
-    oidcClientId: readRequiredString(raw, "oidcClientId"),
-    ...readSharedSettings(raw),
-  };
+  const baseUrl = readRequiredString(raw, "baseUrl");
+  const serverName = readRequiredString(raw, "serverName");
+  const shared = readSharedSettings(raw);
+  if (typeof raw.oidcClientId === "string" && raw.oidcClientId.length > 0) {
+    if (typeof raw.clientName === "string" && raw.clientName.length > 0) {
+      throw new Error(
+        'Matrix account settings "oidcClientId" and "clientName" are exclusive.',
+      );
+    }
+    return {
+      discovery,
+      baseUrl,
+      serverName,
+      oidcClientId: raw.oidcClientId,
+      ...shared,
+    };
+  }
+  if (typeof raw.clientName === "string" && raw.clientName.length > 0) {
+    return {
+      discovery,
+      baseUrl,
+      serverName,
+      clientName: raw.clientName,
+      ...shared,
+    };
+  }
+  throw new Error(
+    'Matrix account setting "oidcClientId" or "clientName" is required.',
+  );
 };

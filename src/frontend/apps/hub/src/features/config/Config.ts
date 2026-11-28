@@ -3,6 +3,7 @@ import { LazyMatrixDriver } from "../drivers/implementations/LazyMatrixDriver";
 import type { AccountId, ChatAccountConfig } from "../drivers/types";
 import {
   MATRIX_LOCAL_SETTINGS,
+  MIJNBUREAU_SETTINGS,
   TCHAP_PREPROD_SETTINGS,
   TCHAP_PROD_SETTINGS,
 } from "../matrix/config";
@@ -19,6 +20,13 @@ export const MATRIX_LOCAL_ACCOUNT: ChatAccountConfig = {
 
 const MATRIX_ENVIRONMENTS = {
   local: MATRIX_LOCAL_ACCOUNT,
+  mijnbureau: {
+    accountId: "mijnbureau",
+    label: "MijnBureau",
+    criticality: "required",
+    enabled: true,
+    settings: MIJNBUREAU_SETTINGS,
+  },
   "tchap-preprod": {
     accountId: "tchap-preprod",
     label: "Tchap (preprod)",
